@@ -67,31 +67,52 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [objects, setObjects] = useState<Record<string, DataObject[]>>({});
   const [isReady, setIsReady] = useState(false);
 
+  const mapModelData = (modelData: any): Model => { // Use any for incoming potentially un-migrated data
+    let finalDisplayPropertyNames: string[] = [];
+    if (Array.isArray(modelData.displayPropertyNames)) {
+      finalDisplayPropertyNames = modelData.displayPropertyNames;
+    } else if (typeof (modelData as any).displayPropertyName === 'string' && (modelData as any).displayPropertyName) {
+      // Check for old singular 'displayPropertyName' (if it existed with that exact name)
+      finalDisplayPropertyNames = [(modelData as any).displayPropertyName];
+    }
+    // If `modelData.displayPropertyNames` was a string (from a version where it was plural but string type by mistake)
+    // this case is implicitly handled by `Array.isArray` being false, falling to empty.
+    // Or, you could add an explicit `else if (typeof modelData.displayPropertyNames === 'string')` if needed.
+
+    const { displayPropertyName, ...restOfModelData } = modelData; // Remove old singular field if it existed
+
+    return {
+      ...restOfModelData,
+      id: modelData.id || crypto.randomUUID(),
+      displayPropertyNames: finalDisplayPropertyNames,
+      properties: (modelData.properties || []).map((p: any) => ({
+        ...p,
+        id: p.id || crypto.randomUUID(),
+        relationshipType: p.type === 'relationship' ? (p.relationshipType || 'one') : undefined,
+      })),
+    };
+  };
+
   useEffect(() => {
     try {
       const storedModels = localStorage.getItem('dynamicDataWeaver_models');
       const storedObjects = localStorage.getItem('dynamicDataWeaver_objects');
+      
       if (storedModels) {
-        setModels(JSON.parse(storedModels));
+        const parsedModels = JSON.parse(storedModels) as any[]; // Parse as any[] to handle old formats
+        setModels(parsedModels.map(mapModelData));
       } else {
-        setModels(initialModels.map(m => ({
-          ...m,
-          displayPropertyNames: m.displayPropertyNames || [],
-          properties: m.properties.map(p => ({ ...p, relationshipType: p.relationshipType || 'one' }))
-        })));
+        setModels(initialModels.map(mapModelData));
       }
+
       if (storedObjects) {
         setObjects(JSON.parse(storedObjects));
       } else {
         setObjects(initialObjects);
       }
     } catch (error) {
-      console.error("Failed to load data from localStorage", error);
-      setModels(initialModels.map(m => ({
-        ...m,
-        displayPropertyNames: m.displayPropertyNames || [],
-        properties: m.properties.map(p => ({ ...p, relationshipType: p.relationshipType || 'one' }))
-      })));
+      console.error("Failed to load data from localStorage, initializing with defaults.", error);
+      setModels(initialModels.map(mapModelData));
       setObjects(initialObjects);
     }
     setIsReady(true);
@@ -121,7 +142,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const newModel: Model = { 
       ...modelData, 
       id: crypto.randomUUID(),
-      displayPropertyNames: modelData.displayPropertyNames || [],
+      displayPropertyNames: modelData.displayPropertyNames || [], // Ensure it's an array
       properties: modelData.properties.map(p => ({
         ...p,
         id: p.id || crypto.randomUUID(),
@@ -147,7 +168,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
             ...model, 
             ...updates, 
             properties: newProperties,
-            displayPropertyNames: 'displayPropertyNames' in updates ? (updates.displayPropertyNames || []) : model.displayPropertyNames
+            displayPropertyNames: 'displayPropertyNames' in updates ? (updates.displayPropertyNames || []) : model.displayPropertyNames // Ensure array
           };
           return updatedModel;
         }
