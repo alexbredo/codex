@@ -33,6 +33,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
 import Link from 'next/link';
 import { getObjectDisplayValue } from '@/lib/utils'; // Import centralized function
+import { z } from 'zod';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -446,7 +447,7 @@ export default function DataObjectsPage() {
     );
   }
   
-  const directPropertiesToShowInTable = currentModel.properties.slice(0, 3); // Example: show first 3 direct properties
+  const directPropertiesToShowInTable = currentModel.properties;
 
   return (
     <div className="container mx-auto py-8">
@@ -621,3 +622,4 @@ export default function DataObjectsPage() {
     </div>
   );
 }
+
