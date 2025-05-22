@@ -2,17 +2,11 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+import { useParams, useRouter } from 'next/navigation'; // Removed useSearchParams
+// import { useForm } from 'react-hook-form'; // Form logic moved to dedicated pages
+// import { zodResolver } from '@hookform/resolvers/zod'; // Schema logic moved
 import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+// Dialog components removed as form is now on a dedicated page
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,15 +29,15 @@ import {
 import { Input } from '@/components/ui/input';
 import { useData } from '@/contexts/data-context';
 import type { Model, DataObject, Property } from '@/lib/types';
-import { createObjectFormSchema } from '@/components/objects/object-form-schema';
-import ObjectForm from '@/components/objects/object-form';
+// import { createObjectFormSchema } from '@/components/objects/object-form-schema'; // Schema logic moved
+// import ObjectForm from '@/components/objects/object-form'; // ObjectForm is on its own page
 import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { format } from 'date-fns';
 import Link from 'next/link';
-import { z } from 'zod'; 
+// import { z } from 'zod'; // No longer needed here
 
 const ITEMS_PER_PAGE = 10;
 const MAX_DIRECT_PROPERTIES_IN_TABLE = 3; 
@@ -51,7 +45,6 @@ const MAX_DIRECT_PROPERTIES_IN_TABLE = 3;
 const getObjectDisplayValue = (obj: DataObject | undefined, model: Model | undefined, allModels: Model[], allObjects: Record<string, DataObject[]>): string => {
   if (!obj || !model) return obj?.id ? `ID: ...${obj.id.slice(-6)}` : 'N/A';
 
-  // 1. Use defined displayPropertyNames
   if (model.displayPropertyNames && model.displayPropertyNames.length > 0) {
     const displayValues = model.displayPropertyNames
       .map(propName => {
@@ -59,7 +52,6 @@ const getObjectDisplayValue = (obj: DataObject | undefined, model: Model | undef
         if (propValue === null || typeof propValue === 'undefined' || String(propValue).trim() === '') {
           return null; 
         }
-        // If this display property is itself a relationship, recursively get its display value
         const propertyDefinition = model.properties.find(p => p.name === propName);
         if (propertyDefinition?.type === 'relationship' && propertyDefinition.relatedModelId) {
             const relatedModelForProp = allModels.find(m => m.id === propertyDefinition.relatedModelId);
@@ -68,32 +60,28 @@ const getObjectDisplayValue = (obj: DataObject | undefined, model: Model | undef
         }
         return String(propValue);
       })
-      .filter(value => value !== null && value.trim() !== ''); // Filter out empty or null values
+      .filter(value => value !== null && value.trim() !== ''); 
 
     if (displayValues.length > 0) {
       return displayValues.join(' - ');
     }
   }
 
-  // 2. Fallback: 'Name' property
   const nameProp = model.properties.find(p => p.name.toLowerCase() === 'name');
   if (nameProp && obj[nameProp.name] !== null && typeof obj[nameProp.name] !== 'undefined' && String(obj[nameProp.name]).trim() !== '') {
     return String(obj[nameProp.name]);
   }
 
-  // 3. Fallback: 'Title' property
   const titleProp = model.properties.find(p => p.name.toLowerCase() === 'title');
   if (titleProp && obj[titleProp.name] !== null && typeof obj[titleProp.name] !== 'undefined' && String(obj[titleProp.name]).trim() !== '') {
     return String(obj[titleProp.name]);
   }
   
-  // 4. Fallback: First string property
   const firstStringProp = model.properties.find(p => p.type === 'string');
   if (firstStringProp && obj[firstStringProp.name] !== null && typeof obj[firstStringProp.name] !== 'undefined' && String(obj[firstStringProp.name]).trim() !== '') {
     return String(obj[firstStringProp.name]);
   }
 
-  // 5. Final fallback: ID
   return obj.id ? `ID: ...${obj.id.slice(-6)}` : 'N/A';
 };
 
@@ -109,16 +97,15 @@ interface IncomingRelationColumn {
 export default function DataObjectsPage() {
   const router = useRouter();
   const params = useParams();
-  const searchParams = useSearchParams();
   const modelId = params.modelId as string;
-  const editObjectId = searchParams.get('edit');
+  // editObjectId from searchParams removed, edit is now a dedicated page
   
   const { 
     models: allModels, 
     getModelById, 
     getObjectsByModelId, 
-    addObject, 
-    updateObject, 
+    // addObject,  // Handled on new page
+    // updateObject, // Handled on edit page
     deleteObject,
     getAllObjects,
     isReady 
@@ -127,20 +114,13 @@ export default function DataObjectsPage() {
 
   const [currentModel, setCurrentModel] = useState<Model | null>(null); 
   const [objects, setObjects] = useState<DataObject[]>([]);
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingObject, setEditingObject] = useState<DataObject | null>(null);
+  // isFormOpen and editingObject state removed
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   
   const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects, isReady]);
 
-
-  const dynamicSchema = useMemo(() => currentModel ? createObjectFormSchema(currentModel) : z.object({}), [currentModel]);
-
-  const form = useForm<Record<string, any>>({
-    resolver: zodResolver(dynamicSchema),
-    defaultValues: {},
-  });
+  // dynamicSchema and form setup removed, handled on new/edit pages
   
   useEffect(() => {
     if (isReady && modelId) {
@@ -149,92 +129,32 @@ export default function DataObjectsPage() {
         setCurrentModel(foundModel);
         const modelObjects = getObjectsByModelId(modelId);
         setObjects(modelObjects);
-        
-        const defaultVals: Record<string, any> = {};
-        foundModel.properties.forEach(prop => {
-          defaultVals[prop.name] = prop.type === 'boolean' ? false : 
-                                   prop.type === 'date' ? null :
-                                   prop.relationshipType === 'many' ? [] :
-                                   undefined;
-        });
-        form.reset(defaultVals);
-
-        if (editObjectId) {
-          const objectToEdit = modelObjects.find(obj => obj.id === editObjectId);
-          if (objectToEdit) {
-            handleEdit(objectToEdit);
-          } else {
-            // Clear invalid edit ID from URL and show toast
-            router.replace(`/data/${modelId}`, undefined); // undefined for shallow
-            toast({ variant: "destructive", title: "Error", description: `Object with ID ${editObjectId} not found.` });
-          }
-        }
-
+        // Default form values logic removed
+        // Edit object handling from URL param removed
       } else {
         toast({ variant: "destructive", title: "Error", description: "Model not found." });
         router.push('/models');
       }
     }
-  }, [modelId, getModelById, getObjectsByModelId, isReady, toast, router, form, editObjectId]); // editObjectId in dep array
+  }, [modelId, getModelById, getObjectsByModelId, isReady, toast, router]);
 
 
   const handleCreateNew = () => {
     if (!currentModel) return;
-    setEditingObject(null);
-    const defaultValues: Record<string, any> = {};
-    currentModel.properties.forEach(prop => {
-      defaultValues[prop.name] = prop.type === 'boolean' ? false : 
-                                 prop.type === 'date' ? null :
-                                 prop.relationshipType === 'many' ? [] :
-                                 undefined;
-    });
-    form.reset(defaultValues);
-    setIsFormOpen(true);
+    router.push(`/data/${currentModel.id}/new`);
   };
 
   const handleEdit = (obj: DataObject) => {
     if (!currentModel) return;
-    setEditingObject(obj);
-    const formValues: Record<string, any> = {};
-     currentModel.properties.forEach(prop => {
-      formValues[prop.name] = obj[prop.name] ?? (prop.relationshipType === 'many' ? [] : prop.type === 'boolean' ? false : undefined);
-    });
-    form.reset(formValues);
-    setIsFormOpen(true);
+    router.push(`/data/${currentModel.id}/edit/${obj.id}`);
   };
 
-  const onSubmit = (values: Record<string, any>) => {
-    if (!currentModel) return;
-    try {
-      if (editingObject) {
-        updateObject(currentModel.id, editingObject.id, values);
-        toast({ title: `${currentModel.name} Updated`, description: `The ${currentModel.name.toLowerCase()} has been updated.` });
-      } else {
-        addObject(currentModel.id, values);
-        toast({ title: `${currentModel.name} Created`, description: `A new ${currentModel.name.toLowerCase()} has been created.` });
-      }
-      setObjects(getObjectsByModelId(currentModel.id)); 
-      setIsFormOpen(false);
-      form.reset();
-      
-      if (editObjectId) {
-        router.replace(`/data/${modelId}`, undefined); 
-      }
-    } catch (error: any) {
-      console.error(`Error saving ${currentModel.name}:`, error);
-      if (error.errors) { // Assuming Zod-like error structure
-        error.errors.forEach((err: any) => {
-          form.setError(err.path[0], { type: 'manual', message: err.message });
-        });
-      }
-      toast({ variant: "destructive", title: "Error", description: `Failed to save ${currentModel.name.toLowerCase()}.` });
-    }
-  };
+  // onSubmit logic removed, handled on new/edit pages
   
   const handleDelete = (objectId: string) => {
     if (!currentModel) return;
     deleteObject(currentModel.id, objectId);
-    setObjects(getObjectsByModelId(currentModel.id));
+    setObjects(getObjectsByModelId(currentModel.id)); // Refresh local state
     toast({ title: `${currentModel.name} Deleted`, description: `The ${currentModel.name.toLowerCase()} has been deleted.` });
   };
 
@@ -246,17 +166,16 @@ export default function DataObjectsPage() {
         if ((prop.type === 'string' || prop.type === 'number') && value && (typeof value === 'string' || typeof value === 'number') ) {
           return String(value).toLowerCase().includes(searchTerm.toLowerCase());
         }
-        // Basic search for related items display value
         if (prop.type === 'relationship' && prop.relatedModelId) {
             const relatedModel = getModelById(prop.relatedModelId);
-            if (Array.isArray(value)) { // 'many' relationship
+            if (Array.isArray(value)) { 
                 return value.some(itemId => {
                     const relatedObj = getObjectsByModelId(prop.relatedModelId!).find(o => o.id === itemId);
                     const displayVal = getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
                     return displayVal.toLowerCase().includes(searchTerm.toLowerCase());
                 });
-            } else if (value) { // 'one' relationship
-                const relatedObj = getObjectsByModelId(prop.relatedModelId).find(o => o.id === value);
+            } else if (value) { 
+                const relatedObj = getObjectsByModelId(prop.relatedModelId!).find(o => o.id === value);
                 const displayVal = getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
                 return displayVal.toLowerCase().includes(searchTerm.toLowerCase());
             }
@@ -296,7 +215,7 @@ export default function DataObjectsPage() {
         if (property.relationshipType === 'many') {
           if (!Array.isArray(value) || value.length === 0) return <span className="text-muted-foreground">N/A</span>;
           const relatedItems = value.map(itemId => {
-            const relatedObj = getObjectsByModelId(property.relatedModelId!).find(o => o.id === itemId);
+            const relatedObj = (allDbObjects[property.relatedModelId!] || []).find(o => o.id === itemId);
             return {
                 id: itemId,
                 name: getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects),
@@ -307,17 +226,17 @@ export default function DataObjectsPage() {
             return <Badge variant="outline" title={relatedItems.map(i=>i.name).join(', ')}>{relatedItems.length} {relatedModel.name}(s)</Badge>;
           }
           return relatedItems.map(item => item.obj ? (
-            <Link key={item.id} href={`/data/${relatedModel.id}?edit=${item.obj.id}`} passHref legacyBehavior>
+            <Link key={item.id} href={`/data/${relatedModel.id}/edit/${item.obj.id}`} passHref legacyBehavior>
               <a className="inline-block"><Badge variant="outline" className="mr-1 mb-1 hover:bg-secondary">{item.name}</Badge></a>
             </Link>
           ) : (
             <Badge key={item.id} variant="outline" className="mr-1 mb-1">{item.name}</Badge>
           ));
-        } else { // 'one'
-          const relatedObj = getObjectsByModelId(property.relatedModelId).find(o => o.id === value);
+        } else { 
+          const relatedObj = (allDbObjects[property.relatedModelId] || []).find(o => o.id === value);
           const displayVal = getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
           return relatedObj ? (
-             <Link href={`/data/${relatedModel.id}?edit=${relatedObj.id}`} passHref legacyBehavior>
+             <Link href={`/data/${relatedModel.id}/edit/${relatedObj.id}`} passHref legacyBehavior>
                 <a className="inline-block"><Badge variant="outline" className="hover:bg-secondary">{displayVal}</Badge></a>
             </Link>
           ) : <span className="text-xs font-mono" title={String(value)}>{displayVal}</span>;
@@ -351,7 +270,7 @@ export default function DataObjectsPage() {
 
   if (!isReady || !currentModel) {
     return (
-      <div className="flex justify-center items-center h-full">
+      <div className="flex justify-center items-center h-screen">
         <p className="text-lg text-muted-foreground">Loading data objects...</p>
       </div>
     );
@@ -388,7 +307,7 @@ export default function DataObjectsPage() {
       </header>
 
       {filteredObjects.length === 0 ? (
-        <Card className="col-span-full text-center py-12">
+        <Card className="text-center py-12"> {/* Removed col-span-full */}
           <CardContent>
             <ListChecks size={48} className="mx-auto text-muted-foreground mb-4" />
             <h3 className="text-xl font-semibold">No Data Objects Found</h3>
@@ -441,7 +360,7 @@ export default function DataObjectsPage() {
                     return (
                       <TableCell key={colDef.id} className="space-x-1 space-y-1">
                         {linkedItems.map(item => (
-                          <Link key={item.id} href={`/data/${colDef.referencingModel.id}?edit=${item.id}`} passHref legacyBehavior>
+                          <Link key={item.id} href={`/data/${colDef.referencingModel.id}/edit/${item.id}`} passHref legacyBehavior>
                             <a className="inline-block">
                               <Badge variant="secondary" className="hover:bg-muted cursor-pointer">
                                 {getObjectDisplayValue(item, colDef.referencingModel, allModels, allDbObjects)}
@@ -509,30 +428,9 @@ export default function DataObjectsPage() {
         </div>
       )}
 
-      <Dialog open={isFormOpen} onOpenChange={(isOpen) => {
-          setIsFormOpen(isOpen);
-          if (!isOpen && editObjectId) { 
-            router.replace(`/data/${modelId}`, undefined);
-          }
-        }}>
-        <DialogContent className="sm:max-w-[600px] max-h-[90vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle>{editingObject ? `Edit ${currentModel.name}` : `Create New ${currentModel.name}`}</DialogTitle>
-            <DialogDescription>
-              Fill in the details for the {currentModel.name.toLowerCase()} object.
-            </DialogDescription>
-          </DialogHeader>
-          {isFormOpen && currentModel && (
-             <ObjectForm
-                form={form}
-                model={currentModel}
-                onSubmit={onSubmit}
-                onCancel={() => setIsFormOpen(false)}
-                existingObject={editingObject || undefined}
-              />
-          )}
-        </DialogContent>
-      </Dialog>
+      {/* Dialog for ObjectForm removed */}
     </div>
   );
 }
+
+    

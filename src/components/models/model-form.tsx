@@ -37,9 +37,9 @@ import { useMemo } from 'react';
 interface ModelFormProps {
   form: UseFormReturn<ModelFormValues>;
   onSubmit: (values: ModelFormValues) => void;
-  onCancel: () => void;
+  onCancel: () => void; // Kept for the cancel button, which will navigate back
   isLoading?: boolean;
-  existingModel?: Model;
+  existingModel?: Model; // Used to change button text and potentially pre-fill
 }
 
 function PropertyFields({ 
@@ -59,7 +59,7 @@ function PropertyFields({
       {fields.map((field, index) => {
         const currentPropertyType = form.watch(`properties.${index}.type`);
         return (
-          <Card key={field.id} className="relative bg-background/50 p-0">
+          <Card key={field.id /* field.id from useFieldArray is stable */} className="relative bg-background/50 p-0">
             <CardHeader className="p-4">
               <div className="flex justify-between items-center">
                 <CardTitle className="text-lg">Property #{index + 1}</CardTitle>
@@ -100,6 +100,7 @@ function PropertyFields({
                         field.onChange(value);
                         if (value !== 'relationship') {
                           form.setValue(`properties.${index}.relationshipType`, 'one');
+                          form.setValue(`properties.${index}.relatedModelId`, undefined);
                         }
                       }} 
                       defaultValue={field.value}
@@ -210,14 +211,14 @@ function PropertyFields({
   );
 }
 
-const INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE = "__DEFAULT_DISPLAY_PROPERTY__"; // Kept for reference if single select is needed elsewhere
+const INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE = "__DEFAULT_DISPLAY_PROPERTY__";
 
 export default function ModelForm({ form, onSubmit, onCancel, isLoading, existingModel }: ModelFormProps) {
   const { models } = useData();
   const fieldArray = useFieldArray({
     control: form.control,
     name: 'properties',
-    keyName: "fieldId" // To avoid conflicts with property 'id'
+    keyName: "fieldId" 
   });
 
   const modelsForRelations = models.filter(m => !existingModel || m.id !== existingModel.id);
@@ -231,10 +232,9 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
   }, [currentProperties]);
 
   const handleFormSubmit = (values: ModelFormValues) => {
-    // Ensure displayPropertyNames are valid or cleared
     if (values.displayPropertyNames && values.displayPropertyNames.length > 0) {
       values.displayPropertyNames = values.displayPropertyNames.filter(dpName =>
-        values.properties.some(p => p.name === dpName && (p.type === 'string' || p.type === 'number'))
+        values.properties.some(p => p.name === dpName && (p.type === 'string' || p.type === 'number' || p.type === 'date'))
       );
       if (values.displayPropertyNames.length === 0) {
         values.displayPropertyNames = undefined;
@@ -248,82 +248,87 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(handleFormSubmit)} className="flex flex-col h-full">
-        <ScrollArea className="flex-grow">
-          <div className="space-y-8 p-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-xl">Model Details</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Model Name</FormLabel>
-                      <FormControl>
-                        <Input placeholder="e.g., Product, User, Article" {...field} />
-                      </FormControl>
-                      <FormDescription>A unique name for your data model.</FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="description"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Description (Optional)</FormLabel>
-                      <FormControl>
-                        <Textarea placeholder="A brief description of what this model represents." {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="displayPropertyNames"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Display Properties (Optional)</FormLabel>
-                      <MultiSelectAutocomplete
-                        options={displayPropertyOptions}
-                        selected={field.value || []}
-                        onChange={field.onChange}
-                        placeholder="-- Default (Name/Title/ID) --"
-                        emptyIndicator="No string/number properties available."
-                      />
-                      <FormDescription>
-                        Choose string or number properties to represent this model's objects. They will be shown concatenated.
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </CardContent>
-            </Card>
-            
-            <Separator />
+      {/* The form is now part of a page, so ScrollArea is handled by page layout if needed, or form can be longer */}
+      <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-8">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-xl">Model Details</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Model Name</FormLabel>
+                  <FormControl>
+                    <Input placeholder="e.g., Product, User, Article" {...field} />
+                  </FormControl>
+                  <FormDescription>A unique name for your data model.</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="description"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Description (Optional)</FormLabel>
+                  <FormControl>
+                    <Textarea placeholder="A brief description of what this model represents." {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="displayPropertyNames"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Display Properties (Optional)</FormLabel>
+                  <MultiSelectAutocomplete
+                    options={displayPropertyOptions}
+                    selected={field.value || []}
+                    onChange={(selectedValues) => {
+                        // Ensure that we only pass valid property names that are still in currentProperties
+                        const validSelected = selectedValues.filter(val => 
+                            (currentProperties || []).some(p => p.name === val && (p.type === 'string' || p.type === 'number' || p.type === 'date'))
+                        );
+                        field.onChange(validSelected);
+                    }}
+                    placeholder="-- Default (Name/Title/ID) --"
+                    emptyIndicator="No string/number/date properties available."
+                  />
+                  <FormDescription>
+                    Choose string, number, or date properties to represent this model's objects. They will be shown concatenated.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </CardContent>
+        </Card>
+        
+        <Separator />
 
-            <div>
-              <h3 className="text-lg font-medium mb-4">Properties</h3>
-              <PropertyFields form={form} fieldArray={fieldArray} modelsForRelations={modelsForRelations} />
-            </div>
-          </div>
-        </ScrollArea>
+        <div>
+          <h3 className="text-lg font-medium mb-4">Properties</h3>
+          <PropertyFields form={form} fieldArray={fieldArray} modelsForRelations={modelsForRelations} />
+        </div>
 
-        <div className="flex justify-end space-x-2 p-6 pt-4 border-t bg-background z-10 flex-shrink-0">
+        <div className="flex justify-end space-x-2 pt-4 border-t">
           <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
             Cancel
           </Button>
-          <Button type="submit" disabled={isLoading} className="bg-primary hover:bg-primary/90">
-            {isLoading ? 'Saving...' : (existingModel ? 'Update Model' : 'Create Model')}
+          <Button type="submit" disabled={isLoading || form.formState.isSubmitting} className="bg-primary hover:bg-primary/90">
+            {isLoading || form.formState.isSubmitting ? 'Saving...' : (existingModel ? 'Update Model' : 'Create Model')}
           </Button>
         </div>
       </form>
     </Form>
   );
 }
+
+    

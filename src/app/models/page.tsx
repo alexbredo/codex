@@ -1,17 +1,10 @@
 
 'use client';
 
-import { useState, useEffect } from 'react'; // Added useEffect
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'; // Removed DialogTrigger, Footer, Close
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,118 +18,51 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import ModelForm from '@/components/models/model-form';
-import type { ModelFormValues } from '@/components/models/model-form-schema';
-import { modelFormSchema } from '@/components/models/model-form-schema';
+// ModelForm is no longer rendered directly here, but on its own pages
+// import ModelForm from '@/components/models/model-form'; 
+// import type { ModelFormValues } from '@/components/models/model-form-schema';
+// import { modelFormSchema } from '@/components/models/model-form-schema';
 import { useData } from '@/contexts/data-context';
-import type { Model, Property } from '@/lib/types';
+import type { Model } from '@/lib/types';
 import { PlusCircle, Edit, Trash2, Eye, DatabaseZap, ListChecks, Search, Info, Code2, StickyNote } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation'; // For navigation
 import { useToast } from "@/hooks/use-toast";
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 export default function ModelsPage() {
-  const { models, addModel, updateModel, deleteModel, isReady, getModelByName } = useData();
+  const { models, deleteModel, isReady } = useData(); // Removed addModel, updateModel, getModelByName as they are handled on new/edit pages
   const { toast } = useToast();
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingModel, setEditingModel] = useState<Model | null>(null);
+  const router = useRouter(); // For navigation
   const [searchTerm, setSearchTerm] = useState('');
 
-  const form = useForm<ModelFormValues>({
-    resolver: zodResolver(modelFormSchema),
-    defaultValues: {
-      name: '',
-      description: '',
-      displayPropertyNames: [],
-      properties: [{ id: crypto.randomUUID(), name: '', type: 'string', required: false, relationshipType: 'one' }],
-    },
-  });
-
-  // Effect to update form when editingModel changes
-  useEffect(() => {
-    if (editingModel) {
-      form.reset({
-        name: editingModel.name,
-        description: editingModel.description || '',
-        displayPropertyNames: editingModel.displayPropertyNames || [],
-        properties: editingModel.properties.map(p => ({ 
-            ...p, 
-            id: p.id || crypto.randomUUID(),
-            relationshipType: p.relationshipType || 'one' // Ensure default
-        })),
-      });
-    } else {
-      form.reset({
-        name: '',
-        description: '',
-        displayPropertyNames: [],
-        properties: [{ id: crypto.randomUUID(), name: '', type: 'string', required: false, relationshipType: 'one' }],
-      });
-    }
-  }, [editingModel, form, isFormOpen]); // Added isFormOpen dependency
+  // Form state and logic are moved to dedicated new/edit pages
+  // const [isFormOpen, setIsFormOpen] = useState(false);
+  // const [editingModel, setEditingModel] = useState<Model | null>(null);
+  // const form = useForm<ModelFormValues>({ ... });
 
   const handleCreateNew = () => {
-    setEditingModel(null);
-    // Reset is handled by useEffect now
-    setIsFormOpen(true);
+    router.push('/models/new');
   };
 
   const handleEdit = (model: Model) => {
-    setEditingModel(model);
-     // Reset is handled by useEffect now
-    setIsFormOpen(true);
-  };
-
-  const onSubmit = (values: ModelFormValues) => {
-    const existingByName = getModelByName(values.name);
-    if (existingByName && (!editingModel || existingByName.id !== editingModel.id)) {
-        form.setError("name", { type: "manual", message: "A model with this name already exists." });
-        return;
-    }
-
-    const modelData = {
-      name: values.name,
-      description: values.description,
-      displayPropertyNames: values.displayPropertyNames && values.displayPropertyNames.length > 0 ? values.displayPropertyNames : undefined,
-      properties: values.properties.map(p => ({
-        id: p.id || crypto.randomUUID(),
-        name: p.name,
-        type: p.type,
-        relatedModelId: p.relatedModelId,
-        required: p.required,
-        relationshipType: p.type === 'relationship' ? p.relationshipType : undefined, // Only set for relationship
-      } as Property)),
-    };
-
-    try {
-      if (editingModel) {
-        updateModel(editingModel.id, modelData);
-        toast({ title: "Model Updated", description: `Model "${values.name}" has been updated.` });
-      } else {
-        addModel(modelData);
-        toast({ title: "Model Created", description: `Model "${values.name}" has been created.` });
-      }
-      setIsFormOpen(false);
-      // form.reset(); // Reset handled by useEffect or on dialog close
-    } catch (error) {
-      console.error("Error saving model:", error);
-      toast({ variant: "destructive", title: "Error", description: "Failed to save model." });
-    }
+    router.push(`/models/edit/${model.id}`);
   };
   
-  const handleDelete = (modelId: string) => {
+  const handleDelete = (modelId: string, modelName: string) => {
     deleteModel(modelId);
-    toast({ title: "Model Deleted", description: "The model has been successfully deleted." });
+    toast({ title: "Model Deleted", description: `Model "${modelName}" and its associated data have been successfully deleted.` });
   };
 
   const filteredModels = models.filter(model =>
-    model.name.toLowerCase().includes(searchTerm.toLowerCase())
+    model.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (model.description && model.description.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   if (!isReady) {
     return (
-      <div className="flex justify-center items-center h-full">
+      <div className="flex justify-center items-center h-screen">
         <p className="text-lg text-muted-foreground">Loading models...</p>
       </div>
     );
@@ -219,18 +145,22 @@ export default function ModelsPage() {
               </CardHeader>
               <CardContent className="flex-grow">
                 <h4 className="font-semibold mb-2 text-sm">Properties ({model.properties.length}):</h4>
-                <ScrollArea className="h-24">
-                  <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
-                    {model.properties.slice(0, 5).map((prop) => (
-                      <li key={prop.id} className="truncate">
-                        {prop.name} <span className="text-xs opacity-70">({prop.type}{prop.type === 'relationship' ? ` - ${prop.relationshipType}` : ''})</span>
-                      </li>
-                    ))}
-                    {model.properties.length > 5 && <li className="text-xs opacity-70">...and more</li>}
-                  </ul>
-                </ScrollArea>
+                {model.properties.length > 0 ? (
+                  <ScrollArea className="h-24">
+                    <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
+                      {model.properties.slice(0, 5).map((prop) => (
+                        <li key={prop.id} className="truncate">
+                          {prop.name} <span className="text-xs opacity-70">({prop.type}{prop.type === 'relationship' ? ` - ${prop.relationshipType}` : ''})</span>
+                        </li>
+                      ))}
+                      {model.properties.length > 5 && <li className="text-xs opacity-70">...and {model.properties.length - 5} more</li>}
+                    </ul>
+                  </ScrollArea>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No properties defined.</p>
+                )}
               </CardContent>
-              <CardFooter className="grid grid-cols-3 gap-2">
+              <CardFooter className="grid grid-cols-3 gap-2 pt-4"> {/* Added pt-4 for spacing */}
                 <Button variant="outline" size="sm" onClick={() => handleEdit(model)} className="w-full">
                   <Edit className="mr-1 h-3 w-3" /> Edit
                 </Button>
@@ -251,7 +181,7 @@ export default function ModelsPage() {
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                       <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction onClick={() => handleDelete(model.id)}>
+                      <AlertDialogAction onClick={() => handleDelete(model.id, model.name)}>
                         Delete
                       </AlertDialogAction>
                     </AlertDialogFooter>
@@ -270,39 +200,9 @@ export default function ModelsPage() {
           ))}
         </div>
       )}
-
-      <Dialog open={isFormOpen} onOpenChange={(open) => {
-          setIsFormOpen(open);
-          if (!open) { // When dialog closes
-            setEditingModel(null); // Clear editing state
-            form.reset({ // Reset form to pristine state for creation
-                 name: '',
-                 description: '',
-                 displayPropertyNames: [],
-                 properties: [{ id: crypto.randomUUID(), name: '', type: 'string', required: false, relationshipType: 'one' }],
-            });
-          }
-        }}>
-        <DialogContent className="sm:max-w-[600px] max-h-[90vh] flex flex-col p-0">
-          <DialogHeader className="p-6 pb-4 flex-shrink-0 border-b">
-            <DialogTitle>{editingModel ? 'Edit Model' : 'Create New Model'}</DialogTitle>
-            <DialogDescription>
-              {editingModel ? `Update the details for the "${editingModel.name}" model.` : 'Define a new data model structure for your application.'}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex-grow min-h-0 overflow-hidden">
-            {/* Render ModelForm only when isFormOpen is true to ensure it re-initializes with fresh data or default values */}
-            {isFormOpen && (
-              <ModelForm
-                form={form}
-                onSubmit={onSubmit}
-                onCancel={() => setIsFormOpen(false)}
-                existingModel={editingModel || undefined}
-              />
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Dialog for ModelForm removed */}
     </div>
   );
 }
+
+    
