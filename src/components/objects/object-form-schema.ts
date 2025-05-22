@@ -24,10 +24,7 @@ export function createObjectFormSchema(model: Model | undefined) {
       case 'number':
         fieldSchema = z.coerce.number();
         if (prop.required) {
-          // For required numbers, we expect a number. zod's `required` isn't a thing.
-          // `coerce.number()` will turn "" to 0, or fail on non-numeric.
-          // If it needs to be explicitly non-nullable AND non-zero, more complex validation is needed.
-          // For now, rely on it being a number.
+          // For required numbers, we expect a number.
         } else {
           fieldSchema = fieldSchema.optional().or(z.nan()); 
         }
@@ -36,22 +33,28 @@ export function createObjectFormSchema(model: Model | undefined) {
         fieldSchema = z.boolean().default(false);
         break;
       case 'date':
-        fieldSchema = z.union([z.string().datetime({ offset: true }), z.date()]);
-        if (prop.required) {
-          // If required, it must be a valid date string or Date object.
-          // The .datetime() or .date() will handle this.
+        // Base schema for a date field
+        let baseDateSchema = z.union([z.string().datetime({ offset: true }), z.date()]);
+
+        if (prop.autoSetOnCreate || prop.autoSetOnUpdate) {
+          // If the date is auto-set, it's optional and nullable from the form's perspective,
+          // as the onSubmit logic will handle providing the actual value.
+          fieldSchema = baseDateSchema.optional().nullable();
         } else {
-          fieldSchema = fieldSchema.optional().nullable();
+          // If not auto-set, apply required/optional logic as usual.
+          if (prop.required) {
+            fieldSchema = baseDateSchema; // Implicitly required by not being optional
+          } else {
+            fieldSchema = baseDateSchema.optional().nullable();
+          }
         }
         break;
       case 'relationship':
         if (prop.relationshipType === 'many') {
           let baseArraySchema = z.array(z.string());
           if (prop.required) {
-            // If required, it must have at least one item.
             fieldSchema = baseArraySchema.min(1, `At least one ${prop.name} is required.`);
           } else {
-            // If not required, it can be an empty array, or undefined (which defaults to empty).
             fieldSchema = baseArraySchema.default([]);
           }
         } else { // 'one' or undefined (defaults to 'one')
