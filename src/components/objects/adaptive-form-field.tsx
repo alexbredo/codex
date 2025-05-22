@@ -96,7 +96,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
   const { models: allModels, getModelById, getObjectsByModelId, getAllObjects } = useData();
   const fieldName = property.name as FieldPath<TFieldValues>;
 
-  const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects, /*isReady - implicitly handled by DataProvider*/]);
+  const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects]);
 
 
   const relatedModel = useMemo(() => {
@@ -117,14 +117,10 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
   const renderField = (controllerField: ControllerRenderProps<TFieldValues, FieldPath<TFieldValues>>) => {
     let fieldIsDisabled = false;
     if (property.type === 'date') {
-      if (formContext === 'create') {
-        if (property.autoSetOnCreate) {
+      if (formContext === 'create' && property.autoSetOnCreate) {
           fieldIsDisabled = true;
-        }
-      } else { // formContext === 'edit'
-        if (property.autoSetOnCreate || property.autoSetOnUpdate) {
+      } else if (formContext === 'edit' && (property.autoSetOnCreate || property.autoSetOnUpdate)) {
           fieldIsDisabled = true;
-        }
       }
     }
 
@@ -139,6 +135,24 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
       case 'boolean':
         return <Switch checked={controllerField.value ?? false} onCheckedChange={controllerField.onChange} />;
       case 'date':
+        let dateButtonText: React.ReactNode;
+        if (controllerField.value) {
+          try {
+            dateButtonText = format(new Date(controllerField.value), "PPP");
+          } catch (e) {
+            dateButtonText = "Invalid Date"; // Should not happen with ISO strings
+          }
+        } else {
+          if (fieldIsDisabled) {
+            // If disabled and no value, it's typically an auto-set field on a new form
+            dateButtonText = (formContext === 'create' && property.autoSetOnCreate) || (formContext === 'edit' && property.autoSetOnUpdate) 
+                             ? "Auto-set by system" 
+                             : "N/A";
+          } else {
+            dateButtonText = <span>Pick a date</span>;
+          }
+        }
+
         return (
           <Popover>
             <PopoverTrigger asChild>
@@ -146,23 +160,25 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
                 variant={"outline"}
                 className={cn(
                   "w-full justify-start text-left font-normal",
-                  !controllerField.value && "text-muted-foreground",
+                  !controllerField.value && !fieldIsDisabled && "text-muted-foreground",
                   fieldIsDisabled && "cursor-not-allowed opacity-70"
                 )}
                 disabled={fieldIsDisabled}
               >
                 <CalendarIcon className="mr-2 h-4 w-4" />
-                {controllerField.value ? format(new Date(controllerField.value), "PPP") : <span>Pick a date</span>}
+                {dateButtonText}
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-auto p-0">
-              <Calendar
-                mode="single"
-                selected={controllerField.value ? new Date(controllerField.value) : undefined}
-                onSelect={(date) => controllerField.onChange(date ? date.toISOString() : null)}
-                initialFocus
-              />
-            </PopoverContent>
+            {!fieldIsDisabled && (
+              <PopoverContent className="w-auto p-0">
+                <Calendar
+                  mode="single"
+                  selected={controllerField.value ? new Date(controllerField.value) : undefined}
+                  onSelect={(date) => controllerField.onChange(date ? date.toISOString() : null)}
+                  initialFocus
+                />
+              </PopoverContent>
+            )}
           </Popover>
         );
       case 'relationship':
@@ -219,7 +235,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
     <Controller
       name={fieldName}
       control={control}
-      defaultValue={property.relationshipType === 'many' ? [] : property.type === 'boolean' ? false : '' as any}
+      defaultValue={property.relationshipType === 'many' ? [] : property.type === 'boolean' ? false : property.type === 'date' ? null : '' as any}
       render={({ field, fieldState: { error } }) => (
         <FormItem>
           <FormLabel>{property.name}{property.required && <span className="text-destructive">*</span>}</FormLabel>
