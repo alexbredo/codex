@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -25,13 +26,14 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import ModelForm from '@/components/models/model-form';
 import type { ModelFormValues } from '@/components/models/model-form-schema';
 import { modelFormSchema } from '@/components/models/model-form-schema';
 import { useData } from '@/contexts/data-context';
 import type { Model, Property } from '@/lib/types';
-import { PlusCircle, Edit, Trash2, Eye, DatabaseZap, ListChecks, Search } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, Eye, DatabaseZap, ListChecks, Search, Info, Code2 } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
 import { Input } from '@/components/ui/input';
@@ -150,6 +152,24 @@ export default function ModelsPage() {
         </div>
       </header>
 
+      <Alert className="mb-8">
+        <Code2 className="h-4 w-4" />
+        <AlertTitle>Accessing Data via API (Examples)</AlertTitle>
+        <AlertDescription>
+          You can programmatically access your models and data objects using an internal API. Here are some example endpoints:
+          <ul className="list-disc pl-5 mt-2 space-y-1">
+            <li><code>GET /api/data-weaver/models</code> - Retrieves a list of all defined models.</li>
+            <li><code>GET /api/data-weaver/models/{'{modelId}'}</code> - Retrieves details for a specific model.</li>
+            <li><code>GET /api/data-weaver/models/{'{modelId}'}/objects</code> - Retrieves all data objects for a specific model.</li>
+            <li><code>GET /api/data-weaver/models/{'{modelId}'}/objects/{'{objectId}'}</code> - Retrieves a specific data object.</li>
+          </ul>
+          <p className="mt-3 text-xs text-muted-foreground">
+            <Info size={14} className="inline mr-1 relative -top-px" />
+            <strong>Important Note:</strong> The current application prototype uses client-side browser storage (localStorage) for data persistence. The API endpoints listed above are illustrative examples. For these APIs to serve data dynamically from a persistent backend store (like a database), further backend development to connect to such a data source would be required.
+          </p>
+        </AlertDescription>
+      </Alert>
+
       {filteredModels.length === 0 ? (
          <Card className="col-span-full text-center py-12">
           <CardContent>
@@ -251,3 +271,6 @@ export default function ModelsPage() {
     </div>
   );
 }
+
+
+    
