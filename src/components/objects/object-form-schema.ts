@@ -46,9 +46,13 @@ export function createObjectFormSchema(model: Model | undefined) {
         break;
       case 'relationship':
         if (prop.relationshipType === 'many') {
-          fieldSchema = z.array(z.string()).default([]);
+          let baseArraySchema = z.array(z.string());
           if (prop.required) {
-            fieldSchema = fieldSchema.min(1, `At least one ${prop.name} is required.`);
+            // If required, it must have at least one item.
+            fieldSchema = baseArraySchema.min(1, `At least one ${prop.name} is required.`);
+          } else {
+            // If not required, it can be an empty array, or undefined (which defaults to empty).
+            fieldSchema = baseArraySchema.default([]);
           }
         } else { // 'one' or undefined (defaults to 'one')
           fieldSchema = z.string();
@@ -67,3 +71,4 @@ export function createObjectFormSchema(model: Model | undefined) {
 
   return z.object(shape);
 }
+
