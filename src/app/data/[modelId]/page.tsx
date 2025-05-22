@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation'; 
+import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog,
@@ -26,16 +26,15 @@ import {
 import { Input } from '@/components/ui/input';
 import { useData } from '@/contexts/data-context';
 import type { Model, DataObject, Property } from '@/lib/types';
-import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { format as formatDateFns } from 'date-fns';
+import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
 import Link from 'next/link';
-import { z } from 'zod'; // Added z import
+import { z } from 'zod'; 
 
 const ITEMS_PER_PAGE = 10;
-const MAX_DIRECT_PROPERTIES_IN_TABLE = 3;
 
 type SortDirection = 'asc' | 'desc';
 interface SortConfig {
@@ -137,6 +136,24 @@ export default function DataObjectsPage() {
     }
   }, [modelId, getModelById, getObjectsByModelId, isReady, toast, router]);
 
+  const virtualIncomingRelationColumns = useMemo(() => {
+    if (!currentModel || !isReady) return [];
+    const columns: IncomingRelationColumn[] = [];
+    allModels.forEach(otherModel => {
+      if (otherModel.id === currentModel.id) return;
+      otherModel.properties.forEach(prop => {
+        if (prop.type === 'relationship' && prop.relatedModelId === currentModel.id) {
+          columns.push({
+            id: `${otherModel.id}-${prop.name}`, // Unique ID for sort key
+            headerLabel: `Ref. by ${otherModel.name} (via ${prop.name})`,
+            referencingModel: otherModel,
+            referencingProperty: prop,
+          });
+        }
+      });
+    });
+    return columns;
+  }, [currentModel, allModels, isReady]);
 
   const handleCreateNew = () => {
     if (!currentModel) return;
@@ -203,24 +220,6 @@ export default function DataObjectsPage() {
     return searchableObjects;
   }, [objects, searchTerm, currentModel, getModelById, allDbObjects, allModels]);
 
-  const virtualIncomingRelationColumns = useMemo(() => {
-    if (!currentModel || !isReady) return [];
-    const columns: IncomingRelationColumn[] = [];
-    allModels.forEach(otherModel => {
-      if (otherModel.id === currentModel.id) return;
-      otherModel.properties.forEach(prop => {
-        if (prop.type === 'relationship' && prop.relatedModelId === currentModel.id) {
-          columns.push({
-            id: `${otherModel.id}-${prop.name}`, // Unique ID for sort key
-            headerLabel: `Ref. by ${otherModel.name} (via ${prop.name})`,
-            referencingModel: otherModel,
-            referencingProperty: prop,
-          });
-        }
-      });
-    });
-    return columns;
-  }, [currentModel, allModels, isReady]);
 
   const sortedObjects = useMemo(() => {
     if (!sortConfig || !currentModel) {
@@ -320,7 +319,8 @@ export default function DataObjectsPage() {
         return value ? <Badge variant="default" className="bg-green-500 hover:bg-green-600">Yes</Badge> : <Badge variant="secondary">No</Badge>;
       case 'date':
         try {
-          return formatDateFns(new Date(value), 'PP');
+          const date = new Date(value);
+          return isDateValid(date) ? formatDateFns(date, 'PP') : String(value);
         } catch {
           return String(value);
         }
@@ -373,6 +373,118 @@ export default function DataObjectsPage() {
         return strValue.length > 50 ? <span title={strValue}>{strValue.substring(0, 47) + '...'}</span> : strValue;
     }
   };
+
+  const escapeCsvCell = (cell: any): string => {
+    if (cell === null || typeof cell === 'undefined') {
+      return '';
+    }
+    const cellString = String(cell);
+    if (cellString.search(/("|,|\n)/g) >= 0) {
+      return `"${cellString.replace(/"/g, '""')}"`;
+    }
+    return cellString;
+  };
+
+  const handleExportCSV = () => {
+    if (!currentModel || sortedObjects.length === 0) {
+      toast({
+        title: "No Data to Export",
+        description: "There is no data available for the current selection to export.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const headers: string[] = [];
+    currentModel.properties.forEach(prop => headers.push(prop.name));
+    virtualIncomingRelationColumns.forEach(col => headers.push(col.headerLabel));
+
+    const csvRows: string[] = [headers.map(escapeCsvCell).join(',')];
+
+    sortedObjects.forEach(obj => {
+      const row: string[] = [];
+      // Direct properties
+      currentModel.properties.forEach(prop => {
+        const value = obj[prop.name];
+        let cellValue = '';
+        if (value === null || typeof value === 'undefined') {
+          cellValue = '';
+        } else {
+          switch (prop.type) {
+            case 'boolean':
+              cellValue = value ? 'Yes' : 'No';
+              break;
+            case 'date':
+              try {
+                const date = new Date(value);
+                cellValue = isDateValid(date) ? formatDateFns(date, 'yyyy-MM-dd') : String(value);
+              } catch { cellValue = String(value); }
+              break;
+            case 'number':
+              const precision = prop.precision === undefined ? 2 : prop.precision;
+              const parsedNum = parseFloat(value);
+              cellValue = isNaN(parsedNum) ? String(value) : parsedNum.toFixed(precision);
+              // Unit is not typically included in raw CSV data unless specifically requested for each column.
+              break;
+            case 'relationship':
+              const relatedModel = getModelById(prop.relatedModelId!);
+              if (prop.relationshipType === 'many') {
+                if (Array.isArray(value) && value.length > 0) {
+                  cellValue = value.map(itemId => {
+                    const relatedObj = (allDbObjects[prop.relatedModelId!] || []).find(o => o.id === itemId);
+                    return getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
+                  }).join('; '); // Use semicolon for multi-value cells, or choose another strategy
+                } else {
+                  cellValue = '';
+                }
+              } else { // 'one'
+                const relatedObj = (allDbObjects[prop.relatedModelId!] || []).find(o => o.id === value);
+                cellValue = getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
+              }
+              break;
+            default:
+              cellValue = String(value);
+          }
+        }
+        row.push(escapeCsvCell(cellValue));
+      });
+
+      // Virtual incoming relation columns
+      virtualIncomingRelationColumns.forEach(colDef => {
+        const referencingData = allDbObjects[colDef.referencingModel.id] || [];
+        const linkedItems = referencingData.filter(refObj => {
+          const linkedValue = refObj[colDef.referencingProperty.name];
+          if (colDef.referencingProperty.relationshipType === 'many') {
+            return Array.isArray(linkedValue) && linkedValue.includes(obj.id);
+          }
+          return linkedValue === obj.id;
+        });
+        if (linkedItems.length > 0) {
+          row.push(escapeCsvCell(linkedItems.map(item => getObjectDisplayValue(item, colDef.referencingModel, allModels, allDbObjects)).join('; ')));
+        } else {
+          row.push('');
+        }
+      });
+      csvRows.push(row.join(','));
+    });
+
+    const csvString = csvRows.join('\n');
+    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    if (link.download !== undefined) { // Feature detection
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `${currentModel.name}-data.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      toast({ title: "Export Successful", description: `${currentModel.name} data has been exported to CSV.` });
+    } else {
+      toast({ variant: "destructive", title: "Export Failed", description: "Your browser doesn't support this feature." });
+    }
+  };
   
 
   if (!isReady || !currentModel) {
@@ -383,7 +495,7 @@ export default function DataObjectsPage() {
     );
   }
   
-  const directPropertiesToShow = currentModel.properties.slice(0, MAX_DIRECT_PROPERTIES_IN_TABLE);
+  const directPropertiesToShowInTable = currentModel.properties.slice(0, 3); // Example: show first 3 direct properties
 
   return (
     <div className="container mx-auto py-8">
@@ -407,6 +519,9 @@ export default function DataObjectsPage() {
                     className="pl-10 w-full md:w-64"
                 />
             </div>
+            <Button onClick={handleExportCSV} variant="outline">
+                <Download className="mr-2 h-4 w-4" /> Export CSV
+            </Button>
             <Button onClick={handleCreateNew} className="bg-accent text-accent-foreground hover:bg-accent/90">
                 <PlusCircle className="mr-2 h-4 w-4" /> Create New
             </Button>
@@ -441,7 +556,7 @@ export default function DataObjectsPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                {directPropertiesToShow.map((prop) => (
+                {directPropertiesToShowInTable.map((prop) => (
                   <TableHead key={prop.id}>
                     <Button variant="ghost" onClick={() => requestSort(prop.id)} className="px-1">
                       {prop.name}
@@ -463,7 +578,7 @@ export default function DataObjectsPage() {
             <TableBody>
               {paginatedObjects.map((obj) => (
                 <TableRow key={obj.id}>
-                  {directPropertiesToShow.map((prop) => (
+                  {directPropertiesToShowInTable.map((prop) => (
                     <TableCell key={`${obj.id}-${prop.id}`}>
                       {displayCellContent(obj, prop)}
                     </TableCell>
@@ -555,5 +670,3 @@ export default function DataObjectsPage() {
     </div>
   );
 }
-
-    
