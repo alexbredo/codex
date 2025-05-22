@@ -2,8 +2,7 @@
 'use client';
 
 import type { Control, UseFormReturn, UseFieldArrayReturn } from 'react-hook-form';
-import { useFieldArray } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+import { useFieldArray, useWatch } from 'react-hook-form';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -26,9 +25,9 @@ import {
 } from '@/components/ui/form';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { Trash2, PlusCircle, GripVertical } from 'lucide-react';
-import type { ModelFormValues, PropertyFormValues } from './model-form-schema';
-import { modelFormSchema, propertyTypes } from './model-form-schema';
+import { Trash2, PlusCircle } from 'lucide-react';
+import type { ModelFormValues } from './model-form-schema';
+import { propertyTypes, relationshipTypes } from './model-form-schema';
 import type { Model } from '@/lib/types';
 import { useData } from '@/contexts/data-context';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -51,81 +50,67 @@ function PropertyFields({
   modelsForRelations: Model[]
 }) {
   const { fields, append, remove } = fieldArray;
+  const control = form.control;
 
   return (
     <div className="space-y-6">
-      {fields.map((field, index) => (
-        <Card key={field.id} className="relative bg-background/50 p-0">
-          <CardHeader className="p-4">
-            <div className="flex justify-between items-center">
-              <CardTitle className="text-lg">Property #{index + 1}</CardTitle>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={() => remove(index)}
-                className="text-destructive hover:bg-destructive/10"
-                aria-label="Remove property"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="p-4 pt-0 grid grid-cols-1 md:grid-cols-2 gap-4">
-            <FormField
-              control={form.control}
-              name={`properties.${index}.name`}
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Name</FormLabel>
-                  <FormControl>
-                    <Input placeholder="e.g., ProductName, UserAge" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name={`properties.${index}.type`}
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Type</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select property type" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {propertyTypes.map((type) => (
-                        <SelectItem key={type} value={type}>
-                          {type.charAt(0).toUpperCase() + type.slice(1)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            {form.getValues(`properties.${index}.type`) === 'relationship' && (
+      {fields.map((field, index) => {
+        const currentPropertyType = form.watch(`properties.${index}.type`);
+        return (
+          <Card key={field.id} className="relative bg-background/50 p-0">
+            <CardHeader className="p-4">
+              <div className="flex justify-between items-center">
+                <CardTitle className="text-lg">Property #{index + 1}</CardTitle>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => remove(index)}
+                  className="text-destructive hover:bg-destructive/10"
+                  aria-label="Remove property"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-4 pt-0 grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
-                control={form.control}
-                name={`properties.${index}.relatedModelId`}
+                control={control}
+                name={`properties.${index}.name`}
                 render={({ field }) => (
-                  <FormItem className="md:col-span-2">
-                    <FormLabel>Related Model</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <FormItem>
+                    <FormLabel>Name</FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g., ProductName, UserAge" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={control}
+                name={`properties.${index}.type`}
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Type</FormLabel>
+                    <Select 
+                      onValueChange={(value) => {
+                        field.onChange(value);
+                        if (value !== 'relationship') {
+                          form.setValue(`properties.${index}.relationshipType`, 'one');
+                        }
+                      }} 
+                      defaultValue={field.value}
+                    >
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="Select related model" />
+                          <SelectValue placeholder="Select property type" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {modelsForRelations.map((model) => (
-                          <SelectItem key={model.id} value={model.id}>
-                            {model.name}
+                        {propertyTypes.map((type) => (
+                          <SelectItem key={type} value={type}>
+                            {type.charAt(0).toUpperCase() + type.slice(1)}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -134,35 +119,87 @@ function PropertyFields({
                   </FormItem>
                 )}
               />
-            )}
-            <FormField
-              control={form.control}
-              name={`properties.${index}.required`}
-              render={({ field }) => (
-                <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 md:col-span-2">
-                   <FormControl>
-                    <Checkbox
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
-                  </FormControl>
-                  <div className="space-y-1 leading-none">
-                    <FormLabel>Required</FormLabel>
-                    <FormDescription>
-                      Is this property mandatory for new objects?
-                    </FormDescription>
-                  </div>
-                </FormItem>
+              {currentPropertyType === 'relationship' && (
+                <>
+                  <FormField
+                    control={control}
+                    name={`properties.${index}.relatedModelId`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Related Model</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select related model" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {modelsForRelations.map((model) => (
+                              <SelectItem key={model.id} value={model.id}>
+                                {model.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={control}
+                    name={`properties.${index}.relationshipType`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Relationship Type</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value || 'one'}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select relationship type" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {relationshipTypes.map((type) => (
+                              <SelectItem key={type} value={type}>
+                                {type === 'one' ? 'One (Single Item)' : 'Many (Multiple Items)'}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </>
               )}
-            />
-          </CardContent>
-        </Card>
-      ))}
+              <FormField
+                control={form.control}
+                name={`properties.${index}.required`}
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 md:col-span-2">
+                     <FormControl>
+                      <Checkbox
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                    <div className="space-y-1 leading-none">
+                      <FormLabel>Required</FormLabel>
+                      <FormDescription>
+                        Is this property mandatory for new objects?
+                      </FormDescription>
+                    </div>
+                  </FormItem>
+                )}
+              />
+            </CardContent>
+          </Card>
+        )
+      })}
       <Button
         type="button"
         variant="outline"
         size="sm"
-        onClick={() => append({ name: '', type: 'string', required: false })}
+        onClick={() => append({ id: crypto.randomUUID(), name: '', type: 'string', required: false, relationshipType: 'one' })}
         className="mt-2 w-full"
       >
         <PlusCircle className="mr-2 h-4 w-4" /> Add Property
@@ -177,6 +214,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
   const fieldArray = useFieldArray({
     control: form.control,
     name: 'properties',
+    keyName: "fieldId" // To avoid conflicts with property 'id'
   });
 
   const modelsForRelations = models.filter(m => !existingModel || m.id !== existingModel.id);

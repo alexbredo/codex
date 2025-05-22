@@ -5,7 +5,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod'; // Added import
+import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -38,13 +38,25 @@ import { useData } from '@/contexts/data-context';
 import type { Model, DataObject, Property } from '@/lib/types';
 import { createObjectFormSchema } from '@/components/objects/object-form-schema';
 import ObjectForm from '@/components/objects/object-form';
-import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, Users, Link2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { format } from 'date-fns';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import Link from 'next/link';
 
 const ITEMS_PER_PAGE = 10;
+
+const getDisplayNameProperty = (model?: Model): string => {
+  if (!model) return 'id';
+  const nameProp = model.properties.find(p => p.name.toLowerCase() === 'name');
+  if (nameProp) return nameProp.name;
+  const titleProp = model.properties.find(p => p.name.toLowerCase() === 'title');
+  if (titleProp) return titleProp.name;
+  const firstStringProp = model.properties.find(p => p.type === 'string');
+  return firstStringProp ? firstStringProp.name : 'id';
+};
 
 export default function DataObjectsPage() {
   const router = useRouter();
@@ -52,23 +64,25 @@ export default function DataObjectsPage() {
   const modelId = params.modelId as string;
   
   const { 
+    models: allModels, // Renamed to avoid conflict
     getModelById, 
     getObjectsByModelId, 
     addObject, 
     updateObject, 
     deleteObject,
+    getAllObjects,
     isReady 
   } = useData();
   const { toast } = useToast();
 
-  const [model, setModel] = useState<Model | null>(null);
+  const [currentModel, setCurrentModel] = useState<Model | null>(null); // Renamed from model to currentModel
   const [objects, setObjects] = useState<DataObject[]>([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingObject, setEditingObject] = useState<DataObject | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
 
-  const dynamicSchema = useMemo(() => model ? createObjectFormSchema(model) : z.object({}), [model]);
+  const dynamicSchema = useMemo(() => currentModel ? createObjectFormSchema(currentModel) : z.object({}), [currentModel]);
 
   const form = useForm<Record<string, any>>({
     resolver: zodResolver(dynamicSchema),
@@ -77,18 +91,19 @@ export default function DataObjectsPage() {
   
   useEffect(() => {
     if (isReady && modelId) {
-      const currentModel = getModelById(modelId);
-      if (currentModel) {
-        setModel(currentModel);
+      const foundModel = getModelById(modelId);
+      if (foundModel) {
+        setCurrentModel(foundModel);
         setObjects(getObjectsByModelId(modelId));
-        // Initialize form with default values based on model properties
         const defaultVals: Record<string, any> = {};
-        currentModel.properties.forEach(prop => {
-          defaultVals[prop.name] = prop.type === 'boolean' ? false : undefined;
+        foundModel.properties.forEach(prop => {
+          defaultVals[prop.name] = prop.type === 'boolean' ? false : 
+                                   prop.type === 'date' ? null :
+                                   prop.relationshipType === 'many' ? [] :
+                                   undefined;
         });
         form.reset(defaultVals);
       } else {
-        // Handle model not found, e.g., redirect or show error
         toast({ variant: "destructive", title: "Error", description: "Model not found." });
         router.push('/models');
       }
@@ -97,12 +112,13 @@ export default function DataObjectsPage() {
 
 
   const handleCreateNew = () => {
-    if (!model) return;
+    if (!currentModel) return;
     setEditingObject(null);
     const defaultValues: Record<string, any> = {};
-    model.properties.forEach(prop => {
+    currentModel.properties.forEach(prop => {
       defaultValues[prop.name] = prop.type === 'boolean' ? false : 
                                  prop.type === 'date' ? null :
+                                 prop.relationshipType === 'many' ? [] :
                                  undefined;
     });
     form.reset(defaultValues);
@@ -110,61 +126,60 @@ export default function DataObjectsPage() {
   };
 
   const handleEdit = (obj: DataObject) => {
-    if (!model) return;
+    if (!currentModel) return;
     setEditingObject(obj);
     const formValues: Record<string, any> = {};
-     model.properties.forEach(prop => {
-      formValues[prop.name] = obj[prop.name];
+     currentModel.properties.forEach(prop => {
+      formValues[prop.name] = obj[prop.name] ?? (prop.relationshipType === 'many' ? [] : prop.type === 'boolean' ? false : undefined);
     });
     form.reset(formValues);
     setIsFormOpen(true);
   };
 
   const onSubmit = (values: Record<string, any>) => {
-    if (!model) return;
+    if (!currentModel) return;
     try {
       if (editingObject) {
-        updateObject(model.id, editingObject.id, values);
-        toast({ title: `${model.name} Updated`, description: `The ${model.name.toLowerCase()} has been updated.` });
+        updateObject(currentModel.id, editingObject.id, values);
+        toast({ title: `${currentModel.name} Updated`, description: `The ${currentModel.name.toLowerCase()} has been updated.` });
       } else {
-        addObject(model.id, values);
-        toast({ title: `${model.name} Created`, description: `A new ${model.name.toLowerCase()} has been created.` });
+        addObject(currentModel.id, values);
+        toast({ title: `${currentModel.name} Created`, description: `A new ${currentModel.name.toLowerCase()} has been created.` });
       }
-      setObjects(getObjectsByModelId(model.id)); // Refresh local list
+      setObjects(getObjectsByModelId(currentModel.id)); 
       setIsFormOpen(false);
       form.reset();
     } catch (error: any) {
-      console.error(`Error saving ${model.name}:`, error);
-      // Check for ZodErrors to display specific field errors
+      console.error(`Error saving ${currentModel.name}:`, error);
       if (error.errors) {
         error.errors.forEach((err: any) => {
           form.setError(err.path[0], { type: 'manual', message: err.message });
         });
       }
-      toast({ variant: "destructive", title: "Error", description: `Failed to save ${model.name.toLowerCase()}.` });
+      toast({ variant: "destructive", title: "Error", description: `Failed to save ${currentModel.name.toLowerCase()}.` });
     }
   };
   
   const handleDelete = (objectId: string) => {
-    if (!model) return;
-    deleteObject(model.id, objectId);
-    setObjects(getObjectsByModelId(model.id)); // Refresh local list
-    toast({ title: `${model.name} Deleted`, description: `The ${model.name.toLowerCase()} has been deleted.` });
+    if (!currentModel) return;
+    deleteObject(currentModel.id, objectId);
+    setObjects(getObjectsByModelId(currentModel.id));
+    toast({ title: `${currentModel.name} Deleted`, description: `The ${currentModel.name.toLowerCase()} has been deleted.` });
   };
 
   const filteredObjects = useMemo(() => {
     if (!searchTerm) return objects;
     return objects.filter(obj =>
-      model?.properties.some(prop => {
+      currentModel?.properties.some(prop => {
         const value = obj[prop.name];
         if (prop.type === 'string' && value && typeof value === 'string') {
           return value.toLowerCase().includes(searchTerm.toLowerCase());
         }
-        // Add more sophisticated search for other types if needed
+        // TODO: Add search for other types, including relationships
         return false;
       }) ?? false
     );
-  }, [objects, searchTerm, model]);
+  }, [objects, searchTerm, currentModel]);
 
   const paginatedObjects = useMemo(() => {
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -173,36 +188,103 @@ export default function DataObjectsPage() {
 
   const totalPages = Math.ceil(filteredObjects.length / ITEMS_PER_PAGE);
 
-  if (!isReady || !model) {
-    return (
-      <div className="flex justify-center items-center h-full">
-        <p className="text-lg text-muted-foreground">Loading data objects...</p>
-      </div>
-    );
-  }
-  
   const displayCellContent = (obj: DataObject, property: Property) => {
     const value = obj[property.name];
-    if (value === null || typeof value === 'undefined') return <span className="text-muted-foreground">N/A</span>;
+    if (value === null || typeof value === 'undefined' || (Array.isArray(value) && value.length === 0)) {
+      return <span className="text-muted-foreground">N/A</span>;
+    }
 
     switch (property.type) {
       case 'boolean':
         return value ? <Badge variant="default" className="bg-green-500 hover:bg-green-600">Yes</Badge> : <Badge variant="secondary">No</Badge>;
       case 'date':
         try {
-          return format(new Date(value), 'PP'); // Format as 'Sep 03, 2023'
+          return format(new Date(value), 'PP');
         } catch {
-          return String(value); // Fallback if date is invalid
+          return String(value);
         }
       case 'relationship':
-        // TODO: Fetch and display related object's name
-        return <span className="text-xs font-mono text-blue-600" title={String(value)}>ID: ...{String(value).slice(-6)}</span>;
+        if (!property.relatedModelId) return <span className="text-destructive">Config Err</span>;
+        const relatedModel = getModelById(property.relatedModelId);
+        if (!relatedModel) return <span className="text-destructive">Model N/A</span>;
+        const displayNameProp = getDisplayNameProperty(relatedModel);
+
+        if (property.relationshipType === 'many') {
+          if (!Array.isArray(value) || value.length === 0) return <span className="text-muted-foreground">N/A</span>;
+          const relatedItemNames = value.map(itemId => {
+            const relatedObj = getObjectsByModelId(property.relatedModelId!).find(o => o.id === itemId);
+            return relatedObj ? String(relatedObj[displayNameProp] ?? itemId.slice(-6)) : `ID: ...${itemId.slice(-6)}`;
+          });
+          if (relatedItemNames.length > 2) {
+            return <Badge variant="outline" title={relatedItemNames.join(', ')}>{relatedItemNames.length} {relatedModel.name}s</Badge>;
+          }
+          return relatedItemNames.map(name => <Badge key={name} variant="outline" className="mr-1 mb-1">{name}</Badge>);
+        } else { // 'one'
+          const relatedObj = getObjectsByModelId(property.relatedModelId).find(o => o.id === value);
+          return relatedObj ? <Badge variant="outline">{String(relatedObj[displayNameProp] ?? String(value).slice(-6))}</Badge> : <span className="text-xs font-mono text-blue-600" title={String(value)}>ID: ...{String(value).slice(-6)}</span>;
+        }
       default:
-        // Truncate long strings
         const strValue = String(value);
         return strValue.length > 50 ? <span title={strValue}>{strValue.substring(0, 47) + '...'}</span> : strValue;
     }
   };
+  
+  const incomingRelations = useMemo(() => {
+    if (!currentModel || !isReady) return [];
+    const allDbObjects = getAllObjects();
+    const relations: Array<{
+      referencingModel: Model;
+      referencingProperty: Property;
+      referencingObject: DataObject;
+      referencedTargetObject: DataObject;
+    }> = [];
+
+    allModels.forEach(otherModel => {
+      if (otherModel.id === currentModel.id) return; // Skip self-references for now
+
+      otherModel.properties.forEach(prop => {
+        if (prop.type === 'relationship' && prop.relatedModelId === currentModel.id) {
+          const objectsOfOtherModel = allDbObjects[otherModel.id] || [];
+          objectsOfOtherModel.forEach(otherObj => {
+            const linkedValue = otherObj[prop.name];
+            if (prop.relationshipType === 'many' && Array.isArray(linkedValue)) {
+              linkedValue.forEach(linkedId => {
+                const target = objects.find(o => o.id === linkedId);
+                if (target) {
+                  relations.push({
+                    referencingModel: otherModel,
+                    referencingProperty: prop,
+                    referencingObject: otherObj,
+                    referencedTargetObject: target,
+                  });
+                }
+              });
+            } else if (prop.relationshipType === 'one' && typeof linkedValue === 'string') {
+              const target = objects.find(o => o.id === linkedValue);
+               if (target) {
+                  relations.push({
+                    referencingModel: otherModel,
+                    referencingProperty: prop,
+                    referencingObject: otherObj,
+                    referencedTargetObject: target,
+                  });
+                }
+            }
+          });
+        }
+      });
+    });
+    return relations;
+  }, [currentModel, allModels, objects, getAllObjects, isReady]);
+
+
+  if (!isReady || !currentModel) {
+    return (
+      <div className="flex justify-center items-center h-full">
+        <p className="text-lg text-muted-foreground">Loading data objects...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto py-8">
@@ -212,15 +294,15 @@ export default function DataObjectsPage() {
 
       <header className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
         <div className="text-center md:text-left">
-          <h1 className="text-3xl font-bold text-primary">Data for: {model.name}</h1>
-          <p className="text-muted-foreground">{model.description || 'Manage data entries for this model.'}</p>
+          <h1 className="text-3xl font-bold text-primary">Data for: {currentModel.name}</h1>
+          <p className="text-muted-foreground">{currentModel.description || 'Manage data entries for this model.'}</p>
         </div>
          <div className="flex gap-2 w-full md:w-auto">
             <div className="relative flex-grow md:flex-grow-0">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                 <Input
                     type="search"
-                    placeholder={`Search ${model.name.toLowerCase()}s...`}
+                    placeholder={`Search ${currentModel.name.toLowerCase()}s...`}
                     value={searchTerm}
                     onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1);}}
                     className="pl-10 w-full md:w-64"
@@ -238,7 +320,7 @@ export default function DataObjectsPage() {
             <ListChecks size={48} className="mx-auto text-muted-foreground mb-4" />
             <h3 className="text-xl font-semibold">No Data Objects Found</h3>
             <p className="text-muted-foreground mb-4">
-              {searchTerm ? `No objects match your search for "${searchTerm}".` : `There are no data objects for the model "${model.name}" yet.`}
+              {searchTerm ? `No objects match your search for "${searchTerm}".` : `There are no data objects for the model "${currentModel.name}" yet.`}
             </p>
              {!searchTerm && (
                 <Button onClick={handleCreateNew} variant="default">
@@ -252,7 +334,7 @@ export default function DataObjectsPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                {model.properties.slice(0,5).map((prop) => ( // Limit initial columns for wider tables
+                {currentModel.properties.slice(0,5).map((prop) => ( 
                   <TableHead key={prop.id}>{prop.name}</TableHead>
                 ))}
                 <TableHead className="text-right w-[150px]">Actions</TableHead>
@@ -261,7 +343,7 @@ export default function DataObjectsPage() {
             <TableBody>
               {paginatedObjects.map((obj) => (
                 <TableRow key={obj.id}>
-                  {model.properties.slice(0,5).map((prop) => (
+                  {currentModel.properties.slice(0,5).map((prop) => (
                     <TableCell key={`${obj.id}-${prop.id}`}>
                       {displayCellContent(obj, prop)}
                     </TableCell>
@@ -280,7 +362,7 @@ export default function DataObjectsPage() {
                         <AlertDialogHeader>
                           <AlertDialogTitle>Are you sure?</AlertDialogTitle>
                           <AlertDialogDescription>
-                            This action cannot be undone. This will permanently delete this {model.name.toLowerCase()} object.
+                            This action cannot be undone. This will permanently delete this {currentModel.name.toLowerCase()} object.
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
@@ -323,19 +405,86 @@ export default function DataObjectsPage() {
         </div>
       )}
 
+      {/* Incoming Relations Section */}
+      {currentModel && incomingRelations.length > 0 && (
+        <section className="mt-12">
+          <h2 className="text-2xl font-semibold mb-4 text-primary flex items-center">
+            <Link2 className="mr-3 h-6 w-6" />
+            {currentModel.name} Objects Referenced By Others
+          </h2>
+          <Accordion type="multiple" className="w-full space-y-2">
+            {objects.filter(obj => incomingRelations.some(ir => ir.referencedTargetObject.id === obj.id)) // Only show current model objects that ARE referenced
+              .map(currentObj => {
+              const relationsForThisObject = incomingRelations.filter(ir => ir.referencedTargetObject.id === currentObj.id);
+              if (relationsForThisObject.length === 0) return null;
+
+              const currentObjDisplayName = String(currentObj[getDisplayNameProperty(currentModel)] ?? currentObj.id.slice(-6));
+
+              return (
+                <Card key={currentObj.id} className="bg-card/50">
+                  <AccordionItem value={currentObj.id} className="border-b-0">
+                    <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                      <div className="flex items-center">
+                        <Users className="h-5 w-5 mr-2 text-muted-foreground" />
+                        <span>Object: <strong className="text-primary">{currentObjDisplayName}</strong> is referenced by:</span>
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="px-4 pb-4">
+                      <ul className="space-y-3">
+                        {relationsForThisObject.reduce<Array<{ model: Model; items: Array<{ prop: Property; obj: DataObject }> }>>((acc, rel) => {
+                          let group = acc.find(g => g.model.id === rel.referencingModel.id);
+                          if (!group) {
+                            group = { model: rel.referencingModel, items: [] };
+                            acc.push(group);
+                          }
+                          group.items.push({ prop: rel.referencingProperty, obj: rel.referencingObject });
+                          return acc;
+                        }, []).map(group => (
+                          <li key={group.model.id} className="border p-3 rounded-md bg-background">
+                            <h4 className="font-semibold text-sm mb-1">
+                              <Link href={`/data/${group.model.id}`} className="hover:underline text-primary">
+                                {group.model.name}
+                              </Link>
+                              :
+                            </h4>
+                            <ul className="list-disc list-inside pl-2 text-xs space-y-1">
+                              {group.items.map(item => {
+                                const displayName = String(item.obj[getDisplayNameProperty(group.model)] ?? item.obj.id.slice(-6));
+                                return (
+                                  <li key={item.obj.id}>
+                                     <Link href={`/data/${group.model.id}?edit=${item.obj.id}`} className="hover:underline">
+                                        "{displayName}"
+                                     </Link>
+                                     <span className="text-muted-foreground"> (via property: {item.prop.name})</span>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          </li>
+                        ))}
+                      </ul>
+                    </AccordionContent>
+                  </AccordionItem>
+                </Card>
+              );
+            })}
+          </Accordion>
+        </section>
+      )}
+
+
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
         <DialogContent className="sm:max-w-[600px] max-h-[90vh] flex flex-col">
           <DialogHeader>
-            <DialogTitle>{editingObject ? `Edit ${model.name}` : `Create New ${model.name}`}</DialogTitle>
+            <DialogTitle>{editingObject ? `Edit ${currentModel.name}` : `Create New ${currentModel.name}`}</DialogTitle>
             <DialogDescription>
-              Fill in the details for the {model.name.toLowerCase()} object.
+              Fill in the details for the {currentModel.name.toLowerCase()} object.
             </DialogDescription>
           </DialogHeader>
-          {/* Conditional rendering of form ensures it re-initializes with correct schema/defaults */}
-          {isFormOpen && model && (
+          {isFormOpen && currentModel && (
              <ObjectForm
                 form={form}
-                model={model}
+                model={currentModel}
                 onSubmit={onSubmit}
                 onCancel={() => setIsFormOpen(false)}
                 existingObject={editingObject || undefined}
@@ -346,6 +495,3 @@ export default function DataObjectsPage() {
     </div>
   );
 }
-
-
-    

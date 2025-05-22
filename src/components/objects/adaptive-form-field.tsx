@@ -1,9 +1,9 @@
+
 'use client';
 
-import type { Control, FieldPath, FieldValues } from 'react-hook-form';
+import type { Control, FieldPath, FieldValues, ControllerRenderProps } from 'react-hook-form';
 import { Controller } from 'react-hook-form';
 import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -15,12 +15,11 @@ import {
 } from '@/components/ui/select';
 import {
   FormControl,
-  FormDescription,
   FormItem,
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import type { Property, DataObject } from '@/lib/types';
+import type { Property, DataObject, Model } from '@/lib/types';
 import { useData } from '@/contexts/data-context';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
@@ -28,12 +27,25 @@ import { CalendarIcon } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
-
+import { MultiSelectAutocomplete, type MultiSelectOption } from '@/components/ui/multi-select-autocomplete';
+import { useMemo } from 'react';
 
 interface AdaptiveFormFieldProps<TFieldValues extends FieldValues = FieldValues> {
   control: Control<TFieldValues>;
   property: Property;
 }
+
+const getDisplayNameProperty = (model?: Model): string => {
+  if (!model) return 'id';
+  const nameProp = model.properties.find(p => p.name.toLowerCase() === 'name');
+  if (nameProp) return nameProp.name;
+  const titleProp = model.properties.find(p => p.name.toLowerCase() === 'title');
+  if (titleProp) return titleProp.name;
+  // Fallback to the first string property, or just ID
+  const firstStringProp = model.properties.find(p => p.type === 'string');
+  return firstStringProp ? firstStringProp.name : 'id';
+};
+
 
 export default function AdaptiveFormField<TFieldValues extends FieldValues = FieldValues>({
   control,
@@ -42,18 +54,32 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
   const { getModelById, getObjectsByModelId } = useData();
   const fieldName = property.name as FieldPath<TFieldValues>;
 
-  const renderField = (controllerField: any) => {
+  const relatedModel = useMemo(() => {
+    if (property.type === 'relationship' && property.relatedModelId) {
+      return getModelById(property.relatedModelId);
+    }
+    return undefined;
+  }, [property.type, property.relatedModelId, getModelById]);
+
+  const relatedObjects = useMemo(() => {
+    if (relatedModel && property.relatedModelId) {
+      return getObjectsByModelId(property.relatedModelId);
+    }
+    return [];
+  }, [relatedModel, property.relatedModelId, getObjectsByModelId]);
+
+
+  const renderField = (controllerField: ControllerRenderProps<TFieldValues, FieldPath<TFieldValues>>) => {
     switch (property.type) {
       case 'string':
-        // Check for long text potential, naive check for now
         if (property.name.toLowerCase().includes('description') || property.name.toLowerCase().includes('notes')) {
             return <Textarea placeholder={`Enter ${property.name}`} {...controllerField} value={controllerField.value ?? ''} />;
         }
         return <Input placeholder={`Enter ${property.name}`} {...controllerField} value={controllerField.value ?? ''} />;
       case 'number':
-        return <Input type="number" placeholder={`Enter ${property.name}`} {...controllerField}  value={controllerField.value ?? ''} onChange={e => controllerField.onChange(parseFloat(e.target.value))} />;
+        return <Input type="number" placeholder={`Enter ${property.name}`} {...controllerField}  value={controllerField.value ?? ''} onChange={e => controllerField.onChange(parseFloat(e.target.value) || null)} />;
       case 'boolean':
-        return <Switch checked={controllerField.value} onCheckedChange={controllerField.onChange} />;
+        return <Switch checked={controllerField.value ?? false} onCheckedChange={controllerField.onChange} />;
       case 'date':
         return (
           <Popover>
@@ -80,31 +106,43 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
           </Popover>
         );
       case 'relationship':
-        if (!property.relatedModelId) {
-          return <p className="text-destructive-foreground">Configuration error: Related model ID missing.</p>;
+        if (!property.relatedModelId || !relatedModel) {
+          return <p className="text-destructive">Configuration error: Related model info missing.</p>;
         }
-        const relatedModel = getModelById(property.relatedModelId);
-        const relatedObjects = getObjectsByModelId(property.relatedModelId);
-        if (!relatedModel) {
-          return <p className="text-destructive-foreground">Configuration error: Related model not found.</p>;
-        }
-        // Attempt to find a 'name' or 'title' property for display in Select
-        const displayProperty = relatedModel.properties.find(p => p.name.toLowerCase() === 'name' || p.name.toLowerCase() === 'title') || relatedModel.properties[0];
+        
+        const displayNameProperty = getDisplayNameProperty(relatedModel);
+        const options: MultiSelectOption[] = relatedObjects.map((obj: DataObject) => ({
+          value: obj.id,
+          label: String(obj[displayNameProperty] ?? obj.id),
+        }));
 
-        return (
-          <Select onValueChange={controllerField.onChange} defaultValue={controllerField.value}>
-            <SelectTrigger>
-              <SelectValue placeholder={`Select ${relatedModel.name}`} />
-            </SelectTrigger>
-            <SelectContent>
-              {relatedObjects.map((obj: DataObject) => (
-                <SelectItem key={obj.id} value={obj.id}>
-                  {displayProperty ? String(obj[displayProperty.name]) : obj.id}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        );
+        if (property.relationshipType === 'many') {
+          return (
+            <MultiSelectAutocomplete
+              options={options}
+              selected={controllerField.value || []}
+              onChange={controllerField.onChange}
+              placeholder={`Select ${relatedModel.name}(s)...`}
+              emptyIndicator={`No ${relatedModel.name.toLowerCase()}s found.`}
+            />
+          );
+        } else { // 'one' or undefined
+          return (
+            <Select onValueChange={controllerField.onChange} value={controllerField.value || ""}>
+              <SelectTrigger>
+                <SelectValue placeholder={`Select ${relatedModel.name}`} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">-- None --</SelectItem>
+                {options.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          );
+        }
       default:
         return <Input placeholder={`Unsupported type: ${property.type}`} {...controllerField} disabled />;
     }
@@ -114,11 +152,11 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
     <Controller
       name={fieldName}
       control={control}
+      defaultValue={property.relationshipType === 'many' ? [] : property.type === 'boolean' ? false : '' as any}
       render={({ field, fieldState: { error } }) => (
         <FormItem>
           <FormLabel>{property.name}{property.required && <span className="text-destructive">*</span>}</FormLabel>
           <FormControl>{renderField(field)}</FormControl>
-          {/* <FormDescription>Any specific instructions for this field.</FormDescription> */}
           {error && <FormMessage>{error.message}</FormMessage>}
         </FormItem>
       )}

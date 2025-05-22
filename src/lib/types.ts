@@ -7,6 +7,7 @@ export interface Property {
   type: PropertyType;
   relatedModelId?: string; // Only if type is 'relationship'
   required?: boolean;
+  relationshipType?: 'one' | 'many'; // For relationship type
 }
 
 export interface Model {
@@ -23,5 +24,5 @@ export interface DataObject {
 
 // For forms
 export type ModelFormData = Omit<Model, 'id'>;
-export type PropertyFormData = Omit<Property, 'id'>;
+export type PropertyFormData = Omit<Property, 'id'> & { relationshipType?: 'one' | 'many' };
 export type ObjectFormData = Omit<DataObject, 'id'>;

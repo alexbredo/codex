@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react'; // Added useEffect
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from '@/components/ui/button';
@@ -11,10 +11,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
-  DialogFooter,
-  DialogClose
-} from '@/components/ui/dialog';
+} from '@/components/ui/dialog'; // Removed DialogTrigger, Footer, Close
 import {
   AlertDialog,
   AlertDialogAction,
@@ -51,32 +48,44 @@ export default function ModelsPage() {
     defaultValues: {
       name: '',
       description: '',
-      properties: [{ name: '', type: 'string', required: false }],
+      properties: [{ id: crypto.randomUUID(), name: '', type: 'string', required: false, relationshipType: 'one' }],
     },
   });
 
+  // Effect to update form when editingModel changes
+  useEffect(() => {
+    if (editingModel) {
+      form.reset({
+        name: editingModel.name,
+        description: editingModel.description || '',
+        properties: editingModel.properties.map(p => ({ 
+            ...p, 
+            id: p.id || crypto.randomUUID(),
+            relationshipType: p.relationshipType || 'one' // Ensure default
+        })),
+      });
+    } else {
+      form.reset({
+        name: '',
+        description: '',
+        properties: [{ id: crypto.randomUUID(), name: '', type: 'string', required: false, relationshipType: 'one' }],
+      });
+    }
+  }, [editingModel, form, isFormOpen]); // Added isFormOpen dependency
+
   const handleCreateNew = () => {
     setEditingModel(null);
-    form.reset({
-      name: '',
-      description: '',
-      properties: [{ name: '', type: 'string', required: false }],
-    });
+    // Reset is handled by useEffect now
     setIsFormOpen(true);
   };
 
   const handleEdit = (model: Model) => {
     setEditingModel(model);
-    form.reset({
-      name: model.name,
-      description: model.description || '',
-      properties: model.properties.map(p => ({ ...p, id: p.id || crypto.randomUUID() })), // ensure property has an id for useFieldArray
-    });
+     // Reset is handled by useEffect now
     setIsFormOpen(true);
   };
 
   const onSubmit = (values: ModelFormValues) => {
-    // Check for duplicate model name
     const existingByName = getModelByName(values.name);
     if (existingByName && (!editingModel || existingByName.id !== editingModel.id)) {
         form.setError("name", { type: "manual", message: "A model with this name already exists." });
@@ -87,11 +96,12 @@ export default function ModelsPage() {
       name: values.name,
       description: values.description,
       properties: values.properties.map(p => ({
-        id: p.id || crypto.randomUUID(), // Generate new ID if not present
+        id: p.id || crypto.randomUUID(),
         name: p.name,
         type: p.type,
         relatedModelId: p.relatedModelId,
         required: p.required,
+        relationshipType: p.type === 'relationship' ? p.relationshipType : undefined, // Only set for relationship
       } as Property)),
     };
 
@@ -104,7 +114,7 @@ export default function ModelsPage() {
         toast({ title: "Model Created", description: `Model "${values.name}" has been created.` });
       }
       setIsFormOpen(false);
-      form.reset();
+      // form.reset(); // Reset handled by useEffect or on dialog close
     } catch (error) {
       console.error("Error saving model:", error);
       toast({ variant: "destructive", title: "Error", description: "Failed to save model." });
@@ -204,7 +214,7 @@ export default function ModelsPage() {
                   <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
                     {model.properties.slice(0, 5).map((prop) => (
                       <li key={prop.id} className="truncate">
-                        {prop.name} <span className="text-xs opacity-70">({prop.type})</span>
+                        {prop.name} <span className="text-xs opacity-70">({prop.type}{prop.type === 'relationship' ? ` - ${prop.relationshipType}` : ''})</span>
                       </li>
                     ))}
                     {model.properties.length > 5 && <li className="text-xs opacity-70">...and more</li>}
@@ -239,10 +249,12 @@ export default function ModelsPage() {
                   </AlertDialogContent>
                 </AlertDialog>
 
-                <Link href={`/data/${model.id}`} passHref className="w-full col-span-3 mt-2 md:col-span-1 md:mt-0">
-                  <Button variant="default" size="sm" className="w-full">
-                    <Eye className="mr-1 h-3 w-3" /> View Data
-                  </Button>
+                <Link href={`/data/${model.id}`} passHref legacyBehavior>
+                  <a className="w-full col-span-3 mt-2 md:col-span-1 md:mt-0">
+                    <Button variant="default" size="sm" className="w-full">
+                      <Eye className="mr-1 h-3 w-3" /> View Data
+                    </Button>
+                  </a>
                 </Link>
               </CardFooter>
             </Card>
@@ -250,7 +262,17 @@ export default function ModelsPage() {
         </div>
       )}
 
-      <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+      <Dialog open={isFormOpen} onOpenChange={(open) => {
+          setIsFormOpen(open);
+          if (!open) { // When dialog closes
+            setEditingModel(null); // Clear editing state
+            form.reset({ // Reset form to pristine state for creation
+                 name: '',
+                 description: '',
+                 properties: [{ id: crypto.randomUUID(), name: '', type: 'string', required: false, relationshipType: 'one' }],
+            });
+          }
+        }}>
         <DialogContent className="sm:max-w-[600px] max-h-[90vh] flex flex-col p-0">
           <DialogHeader className="p-6 pb-4 flex-shrink-0 border-b">
             <DialogTitle>{editingModel ? 'Edit Model' : 'Create New Model'}</DialogTitle>
@@ -259,12 +281,15 @@ export default function ModelsPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="flex-grow min-h-0 overflow-hidden">
-            <ModelForm
-              form={form}
-              onSubmit={onSubmit}
-              onCancel={() => setIsFormOpen(false)}
-              existingModel={editingModel || undefined}
-            />
+            {/* Render ModelForm only when isFormOpen is true to ensure it re-initializes with fresh data or default values */}
+            {isFormOpen && (
+              <ModelForm
+                form={form}
+                onSubmit={onSubmit}
+                onCancel={() => setIsFormOpen(false)}
+                existingModel={editingModel || undefined}
+              />
+            )}
           </div>
         </DialogContent>
       </Dialog>

@@ -1,3 +1,4 @@
+
 'use client';
 
 import type { ReactNode } from 'react';
@@ -16,6 +17,7 @@ interface DataContextType {
   updateObject: (modelId: string, objectId: string, updates: Partial<Omit<DataObject, 'id'>>) => DataObject | undefined;
   deleteObject: (modelId: string, objectId: string) => void;
   getObjectsByModelId: (modelId: string) => DataObject[];
+  getAllObjects: () => Record<string, DataObject[]>;
   isReady: boolean;
 }
 
@@ -29,8 +31,8 @@ const initialModels: Model[] = [
     properties: [
       { id: 'clx18090p0001qp08w6k2y0s3', name: 'Name', type: 'string', required: true },
       { id: 'clx18090p0002qp08l3c8k7j1', name: 'Price', type: 'number', required: true },
-      { id: 'clx18090p0003qp08q8b5d9e2', name: 'In Stock', type: 'boolean' },
-      { id: 'clx18090q0004qp08q3z9h7x4', name: 'Release Date', type: 'date' },
+      { id: 'clx18090p0003qp08q8b5d9e2', name: 'In Stock', type: 'boolean', relationshipType: 'one' },
+      { id: 'clx18090q0004qp08q3z9h7x4', name: 'Release Date', type: 'date', relationshipType: 'one' },
     ],
   },
   {
@@ -40,9 +42,9 @@ const initialModels: Model[] = [
     properties: [
       { id: 'clx18090q0006qp08t0u8v9w6', name: 'First Name', type: 'string', required: true },
       { id: 'clx18090q0007qp08a2b3c4d7', name: 'Last Name', type: 'string', required: true },
-      { id: 'clx18090q0008qp08e5f6g7h8', name: 'Email', type: 'string' },
-      { id: 'clx18090r0009qp08i9j0k1l9', name: 'Is Premium', type: 'boolean' },
-      { id: 'clx18090r000aqp08p2q3r4s0', name: 'Joined Date', type: 'date' },
+      { id: 'clx18090q0008qp08e5f6g7h8', name: 'Email', type: 'string', relationshipType: 'one' },
+      { id: 'clx18090r0009qp08i9j0k1l9', name: 'Is Premium', type: 'boolean', relationshipType: 'one' },
+      { id: 'clx18090r000aqp08p2q3r4s0', name: 'Joined Date', type: 'date', relationshipType: 'one' },
     ],
   },
 ];
@@ -70,16 +72,22 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (storedModels) {
         setModels(JSON.parse(storedModels));
       } else {
-        setModels(initialModels); // Load initial if nothing in storage
+        setModels(initialModels.map(m => ({
+          ...m,
+          properties: m.properties.map(p => ({ ...p, relationshipType: p.relationshipType || 'one' }))
+        })));
       }
       if (storedObjects) {
         setObjects(JSON.parse(storedObjects));
       } else {
-        setObjects(initialObjects); // Load initial if nothing in storage
+        setObjects(initialObjects);
       }
     } catch (error) {
       console.error("Failed to load data from localStorage", error);
-      setModels(initialModels);
+      setModels(initialModels.map(m => ({
+        ...m,
+        properties: m.properties.map(p => ({ ...p, relationshipType: p.relationshipType || 'one' }))
+      })));
       setObjects(initialObjects);
     }
     setIsReady(true);
@@ -106,7 +114,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [objects, isReady]);
 
   const addModel = useCallback((modelData: Omit<Model, 'id'>): Model => {
-    const newModel: Model = { ...modelData, id: crypto.randomUUID() };
+    const newModel: Model = { 
+      ...modelData, 
+      id: crypto.randomUUID(),
+      properties: modelData.properties.map(p => ({
+        ...p,
+        id: p.id || crypto.randomUUID(),
+        relationshipType: p.type === 'relationship' ? (p.relationshipType || 'one') : undefined,
+      }))
+    };
     setModels((prev) => [...prev, newModel]);
     return newModel;
   }, []);
@@ -116,7 +132,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setModels((prevModels) =>
       prevModels.map((model) => {
         if (model.id === modelId) {
-          updatedModel = { ...model, ...updates };
+          const newProperties = updates.properties ? updates.properties.map(p => ({
+            ...p,
+            id: p.id || crypto.randomUUID(),
+            relationshipType: p.type === 'relationship' ? (p.relationshipType || 'one') : undefined,
+          })) : model.properties;
+          
+          updatedModel = { ...model, ...updates, properties: newProperties };
           return updatedModel;
         }
         return model;
@@ -179,8 +201,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return objects[modelId] || [];
   }, [objects]);
 
+  const getAllObjects = useCallback(() => {
+    return objects;
+  }, [objects]);
+
   return (
-    <DataContext.Provider value={{ models, objects, addModel, updateModel, deleteModel, getModelById, getModelByName, addObject, updateObject, deleteObject, getObjectsByModelId, isReady }}>
+    <DataContext.Provider value={{ models, objects, addModel, updateModel, deleteModel, getModelById, getModelByName, addObject, updateObject, deleteObject, getObjectsByModelId, getAllObjects, isReady }}>
       {children}
     </DataContext.Provider>
   );
