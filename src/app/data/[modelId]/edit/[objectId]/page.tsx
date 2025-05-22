@@ -23,7 +23,7 @@ export default function EditObjectPage() {
 
   const { getModelById, getObjectsByModelId, updateObject, isReady } = useData();
   const { toast } = useToast();
-  
+
   const [currentModel, setCurrentModel] = useState<Model | null>(null);
   const [editingObject, setEditingObject] = useState<DataObject | null>(null);
   const [isLoadingData, setIsLoadingData] = useState(true);
@@ -32,7 +32,7 @@ export default function EditObjectPage() {
 
   const form = useForm<Record<string, any>>({
     resolver: zodResolver(dynamicSchema),
-    defaultValues: {}, 
+    defaultValues: {},
   });
 
   useEffect(() => {
@@ -47,8 +47,8 @@ export default function EditObjectPage() {
           setEditingObject(objectToEdit);
           const formValues: Record<string, any> = {};
           foundModel.properties.forEach(prop => {
-            formValues[prop.name] = objectToEdit[prop.name] ?? 
-                                    (prop.relationshipType === 'many' ? [] : 
+            formValues[prop.name] = objectToEdit[prop.name] ??
+                                    (prop.relationshipType === 'many' ? [] :
                                     prop.type === 'boolean' ? false : undefined);
           });
           form.reset(formValues);
@@ -72,8 +72,9 @@ export default function EditObjectPage() {
 
     currentModel.properties.forEach(prop => {
       if (prop.type === 'date' && prop.autoSetOnUpdate) {
-        processedValues[prop.name] = currentDateISO;
+        processedValues[prop.name] = currentDateISO; // Forcefully set if autoSetOnUpdate is true
       }
+      // autoSetOnCreate is historical, its value is already in 'values' from the loaded object.
     });
 
     try {
@@ -85,7 +86,7 @@ export default function EditObjectPage() {
       toast({ variant: "destructive", title: "Error", description: `Failed to update ${currentModel.name.toLowerCase()}. ${error.message}` });
     }
   };
-  
+
   if (!isReady || isLoadingData) {
     return (
       <div className="flex flex-col justify-center items-center h-screen">

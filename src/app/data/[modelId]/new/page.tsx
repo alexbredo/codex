@@ -28,7 +28,7 @@ export default function CreateObjectPage() {
 
   const form = useForm<Record<string, any>>({
     resolver: zodResolver(dynamicSchema),
-    defaultValues: {}, 
+    defaultValues: {},
   });
 
   useEffect(() => {
@@ -65,9 +65,9 @@ export default function CreateObjectPage() {
 
     currentModel.properties.forEach(prop => {
       if (prop.type === 'date' && prop.autoSetOnCreate) {
-        // Ensure it's set, even if user cleared it or it wasn't set by defaultValues effect yet
-        processedValues[prop.name] = values[prop.name] || currentDateISO; 
+        processedValues[prop.name] = currentDateISO; // Forcefully set if autoSetOnCreate is true
       }
+      // autoSetOnUpdate is not relevant for new object creation
     });
 
     try {
@@ -97,7 +97,7 @@ export default function CreateObjectPage() {
       </div>
     );
   }
-  
+
   return (
     <div className="container mx-auto py-8">
       <Button variant="outline" onClick={() => router.push(`/data/${modelId}`)} className="mb-6">

@@ -30,16 +30,21 @@ import { format } from 'date-fns';
 import { MultiSelectAutocomplete, type MultiSelectOption } from '@/components/ui/multi-select-autocomplete';
 import { useMemo } from 'react';
 
+interface AdaptiveFormFieldProps<TFieldValues extends FieldValues = FieldValues> {
+  control: Control<TFieldValues>;
+  property: Property;
+  formContext: 'create' | 'edit';
+}
+
 // Centralized display value logic
 const getObjectDisplayValue = (
-    obj: DataObject | undefined, 
-    model: Model | undefined, 
-    allModels: Model[], 
+    obj: DataObject | undefined,
+    model: Model | undefined,
+    allModels: Model[],
     allObjects: Record<string, DataObject[]>
 ): string => {
   if (!obj || !model) return obj?.id ? `ID: ...${obj.id.slice(-6)}` : 'N/A';
 
-  // 1. Use defined displayPropertyNames
   if (model.displayPropertyNames && model.displayPropertyNames.length > 0) {
     const displayValues = model.displayPropertyNames
       .map(propName => {
@@ -47,11 +52,9 @@ const getObjectDisplayValue = (
         if (propValue === null || typeof propValue === 'undefined' || String(propValue).trim() === '') {
           return null;
         }
-        // If this display property is itself a relationship, recursively get its display value
         const propertyDefinition = model.properties.find(p => p.name === propName);
         if (propertyDefinition?.type === 'relationship' && propertyDefinition.relatedModelId) {
             const relatedModelForProp = allModels.find(m => m.id === propertyDefinition.relatedModelId);
-            // Ensure allObjects is correctly scoped or passed if this function is moved
             const relatedObjForProp = (allObjects[propertyDefinition.relatedModelId] || []).find(o => o.id === propValue);
             return getObjectDisplayValue(relatedObjForProp, relatedModelForProp, allModels, allObjects);
         }
@@ -64,25 +67,21 @@ const getObjectDisplayValue = (
     }
   }
 
-  // 2. Fallback: 'Name' property
   const nameProp = model.properties.find(p => p.name.toLowerCase() === 'name');
   if (nameProp && obj[nameProp.name] !== null && typeof obj[nameProp.name] !== 'undefined' && String(obj[nameProp.name]).trim() !== '') {
     return String(obj[nameProp.name]);
   }
 
-  // 3. Fallback: 'Title' property
   const titleProp = model.properties.find(p => p.name.toLowerCase() === 'title');
   if (titleProp && obj[titleProp.name] !== null && typeof obj[titleProp.name] !== 'undefined' && String(obj[titleProp.name]).trim() !== '') {
     return String(obj[titleProp.name]);
   }
-  
-  // 4. Fallback: First string property
+
   const firstStringProp = model.properties.find(p => p.type === 'string');
   if (firstStringProp && obj[firstStringProp.name] !== null && typeof obj[firstStringProp.name] !== 'undefined' && String(obj[firstStringProp.name]).trim() !== '') {
     return String(obj[firstStringProp.name]);
   }
 
-  // 5. Final fallback: ID
   return obj.id ? `ID: ...${obj.id.slice(-6)}` : 'N/A';
 };
 
@@ -92,11 +91,12 @@ const INTERNAL_NONE_SELECT_VALUE = "__EMPTY_SELECTION_VALUE__";
 export default function AdaptiveFormField<TFieldValues extends FieldValues = FieldValues>({
   control,
   property,
+  formContext,
 }: AdaptiveFormFieldProps<TFieldValues>) {
   const { models: allModels, getModelById, getObjectsByModelId, getAllObjects } = useData();
   const fieldName = property.name as FieldPath<TFieldValues>;
-  
-  const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects]);
+
+  const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects, /*isReady - implicitly handled by DataProvider*/]);
 
 
   const relatedModel = useMemo(() => {
@@ -115,6 +115,19 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
 
 
   const renderField = (controllerField: ControllerRenderProps<TFieldValues, FieldPath<TFieldValues>>) => {
+    let fieldIsDisabled = false;
+    if (property.type === 'date') {
+      if (formContext === 'create') {
+        if (property.autoSetOnCreate) {
+          fieldIsDisabled = true;
+        }
+      } else { // formContext === 'edit'
+        if (property.autoSetOnCreate || property.autoSetOnUpdate) {
+          fieldIsDisabled = true;
+        }
+      }
+    }
+
     switch (property.type) {
       case 'string':
         if (property.name.toLowerCase().includes('description') || property.name.toLowerCase().includes('notes')) {
@@ -133,8 +146,10 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
                 variant={"outline"}
                 className={cn(
                   "w-full justify-start text-left font-normal",
-                  !controllerField.value && "text-muted-foreground"
+                  !controllerField.value && "text-muted-foreground",
+                  fieldIsDisabled && "cursor-not-allowed opacity-70"
                 )}
+                disabled={fieldIsDisabled}
               >
                 <CalendarIcon className="mr-2 h-4 w-4" />
                 {controllerField.value ? format(new Date(controllerField.value), "PPP") : <span>Pick a date</span>}
@@ -154,7 +169,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
         if (!property.relatedModelId || !relatedModel) {
           return <p className="text-destructive">Configuration error: Related model info missing.</p>;
         }
-        
+
         const options: MultiSelectOption[] = relatedObjects.map((obj: DataObject) => ({
           value: obj.id,
           label: getObjectDisplayValue(obj, relatedModel, allModels, allDbObjects),
@@ -171,15 +186,15 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
             />
           );
         } else { // 'one' or undefined
-          const currentSelectValue = controllerField.value === "" || controllerField.value === null || typeof controllerField.value === 'undefined' 
-                                     ? INTERNAL_NONE_SELECT_VALUE 
+          const currentSelectValue = controllerField.value === "" || controllerField.value === null || typeof controllerField.value === 'undefined'
+                                     ? INTERNAL_NONE_SELECT_VALUE
                                      : controllerField.value;
           return (
             <Select
               onValueChange={(value) => {
                 controllerField.onChange(value === INTERNAL_NONE_SELECT_VALUE ? "" : value);
               }}
-              value={currentSelectValue} 
+              value={currentSelectValue}
             >
               <SelectTrigger>
                 <SelectValue placeholder={`Select ${relatedModel.name}`} />

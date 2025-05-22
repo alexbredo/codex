@@ -6,13 +6,13 @@ import { Button } from '@/components/ui/button';
 import { Form } from '@/components/ui/form';
 import type { Model, DataObject } from '@/lib/types';
 import AdaptiveFormField from './adaptive-form-field';
-import { ScrollArea } from '@/components/ui/scroll-area'; // Keep for internal form scrolling if many fields
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface ObjectFormProps {
-  form: UseFormReturn<Record<string, any>>; 
+  form: UseFormReturn<Record<string, any>>;
   model: Model;
   onSubmit: (values: Record<string, any>) => void;
-  onCancel: () => void; // For navigation
+  onCancel: () => void;
   isLoading?: boolean;
   existingObject?: DataObject;
 }
@@ -25,17 +25,19 @@ export default function ObjectForm({
   isLoading,
   existingObject,
 }: ObjectFormProps) {
+  const formContext = existingObject ? 'edit' : 'create';
+
   return (
     <Form {...form}>
-      {/* Form might be long, so keep ScrollArea for properties section */}
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <ScrollArea className="max-h-[60vh] pr-3"> {/* Adjust max-h as needed */}
+        <ScrollArea className="max-h-[60vh] pr-3">
             <div className="space-y-4 ">
                 {model.properties.map((property) => (
                 <AdaptiveFormField
                     key={property.id}
                     control={form.control}
                     property={property}
+                    formContext={formContext}
                 />
                 ))}
             </div>
@@ -52,6 +54,3 @@ export default function ObjectForm({
     </Form>
   );
 }
-
-
-    
