@@ -33,7 +33,7 @@ export const getObjectDisplayValue = (
       .filter(value => value !== null && value.trim() !== '');
 
     if (displayValues.length > 0) {
-      return displayValues.join(' - ');
+      return displayValues.join(' ');
     }
   }
 
@@ -54,3 +54,4 @@ export const getObjectDisplayValue = (
 
   return obj.id ? `ID: ...${obj.id.slice(-6)}` : 'N/A';
 };
+
