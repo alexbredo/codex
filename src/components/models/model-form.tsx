@@ -208,6 +208,7 @@ function PropertyFields({
   );
 }
 
+const INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE = "__DEFAULT_DISPLAY_PROPERTY__";
 
 export default function ModelForm({ form, onSubmit, onCancel, isLoading, existingModel }: ModelFormProps) {
   const { models } = useData();
@@ -273,30 +274,43 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                 <FormField
                   control={form.control}
                   name="displayPropertyName"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Display Property (Optional)</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="-- Default (ID or Name/Title) --" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="">-- Default (ID or Name/Title) --</SelectItem>
-                          {stringOrNumberProperties.map((propName) => (
-                            <SelectItem key={propName} value={propName}>
-                              {propName}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormDescription>
-                        Choose a string or number property to represent this model's objects in lists or relationships.
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                  render={({ field }) => {
+                    // If field.value is empty string or undefined, use the internal const for Select's value
+                    // Otherwise, use the actual field.value
+                    const selectValue = !field.value ? INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE : field.value;
+                    
+                    return (
+                      <FormItem>
+                        <FormLabel>Display Property (Optional)</FormLabel>
+                        <Select 
+                          value={selectValue}
+                          onValueChange={(value) => {
+                            // If internal const is selected, set form value to empty string (or undefined)
+                            // Otherwise, set to the selected property name
+                            field.onChange(value === INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE ? "" : value);
+                          }}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="-- Default (ID or Name/Title) --" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value={INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE}>-- Default (ID or Name/Title) --</SelectItem>
+                            {stringOrNumberProperties.map((propName) => (
+                              <SelectItem key={propName} value={propName}>
+                                {propName}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormDescription>
+                          Choose a string or number property to represent this model's objects in lists or relationships.
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
                 />
               </CardContent>
             </Card>
@@ -322,3 +336,4 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     </Form>
   );
 }
+
