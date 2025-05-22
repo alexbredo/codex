@@ -25,7 +25,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { Button } from '@/components/ui/button';
 import { CalendarIcon } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
-import { cn, getObjectDisplayValue } from '@/lib/utils'; // Import centralized function
+import { cn, getObjectDisplayValue } from '@/lib/utils';
 import { format } from 'date-fns';
 import { MultiSelectAutocomplete, type MultiSelectOption } from '@/components/ui/multi-select-autocomplete';
 import { useMemo } from 'react';
@@ -48,6 +48,10 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
 
   const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects]);
 
+  // Logic to hide the field on create form if autoSetOnCreate is true for a date property
+  if (formContext === 'create' && property.type === 'date' && property.autoSetOnCreate) {
+    return null; // Render nothing for this field
+  }
 
   const relatedModel = useMemo(() => {
     if (property.type === 'relationship' && property.relatedModelId) {
@@ -66,13 +70,12 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
 
   const renderField = (controllerField: ControllerRenderProps<TFieldValues, FieldPath<TFieldValues>>) => {
     let fieldIsDisabled = false;
-    if (property.type === 'date') {
-      if (formContext === 'create' && property.autoSetOnCreate) {
-          fieldIsDisabled = true;
-      } else if (formContext === 'edit' && (property.autoSetOnCreate || property.autoSetOnUpdate)) {
-          fieldIsDisabled = true;
-      }
+    // For edit forms, disable date fields that are auto-set (either on create or on update)
+    if (property.type === 'date' && formContext === 'edit' && (property.autoSetOnCreate || property.autoSetOnUpdate)) {
+      fieldIsDisabled = true;
     }
+    // Note: On create forms, if autoSetOnCreate is true, the component returns null above, so this part isn't reached.
+    // If autoSetOnCreate is false for a create form, it proceeds as a normal editable field.
 
     switch (property.type) {
       case 'string':
@@ -93,9 +96,9 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
             dateButtonText = "Invalid Date"; 
           }
         } else {
-          if (fieldIsDisabled) {
+          if (fieldIsDisabled) { // This condition is now mainly for edit forms for autoSetOnUpdate or historical autoSetOnCreate
             dateButtonText = "Auto-set by system";
-          } else {
+          } else { // For create forms (if not autoSetOnCreate) or editable date fields on edit forms
             dateButtonText = <span>Pick a date</span>;
           }
         }
