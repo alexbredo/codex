@@ -1,3 +1,4 @@
+
 'use client';
 
 import type { Control, UseFormReturn, UseFieldArrayReturn } from 'react-hook-form';
@@ -40,11 +41,11 @@ interface ModelFormProps {
 }
 
 function PropertyFields({ 
-  control, 
+  form, 
   fieldArray,
   modelsForRelations,
   }: { 
-  control: Control<ModelFormValues>, 
+  form: UseFormReturn<ModelFormValues>, 
   fieldArray: UseFieldArrayReturn<ModelFormValues, "properties", "id">,
   modelsForRelations: Model[]
 }) {
@@ -71,7 +72,7 @@ function PropertyFields({
           </CardHeader>
           <CardContent className="p-4 pt-0 grid grid-cols-1 md:grid-cols-2 gap-4">
             <FormField
-              control={control}
+              control={form.control}
               name={`properties.${index}.name`}
               render={({ field }) => (
                 <FormItem>
@@ -84,7 +85,7 @@ function PropertyFields({
               )}
             />
             <FormField
-              control={control}
+              control={form.control}
               name={`properties.${index}.type`}
               render={({ field }) => (
                 <FormItem>
@@ -107,9 +108,9 @@ function PropertyFields({
                 </FormItem>
               )}
             />
-            {control.getValues(`properties.${index}.type`) === 'relationship' && (
+            {form.getValues(`properties.${index}.type`) === 'relationship' && (
               <FormField
-                control={control}
+                control={form.control}
                 name={`properties.${index}.relatedModelId`}
                 render={({ field }) => (
                   <FormItem className="md:col-span-2">
@@ -134,7 +135,7 @@ function PropertyFields({
               />
             )}
             <FormField
-              control={control}
+              control={form.control}
               name={`properties.${index}.required`}
               render={({ field }) => (
                 <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 md:col-span-2">
@@ -221,7 +222,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
 
         <div>
           <h3 className="text-lg font-medium mb-4">Properties</h3>
-          <PropertyFields control={form.control} fieldArray={fieldArray} modelsForRelations={modelsForRelations} />
+          <PropertyFields form={form} fieldArray={fieldArray} modelsForRelations={modelsForRelations} />
         </div>
 
         <div className="flex justify-end space-x-2 pt-4">
@@ -236,3 +237,4 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     </Form>
   );
 }
+
