@@ -258,19 +258,17 @@ export default function ModelsPage() {
               {editingModel ? `Update the details for the "${editingModel.name}" model.` : 'Define a new data model structure for your application.'}
             </DialogDescription>
           </DialogHeader>
-          <ScrollArea className="flex-grow pr-6 -mr-6"> {/* Added ScrollArea */}
+          {/* Wrapper div to ensure ModelForm correctly utilizes its height and internal scrolling */}
+          <div className="flex-grow min-h-0">
             <ModelForm
               form={form}
               onSubmit={onSubmit}
               onCancel={() => setIsFormOpen(false)}
               existingModel={editingModel || undefined}
             />
-          </ScrollArea>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
   );
 }
-
-
-    

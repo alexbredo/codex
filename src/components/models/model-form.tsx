@@ -31,6 +31,7 @@ import type { ModelFormValues, PropertyFormValues } from './model-form-schema';
 import { modelFormSchema, propertyTypes } from './model-form-schema';
 import type { Model } from '@/lib/types';
 import { useData } from '@/contexts/data-context';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface ModelFormProps {
   form: UseFormReturn<ModelFormValues>;
@@ -182,50 +183,54 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-xl">Model Details</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Model Name</FormLabel>
-                  <FormControl>
-                    <Input placeholder="e.g., Product, User, Article" {...field} />
-                  </FormControl>
-                  <FormDescription>A unique name for your data model.</FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Description (Optional)</FormLabel>
-                  <FormControl>
-                    <Textarea placeholder="A brief description of what this model represents." {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </CardContent>
-        </Card>
-        
-        <Separator />
+      <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col h-full">
+        <ScrollArea className="flex-grow">
+          <div className="space-y-8 p-1 pr-4 pb-4"> {/* Added padding for scrollbar and bottom spacing */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-xl">Model Details</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Model Name</FormLabel>
+                      <FormControl>
+                        <Input placeholder="e.g., Product, User, Article" {...field} />
+                      </FormControl>
+                      <FormDescription>A unique name for your data model.</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="description"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Description (Optional)</FormLabel>
+                      <FormControl>
+                        <Textarea placeholder="A brief description of what this model represents." {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </CardContent>
+            </Card>
+            
+            <Separator />
 
-        <div>
-          <h3 className="text-lg font-medium mb-4">Properties</h3>
-          <PropertyFields form={form} fieldArray={fieldArray} modelsForRelations={modelsForRelations} />
-        </div>
+            <div>
+              <h3 className="text-lg font-medium mb-4">Properties</h3>
+              <PropertyFields form={form} fieldArray={fieldArray} modelsForRelations={modelsForRelations} />
+            </div>
+          </div>
+        </ScrollArea>
 
-        <div className="flex justify-end space-x-2 pt-4">
+        <div className="flex justify-end space-x-2 pt-4 mt-auto border-t bg-background z-10 flex-shrink-0">
           <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
             Cancel
           </Button>
@@ -237,4 +242,3 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     </Form>
   );
 }
-
