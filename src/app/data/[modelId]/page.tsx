@@ -32,6 +32,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { format as formatDateFns } from 'date-fns';
 import Link from 'next/link';
+import { z } from 'zod'; // Added z import
 
 const ITEMS_PER_PAGE = 10;
 const MAX_DIRECT_PROPERTIES_IN_TABLE = 3;
@@ -202,6 +203,25 @@ export default function DataObjectsPage() {
     return searchableObjects;
   }, [objects, searchTerm, currentModel, getModelById, allDbObjects, allModels]);
 
+  const virtualIncomingRelationColumns = useMemo(() => {
+    if (!currentModel || !isReady) return [];
+    const columns: IncomingRelationColumn[] = [];
+    allModels.forEach(otherModel => {
+      if (otherModel.id === currentModel.id) return;
+      otherModel.properties.forEach(prop => {
+        if (prop.type === 'relationship' && prop.relatedModelId === currentModel.id) {
+          columns.push({
+            id: `${otherModel.id}-${prop.name}`, // Unique ID for sort key
+            headerLabel: `Ref. by ${otherModel.name} (via ${prop.name})`,
+            referencingModel: otherModel,
+            referencingProperty: prop,
+          });
+        }
+      });
+    });
+    return columns;
+  }, [currentModel, allModels, isReady]);
+
   const sortedObjects = useMemo(() => {
     if (!sortConfig || !currentModel) {
       return filteredObjects;
@@ -276,7 +296,7 @@ export default function DataObjectsPage() {
       }
       return 0;
     });
-  }, [filteredObjects, sortConfig, currentModel, getModelById, allDbObjects, allModels]);
+  }, [filteredObjects, sortConfig, currentModel, getModelById, allDbObjects, allModels, virtualIncomingRelationColumns]);
 
 
   const paginatedObjects = useMemo(() => {
@@ -354,26 +374,6 @@ export default function DataObjectsPage() {
     }
   };
   
-
-  const virtualIncomingRelationColumns = useMemo(() => {
-    if (!currentModel || !isReady) return [];
-    const columns: IncomingRelationColumn[] = [];
-    allModels.forEach(otherModel => {
-      if (otherModel.id === currentModel.id) return;
-      otherModel.properties.forEach(prop => {
-        if (prop.type === 'relationship' && prop.relatedModelId === currentModel.id) {
-          columns.push({
-            id: `${otherModel.id}-${prop.name}`, // Unique ID for sort key
-            headerLabel: `Ref. by ${otherModel.name} (via ${prop.name})`,
-            referencingModel: otherModel,
-            referencingProperty: prop,
-          });
-        }
-      });
-    });
-    return columns;
-  }, [currentModel, allModels, isReady]);
-
 
   if (!isReady || !currentModel) {
     return (
@@ -555,6 +555,5 @@ export default function DataObjectsPage() {
     </div>
   );
 }
-
 
     
