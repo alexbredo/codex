@@ -1,23 +1,48 @@
+
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useData } from "@/contexts/data-context";
-import { DatabaseZap, ListChecks, Users } from "lucide-react";
+import { DatabaseZap, ListChecks, Users, BarChart3 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip } from 'recharts';
+import {
+  ChartContainer,
+  ChartTooltipContent,
+  type ChartConfig
+} from "@/components/ui/chart";
 
 export default function HomePage() {
   const { models, objects, isReady } = useData();
 
   if (!isReady) {
     return (
-      <div className="flex justify-center items-center h-full">
-        <p className="text-lg text-muted-foreground">Loading data...</p>
+      <div className="flex justify-center items-center h-screen">
+        <div className="text-center">
+          <svg className="mx-auto h-12 w-12 text-primary animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <p className="mt-4 text-lg text-muted-foreground">Loading data...</p>
+        </div>
       </div>
     );
   }
 
   const totalObjects = Object.values(objects).reduce((sum, arr) => sum + arr.length, 0);
+
+  const chartData = models.map(model => ({
+    name: model.name,
+    count: objects[model.id]?.length || 0,
+  }));
+
+  const chartConfig = {
+    count: {
+      label: "Objects",
+      color: "hsl(var(--primary))",
+    },
+  } satisfies ChartConfig;
 
   return (
     <div className="container mx-auto py-8">
@@ -28,7 +53,7 @@ export default function HomePage() {
         </p>
       </header>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 mb-12">
         <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Models Defined</CardTitle>
@@ -77,7 +102,66 @@ export default function HomePage() {
         </Card>
       </div>
 
-      <section className="mt-16 p-8 bg-card rounded-lg shadow-md">
+      {models.length > 0 && (
+        <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300 mb-16">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <BarChart3 className="h-6 w-6 text-primary" />
+              <CardTitle className="text-2xl">Object Distribution by Model</CardTitle>
+            </div>
+            <CardDescription>Number of data objects currently stored in each model.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {chartData.some(d => d.count > 0) ? (
+              <ChartContainer config={chartConfig} className="min-h-[250px] w-full">
+                <BarChart 
+                  accessibilityLayer 
+                  data={chartData} 
+                  margin={{ top: 5, right: 30, left: 0, bottom: 5 }}
+                  barGap={8}
+                  barCategoryGap="20%"
+                >
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" className="stroke-border/50" />
+                  <XAxis
+                    dataKey="name"
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={10}
+                    interval={0}
+                    className="text-xs fill-muted-foreground"
+                  />
+                  <YAxis 
+                    tickLine={false} 
+                    axisLine={false} 
+                    tickMargin={10} 
+                    allowDecimals={false} 
+                    className="text-xs fill-muted-foreground"
+                  />
+                  <RechartsTooltip
+                    cursor={{ fill: "hsl(var(--muted))" }}
+                    content={<ChartTooltipContent indicator="dot" />}
+                  />
+                  <Bar 
+                    dataKey="count" 
+                    fill="var(--color-count)" 
+                    radius={[4, 4, 0, 0]} 
+                  />
+                </BarChart>
+              </ChartContainer>
+            ) : (
+              <div className="text-center py-10">
+                <ListChecks size={48} className="mx-auto text-muted-foreground mb-4" />
+                <p className="text-muted-foreground">
+                  No data objects found in any model yet. 
+                  <Link href="/models" className="text-primary hover:underline ml-1">Create some data</Link> to see it visualized here.
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      <section className="p-8 bg-card rounded-lg shadow-md">
         <h2 className="text-3xl font-semibold text-center mb-6 text-primary">How It Works</h2>
         <div className="grid md:grid-cols-3 gap-8 text-center">
           <div>
@@ -100,3 +184,5 @@ export default function HomePage() {
     </div>
   );
 }
+
+    
