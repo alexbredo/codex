@@ -33,6 +33,12 @@ import { useData } from '@/contexts/data-context';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { MultiSelectAutocomplete, type MultiSelectOption } from '@/components/ui/multi-select-autocomplete';
 import { useMemo } from 'react';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 
 interface ModelFormProps {
   form: UseFormReturn<ModelFormValues>;
@@ -78,227 +84,239 @@ function PropertyFields({
   };
   
   return (
-    <div className="space-y-6">
+    <Accordion 
+      type="multiple" 
+      className="w-full space-y-2"
+      defaultValue={fields.map(field => field.fieldId)} // Keep all items open by default
+    >
       {fields.map((field, index) => {
         const currentPropertyType = form.watch(`properties.${index}.type`);
+        const propertyName = form.watch(`properties.${index}.name`);
+        const headerTitle = propertyName || `Property #${index + 1}`;
+
         return (
-          <Card key={field.fieldId} className="relative bg-background/50 p-0">
-            <CardHeader className="p-4">
-              <div className="flex justify-between items-center">
-                <CardTitle className="text-lg">Property #{index + 1}</CardTitle>
+          <AccordionItem key={field.fieldId} value={field.fieldId} className="border bg-background/50 rounded-md">
+            <AccordionTrigger className="p-4 hover:no-underline">
+              <div className="flex justify-between items-center w-full">
+                <span className="text-lg font-medium text-foreground">{headerTitle}</span>
                 <Button
                   type="button"
                   variant="ghost"
                   size="icon"
-                  onClick={() => remove(index)}
+                  onClick={(e) => {
+                    e.stopPropagation(); // Prevent accordion from toggling
+                    remove(index);
+                  }}
                   className="text-destructive hover:bg-destructive/10"
                   aria-label="Remove property"
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
-            </CardHeader>
-            <CardContent className="p-4 pt-0 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormField
-                control={control}
-                name={`properties.${index}.name`}
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Name</FormLabel>
-                    <FormControl>
-                      <Input placeholder="e.g., ProductName, UserAge" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={control}
-                name={`properties.${index}.type`}
-                render={({ field: typeField }) => ( 
-                  <FormItem>
-                    <FormLabel>Type</FormLabel>
-                    <Select
-                      onValueChange={(value) => handleTypeChange(value, index)}
-                      defaultValue={typeField.value}
-                    >
+            </AccordionTrigger>
+            <AccordionContent className="p-4 pt-0">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormField
+                  control={control}
+                  name={`properties.${index}.name`}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Name</FormLabel>
                       <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select property type" />
-                        </SelectTrigger>
+                        <Input placeholder="e.g., ProductName, UserAge" {...field} />
                       </FormControl>
-                      <SelectContent>
-                        {propertyTypes.map((type) => (
-                          <SelectItem key={type} value={type}>
-                            {type.charAt(0).toUpperCase() + type.slice(1)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={control}
+                  name={`properties.${index}.type`}
+                  render={({ field: typeField }) => ( 
+                    <FormItem>
+                      <FormLabel>Type</FormLabel>
+                      <Select
+                        onValueChange={(value) => handleTypeChange(value, index)}
+                        defaultValue={typeField.value}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select property type" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {propertyTypes.map((type) => (
+                            <SelectItem key={type} value={type}>
+                              {type.charAt(0).toUpperCase() + type.slice(1)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                {currentPropertyType === 'relationship' && (
+                  <>
+                    <FormField
+                      control={control}
+                      name={`properties.${index}.relatedModelId`}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Related Model</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select related model" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {modelsForRelations.map((model) => (
+                                <SelectItem key={model.id} value={model.id}>
+                                  {model.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={control}
+                      name={`properties.${index}.relationshipType`}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Relationship Type</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value || 'one'}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select relationship type" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {relationshipTypes.map((type) => (
+                                <SelectItem key={type} value={type}>
+                                  {type === 'one' ? 'One (Single Item)' : 'Many (Multiple Items)'}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </>
                 )}
-              />
-              {currentPropertyType === 'relationship' && (
-                <>
-                  <FormField
-                    control={control}
-                    name={`properties.${index}.relatedModelId`}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Related Model</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                {currentPropertyType === 'number' && (
+                  <>
+                    <FormField
+                      control={control}
+                      name={`properties.${index}.unit`}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Unit (Optional)</FormLabel>
                           <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select related model" />
-                            </SelectTrigger>
+                            <Input placeholder="e.g., kg, USD, pcs" {...field} value={field.value ?? ''} />
                           </FormControl>
-                          <SelectContent>
-                            {modelsForRelations.map((model) => (
-                              <SelectItem key={model.id} value={model.id}>
-                                {model.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={control}
-                    name={`properties.${index}.relationshipType`}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Relationship Type</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value || 'one'}>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={control}
+                      name={`properties.${index}.precision`}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Precision (0-10)</FormLabel>
                           <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select relationship type" />
-                            </SelectTrigger>
+                            <Input 
+                              type="number" 
+                              min="0" 
+                              max="10" 
+                              placeholder="e.g., 2" 
+                              {...field} 
+                              value={field.value ?? 2}
+                              onChange={e => {
+                                const valStr = e.target.value;
+                                if (valStr === "") {
+                                  field.onChange(undefined); 
+                                } else {
+                                  const num = parseInt(valStr, 10);
+                                  field.onChange(isNaN(num) ? undefined : num);
+                                }
+                              }}
+                            />
                           </FormControl>
-                          <SelectContent>
-                            {relationshipTypes.map((type) => (
-                              <SelectItem key={type} value={type}>
-                                {type === 'one' ? 'One (Single Item)' : 'Many (Multiple Items)'}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </>
-              )}
-              {currentPropertyType === 'number' && (
-                <>
-                  <FormField
-                    control={control}
-                    name={`properties.${index}.unit`}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Unit (Optional)</FormLabel>
-                        <FormControl>
-                          <Input placeholder="e.g., kg, USD, pcs" {...field} value={field.value ?? ''} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={control}
-                    name={`properties.${index}.precision`}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Precision (0-10)</FormLabel>
-                        <FormControl>
-                          <Input 
-                            type="number" 
-                            min="0" 
-                            max="10" 
-                            placeholder="e.g., 2" 
-                            {...field} 
-                            value={field.value ?? 2}
-                            onChange={e => {
-                              const valStr = e.target.value;
-                              if (valStr === "") {
-                                field.onChange(undefined); 
-                              } else {
-                                const num = parseInt(valStr, 10);
-                                field.onChange(isNaN(num) ? undefined : num);
-                              }
-                            }}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </>
-              )}
-              {currentPropertyType === 'date' && (
-                <>
-                  <FormField
-                    control={form.control}
-                    name={`properties.${index}.autoSetOnCreate`}
-                    render={({ field }) => (
-                      <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
-                        <FormControl>
-                          <Checkbox
-                            checked={field.value}
-                            onCheckedChange={field.onChange}
-                          />
-                        </FormControl>
-                        <div className="space-y-0.5 leading-none">
-                          <FormLabel className="text-sm">Auto-set on Create</FormLabel>
-                          <FormDescription className="text-xs">Set to current date when a new object is created.</FormDescription>
-                        </div>
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name={`properties.${index}.autoSetOnUpdate`}
-                    render={({ field }) => (
-                      <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
-                        <FormControl>
-                          <Checkbox
-                            checked={field.value}
-                            onCheckedChange={field.onChange}
-                          />
-                        </FormControl>
-                        <div className="space-y-0.5 leading-none">
-                          <FormLabel className="text-sm">Auto-set on Update</FormLabel>
-                          <FormDescription className="text-xs">Set to current date when an object is updated.</FormDescription>
-                        </div>
-                      </FormItem>
-                    )}
-                  />
-                </>
-              )}
-              <FormField
-                control={form.control}
-                name={`properties.${index}.required`}
-                render={({ field }) => (
-                  <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 md:col-span-2">
-                    <FormControl>
-                      <Checkbox
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                      />
-                    </FormControl>
-                    <div className="space-y-1 leading-none">
-                      <FormLabel>Required</FormLabel>
-                      <FormDescription>
-                        Is this property mandatory for new objects?
-                      </FormDescription>
-                    </div>
-                  </FormItem>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </>
                 )}
-              />
-            </CardContent>
-          </Card>
+                {currentPropertyType === 'date' && (
+                  <>
+                    <FormField
+                      control={form.control}
+                      name={`properties.${index}.autoSetOnCreate`}
+                      render={({ field }) => (
+                        <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                          <FormControl>
+                            <Checkbox
+                              checked={field.value}
+                              onCheckedChange={field.onChange}
+                            />
+                          </FormControl>
+                          <div className="space-y-0.5 leading-none">
+                            <FormLabel className="text-sm">Auto-set on Create</FormLabel>
+                            <FormDescription className="text-xs">Set to current date when a new object is created.</FormDescription>
+                          </div>
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name={`properties.${index}.autoSetOnUpdate`}
+                      render={({ field }) => (
+                        <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                          <FormControl>
+                            <Checkbox
+                              checked={field.value}
+                              onCheckedChange={field.onChange}
+                            />
+                          </FormControl>
+                          <div className="space-y-0.5 leading-none">
+                            <FormLabel className="text-sm">Auto-set on Update</FormLabel>
+                            <FormDescription className="text-xs">Set to current date when an object is updated.</FormDescription>
+                          </div>
+                        </FormItem>
+                      )}
+                    />
+                  </>
+                )}
+                <FormField
+                  control={form.control}
+                  name={`properties.${index}.required`}
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 md:col-span-2">
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                      <div className="space-y-1 leading-none">
+                        <FormLabel>Required</FormLabel>
+                        <FormDescription>
+                          Is this property mandatory for new objects?
+                        </FormDescription>
+                      </div>
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </AccordionContent>
+          </AccordionItem>
         )
       })}
       <Button
@@ -320,7 +338,7 @@ function PropertyFields({
       >
         <PlusCircle className="mr-2 h-4 w-4" /> Add Property
       </Button>
-    </div>
+    </Accordion>
   );
 }
 
@@ -463,3 +481,4 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     </Form>
   );
 }
+
