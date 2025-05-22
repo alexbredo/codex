@@ -11,6 +11,8 @@ export const propertyFormSchema = z.object({
   relatedModelId: z.string().optional(),
   required: z.boolean().optional().default(false),
   relationshipType: z.enum(relationshipTypes).optional().default('one'),
+  unit: z.string().optional(),
+  precision: z.coerce.number().int().min(0).max(10).optional(), // Default will be handled in form or context
 }).refine(data => {
   if (data.type === 'relationship' && !data.relatedModelId) {
     return false;
@@ -20,21 +22,35 @@ export const propertyFormSchema = z.object({
   message: "Related model is required for relationship type.",
   path: ["relatedModelId"],
 }).refine(data => {
-  // if type is not relationship, relationshipType should not be set or be 'one'
   if (data.type !== 'relationship' && data.relationshipType === 'many') {
-    // This case should ideally be prevented by UI logic, but good to have a schema rule
-    return false; 
+    return false;
   }
   return true;
 }, {
   message: "Relationship type can only be 'many' if property type is 'relationship'.",
   path: ["relationshipType"],
+}).refine(data => {
+  if (data.type !== 'number' && (data.unit !== undefined && data.unit !== '')) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Unit can only be set for number type properties.",
+  path: ["unit"],
+}).refine(data => {
+  if (data.type !== 'number' && data.precision !== undefined) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Precision can only be set for number type properties.",
+  path: ["precision"],
 });
 
 export const modelFormSchema = z.object({
   name: z.string().min(1, "Model name is required."),
   description: z.string().optional(),
-  displayPropertyNames: z.array(z.string()).optional(), // Changed from displayPropertyName
+  displayPropertyNames: z.array(z.string()).optional(),
   properties: z.array(propertyFormSchema).min(1, "At least one property is required."),
 });
 

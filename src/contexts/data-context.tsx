@@ -31,7 +31,7 @@ const initialModels: Model[] = [
     displayPropertyNames: ['Name', 'Price'],
     properties: [
       { id: 'clx18090p0001qp08w6k2y0s3', name: 'Name', type: 'string', required: true },
-      { id: 'clx18090p0002qp08l3c8k7j1', name: 'Price', type: 'number', required: true },
+      { id: 'clx18090p0002qp08l3c8k7j1', name: 'Price', type: 'number', required: true, unit: 'USD', precision: 2 },
       { id: 'clx18090p0003qp08q8b5d9e2', name: 'In Stock', type: 'boolean', relationshipType: 'one' },
       { id: 'clx18090q0004qp08q3z9h7x4', name: 'Release Date', type: 'date', relationshipType: 'one' },
     ],
@@ -67,19 +67,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [objects, setObjects] = useState<Record<string, DataObject[]>>({});
   const [isReady, setIsReady] = useState(false);
 
-  const mapModelData = (modelData: any): Model => { // Use any for incoming potentially un-migrated data
+  const mapModelData = (modelData: any): Model => { 
     let finalDisplayPropertyNames: string[] = [];
     if (Array.isArray(modelData.displayPropertyNames)) {
       finalDisplayPropertyNames = modelData.displayPropertyNames;
     } else if (typeof (modelData as any).displayPropertyName === 'string' && (modelData as any).displayPropertyName) {
-      // Check for old singular 'displayPropertyName' (if it existed with that exact name)
       finalDisplayPropertyNames = [(modelData as any).displayPropertyName];
     }
-    // If `modelData.displayPropertyNames` was a string (from a version where it was plural but string type by mistake)
-    // this case is implicitly handled by `Array.isArray` being false, falling to empty.
-    // Or, you could add an explicit `else if (typeof modelData.displayPropertyNames === 'string')` if needed.
-
-    const { displayPropertyName, ...restOfModelData } = modelData; // Remove old singular field if it existed
+    
+    const { displayPropertyName, ...restOfModelData } = modelData; 
 
     return {
       ...restOfModelData,
@@ -89,6 +85,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         ...p,
         id: p.id || crypto.randomUUID(),
         relationshipType: p.type === 'relationship' ? (p.relationshipType || 'one') : undefined,
+        unit: p.type === 'number' ? p.unit : undefined,
+        precision: p.type === 'number' ? (p.precision === undefined ? 2 : p.precision) : undefined,
       })),
     };
   };
@@ -99,7 +97,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const storedObjects = localStorage.getItem('dynamicDataWeaver_objects');
       
       if (storedModels) {
-        const parsedModels = JSON.parse(storedModels) as any[]; // Parse as any[] to handle old formats
+        const parsedModels = JSON.parse(storedModels) as any[]; 
         setModels(parsedModels.map(mapModelData));
       } else {
         setModels(initialModels.map(mapModelData));
@@ -139,14 +137,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [objects, isReady]);
 
   const addModel = useCallback((modelData: Omit<Model, 'id' | 'displayPropertyNames'> & { displayPropertyNames?: string[] }): Model => {
-    const newModel: Model = { 
-      ...modelData, 
+    const newModel: Model = {
+      ...modelData,
       id: crypto.randomUUID(),
-      displayPropertyNames: modelData.displayPropertyNames || [], // Ensure it's an array
+      displayPropertyNames: modelData.displayPropertyNames || [],
       properties: modelData.properties.map(p => ({
         ...p,
         id: p.id || crypto.randomUUID(),
         relationshipType: p.type === 'relationship' ? (p.relationshipType || 'one') : undefined,
+        unit: p.type === 'number' ? p.unit : undefined,
+        precision: p.type === 'number' ? (p.precision === undefined ? 2 : p.precision) : undefined,
       }))
     };
     setModels((prev) => [...prev, newModel]);
@@ -162,13 +162,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
             ...p,
             id: p.id || crypto.randomUUID(),
             relationshipType: p.type === 'relationship' ? (p.relationshipType || 'one') : undefined,
+            unit: p.type === 'number' ? p.unit : undefined,
+            precision: p.type === 'number' ? (p.precision === undefined ? 2 : p.precision) : undefined,
           })) : model.properties;
           
-          updatedModel = { 
-            ...model, 
-            ...updates, 
+          updatedModel = {
+            ...model,
+            ...updates,
             properties: newProperties,
-            displayPropertyNames: 'displayPropertyNames' in updates ? (updates.displayPropertyNames || []) : model.displayPropertyNames // Ensure array
+            displayPropertyNames: 'displayPropertyNames' in updates ? (updates.displayPropertyNames || []) : model.displayPropertyNames
           };
           return updatedModel;
         }
@@ -183,12 +185,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setObjects((prev) => {
       const newObjects = { ...prev };
       delete newObjects[modelId];
-      // Also, remove references to this model from other models' relationship properties
       setModels(prevModels => prevModels.map(m => ({
         ...m,
         properties: m.properties.map(p => p.relatedModelId === modelId ? { ...p, relatedModelId: undefined } : p)
       })));
-      // And clean up objects that might reference deleted model objects (more complex, for now just deletes the model's own objects)
       return newObjects;
     });
   }, []);

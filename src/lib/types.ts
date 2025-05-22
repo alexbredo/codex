@@ -8,10 +8,12 @@ export interface Property {
   relatedModelId?: string; // Only if type is 'relationship'
   required?: boolean;
   relationshipType?: 'one' | 'many'; // For relationship type
+  unit?: string; // For number type
+  precision?: number; // For number type
 }
 
 export interface Model {
-  id: string;
+  id:string;
   name: string;
   description?: string;
   properties: Property[];

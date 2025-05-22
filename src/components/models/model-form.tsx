@@ -26,7 +26,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Trash2, PlusCircle } from 'lucide-react';
-import type { ModelFormValues } from './model-form-schema';
+import type { ModelFormValues, PropertyFormValues } from './model-form-schema';
 import { propertyTypes, relationshipTypes } from './model-form-schema';
 import type { Model } from '@/lib/types';
 import { useData } from '@/contexts/data-context';
@@ -37,29 +37,49 @@ import { useMemo } from 'react';
 interface ModelFormProps {
   form: UseFormReturn<ModelFormValues>;
   onSubmit: (values: ModelFormValues) => void;
-  onCancel: () => void; // Kept for the cancel button, which will navigate back
+  onCancel: () => void; 
   isLoading?: boolean;
-  existingModel?: Model; // Used to change button text and potentially pre-fill
+  existingModel?: Model; 
 }
 
-function PropertyFields({ 
-  form, 
+const INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE = "__DEFAULT_DISPLAY_PROPERTY__";
+
+function PropertyFields({
+  form,
   fieldArray,
   modelsForRelations,
-  }: { 
-  form: UseFormReturn<ModelFormValues>, 
+}: {
+  form: UseFormReturn<ModelFormValues>,
   fieldArray: UseFieldArrayReturn<ModelFormValues, "properties", "id">,
   modelsForRelations: Model[]
 }) {
   const { fields, append, remove } = fieldArray;
   const control = form.control;
 
+  const handleTypeChange = (value: string, index: number) => {
+    form.setValue(`properties.${index}.type`, value as PropertyFormValues['type']);
+    if (value !== 'relationship') {
+      form.setValue(`properties.${index}.relationshipType`, 'one');
+      form.setValue(`properties.${index}.relatedModelId`, undefined);
+    }
+    if (value !== 'number') {
+      form.setValue(`properties.${index}.unit`, undefined);
+      form.setValue(`properties.${index}.precision`, undefined);
+    } else {
+      // Set default precision if not already set
+      const currentPrecision = form.getValues(`properties.${index}.precision`);
+      if (currentPrecision === undefined) {
+        form.setValue(`properties.${index}.precision`, 2);
+      }
+    }
+  };
+  
   return (
     <div className="space-y-6">
       {fields.map((field, index) => {
         const currentPropertyType = form.watch(`properties.${index}.type`);
         return (
-          <Card key={field.id /* field.id from useFieldArray is stable */} className="relative bg-background/50 p-0">
+          <Card key={field.id} className="relative bg-background/50 p-0">
             <CardHeader className="p-4">
               <div className="flex justify-between items-center">
                 <CardTitle className="text-lg">Property #{index + 1}</CardTitle>
@@ -92,18 +112,12 @@ function PropertyFields({
               <FormField
                 control={control}
                 name={`properties.${index}.type`}
-                render={({ field }) => (
+                render={({ field: typeField }) => ( // Renamed field to typeField
                   <FormItem>
                     <FormLabel>Type</FormLabel>
-                    <Select 
-                      onValueChange={(value) => {
-                        field.onChange(value);
-                        if (value !== 'relationship') {
-                          form.setValue(`properties.${index}.relationshipType`, 'one');
-                          form.setValue(`properties.${index}.relatedModelId`, undefined);
-                        }
-                      }} 
-                      defaultValue={field.value}
+                    <Select
+                      onValueChange={(value) => handleTypeChange(value, index)}
+                      defaultValue={typeField.value}
                     >
                       <FormControl>
                         <SelectTrigger>
@@ -174,12 +188,50 @@ function PropertyFields({
                   />
                 </>
               )}
+              {currentPropertyType === 'number' && (
+                <>
+                  <FormField
+                    control={control}
+                    name={`properties.${index}.unit`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Unit (Optional)</FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g., kg, USD, pcs" {...field} value={field.value ?? ''} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={control}
+                    name={`properties.${index}.precision`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Precision (0-10)</FormLabel>
+                        <FormControl>
+                          <Input 
+                            type="number" 
+                            min="0" 
+                            max="10" 
+                            placeholder="e.g., 2" 
+                            {...field} 
+                            value={field.value ?? 2} // Default to 2 visually if undefined
+                            onChange={e => field.onChange(parseInt(e.target.value, 10))}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </>
+              )}
               <FormField
                 control={form.control}
                 name={`properties.${index}.required`}
                 render={({ field }) => (
                   <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 md:col-span-2">
-                     <FormControl>
+                    <FormControl>
                       <Checkbox
                         checked={field.value}
                         onCheckedChange={field.onChange}
@@ -202,7 +254,15 @@ function PropertyFields({
         type="button"
         variant="outline"
         size="sm"
-        onClick={() => append({ id: crypto.randomUUID(), name: '', type: 'string', required: false, relationshipType: 'one' })}
+        onClick={() => append({ 
+            id: crypto.randomUUID(), 
+            name: '', 
+            type: 'string', 
+            required: false, 
+            relationshipType: 'one', 
+            unit: undefined, 
+            precision: undefined 
+        } as PropertyFormValues)}
         className="mt-2 w-full"
       >
         <PlusCircle className="mr-2 h-4 w-4" /> Add Property
@@ -211,14 +271,13 @@ function PropertyFields({
   );
 }
 
-const INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE = "__DEFAULT_DISPLAY_PROPERTY__";
 
 export default function ModelForm({ form, onSubmit, onCancel, isLoading, existingModel }: ModelFormProps) {
   const { models } = useData();
   const fieldArray = useFieldArray({
     control: form.control,
     name: 'properties',
-    keyName: "fieldId" 
+    keyName: "fieldId"
   });
 
   const modelsForRelations = models.filter(m => !existingModel || m.id !== existingModel.id);
@@ -227,11 +286,12 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
 
   const displayPropertyOptions = useMemo(() => {
     return (currentProperties || [])
-      .filter(p => p.type === 'string' || p.type === 'number')
+      .filter(p => p.type === 'string' || p.type === 'number' || p.type === 'date')
       .map(p => ({ value: p.name, label: p.name }));
   }, [currentProperties]);
-
+  
   const handleFormSubmit = (values: ModelFormValues) => {
+    // Ensure displayPropertyNames are valid
     if (values.displayPropertyNames && values.displayPropertyNames.length > 0) {
       values.displayPropertyNames = values.displayPropertyNames.filter(dpName =>
         values.properties.some(p => p.name === dpName && (p.type === 'string' || p.type === 'number' || p.type === 'date'))
@@ -240,15 +300,24 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
         values.displayPropertyNames = undefined;
       }
     } else {
-       values.displayPropertyNames = undefined;
+      values.displayPropertyNames = undefined;
     }
+
+    // Ensure unit and precision are only set for number types
+    values.properties = values.properties.map(prop => {
+      if (prop.type !== 'number') {
+        return { ...prop, unit: undefined, precision: undefined };
+      } else {
+        // Ensure precision has a default if not set by user but type is number
+        return { ...prop, precision: prop.precision === undefined ? 2 : prop.precision };
+      }
+    });
     onSubmit(values);
   };
 
 
   return (
     <Form {...form}>
-      {/* The form is now part of a page, so ScrollArea is handled by page layout if needed, or form can be longer */}
       <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-8">
         <Card>
           <CardHeader>
@@ -292,11 +361,10 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                     options={displayPropertyOptions}
                     selected={field.value || []}
                     onChange={(selectedValues) => {
-                        // Ensure that we only pass valid property names that are still in currentProperties
-                        const validSelected = selectedValues.filter(val => 
-                            (currentProperties || []).some(p => p.name === val && (p.type === 'string' || p.type === 'number' || p.type === 'date'))
-                        );
-                        field.onChange(validSelected);
+                      const validSelected = selectedValues.filter(val =>
+                        (currentProperties || []).some(p => p.name === val && (p.type === 'string' || p.type === 'number' || p.type === 'date'))
+                      );
+                      field.onChange(validSelected);
                     }}
                     placeholder="-- Default (Name/Title/ID) --"
                     emptyIndicator="No string/number/date properties available."
@@ -310,7 +378,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
             />
           </CardContent>
         </Card>
-        
+
         <Separator />
 
         <div>
@@ -330,5 +398,3 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     </Form>
   );
 }
-
-    

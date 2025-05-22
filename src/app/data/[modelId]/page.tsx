@@ -2,11 +2,8 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { useParams, useRouter } from 'next/navigation'; // Removed useSearchParams
-// import { useForm } from 'react-hook-form'; // Form logic moved to dedicated pages
-// import { zodResolver } from '@hookform/resolvers/zod'; // Schema logic moved
+import { useParams, useRouter } from 'next/navigation'; 
 import { Button } from '@/components/ui/button';
-// Dialog components removed as form is now on a dedicated page
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,18 +26,16 @@ import {
 import { Input } from '@/components/ui/input';
 import { useData } from '@/contexts/data-context';
 import type { Model, DataObject, Property } from '@/lib/types';
-// import { createObjectFormSchema } from '@/components/objects/object-form-schema'; // Schema logic moved
-// import ObjectForm from '@/components/objects/object-form'; // ObjectForm is on its own page
 import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { format } from 'date-fns';
 import Link from 'next/link';
-// import { z } from 'zod'; // No longer needed here
+import { z } from 'zod'; // Imported z
 
 const ITEMS_PER_PAGE = 10;
-const MAX_DIRECT_PROPERTIES_IN_TABLE = 3; 
+const MAX_DIRECT_PROPERTIES_IN_TABLE = 3;
 
 const getObjectDisplayValue = (obj: DataObject | undefined, model: Model | undefined, allModels: Model[], allObjects: Record<string, DataObject[]>): string => {
   if (!obj || !model) return obj?.id ? `ID: ...${obj.id.slice(-6)}` : 'N/A';
@@ -50,7 +45,7 @@ const getObjectDisplayValue = (obj: DataObject | undefined, model: Model | undef
       .map(propName => {
         const propValue = obj[propName];
         if (propValue === null || typeof propValue === 'undefined' || String(propValue).trim() === '') {
-          return null; 
+          return null;
         }
         const propertyDefinition = model.properties.find(p => p.name === propName);
         if (propertyDefinition?.type === 'relationship' && propertyDefinition.relatedModelId) {
@@ -60,7 +55,7 @@ const getObjectDisplayValue = (obj: DataObject | undefined, model: Model | undef
         }
         return String(propValue);
       })
-      .filter(value => value !== null && value.trim() !== ''); 
+      .filter(value => value !== null && value.trim() !== '');
 
     if (displayValues.length > 0) {
       return displayValues.join(' - ');
@@ -87,8 +82,8 @@ const getObjectDisplayValue = (obj: DataObject | undefined, model: Model | undef
 
 
 interface IncomingRelationColumn {
-  id: string; 
-  headerLabel: string; 
+  id: string;
+  headerLabel: string;
   referencingModel: Model;
   referencingProperty: Property;
 }
@@ -98,29 +93,23 @@ export default function DataObjectsPage() {
   const router = useRouter();
   const params = useParams();
   const modelId = params.modelId as string;
-  // editObjectId from searchParams removed, edit is now a dedicated page
   
-  const { 
-    models: allModels, 
-    getModelById, 
-    getObjectsByModelId, 
-    // addObject,  // Handled on new page
-    // updateObject, // Handled on edit page
+  const {
+    models: allModels,
+    getModelById,
+    getObjectsByModelId,
     deleteObject,
     getAllObjects,
-    isReady 
+    isReady
   } = useData();
   const { toast } = useToast();
 
-  const [currentModel, setCurrentModel] = useState<Model | null>(null); 
+  const [currentModel, setCurrentModel] = useState<Model | null>(null);
   const [objects, setObjects] = useState<DataObject[]>([]);
-  // isFormOpen and editingObject state removed
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   
   const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects, isReady]);
-
-  // dynamicSchema and form setup removed, handled on new/edit pages
   
   useEffect(() => {
     if (isReady && modelId) {
@@ -129,8 +118,6 @@ export default function DataObjectsPage() {
         setCurrentModel(foundModel);
         const modelObjects = getObjectsByModelId(modelId);
         setObjects(modelObjects);
-        // Default form values logic removed
-        // Edit object handling from URL param removed
       } else {
         toast({ variant: "destructive", title: "Error", description: "Model not found." });
         router.push('/models');
@@ -148,13 +135,11 @@ export default function DataObjectsPage() {
     if (!currentModel) return;
     router.push(`/data/${currentModel.id}/edit/${obj.id}`);
   };
-
-  // onSubmit logic removed, handled on new/edit pages
   
   const handleDelete = (objectId: string) => {
     if (!currentModel) return;
     deleteObject(currentModel.id, objectId);
-    setObjects(getObjectsByModelId(currentModel.id)); // Refresh local state
+    setObjects(getObjectsByModelId(currentModel.id)); 
     toast({ title: `${currentModel.name} Deleted`, description: `The ${currentModel.name.toLowerCase()} has been deleted.` });
   };
 
@@ -168,13 +153,13 @@ export default function DataObjectsPage() {
         }
         if (prop.type === 'relationship' && prop.relatedModelId) {
             const relatedModel = getModelById(prop.relatedModelId);
-            if (Array.isArray(value)) { 
+            if (Array.isArray(value)) {
                 return value.some(itemId => {
                     const relatedObj = getObjectsByModelId(prop.relatedModelId!).find(o => o.id === itemId);
                     const displayVal = getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
                     return displayVal.toLowerCase().includes(searchTerm.toLowerCase());
                 });
-            } else if (value) { 
+            } else if (value) {
                 const relatedObj = getObjectsByModelId(prop.relatedModelId!).find(o => o.id === value);
                 const displayVal = getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
                 return displayVal.toLowerCase().includes(searchTerm.toLowerCase());
@@ -207,6 +192,12 @@ export default function DataObjectsPage() {
         } catch {
           return String(value);
         }
+      case 'number':
+        const precision = property.precision === undefined ? 2 : property.precision;
+        const unit = property.unit || '';
+        let numValue = parseFloat(value);
+        if (isNaN(numValue)) return <span className="text-muted-foreground">N/A</span>;
+        return `${numValue.toFixed(precision)}${unit ? ` ${unit}` : ''}`;
       case 'relationship':
         if (!property.relatedModelId) return <span className="text-destructive">Config Err</span>;
         const relatedModel = getModelById(property.relatedModelId);
@@ -232,7 +223,7 @@ export default function DataObjectsPage() {
           ) : (
             <Badge key={item.id} variant="outline" className="mr-1 mb-1">{item.name}</Badge>
           ));
-        } else { 
+        } else {
           const relatedObj = (allDbObjects[property.relatedModelId] || []).find(o => o.id === value);
           const displayVal = getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
           return relatedObj ? (
@@ -256,7 +247,7 @@ export default function DataObjectsPage() {
       otherModel.properties.forEach(prop => {
         if (prop.type === 'relationship' && prop.relatedModelId === currentModel.id) {
           columns.push({
-            id: `${otherModel.id}-${prop.name}`, 
+            id: `${otherModel.id}-${prop.name}`,
             headerLabel: `Ref. by ${otherModel.name} (via ${prop.name})`,
             referencingModel: otherModel,
             referencingProperty: prop,
@@ -307,7 +298,7 @@ export default function DataObjectsPage() {
       </header>
 
       {filteredObjects.length === 0 ? (
-        <Card className="text-center py-12"> {/* Removed col-span-full */}
+        <Card className="text-center py-12">
           <CardContent>
             <ListChecks size={48} className="mx-auto text-muted-foreground mb-4" />
             <h3 className="text-xl font-semibold">No Data Objects Found</h3>
@@ -326,7 +317,7 @@ export default function DataObjectsPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                {directPropertiesToShow.map((prop) => ( 
+                {directPropertiesToShow.map((prop) => (
                   <TableHead key={prop.id}>{prop.name}</TableHead>
                 ))}
                 {virtualIncomingRelationColumns.map((col) => (
@@ -427,10 +418,6 @@ export default function DataObjectsPage() {
           </Button>
         </div>
       )}
-
-      {/* Dialog for ObjectForm removed */}
     </div>
   );
 }
-
-    
