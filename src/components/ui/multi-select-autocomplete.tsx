@@ -2,7 +2,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, X, ChevronsUpDown, PlusCircle } from "lucide-react";
+import { Check, X, ChevronsUpDown } from "lucide-react"; // Removed PlusCircle as it's not used
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,7 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-  CommandSeparator,
+  // CommandSeparator, // Removed as it's not used
 } from "@/components/ui/command";
 import {
   Popover,
@@ -80,7 +80,7 @@ export function MultiSelectAutocomplete({
                   key={item.value}
                   className="mr-1 mb-1"
                   onClick={(e) => {
-                    e.stopPropagation(); // prevent popover from closing
+                    e.stopPropagation();
                     handleDeselect(item.value);
                   }}
                 >
@@ -97,7 +97,7 @@ export function MultiSelectAutocomplete({
       </PopoverTrigger>
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
         <Command>
-          <CommandInput 
+          <CommandInput
             placeholder="Search items..."
             value={inputValue}
             onValueChange={setInputValue}
@@ -111,14 +111,14 @@ export function MultiSelectAutocomplete({
                   return (
                     <CommandItem
                       key={option.value}
-                      value={option.label} // Search by label
+                      value={option.value} // Changed from option.label to option.value
                       onSelect={() => {
                         if (isSelected) {
                           handleDeselect(option.value);
                         } else {
                           handleSelect(option.value);
                         }
-                        setInputValue(""); // Reset input after selection
+                        setInputValue("");
                       }}
                       className="flex items-center justify-between"
                     >

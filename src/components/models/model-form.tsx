@@ -28,7 +28,7 @@ import { Separator } from '@/components/ui/separator';
 import { Trash2, PlusCircle } from 'lucide-react';
 import type { ModelFormValues, PropertyFormValues } from './model-form-schema';
 import { propertyTypes, relationshipTypes } from './model-form-schema';
-import type { Model } from '@/lib/types';
+import type { Model, Property } from '@/lib/types';
 import { useData } from '@/contexts/data-context';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { MultiSelectAutocomplete, type MultiSelectOption } from '@/components/ui/multi-select-autocomplete';
@@ -43,9 +43,9 @@ import {
 interface ModelFormProps {
   form: UseFormReturn<ModelFormValues>;
   onSubmit: (values: ModelFormValues) => void;
-  onCancel: () => void; 
+  onCancel: () => void;
   isLoading?: boolean;
-  existingModel?: Model; 
+  existingModel?: Model;
 }
 
 const INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE = "__DEFAULT_DISPLAY_PROPERTY__";
@@ -82,12 +82,12 @@ function PropertyFields({
       form.setValue(`properties.${index}.autoSetOnUpdate`, false);
     }
   };
-  
+
   return (
-    <Accordion 
-      type="multiple" 
+    <Accordion
+      type="multiple"
       className="w-full space-y-2"
-      defaultValue={[]} // Changed to empty array for collapsed by default
+      defaultValue={[]}
     >
       {fields.map((field, index) => {
         const currentPropertyType = form.watch(`properties.${index}.type`);
@@ -104,7 +104,7 @@ function PropertyFields({
                   variant="ghost"
                   size="icon"
                   onClick={(e) => {
-                    e.stopPropagation(); // Prevent accordion from toggling
+                    e.stopPropagation();
                     remove(index);
                   }}
                   className="text-destructive hover:bg-destructive/10"
@@ -132,7 +132,7 @@ function PropertyFields({
                 <FormField
                   control={control}
                   name={`properties.${index}.type`}
-                  render={({ field: typeField }) => ( 
+                  render={({ field: typeField }) => (
                     <FormItem>
                       <FormLabel>Type</FormLabel>
                       <Select
@@ -230,17 +230,17 @@ function PropertyFields({
                         <FormItem>
                           <FormLabel>Precision (0-10)</FormLabel>
                           <FormControl>
-                            <Input 
-                              type="number" 
-                              min="0" 
-                              max="10" 
-                              placeholder="e.g., 2" 
-                              {...field} 
+                            <Input
+                              type="number"
+                              min="0"
+                              max="10"
+                              placeholder="e.g., 2"
+                              {...field}
                               value={field.value ?? 2}
                               onChange={e => {
                                 const valStr = e.target.value;
                                 if (valStr === "") {
-                                  field.onChange(undefined); 
+                                  field.onChange(undefined);
                                 } else {
                                   const num = parseInt(valStr, 10);
                                   field.onChange(isNaN(num) ? undefined : num);
@@ -323,13 +323,13 @@ function PropertyFields({
         type="button"
         variant="outline"
         size="sm"
-        onClick={() => append({ 
-            id: crypto.randomUUID(), 
-            name: '', 
-            type: 'string', 
-            required: false, 
-            relationshipType: 'one', 
-            unit: undefined, 
+        onClick={() => append({
+            id: crypto.randomUUID(),
+            name: '',
+            type: 'string',
+            required: false,
+            relationshipType: 'one',
+            unit: undefined,
             precision: undefined,
             autoSetOnCreate: false,
             autoSetOnUpdate: false,
@@ -348,37 +348,39 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
   const fieldArray = useFieldArray({
     control: form.control,
     name: 'properties',
-    keyName: "fieldId" 
+    keyName: "fieldId"
   });
 
   const modelsForRelations = models.filter(m => !existingModel || m.id !== existingModel.id);
 
   const currentProperties = useWatch({ control: form.control, name: "properties" });
+  const watchedDisplayPropertyNames = useWatch({ control: form.control, name: "displayPropertyNames" });
+
 
   const displayPropertyOptions: MultiSelectOption[] = useMemo(() => {
     return (currentProperties || [])
       .filter(p => p.name && (p.type === 'string' || p.type === 'number' || p.type === 'date'))
       .map(p => ({ value: p.name, label: p.name }));
   }, [currentProperties]);
-  
-  const selectedDisplayPropertyNamesForSelect = useMemo(() => {
-    const currentSelection = form.getValues("displayPropertyNames");
-    if (!currentSelection || currentSelection.length === 0) {
+
+  const selectedValuesForAutocomplete = useMemo(() => {
+    if (!watchedDisplayPropertyNames || watchedDisplayPropertyNames.length === 0) {
       return [INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE];
     }
-    return currentSelection;
-  }, [form]);
+    return watchedDisplayPropertyNames;
+  }, [watchedDisplayPropertyNames]);
 
 
   const handleFormSubmit = (values: ModelFormValues) => {
-    if (values.displayPropertyNames && values.displayPropertyNames.includes(INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE)) {
-        values.displayPropertyNames = values.displayPropertyNames.filter(dpName => dpName !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
+    const processedValues = { ...values };
+    if (processedValues.displayPropertyNames && processedValues.displayPropertyNames.includes(INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE)) {
+        processedValues.displayPropertyNames = processedValues.displayPropertyNames.filter(dpName => dpName !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
     }
-    if (values.displayPropertyNames && values.displayPropertyNames.length === 0) {
-        values.displayPropertyNames = undefined;
+    if (processedValues.displayPropertyNames && processedValues.displayPropertyNames.length === 0) {
+        processedValues.displayPropertyNames = undefined;
     }
-    
-    values.properties = values.properties.map(prop => {
+
+    processedValues.properties = processedValues.properties.map(prop => {
       const finalProp = { ...prop };
       if (prop.type !== 'number') {
         finalProp.unit = undefined;
@@ -392,7 +394,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
       }
       return finalProp;
     });
-    onSubmit(values);
+    onSubmit(processedValues);
   };
 
 
@@ -439,15 +441,20 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                   <FormLabel>Display Properties (Optional)</FormLabel>
                   <MultiSelectAutocomplete
                     options={[{value: INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE, label: "-- Default (Name/Title/ID) --"}, ...displayPropertyOptions]}
-                    selected={selectedDisplayPropertyNamesForSelect}
-                    onChange={(selectedValues) => {
-                      if (selectedValues.includes(INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE) && selectedValues.length > 1) {
-                        field.onChange(selectedValues.filter(v => v !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE));
-                      } else if (selectedValues.length === 0 || (selectedValues.length === 1 && selectedValues[0] === INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE)) {
-                         field.onChange([]); // Represent "-- Default --" as empty array internally
-                      } else {
-                        field.onChange(selectedValues);
-                      }
+                    selected={selectedValuesForAutocomplete}
+                    onChange={(selectedValuesFromAutocomplete) => {
+                        const isDefaultSelected = selectedValuesFromAutocomplete.includes(INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
+                        const actualPropertiesSelected = selectedValuesFromAutocomplete.filter(v => v !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
+
+                        if (isDefaultSelected && actualPropertiesSelected.length > 0) {
+                            field.onChange(actualPropertiesSelected);
+                        } else if (isDefaultSelected && actualPropertiesSelected.length === 0) {
+                            field.onChange([]);
+                        } else if (!isDefaultSelected && actualPropertiesSelected.length > 0) {
+                            field.onChange(actualPropertiesSelected);
+                        } else { // (!isDefaultSelected && actualPropertiesSelected.length === 0)
+                            field.onChange([]);
+                        }
                     }}
                     placeholder="Select properties..."
                     emptyIndicator={displayPropertyOptions.length === 0 ? "No string/number/date properties available." : "No matching properties."}
@@ -481,4 +488,3 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     </Form>
   );
 }
-
