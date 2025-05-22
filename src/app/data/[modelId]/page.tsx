@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation'; 
 import { Button } from '@/components/ui/button';
 import {
@@ -26,18 +26,28 @@ import {
 import { Input } from '@/components/ui/input';
 import { useData } from '@/contexts/data-context';
 import type { Model, DataObject, Property } from '@/lib/types';
-import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { format } from 'date-fns';
+import { format as formatDateFns } from 'date-fns';
 import Link from 'next/link';
-import { z } from 'zod';
 
 const ITEMS_PER_PAGE = 10;
 const MAX_DIRECT_PROPERTIES_IN_TABLE = 3;
 
-const getObjectDisplayValue = (obj: DataObject | undefined, model: Model | undefined, allModels: Model[], allObjects: Record<string, DataObject[]>): string => {
+type SortDirection = 'asc' | 'desc';
+interface SortConfig {
+  key: string; // property.id for direct properties, or col.id for virtual columns
+  direction: SortDirection;
+}
+
+const getObjectDisplayValue = (
+    obj: DataObject | undefined, 
+    model: Model | undefined, 
+    allModels: Model[], 
+    allObjects: Record<string, DataObject[]>
+): string => {
   if (!obj || !model) return obj?.id ? `ID: ...${obj.id.slice(-6)}` : 'N/A';
 
   if (model.displayPropertyNames && model.displayPropertyNames.length > 0) {
@@ -82,7 +92,7 @@ const getObjectDisplayValue = (obj: DataObject | undefined, model: Model | undef
 
 
 interface IncomingRelationColumn {
-  id: string;
+  id: string; // Unique ID for this virtual column, e.g., otherModel.id + '-' + referencingProperty.name
   headerLabel: string;
   referencingModel: Model;
   referencingProperty: Property;
@@ -108,6 +118,7 @@ export default function DataObjectsPage() {
   const [objects, setObjects] = useState<DataObject[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [sortConfig, setSortConfig] = useState<SortConfig | null>(null);
   
   const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects, isReady]);
   
@@ -143,39 +154,137 @@ export default function DataObjectsPage() {
     toast({ title: `${currentModel.name} Deleted`, description: `The ${currentModel.name.toLowerCase()} has been deleted.` });
   };
 
+  const requestSort = (key: string) => {
+    let direction: SortDirection = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+    setCurrentPage(1); // Reset to first page on sort
+  };
+
+  const getSortIcon = (columnKey: string) => {
+    if (!sortConfig || sortConfig.key !== columnKey) {
+      return <ChevronsUpDown className="ml-2 h-4 w-4 opacity-50" />;
+    }
+    return sortConfig.direction === 'asc' ? <ArrowUp className="ml-2 h-4 w-4" /> : <ArrowDown className="ml-2 h-4 w-4" />;
+  };
+
   const filteredObjects = useMemo(() => {
-    if (!searchTerm) return objects;
-    return objects.filter(obj =>
-      currentModel?.properties.some(prop => {
-        const value = obj[prop.name];
-        if ((prop.type === 'string' || prop.type === 'number') && value && (typeof value === 'string' || typeof value === 'number') ) {
-          return String(value).toLowerCase().includes(searchTerm.toLowerCase());
-        }
-        if (prop.type === 'relationship' && prop.relatedModelId) {
-            const relatedModel = getModelById(prop.relatedModelId);
-            if (Array.isArray(value)) {
-                return value.some(itemId => {
-                    const relatedObj = getObjectsByModelId(prop.relatedModelId!).find(o => o.id === itemId);
-                    const displayVal = getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
-                    return displayVal.toLowerCase().includes(searchTerm.toLowerCase());
-                });
-            } else if (value) {
-                const relatedObj = getObjectsByModelId(prop.relatedModelId!).find(o => o.id === value);
-                const displayVal = getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
-                return displayVal.toLowerCase().includes(searchTerm.toLowerCase());
+    if (!currentModel) return [];
+    let searchableObjects = objects;
+
+    if (searchTerm) {
+      searchableObjects = objects.filter(obj =>
+        currentModel.properties.some(prop => {
+          const value = obj[prop.name];
+          if ((prop.type === 'string' || prop.type === 'number') && value !== null && value !== undefined) {
+            return String(value).toLowerCase().includes(searchTerm.toLowerCase());
+          }
+          if (prop.type === 'relationship' && prop.relatedModelId) {
+              const relatedModel = getModelById(prop.relatedModelId);
+              if (Array.isArray(value)) { // 'many' relationship
+                  return value.some(itemId => {
+                      const relatedObj = (allDbObjects[prop.relatedModelId!] || []).find(o => o.id === itemId);
+                      const displayVal = getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
+                      return displayVal.toLowerCase().includes(searchTerm.toLowerCase());
+                  });
+              } else if (value) { // 'one' relationship
+                  const relatedObj = (allDbObjects[prop.relatedModelId!] || []).find(o => o.id === value);
+                  const displayVal = getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
+                  return displayVal.toLowerCase().includes(searchTerm.toLowerCase());
+              }
+          }
+          return false;
+        })
+      );
+    }
+    return searchableObjects;
+  }, [objects, searchTerm, currentModel, getModelById, allDbObjects, allModels]);
+
+  const sortedObjects = useMemo(() => {
+    if (!sortConfig || !currentModel) {
+      return filteredObjects;
+    }
+
+    return [...filteredObjects].sort((a, b) => {
+      let aValue: any;
+      let bValue: any;
+
+      const directPropertyToSort = currentModel.properties.find(p => p.id === sortConfig.key);
+      const virtualColumnToSort = virtualIncomingRelationColumns.find(vc => vc.id === sortConfig.key);
+
+      if (directPropertyToSort) {
+        aValue = a[directPropertyToSort.name];
+        bValue = b[directPropertyToSort.name];
+
+        switch (directPropertyToSort.type) {
+          case 'string':
+            aValue = String(aValue ?? '').toLowerCase();
+            bValue = String(bValue ?? '').toLowerCase();
+            break;
+          case 'number':
+            aValue = Number(aValue ?? Number.NEGATIVE_INFINITY);
+            bValue = Number(bValue ?? Number.NEGATIVE_INFINITY);
+            break;
+          case 'boolean':
+            aValue = aValue ? 1 : 0;
+            bValue = bValue ? 1 : 0;
+            break;
+          case 'date':
+            aValue = aValue ? new Date(aValue).getTime() : 0;
+            bValue = bValue ? new Date(bValue).getTime() : 0;
+            break;
+          case 'relationship':
+            const relatedModel = getModelById(directPropertyToSort.relatedModelId!);
+            if (directPropertyToSort.relationshipType === 'many') {
+              aValue = Array.isArray(aValue) ? aValue.length : 0;
+              bValue = Array.isArray(bValue) ? bValue.length : 0;
+            } else { // 'one'
+              const aRelatedObj = (allDbObjects[directPropertyToSort.relatedModelId!] || []).find(o => o.id === aValue);
+              const bRelatedObj = (allDbObjects[directPropertyToSort.relatedModelId!] || []).find(o => o.id === bValue);
+              aValue = getObjectDisplayValue(aRelatedObj, relatedModel, allModels, allDbObjects).toLowerCase();
+              bValue = getObjectDisplayValue(bRelatedObj, relatedModel, allModels, allDbObjects).toLowerCase();
             }
+            break;
+          default:
+            aValue = String(aValue ?? '').toLowerCase();
+            bValue = String(bValue ?? '').toLowerCase();
         }
-        return false;
-      }) ?? false
-    );
-  }, [objects, searchTerm, currentModel, getModelById, getObjectsByModelId, allModels, allDbObjects]);
+      } else if (virtualColumnToSort) {
+        // Sort by count of referencing items for virtual columns
+        const aReferencingData = allDbObjects[virtualColumnToSort.referencingModel.id] || [];
+        aValue = aReferencingData.filter(refObj => {
+          const linkedValue = refObj[virtualColumnToSort.referencingProperty.name];
+          return virtualColumnToSort.referencingProperty.relationshipType === 'many' ? (Array.isArray(linkedValue) && linkedValue.includes(a.id)) : linkedValue === a.id;
+        }).length;
+
+        const bReferencingData = allDbObjects[virtualColumnToSort.referencingModel.id] || [];
+        bValue = bReferencingData.filter(refObj => {
+          const linkedValue = refObj[virtualColumnToSort.referencingProperty.name];
+          return virtualColumnToSort.referencingProperty.relationshipType === 'many' ? (Array.isArray(linkedValue) && linkedValue.includes(b.id)) : linkedValue === b.id;
+        }).length;
+      } else {
+        return 0; // Should not happen if keys are managed correctly
+      }
+
+      if (aValue < bValue) {
+        return sortConfig.direction === 'asc' ? -1 : 1;
+      }
+      if (aValue > bValue) {
+        return sortConfig.direction === 'asc' ? 1 : -1;
+      }
+      return 0;
+    });
+  }, [filteredObjects, sortConfig, currentModel, getModelById, allDbObjects, allModels]);
+
 
   const paginatedObjects = useMemo(() => {
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-    return filteredObjects.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-  }, [filteredObjects, currentPage]);
+    return sortedObjects.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [sortedObjects, currentPage]);
 
-  const totalPages = Math.ceil(filteredObjects.length / ITEMS_PER_PAGE);
+  const totalPages = Math.ceil(sortedObjects.length / ITEMS_PER_PAGE);
 
   const displayCellContent = (obj: DataObject, property: Property) => {
     const value = obj[property.name];
@@ -191,7 +300,7 @@ export default function DataObjectsPage() {
         return value ? <Badge variant="default" className="bg-green-500 hover:bg-green-600">Yes</Badge> : <Badge variant="secondary">No</Badge>;
       case 'date':
         try {
-          return format(new Date(value), 'PP');
+          return formatDateFns(new Date(value), 'PP');
         } catch {
           return String(value);
         }
@@ -254,7 +363,7 @@ export default function DataObjectsPage() {
       otherModel.properties.forEach(prop => {
         if (prop.type === 'relationship' && prop.relatedModelId === currentModel.id) {
           columns.push({
-            id: `${otherModel.id}-${prop.name}`,
+            id: `${otherModel.id}-${prop.name}`, // Unique ID for sort key
             headerLabel: `Ref. by ${otherModel.name} (via ${prop.name})`,
             referencingModel: otherModel,
             referencingProperty: prop,
@@ -304,19 +413,27 @@ export default function DataObjectsPage() {
         </div>
       </header>
 
-      {filteredObjects.length === 0 ? (
+      {filteredObjects.length === 0 && !searchTerm ? (
         <Card className="text-center py-12">
           <CardContent>
             <ListChecks size={48} className="mx-auto text-muted-foreground mb-4" />
             <h3 className="text-xl font-semibold">No Data Objects Found</h3>
             <p className="text-muted-foreground mb-4">
-              {searchTerm ? `No objects match your search for "${searchTerm}".` : `There are no data objects for the model "${currentModel.name}" yet.`}
+              There are no data objects for the model "{currentModel.name}" yet.
             </p>
-             {!searchTerm && (
-                <Button onClick={handleCreateNew} variant="default">
-                    <PlusCircle className="mr-2 h-4 w-4" /> Create First Object
-                </Button>
-             )}
+             <Button onClick={handleCreateNew} variant="default">
+                <PlusCircle className="mr-2 h-4 w-4" /> Create First Object
+            </Button>
+          </CardContent>
+        </Card>
+      ) : sortedObjects.length === 0 && searchTerm ? (
+         <Card className="text-center py-12">
+          <CardContent>
+            <Search size={48} className="mx-auto text-muted-foreground mb-4" />
+            <h3 className="text-xl font-semibold">No Results Found</h3>
+            <p className="text-muted-foreground mb-4">
+              Your search for "{searchTerm}" did not match any {currentModel.name.toLowerCase()}s.
+            </p>
           </CardContent>
         </Card>
       ) : (
@@ -325,10 +442,20 @@ export default function DataObjectsPage() {
             <TableHeader>
               <TableRow>
                 {directPropertiesToShow.map((prop) => (
-                  <TableHead key={prop.id}>{prop.name}</TableHead>
+                  <TableHead key={prop.id}>
+                    <Button variant="ghost" onClick={() => requestSort(prop.id)} className="px-1">
+                      {prop.name}
+                      {getSortIcon(prop.id)}
+                    </Button>
+                  </TableHead>
                 ))}
                 {virtualIncomingRelationColumns.map((col) => (
-                  <TableHead key={col.id} className="text-xs">{col.headerLabel}</TableHead>
+                  <TableHead key={col.id} className="text-xs">
+                     <Button variant="ghost" onClick={() => requestSort(col.id)} className="px-1 text-xs">
+                      {col.headerLabel}
+                      {getSortIcon(col.id)}
+                    </Button>
+                  </TableHead>
                 ))}
                 <TableHead className="text-right w-[150px]">Actions</TableHead>
               </TableRow>
@@ -429,3 +556,5 @@ export default function DataObjectsPage() {
   );
 }
 
+
+    
