@@ -18,13 +18,19 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 // ModelForm is no longer rendered directly here, but on its own pages
 // import ModelForm from '@/components/models/model-form'; 
 // import type { ModelFormValues } from '@/components/models/model-form-schema';
 // import { modelFormSchema } from '@/components/models/model-form-schema';
 import { useData } from '@/contexts/data-context';
 import type { Model } from '@/lib/types';
-import { PlusCircle, Edit, Trash2, Eye, DatabaseZap, ListChecks, Search, Info, Code2, StickyNote } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, Eye, DatabaseZap, ListChecks, Search, Info, Code2, StickyNote, ChevronDown } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation'; // For navigation
 import { useToast } from "@/hooks/use-toast";
@@ -102,23 +108,35 @@ export default function ModelsPage() {
         </div>
       </header>
 
-      <Alert className="mb-8">
-        <Code2 className="h-4 w-4" />
-        <AlertTitle>Accessing Data via API (Examples)</AlertTitle>
-        <AlertDescription>
-          You can programmatically access your models and data objects using an internal API. Here are some example endpoints:
-          <ul className="list-disc pl-5 mt-2 space-y-1">
-            <li><code>GET /api/data-weaver/models</code> - Retrieves a list of all defined models.</li>
-            <li><code>GET /api/data-weaver/models/{'{modelId}'}</code> - Retrieves details for a specific model.</li>
-            <li><code>GET /api/data-weaver/models/{'{modelId}'}/objects</code> - Retrieves all data objects for a specific model.</li>
-            <li><code>GET /api/data-weaver/models/{'{modelId}'}/objects/{'{objectId}'}</code> - Retrieves a specific data object.</li>
-          </ul>
-          <p className="mt-3 text-xs text-muted-foreground">
-            <Info size={14} className="inline mr-1 relative -top-px" />
-            <strong>Important Note:</strong> The current application prototype uses client-side browser storage (localStorage) for data persistence. The API endpoints listed above are illustrative examples. For these APIs to serve data dynamically from a persistent backend store (like a database), further backend development to connect to such a data source would be required.
-          </p>
-        </AlertDescription>
-      </Alert>
+      <Accordion type="single" collapsible className="mb-8 w-full">
+        <AccordionItem value="api-help" className="border rounded-lg">
+          <AccordionTrigger className="p-4 hover:no-underline data-[state=open]:border-b">
+            <div className="flex items-center text-lg">
+              <Code2 className="h-5 w-5 mr-2 text-primary" />
+              <span className="font-semibold">Accessing Data via API (Examples)</span>
+            </div>
+          </AccordionTrigger>
+          <AccordionContent className="p-0">
+            <Alert variant="default" className="border-0 rounded-t-none">
+              {/* AlertTitle is now part of AccordionTrigger */}
+              <AlertDescription className="pt-2 px-4 pb-4"> {/* Added padding for content */}
+                You can programmatically access your models and data objects using an internal API. Here are some example endpoints:
+                <ul className="list-disc pl-5 mt-2 space-y-1">
+                  <li><code>GET /api/data-weaver/models</code> - Retrieves a list of all defined models.</li>
+                  <li><code>GET /api/data-weaver/models/{'{modelId}'}</code> - Retrieves details for a specific model.</li>
+                  <li><code>GET /api/data-weaver/models/{'{modelId}'}/objects</code> - Retrieves all data objects for a specific model.</li>
+                  <li><code>GET /api/data-weaver/models/{'{modelId}'}/objects/{'{objectId}'}</code> - Retrieves a specific data object.</li>
+                </ul>
+                <p className="mt-3 text-xs text-muted-foreground">
+                  <Info size={14} className="inline mr-1 relative -top-px" />
+                  <strong>Important Note:</strong> The current application prototype uses client-side browser storage (localStorage) for data persistence. The API endpoints listed above are illustrative examples. For these APIs to serve data dynamically from a persistent backend store (like a database), further backend development to connect to such a data source would be required.
+                </p>
+              </AlertDescription>
+            </Alert>
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
+
 
       {filteredModels.length === 0 ? (
          <Card className="col-span-full text-center py-12">
