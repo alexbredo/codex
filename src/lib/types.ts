@@ -15,6 +15,7 @@ export interface Model {
   name: string;
   description?: string;
   properties: Property[];
+  displayPropertyName?: string; // Property to use for display purposes
 }
 
 export interface DataObject {

@@ -30,7 +30,7 @@ import type { ModelFormValues } from '@/components/models/model-form-schema';
 import { modelFormSchema } from '@/components/models/model-form-schema';
 import { useData } from '@/contexts/data-context';
 import type { Model, Property } from '@/lib/types';
-import { PlusCircle, Edit, Trash2, Eye, DatabaseZap, ListChecks, Search, Info, Code2 } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, Eye, DatabaseZap, ListChecks, Search, Info, Code2, StickyNote } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
 import { Input } from '@/components/ui/input';
@@ -48,6 +48,7 @@ export default function ModelsPage() {
     defaultValues: {
       name: '',
       description: '',
+      displayPropertyName: '',
       properties: [{ id: crypto.randomUUID(), name: '', type: 'string', required: false, relationshipType: 'one' }],
     },
   });
@@ -58,6 +59,7 @@ export default function ModelsPage() {
       form.reset({
         name: editingModel.name,
         description: editingModel.description || '',
+        displayPropertyName: editingModel.displayPropertyName || '',
         properties: editingModel.properties.map(p => ({ 
             ...p, 
             id: p.id || crypto.randomUUID(),
@@ -68,6 +70,7 @@ export default function ModelsPage() {
       form.reset({
         name: '',
         description: '',
+        displayPropertyName: '',
         properties: [{ id: crypto.randomUUID(), name: '', type: 'string', required: false, relationshipType: 'one' }],
       });
     }
@@ -95,6 +98,7 @@ export default function ModelsPage() {
     const modelData = {
       name: values.name,
       description: values.description,
+      displayPropertyName: values.displayPropertyName || undefined, // Ensure it's undefined if empty
       properties: values.properties.map(p => ({
         id: p.id || crypto.randomUUID(),
         name: p.name,
@@ -207,6 +211,11 @@ export default function ModelsPage() {
                 <CardDescription className="h-10 overflow-hidden text-ellipsis">
                   {model.description || 'No description provided.'}
                 </CardDescription>
+                 {model.displayPropertyName && (
+                  <div className="text-xs text-muted-foreground pt-1 flex items-center">
+                    <StickyNote size={12} className="mr-1.5 text-primary/70" /> Display As: <span className="font-medium text-primary/90 ml-1">{model.displayPropertyName}</span>
+                  </div>
+                )}
               </CardHeader>
               <CardContent className="flex-grow">
                 <h4 className="font-semibold mb-2 text-sm">Properties ({model.properties.length}):</h4>
@@ -269,6 +278,7 @@ export default function ModelsPage() {
             form.reset({ // Reset form to pristine state for creation
                  name: '',
                  description: '',
+                 displayPropertyName: '',
                  properties: [{ id: crypto.randomUUID(), name: '', type: 'string', required: false, relationshipType: 'one' }],
             });
           }

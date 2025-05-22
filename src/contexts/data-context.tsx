@@ -9,7 +9,7 @@ interface DataContextType {
   models: Model[];
   objects: Record<string, DataObject[]>;
   addModel: (modelData: Omit<Model, 'id'>) => Model;
-  updateModel: (modelId: string, updates: Partial<Omit<Model, 'id' | 'properties'>> & { properties?: Property[] }) => Model | undefined;
+  updateModel: (modelId: string, updates: Partial<Omit<Model, 'id' | 'properties' | 'displayPropertyName'>> & { properties?: Property[], displayPropertyName?: string }) => Model | undefined;
   deleteModel: (modelId: string) => void;
   getModelById: (modelId: string) => Model | undefined;
   getModelByName: (name: string) => Model | undefined;
@@ -28,6 +28,7 @@ const initialModels: Model[] = [
     id: 'clx18090o0000qp08j9q1x0y0',
     name: 'Product',
     description: 'Represents products in the inventory.',
+    displayPropertyName: 'Name',
     properties: [
       { id: 'clx18090p0001qp08w6k2y0s3', name: 'Name', type: 'string', required: true },
       { id: 'clx18090p0002qp08l3c8k7j1', name: 'Price', type: 'number', required: true },
@@ -39,6 +40,7 @@ const initialModels: Model[] = [
     id: 'clx18090q0005qp08m2n7b1d5',
     name: 'Customer',
     description: 'Represents customers of the business.',
+    displayPropertyName: 'First Name',
     properties: [
       { id: 'clx18090q0006qp08t0u8v9w6', name: 'First Name', type: 'string', required: true },
       { id: 'clx18090q0007qp08a2b3c4d7', name: 'Last Name', type: 'string', required: true },
@@ -113,10 +115,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   }, [objects, isReady]);
 
-  const addModel = useCallback((modelData: Omit<Model, 'id'>): Model => {
+  const addModel = useCallback((modelData: Omit<Model, 'id' | 'displayPropertyName'> & { displayPropertyName?: string }): Model => {
     const newModel: Model = { 
       ...modelData, 
       id: crypto.randomUUID(),
+      displayPropertyName: modelData.displayPropertyName,
       properties: modelData.properties.map(p => ({
         ...p,
         id: p.id || crypto.randomUUID(),
@@ -127,7 +130,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return newModel;
   }, []);
 
-  const updateModel = useCallback((modelId: string, updates: Partial<Omit<Model, 'id' | 'properties'>> & { properties?: Property[] }): Model | undefined => {
+  const updateModel = useCallback((modelId: string, updates: Partial<Omit<Model, 'id' | 'properties' | 'displayPropertyName'>> & { properties?: Property[], displayPropertyName?: string }): Model | undefined => {
     let updatedModel: Model | undefined;
     setModels((prevModels) =>
       prevModels.map((model) => {
@@ -138,7 +141,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
             relationshipType: p.type === 'relationship' ? (p.relationshipType || 'one') : undefined,
           })) : model.properties;
           
-          updatedModel = { ...model, ...updates, properties: newProperties };
+          updatedModel = { 
+            ...model, 
+            ...updates, 
+            properties: newProperties,
+            displayPropertyName: 'displayPropertyName' in updates ? updates.displayPropertyName : model.displayPropertyName
+          };
           return updatedModel;
         }
         return model;

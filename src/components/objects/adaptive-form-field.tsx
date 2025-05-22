@@ -35,15 +35,28 @@ interface AdaptiveFormFieldProps<TFieldValues extends FieldValues = FieldValues>
   property: Property;
 }
 
-const getDisplayNameProperty = (model?: Model): string => {
+const getDisplayPropertyName = (model?: Model): string => {
   if (!model) return 'id';
+  if (model.displayPropertyName) return model.displayPropertyName;
+  
   const nameProp = model.properties.find(p => p.name.toLowerCase() === 'name');
   if (nameProp) return nameProp.name;
+  
   const titleProp = model.properties.find(p => p.name.toLowerCase() === 'title');
   if (titleProp) return titleProp.name;
-  // Fallback to the first string property, or just ID
+  
   const firstStringProp = model.properties.find(p => p.type === 'string');
   return firstStringProp ? firstStringProp.name : 'id';
+};
+
+const getObjectDisplayValue = (obj: DataObject | undefined, model: Model | undefined, defaultId?: string): string => {
+    if (!obj || !model) return defaultId || 'N/A';
+    const displayPropName = getDisplayPropertyName(model);
+    const value = obj[displayPropName];
+     if (value !== null && typeof value !== 'undefined' && String(value).trim() !== '') {
+        return String(value);
+    }
+    return defaultId || obj.id.slice(-6);
 };
 
 const INTERNAL_NONE_SELECT_VALUE = "__EMPTY_SELECTION_VALUE__";
@@ -111,10 +124,9 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
           return <p className="text-destructive">Configuration error: Related model info missing.</p>;
         }
         
-        const displayNameProperty = getDisplayNameProperty(relatedModel);
         const options: MultiSelectOption[] = relatedObjects.map((obj: DataObject) => ({
           value: obj.id,
-          label: String(obj[displayNameProperty] ?? obj.id),
+          label: getObjectDisplayValue(obj, relatedModel, obj.id),
         }));
 
         if (property.relationshipType === 'many') {
@@ -128,15 +140,13 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
             />
           );
         } else { // 'one' or undefined
-          // Map empty string (form value for "None") to internal value for SelectItem
           const currentSelectValue = controllerField.value === "" ? INTERNAL_NONE_SELECT_VALUE : controllerField.value;
           return (
             <Select
               onValueChange={(value) => {
-                // Map internal "None" value back to empty string for form
                 controllerField.onChange(value === INTERNAL_NONE_SELECT_VALUE ? "" : value);
               }}
-              value={currentSelectValue || ""} // if currentSelectValue is undefined (initial), pass "" to show placeholder
+              value={currentSelectValue || ""} 
             >
               <SelectTrigger>
                 <SelectValue placeholder={`Select ${relatedModel.name}`} />

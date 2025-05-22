@@ -48,15 +48,30 @@ import Link from 'next/link';
 
 const ITEMS_PER_PAGE = 10;
 
-const getDisplayNameProperty = (model?: Model): string => {
-  if (!model) return 'id';
+const getDisplayPropertyName = (model?: Model): string => {
+  if (!model) return 'id'; // Fallback for no model
+  if (model.displayPropertyName) return model.displayPropertyName;
+  
   const nameProp = model.properties.find(p => p.name.toLowerCase() === 'name');
   if (nameProp) return nameProp.name;
+  
   const titleProp = model.properties.find(p => p.name.toLowerCase() === 'title');
   if (titleProp) return titleProp.name;
+  
   const firstStringProp = model.properties.find(p => p.type === 'string');
-  return firstStringProp ? firstStringProp.name : 'id';
+  return firstStringProp ? firstStringProp.name : 'id'; // Final fallback to 'id'
 };
+
+const getObjectDisplayValue = (obj: DataObject | undefined, model: Model | undefined, defaultId?: string): string => {
+    if (!obj || !model) return defaultId || 'N/A';
+    const displayPropName = getDisplayPropertyName(model);
+    const value = obj[displayPropName];
+    if (value !== null && typeof value !== 'undefined' && String(value).trim() !== '') {
+        return String(value);
+    }
+    return defaultId || obj.id.slice(-6); // Fallback to ID if displayProp value is empty/null
+};
+
 
 export default function DataObjectsPage() {
   const router = useRouter();
@@ -64,7 +79,7 @@ export default function DataObjectsPage() {
   const modelId = params.modelId as string;
   
   const { 
-    models: allModels, // Renamed to avoid conflict
+    models: allModels, 
     getModelById, 
     getObjectsByModelId, 
     addObject, 
@@ -75,7 +90,7 @@ export default function DataObjectsPage() {
   } = useData();
   const { toast } = useToast();
 
-  const [currentModel, setCurrentModel] = useState<Model | null>(null); // Renamed from model to currentModel
+  const [currentModel, setCurrentModel] = useState<Model | null>(null); 
   const [objects, setObjects] = useState<DataObject[]>([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingObject, setEditingObject] = useState<DataObject | null>(null);
@@ -207,13 +222,12 @@ export default function DataObjectsPage() {
         if (!property.relatedModelId) return <span className="text-destructive">Config Err</span>;
         const relatedModel = getModelById(property.relatedModelId);
         if (!relatedModel) return <span className="text-destructive">Model N/A</span>;
-        const displayNameProp = getDisplayNameProperty(relatedModel);
 
         if (property.relationshipType === 'many') {
           if (!Array.isArray(value) || value.length === 0) return <span className="text-muted-foreground">N/A</span>;
           const relatedItemNames = value.map(itemId => {
             const relatedObj = getObjectsByModelId(property.relatedModelId!).find(o => o.id === itemId);
-            return relatedObj ? String(relatedObj[displayNameProp] ?? itemId.slice(-6)) : `ID: ...${itemId.slice(-6)}`;
+            return getObjectDisplayValue(relatedObj, relatedModel, `ID: ...${itemId.slice(-6)}`);
           });
           if (relatedItemNames.length > 2) {
             return <Badge variant="outline" title={relatedItemNames.join(', ')}>{relatedItemNames.length} {relatedModel.name}s</Badge>;
@@ -221,7 +235,8 @@ export default function DataObjectsPage() {
           return relatedItemNames.map(name => <Badge key={name} variant="outline" className="mr-1 mb-1">{name}</Badge>);
         } else { // 'one'
           const relatedObj = getObjectsByModelId(property.relatedModelId).find(o => o.id === value);
-          return relatedObj ? <Badge variant="outline">{String(relatedObj[displayNameProp] ?? String(value).slice(-6))}</Badge> : <span className="text-xs font-mono text-blue-600" title={String(value)}>ID: ...{String(value).slice(-6)}</span>;
+          const displayVal = getObjectDisplayValue(relatedObj, relatedModel, String(value).slice(-6));
+          return relatedObj ? <Badge variant="outline">{displayVal}</Badge> : <span className="text-xs font-mono text-blue-600" title={String(value)}>ID: ...{String(value).slice(-6)}</span>;
         }
       default:
         const strValue = String(value);
@@ -240,7 +255,7 @@ export default function DataObjectsPage() {
     }> = [];
 
     allModels.forEach(otherModel => {
-      if (otherModel.id === currentModel.id) return; // Skip self-references for now
+      if (otherModel.id === currentModel.id) return; 
 
       otherModel.properties.forEach(prop => {
         if (prop.type === 'relationship' && prop.relatedModelId === currentModel.id) {
@@ -259,7 +274,7 @@ export default function DataObjectsPage() {
                   });
                 }
               });
-            } else if (prop.relationshipType === 'one' && typeof linkedValue === 'string') {
+            } else if (prop.relationshipType === 'one' && typeof linkedValue === 'string' && linkedValue) {
               const target = objects.find(o => o.id === linkedValue);
                if (target) {
                   relations.push({
@@ -413,12 +428,12 @@ export default function DataObjectsPage() {
             {currentModel.name} Objects Referenced By Others
           </h2>
           <Accordion type="multiple" className="w-full space-y-2">
-            {objects.filter(obj => incomingRelations.some(ir => ir.referencedTargetObject.id === obj.id)) // Only show current model objects that ARE referenced
+            {objects.filter(obj => incomingRelations.some(ir => ir.referencedTargetObject.id === obj.id)) 
               .map(currentObj => {
               const relationsForThisObject = incomingRelations.filter(ir => ir.referencedTargetObject.id === currentObj.id);
               if (relationsForThisObject.length === 0) return null;
 
-              const currentObjDisplayName = String(currentObj[getDisplayNameProperty(currentModel)] ?? currentObj.id.slice(-6));
+              const currentObjDisplay = getObjectDisplayValue(currentObj, currentModel);
 
               return (
                 <Card key={currentObj.id} className="bg-card/50">
@@ -426,7 +441,7 @@ export default function DataObjectsPage() {
                     <AccordionTrigger className="px-4 py-3 hover:no-underline">
                       <div className="flex items-center">
                         <Users className="h-5 w-5 mr-2 text-muted-foreground" />
-                        <span>Object: <strong className="text-primary">{currentObjDisplayName}</strong> is referenced by:</span>
+                        <span>Object: <strong className="text-primary">{currentObjDisplay}</strong> is referenced by:</span>
                       </div>
                     </AccordionTrigger>
                     <AccordionContent className="px-4 pb-4">
@@ -449,11 +464,11 @@ export default function DataObjectsPage() {
                             </h4>
                             <ul className="list-disc list-inside pl-2 text-xs space-y-1">
                               {group.items.map(item => {
-                                const displayName = String(item.obj[getDisplayNameProperty(group.model)] ?? item.obj.id.slice(-6));
+                                const referencingObjDisplay = getObjectDisplayValue(item.obj, group.model);
                                 return (
                                   <li key={item.obj.id}>
                                      <Link href={`/data/${group.model.id}?edit=${item.obj.id}`} className="hover:underline">
-                                        "{displayName}"
+                                        "{referencingObjDisplay}"
                                      </Link>
                                      <span className="text-muted-foreground"> (via property: {item.prop.name})</span>
                                   </li>

@@ -219,9 +219,23 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
 
   const modelsForRelations = models.filter(m => !existingModel || m.id !== existingModel.id);
 
+  const currentProperties = useWatch({ control: form.control, name: "properties" });
+  const stringOrNumberProperties = (currentProperties || [])
+    .filter(p => p.type === 'string' || p.type === 'number')
+    .map(p => p.name);
+
+  const handleFormSubmit = (values: ModelFormValues) => {
+    // Ensure displayPropertyName is valid or cleared
+    if (values.displayPropertyName && !values.properties.find(p => p.name === values.displayPropertyName && (p.type === 'string' || p.type === 'number'))) {
+      values.displayPropertyName = undefined; 
+    }
+    onSubmit(values);
+  };
+
+
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col h-full">
+      <form onSubmit={form.handleSubmit(handleFormSubmit)} className="flex flex-col h-full">
         <ScrollArea className="flex-grow">
           <div className="space-y-8 p-6">
             <Card>
@@ -252,6 +266,34 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                       <FormControl>
                         <Textarea placeholder="A brief description of what this model represents." {...field} />
                       </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="displayPropertyName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Display Property (Optional)</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="-- Default (ID or Name/Title) --" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="">-- Default (ID or Name/Title) --</SelectItem>
+                          {stringOrNumberProperties.map((propName) => (
+                            <SelectItem key={propName} value={propName}>
+                              {propName}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormDescription>
+                        Choose a string or number property to represent this model's objects in lists or relationships.
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
