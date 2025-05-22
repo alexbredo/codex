@@ -2,10 +2,9 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -38,15 +37,16 @@ import { useData } from '@/contexts/data-context';
 import type { Model, DataObject, Property } from '@/lib/types';
 import { createObjectFormSchema } from '@/components/objects/object-form-schema';
 import ObjectForm from '@/components/objects/object-form';
-import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, Users, Link2 } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { format } from 'date-fns';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import Link from 'next/link';
+import { z } from 'zod'; // Added Zod import
 
 const ITEMS_PER_PAGE = 10;
+const MAX_DIRECT_PROPERTIES_IN_TABLE = 3; // Max direct properties to show before incoming relations
 
 const getDisplayPropertyName = (model?: Model): string => {
   if (!model) return 'id'; // Fallback for no model
@@ -69,14 +69,23 @@ const getObjectDisplayValue = (obj: DataObject | undefined, model: Model | undef
     if (value !== null && typeof value !== 'undefined' && String(value).trim() !== '') {
         return String(value);
     }
-    return defaultId || obj.id.slice(-6); // Fallback to ID if displayProp value is empty/null
+    return defaultId || (obj.id ? obj.id.slice(-6) : 'N/A'); // Fallback to ID if displayProp value is empty/null
 };
+
+interface IncomingRelationColumn {
+  id: string; // e.g., `${referencingModel.id}-${referencingProperty.name}`
+  headerLabel: string; // e.g., `Ref. by ${referencingModel.name} (via ${referencingProperty.name})`
+  referencingModel: Model;
+  referencingProperty: Property;
+}
 
 
 export default function DataObjectsPage() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const modelId = params.modelId as string;
+  const editObjectId = searchParams.get('edit');
   
   const { 
     models: allModels, 
@@ -109,7 +118,9 @@ export default function DataObjectsPage() {
       const foundModel = getModelById(modelId);
       if (foundModel) {
         setCurrentModel(foundModel);
-        setObjects(getObjectsByModelId(modelId));
+        const modelObjects = getObjectsByModelId(modelId);
+        setObjects(modelObjects);
+        
         const defaultVals: Record<string, any> = {};
         foundModel.properties.forEach(prop => {
           defaultVals[prop.name] = prop.type === 'boolean' ? false : 
@@ -118,12 +129,22 @@ export default function DataObjectsPage() {
                                    undefined;
         });
         form.reset(defaultVals);
+
+        if (editObjectId) {
+          const objectToEdit = modelObjects.find(obj => obj.id === editObjectId);
+          if (objectToEdit) {
+            handleEdit(objectToEdit);
+          } else {
+            toast({ variant: "destructive", title: "Error", description: `Object with ID ${editObjectId} not found.` });
+          }
+        }
+
       } else {
         toast({ variant: "destructive", title: "Error", description: "Model not found." });
         router.push('/models');
       }
     }
-  }, [modelId, getModelById, getObjectsByModelId, isReady, toast, router, form]);
+  }, [modelId, getModelById, getObjectsByModelId, isReady, toast, router, form, editObjectId]);
 
 
   const handleCreateNew = () => {
@@ -164,6 +185,10 @@ export default function DataObjectsPage() {
       setObjects(getObjectsByModelId(currentModel.id)); 
       setIsFormOpen(false);
       form.reset();
+      // If there was an editObjectId, remove it from URL
+      if (editObjectId) {
+        router.replace(`/data/${modelId}`);
+      }
     } catch (error: any) {
       console.error(`Error saving ${currentModel.name}:`, error);
       if (error.errors) {
@@ -225,18 +250,32 @@ export default function DataObjectsPage() {
 
         if (property.relationshipType === 'many') {
           if (!Array.isArray(value) || value.length === 0) return <span className="text-muted-foreground">N/A</span>;
-          const relatedItemNames = value.map(itemId => {
+          const relatedItems = value.map(itemId => {
             const relatedObj = getObjectsByModelId(property.relatedModelId!).find(o => o.id === itemId);
-            return getObjectDisplayValue(relatedObj, relatedModel, `ID: ...${itemId.slice(-6)}`);
+            return {
+                id: itemId,
+                name: getObjectDisplayValue(relatedObj, relatedModel, `ID: ...${itemId.slice(-6)}`),
+                obj: relatedObj
+            };
           });
-          if (relatedItemNames.length > 2) {
-            return <Badge variant="outline" title={relatedItemNames.join(', ')}>{relatedItemNames.length} {relatedModel.name}s</Badge>;
+          if (relatedItems.length > 2) {
+            return <Badge variant="outline" title={relatedItems.map(i=>i.name).join(', ')}>{relatedItems.length} {relatedModel.name}(s)</Badge>;
           }
-          return relatedItemNames.map(name => <Badge key={name} variant="outline" className="mr-1 mb-1">{name}</Badge>);
+          return relatedItems.map(item => item.obj ? (
+            <Link key={item.id} href={`/data/${relatedModel.id}?edit=${item.obj.id}`} passHref legacyBehavior>
+              <a className="inline-block"><Badge variant="outline" className="mr-1 mb-1 hover:bg-secondary">{item.name}</Badge></a>
+            </Link>
+          ) : (
+            <Badge key={item.id} variant="outline" className="mr-1 mb-1">{item.name}</Badge>
+          ));
         } else { // 'one'
           const relatedObj = getObjectsByModelId(property.relatedModelId).find(o => o.id === value);
-          const displayVal = getObjectDisplayValue(relatedObj, relatedModel, String(value).slice(-6));
-          return relatedObj ? <Badge variant="outline">{displayVal}</Badge> : <span className="text-xs font-mono text-blue-600" title={String(value)}>ID: ...{String(value).slice(-6)}</span>;
+          const displayVal = getObjectDisplayValue(relatedObj, relatedModel, `ID: ...${String(value).slice(-6)}`);
+          return relatedObj ? (
+             <Link href={`/data/${relatedModel.id}?edit=${relatedObj.id}`} passHref legacyBehavior>
+                <a className="inline-block"><Badge variant="outline" className="hover:bg-secondary">{displayVal}</Badge></a>
+            </Link>
+          ) : <span className="text-xs font-mono text-blue-600" title={String(value)}>ID: ...{String(value).slice(-6)}</span>;
         }
       default:
         const strValue = String(value);
@@ -244,53 +283,26 @@ export default function DataObjectsPage() {
     }
   };
   
-  const incomingRelations = useMemo(() => {
+  const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects, isReady]);
+
+  const virtualIncomingRelationColumns = useMemo(() => {
     if (!currentModel || !isReady) return [];
-    const allDbObjects = getAllObjects();
-    const relations: Array<{
-      referencingModel: Model;
-      referencingProperty: Property;
-      referencingObject: DataObject;
-      referencedTargetObject: DataObject;
-    }> = [];
-
+    const columns: IncomingRelationColumn[] = [];
     allModels.forEach(otherModel => {
-      if (otherModel.id === currentModel.id) return; 
-
+      if (otherModel.id === currentModel.id) return;
       otherModel.properties.forEach(prop => {
         if (prop.type === 'relationship' && prop.relatedModelId === currentModel.id) {
-          const objectsOfOtherModel = allDbObjects[otherModel.id] || [];
-          objectsOfOtherModel.forEach(otherObj => {
-            const linkedValue = otherObj[prop.name];
-            if (prop.relationshipType === 'many' && Array.isArray(linkedValue)) {
-              linkedValue.forEach(linkedId => {
-                const target = objects.find(o => o.id === linkedId);
-                if (target) {
-                  relations.push({
-                    referencingModel: otherModel,
-                    referencingProperty: prop,
-                    referencingObject: otherObj,
-                    referencedTargetObject: target,
-                  });
-                }
-              });
-            } else if (prop.relationshipType === 'one' && typeof linkedValue === 'string' && linkedValue) {
-              const target = objects.find(o => o.id === linkedValue);
-               if (target) {
-                  relations.push({
-                    referencingModel: otherModel,
-                    referencingProperty: prop,
-                    referencingObject: otherObj,
-                    referencedTargetObject: target,
-                  });
-                }
-            }
+          columns.push({
+            id: `${otherModel.id}-${prop.name}`, // Unique ID for the column
+            headerLabel: `Ref. by ${otherModel.name} (via ${prop.name})`,
+            referencingModel: otherModel,
+            referencingProperty: prop,
           });
         }
       });
     });
-    return relations;
-  }, [currentModel, allModels, objects, getAllObjects, isReady]);
+    return columns;
+  }, [currentModel, allModels, isReady]);
 
 
   if (!isReady || !currentModel) {
@@ -300,6 +312,8 @@ export default function DataObjectsPage() {
       </div>
     );
   }
+  
+  const directPropertiesToShow = currentModel.properties.slice(0, MAX_DIRECT_PROPERTIES_IN_TABLE);
 
   return (
     <div className="container mx-auto py-8">
@@ -349,8 +363,11 @@ export default function DataObjectsPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                {currentModel.properties.slice(0,5).map((prop) => ( 
+                {directPropertiesToShow.map((prop) => ( 
                   <TableHead key={prop.id}>{prop.name}</TableHead>
+                ))}
+                {virtualIncomingRelationColumns.map((col) => (
+                  <TableHead key={col.id} className="text-xs">{col.headerLabel}</TableHead>
                 ))}
                 <TableHead className="text-right w-[150px]">Actions</TableHead>
               </TableRow>
@@ -358,11 +375,39 @@ export default function DataObjectsPage() {
             <TableBody>
               {paginatedObjects.map((obj) => (
                 <TableRow key={obj.id}>
-                  {currentModel.properties.slice(0,5).map((prop) => (
+                  {directPropertiesToShow.map((prop) => (
                     <TableCell key={`${obj.id}-${prop.id}`}>
                       {displayCellContent(obj, prop)}
                     </TableCell>
                   ))}
+                  {virtualIncomingRelationColumns.map((colDef) => {
+                    const referencingData = allDbObjects[colDef.referencingModel.id] || [];
+                    const linkedItems = referencingData.filter(refObj => {
+                      const linkedValue = refObj[colDef.referencingProperty.name];
+                      if (colDef.referencingProperty.relationshipType === 'many') {
+                        return Array.isArray(linkedValue) && linkedValue.includes(obj.id);
+                      }
+                      return linkedValue === obj.id;
+                    });
+
+                    if (linkedItems.length === 0) {
+                      return <TableCell key={colDef.id}><span className="text-muted-foreground">N/A</span></TableCell>;
+                    }
+                    
+                    return (
+                      <TableCell key={colDef.id} className="space-x-1 space-y-1">
+                        {linkedItems.map(item => (
+                          <Link key={item.id} href={`/data/${colDef.referencingModel.id}?edit=${item.id}`} passHref legacyBehavior>
+                            <a className="inline-block">
+                              <Badge variant="secondary" className="hover:bg-muted cursor-pointer">
+                                {getObjectDisplayValue(item, colDef.referencingModel)}
+                              </Badge>
+                            </a>
+                          </Link>
+                        ))}
+                      </TableCell>
+                    );
+                  })}
                   <TableCell className="text-right">
                     <Button variant="ghost" size="icon" onClick={() => handleEdit(obj)} className="mr-2 hover:text-primary">
                       <Edit className="h-4 w-4" />
@@ -420,75 +465,12 @@ export default function DataObjectsPage() {
         </div>
       )}
 
-      {/* Incoming Relations Section */}
-      {currentModel && incomingRelations.length > 0 && (
-        <section className="mt-12">
-          <h2 className="text-2xl font-semibold mb-4 text-primary flex items-center">
-            <Link2 className="mr-3 h-6 w-6" />
-            {currentModel.name} Objects Referenced By Others
-          </h2>
-          <Accordion type="multiple" className="w-full space-y-2">
-            {objects.filter(obj => incomingRelations.some(ir => ir.referencedTargetObject.id === obj.id)) 
-              .map(currentObj => {
-              const relationsForThisObject = incomingRelations.filter(ir => ir.referencedTargetObject.id === currentObj.id);
-              if (relationsForThisObject.length === 0) return null;
-
-              const currentObjDisplay = getObjectDisplayValue(currentObj, currentModel);
-
-              return (
-                <Card key={currentObj.id} className="bg-card/50">
-                  <AccordionItem value={currentObj.id} className="border-b-0">
-                    <AccordionTrigger className="px-4 py-3 hover:no-underline">
-                      <div className="flex items-center">
-                        <Users className="h-5 w-5 mr-2 text-muted-foreground" />
-                        <span>Object: <strong className="text-primary">{currentObjDisplay}</strong> is referenced by:</span>
-                      </div>
-                    </AccordionTrigger>
-                    <AccordionContent className="px-4 pb-4">
-                      <ul className="space-y-3">
-                        {relationsForThisObject.reduce<Array<{ model: Model; items: Array<{ prop: Property; obj: DataObject }> }>>((acc, rel) => {
-                          let group = acc.find(g => g.model.id === rel.referencingModel.id);
-                          if (!group) {
-                            group = { model: rel.referencingModel, items: [] };
-                            acc.push(group);
-                          }
-                          group.items.push({ prop: rel.referencingProperty, obj: rel.referencingObject });
-                          return acc;
-                        }, []).map(group => (
-                          <li key={group.model.id} className="border p-3 rounded-md bg-background">
-                            <h4 className="font-semibold text-sm mb-1">
-                              <Link href={`/data/${group.model.id}`} className="hover:underline text-primary">
-                                {group.model.name}
-                              </Link>
-                              :
-                            </h4>
-                            <ul className="list-disc list-inside pl-2 text-xs space-y-1">
-                              {group.items.map(item => {
-                                const referencingObjDisplay = getObjectDisplayValue(item.obj, group.model);
-                                return (
-                                  <li key={item.obj.id}>
-                                     <Link href={`/data/${group.model.id}?edit=${item.obj.id}`} className="hover:underline">
-                                        "{referencingObjDisplay}"
-                                     </Link>
-                                     <span className="text-muted-foreground"> (via property: {item.prop.name})</span>
-                                  </li>
-                                );
-                              })}
-                            </ul>
-                          </li>
-                        ))}
-                      </ul>
-                    </AccordionContent>
-                  </AccordionItem>
-                </Card>
-              );
-            })}
-          </Accordion>
-        </section>
-      )}
-
-
-      <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+      <Dialog open={isFormOpen} onOpenChange={(isOpen) => {
+          setIsFormOpen(isOpen);
+          if (!isOpen && editObjectId) { // If dialog closes and we were editing via URL param
+            router.replace(`/data/${modelId}`); // Clear the edit param
+          }
+        }}>
         <DialogContent className="sm:max-w-[600px] max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>{editingObject ? `Edit ${currentModel.name}` : `Create New ${currentModel.name}`}</DialogTitle>
@@ -510,3 +492,5 @@ export default function DataObjectsPage() {
     </div>
   );
 }
+
+    
