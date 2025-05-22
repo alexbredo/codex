@@ -87,7 +87,7 @@ function PropertyFields({
     <Accordion 
       type="multiple" 
       className="w-full space-y-2"
-      defaultValue={fields.map(field => field.fieldId)} // Keep all items open by default
+      defaultValue={[]} // Changed to empty array for collapsed by default
     >
       {fields.map((field, index) => {
         const currentPropertyType = form.watch(`properties.${index}.type`);
