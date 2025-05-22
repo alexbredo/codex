@@ -32,7 +32,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { format } from 'date-fns';
 import Link from 'next/link';
-import { z } from 'zod'; // Imported z
+import { z } from 'zod';
 
 const ITEMS_PER_PAGE = 10;
 const MAX_DIRECT_PROPERTIES_IN_TABLE = 3;
@@ -180,6 +180,9 @@ export default function DataObjectsPage() {
   const displayCellContent = (obj: DataObject, property: Property) => {
     const value = obj[property.name];
     if (value === null || typeof value === 'undefined' || (Array.isArray(value) && value.length === 0)) {
+      if (property.type === 'number' && property.unit) {
+        return <span className="text-muted-foreground">N/A ({property.unit})</span>;
+      }
       return <span className="text-muted-foreground">N/A</span>;
     }
 
@@ -194,10 +197,14 @@ export default function DataObjectsPage() {
         }
       case 'number':
         const precision = property.precision === undefined ? 2 : property.precision;
-        const unit = property.unit || '';
-        let numValue = parseFloat(value);
-        if (isNaN(numValue)) return <span className="text-muted-foreground">N/A</span>;
-        return `${numValue.toFixed(precision)}${unit ? ` ${unit}` : ''}`;
+        const unitText = property.unit || '';
+        const parsedValue = parseFloat(value);
+
+        if (isNaN(parsedValue)) {
+          const displayUnit = unitText ? ` (${unitText})` : '';
+          return <span className="text-muted-foreground">N/A{displayUnit}</span>;
+        }
+        return `${parsedValue.toFixed(precision)}${unitText ? ` ${unitText}` : ''}`;
       case 'relationship':
         if (!property.relatedModelId) return <span className="text-destructive">Config Err</span>;
         const relatedModel = getModelById(property.relatedModelId);
@@ -421,3 +428,4 @@ export default function DataObjectsPage() {
     </div>
   );
 }
+
