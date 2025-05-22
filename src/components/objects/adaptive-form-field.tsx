@@ -46,6 +46,7 @@ const getDisplayNameProperty = (model?: Model): string => {
   return firstStringProp ? firstStringProp.name : 'id';
 };
 
+const INTERNAL_NONE_SELECT_VALUE = "__EMPTY_SELECTION_VALUE__";
 
 export default function AdaptiveFormField<TFieldValues extends FieldValues = FieldValues>({
   control,
@@ -127,13 +128,21 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
             />
           );
         } else { // 'one' or undefined
+          // Map empty string (form value for "None") to internal value for SelectItem
+          const currentSelectValue = controllerField.value === "" ? INTERNAL_NONE_SELECT_VALUE : controllerField.value;
           return (
-            <Select onValueChange={controllerField.onChange} value={controllerField.value || ""}>
+            <Select
+              onValueChange={(value) => {
+                // Map internal "None" value back to empty string for form
+                controllerField.onChange(value === INTERNAL_NONE_SELECT_VALUE ? "" : value);
+              }}
+              value={currentSelectValue || ""} // if currentSelectValue is undefined (initial), pass "" to show placeholder
+            >
               <SelectTrigger>
                 <SelectValue placeholder={`Select ${relatedModel.name}`} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">-- None --</SelectItem>
+                <SelectItem value={INTERNAL_NONE_SELECT_VALUE}>-- None --</SelectItem>
                 {options.map((option) => (
                   <SelectItem key={option.value} value={option.value}>
                     {option.label}
