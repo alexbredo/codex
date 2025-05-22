@@ -10,6 +10,8 @@ export interface Property {
   relationshipType?: 'one' | 'many'; // For relationship type
   unit?: string; // For number type
   precision?: number; // For number type
+  autoSetOnCreate?: boolean; // For date type: set to current date on object creation
+  autoSetOnUpdate?: boolean; // For date type: set to current date on object update
 }
 
 export interface Model {
@@ -27,5 +29,9 @@ export interface DataObject {
 
 // For forms
 export type ModelFormData = Omit<Model, 'id'>;
-export type PropertyFormData = Omit<Property, 'id'> & { relationshipType?: 'one' | 'many' };
+export type PropertyFormData = Omit<Property, 'id'> & { 
+  relationshipType?: 'one' | 'many',
+  autoSetOnCreate?: boolean,
+  autoSetOnUpdate?: boolean,
+};
 export type ObjectFormData = Omit<DataObject, 'id'>;

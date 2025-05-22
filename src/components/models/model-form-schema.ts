@@ -12,7 +12,9 @@ export const propertyFormSchema = z.object({
   required: z.boolean().optional().default(false),
   relationshipType: z.enum(relationshipTypes).optional().default('one'),
   unit: z.string().optional(),
-  precision: z.coerce.number().int().min(0).max(10).optional(), // Default will be handled in form or context
+  precision: z.coerce.number().int().min(0).max(10).optional(),
+  autoSetOnCreate: z.boolean().optional().default(false),
+  autoSetOnUpdate: z.boolean().optional().default(false),
 }).refine(data => {
   if (data.type === 'relationship' && !data.relatedModelId) {
     return false;
@@ -45,6 +47,14 @@ export const propertyFormSchema = z.object({
 }, {
   message: "Precision can only be set for number type properties.",
   path: ["precision"],
+}).refine(data => {
+  if (data.type !== 'date' && (data.autoSetOnCreate || data.autoSetOnUpdate)) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Auto-set options are only available for date type properties.",
+  path: ["type"], // General path, or could target autoSetOnCreate/autoSetOnUpdate
 });
 
 export const modelFormSchema = z.object({

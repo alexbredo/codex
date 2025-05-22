@@ -28,7 +28,7 @@ export default function CreateObjectPage() {
 
   const form = useForm<Record<string, any>>({
     resolver: zodResolver(dynamicSchema),
-    defaultValues: {}, // Default values will be set by useEffect
+    defaultValues: {}, 
   });
 
   useEffect(() => {
@@ -37,11 +37,16 @@ export default function CreateObjectPage() {
       if (foundModel) {
         setCurrentModel(foundModel);
         const defaultValues: Record<string, any> = {};
+        const currentDateISO = new Date().toISOString();
         foundModel.properties.forEach(prop => {
-          defaultValues[prop.name] = prop.type === 'boolean' ? false :
-                                   prop.type === 'date' ? null :
-                                   prop.relationshipType === 'many' ? [] :
-                                   undefined;
+          if (prop.type === 'date' && prop.autoSetOnCreate) {
+            defaultValues[prop.name] = currentDateISO;
+          } else {
+            defaultValues[prop.name] = prop.type === 'boolean' ? false :
+                                     prop.type === 'date' ? null :
+                                     prop.relationshipType === 'many' ? [] :
+                                     undefined;
+          }
         });
         form.reset(defaultValues);
       } else {
@@ -54,8 +59,19 @@ export default function CreateObjectPage() {
 
   const onSubmit = (values: Record<string, any>) => {
     if (!currentModel) return;
+
+    const processedValues = { ...values };
+    const currentDateISO = new Date().toISOString();
+
+    currentModel.properties.forEach(prop => {
+      if (prop.type === 'date' && prop.autoSetOnCreate) {
+        // Ensure it's set, even if user cleared it or it wasn't set by defaultValues effect yet
+        processedValues[prop.name] = values[prop.name] || currentDateISO; 
+      }
+    });
+
     try {
-      addObject(currentModel.id, values);
+      addObject(currentModel.id, processedValues);
       toast({ title: `${currentModel.name} Created`, description: `A new ${currentModel.name.toLowerCase()} has been created.` });
       router.push(`/data/${currentModel.id}`);
     } catch (error: any) {
@@ -105,5 +121,3 @@ export default function CreateObjectPage() {
     </div>
   );
 }
-
-    

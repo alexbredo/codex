@@ -66,11 +66,14 @@ function PropertyFields({
       form.setValue(`properties.${index}.unit`, undefined);
       form.setValue(`properties.${index}.precision`, undefined);
     } else {
-      // Set default precision if not already set
       const currentPrecision = form.getValues(`properties.${index}.precision`);
       if (currentPrecision === undefined) {
         form.setValue(`properties.${index}.precision`, 2);
       }
+    }
+    if (value !== 'date') {
+      form.setValue(`properties.${index}.autoSetOnCreate`, false);
+      form.setValue(`properties.${index}.autoSetOnUpdate`, false);
     }
   };
   
@@ -79,7 +82,7 @@ function PropertyFields({
       {fields.map((field, index) => {
         const currentPropertyType = form.watch(`properties.${index}.type`);
         return (
-          <Card key={field.id} className="relative bg-background/50 p-0">
+          <Card key={field.fieldId} className="relative bg-background/50 p-0">
             <CardHeader className="p-4">
               <div className="flex justify-between items-center">
                 <CardTitle className="text-lg">Property #{index + 1}</CardTitle>
@@ -112,7 +115,7 @@ function PropertyFields({
               <FormField
                 control={control}
                 name={`properties.${index}.type`}
-                render={({ field: typeField }) => ( // Renamed field to typeField
+                render={({ field: typeField }) => ( 
                   <FormItem>
                     <FormLabel>Type</FormLabel>
                     <Select
@@ -216,24 +219,59 @@ function PropertyFields({
                             max="10" 
                             placeholder="e.g., 2" 
                             {...field} 
-                            value={field.value ?? 2} // Default to 2 visually if undefined
+                            value={field.value ?? 2}
                             onChange={e => {
                               const valStr = e.target.value;
                               if (valStr === "") {
-                                field.onChange(undefined); // Allows default to kick in
+                                field.onChange(undefined); 
                               } else {
                                 const num = parseInt(valStr, 10);
-                                if (!isNaN(num)) {
-                                   field.onChange(num);
-                                }
-                                // If input is invalid (e.g. "abc"), num is NaN.
-                                // We don't call field.onChange, so react-hook-form keeps the last valid state or undefined.
-                                // Zod validation will catch this if the form is submitted with invalid text.
+                                field.onChange(isNaN(num) ? undefined : num);
                               }
                             }}
                           />
                         </FormControl>
                         <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </>
+              )}
+              {currentPropertyType === 'date' && (
+                <>
+                  <FormField
+                    control={form.control}
+                    name={`properties.${index}.autoSetOnCreate`}
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                        <FormControl>
+                          <Checkbox
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
+                        <div className="space-y-0.5 leading-none">
+                          <FormLabel className="text-sm">Auto-set on Create</FormLabel>
+                          <FormDescription className="text-xs">Set to current date when a new object is created.</FormDescription>
+                        </div>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name={`properties.${index}.autoSetOnUpdate`}
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                        <FormControl>
+                          <Checkbox
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
+                        <div className="space-y-0.5 leading-none">
+                          <FormLabel className="text-sm">Auto-set on Update</FormLabel>
+                          <FormDescription className="text-xs">Set to current date when an object is updated.</FormDescription>
+                        </div>
                       </FormItem>
                     )}
                   />
@@ -274,7 +312,9 @@ function PropertyFields({
             required: false, 
             relationshipType: 'one', 
             unit: undefined, 
-            precision: undefined // Will be defaulted to 2 visually and on type change
+            precision: undefined,
+            autoSetOnCreate: false,
+            autoSetOnUpdate: false,
         } as PropertyFormValues)}
         className="mt-2 w-full"
       >
@@ -290,7 +330,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
   const fieldArray = useFieldArray({
     control: form.control,
     name: 'properties',
-    keyName: "fieldId" // Changed from default "id" to avoid conflict with property's own "id"
+    keyName: "fieldId" 
   });
 
   const modelsForRelations = models.filter(m => !existingModel || m.id !== existingModel.id);
@@ -299,42 +339,40 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
 
   const displayPropertyOptions: MultiSelectOption[] = useMemo(() => {
     return (currentProperties || [])
-      .filter(p => p.type === 'string' || p.type === 'number' || p.type === 'date')
+      .filter(p => p.name && (p.type === 'string' || p.type === 'number' || p.type === 'date'))
       .map(p => ({ value: p.name, label: p.name }));
   }, [currentProperties]);
   
   const selectedDisplayPropertyNamesForSelect = useMemo(() => {
     const currentSelection = form.getValues("displayPropertyNames");
     if (!currentSelection || currentSelection.length === 0) {
-      return INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE;
+      return [INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE];
     }
-    // For multi-select, this logic might need adjustment if we switch to single select again
-    return currentSelection[0] || INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE;
+    return currentSelection;
   }, [form]);
 
 
   const handleFormSubmit = (values: ModelFormValues) => {
-    // Ensure displayPropertyNames are valid
-    if (values.displayPropertyNames && values.displayPropertyNames.length > 0) {
-        values.displayPropertyNames = values.displayPropertyNames.filter(dpName => 
-            dpName !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE &&
-            values.properties.some(p => p.name === dpName && (p.type === 'string' || p.type === 'number' || p.type === 'date'))
-        );
-        if (values.displayPropertyNames.length === 0) {
-            values.displayPropertyNames = undefined;
-        }
-    } else {
+    if (values.displayPropertyNames && values.displayPropertyNames.includes(INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE)) {
+        values.displayPropertyNames = values.displayPropertyNames.filter(dpName => dpName !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
+    }
+    if (values.displayPropertyNames && values.displayPropertyNames.length === 0) {
         values.displayPropertyNames = undefined;
     }
     
-    // Ensure unit and precision are only set for number types
-    // and precision has a default if not set by user but type is number
     values.properties = values.properties.map(prop => {
+      const finalProp = { ...prop };
       if (prop.type !== 'number') {
-        return { ...prop, unit: undefined, precision: undefined };
+        finalProp.unit = undefined;
+        finalProp.precision = undefined;
       } else {
-        return { ...prop, precision: prop.precision === undefined ? 2 : prop.precision };
+        finalProp.precision = prop.precision === undefined ? 2 : prop.precision;
       }
+      if (prop.type !== 'date') {
+        finalProp.autoSetOnCreate = false;
+        finalProp.autoSetOnUpdate = false;
+      }
+      return finalProp;
     });
     onSubmit(values);
   };
@@ -382,16 +420,19 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                 <FormItem>
                   <FormLabel>Display Properties (Optional)</FormLabel>
                   <MultiSelectAutocomplete
-                    options={displayPropertyOptions}
-                    selected={field.value?.filter(val => val !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE) || []}
+                    options={[{value: INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE, label: "-- Default (Name/Title/ID) --"}, ...displayPropertyOptions]}
+                    selected={selectedDisplayPropertyNamesForSelect}
                     onChange={(selectedValues) => {
-                      const validSelected = selectedValues.filter(val =>
-                        (currentProperties || []).some(p => p.name === val && (p.type === 'string' || p.type === 'number' || p.type === 'date'))
-                      );
-                      field.onChange(validSelected.length > 0 ? validSelected : []); // Store empty array if nothing valid selected
+                      if (selectedValues.includes(INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE) && selectedValues.length > 1) {
+                        field.onChange(selectedValues.filter(v => v !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE));
+                      } else if (selectedValues.length === 0 || (selectedValues.length === 1 && selectedValues[0] === INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE)) {
+                         field.onChange([]); // Represent "-- Default --" as empty array internally
+                      } else {
+                        field.onChange(selectedValues);
+                      }
                     }}
-                    placeholder="-- Default (Name/Title/ID) --"
-                    emptyIndicator="No string/number/date properties available."
+                    placeholder="Select properties..."
+                    emptyIndicator={displayPropertyOptions.length === 0 ? "No string/number/date properties available." : "No matching properties."}
                   />
                   <FormDescription>
                     Choose string, number, or date properties to represent this model's objects. They will be shown concatenated.
@@ -422,5 +463,3 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     </Form>
   );
 }
-
-    

@@ -32,7 +32,7 @@ export default function EditObjectPage() {
 
   const form = useForm<Record<string, any>>({
     resolver: zodResolver(dynamicSchema),
-    defaultValues: {}, // Default values will be set by useEffect
+    defaultValues: {}, 
   });
 
   useEffect(() => {
@@ -66,8 +66,18 @@ export default function EditObjectPage() {
 
   const onSubmit = (values: Record<string, any>) => {
     if (!currentModel || !editingObject) return;
+
+    const processedValues = { ...values };
+    const currentDateISO = new Date().toISOString();
+
+    currentModel.properties.forEach(prop => {
+      if (prop.type === 'date' && prop.autoSetOnUpdate) {
+        processedValues[prop.name] = currentDateISO;
+      }
+    });
+
     try {
-      updateObject(currentModel.id, editingObject.id, values);
+      updateObject(currentModel.id, editingObject.id, processedValues);
       toast({ title: `${currentModel.name} Updated`, description: `The ${currentModel.name.toLowerCase()} has been updated.` });
       router.push(`/data/${currentModel.id}`);
     } catch (error: any) {
@@ -118,5 +128,3 @@ export default function EditObjectPage() {
     </div>
   );
 }
-
-    

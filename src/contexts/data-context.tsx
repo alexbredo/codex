@@ -34,6 +34,8 @@ const initialModels: Model[] = [
       { id: 'clx18090p0002qp08l3c8k7j1', name: 'Price', type: 'number', required: true, unit: 'USD', precision: 2 },
       { id: 'clx18090p0003qp08q8b5d9e2', name: 'In Stock', type: 'boolean', relationshipType: 'one' },
       { id: 'clx18090q0004qp08q3z9h7x4', name: 'Release Date', type: 'date', relationshipType: 'one' },
+      { id: 'clx18090q000aqp08createdAt', name: 'Created At', type: 'date', autoSetOnCreate: true, autoSetOnUpdate: false },
+      { id: 'clx18090q000bqp08updatedAt', name: 'Last Updated', type: 'date', autoSetOnCreate: true, autoSetOnUpdate: true },
     ],
   },
   {
@@ -53,8 +55,8 @@ const initialModels: Model[] = [
 
 const initialObjects: Record<string, DataObject[]> = {
   'clx18090o0000qp08j9q1x0y0': [ // Products
-    { id: 'clx182dbs0000ui08nsl7y3kz', Name: 'Laptop Pro X', Price: 1499.99, 'In Stock': true, 'Release Date': '2023-05-15T00:00:00.000Z' },
-    { id: 'clx182dbt0001ui08opq8r9st', Name: 'Wireless Keyboard', Price: 79.50, 'In Stock': false, 'Release Date': '2022-11-01T00:00:00.000Z' },
+    { id: 'clx182dbs0000ui08nsl7y3kz', Name: 'Laptop Pro X', Price: 1499.99, 'In Stock': true, 'Release Date': '2023-05-15T00:00:00.000Z', 'Created At': '2023-05-01T10:00:00.000Z', 'Last Updated': '2023-05-10T12:30:00.000Z' },
+    { id: 'clx182dbt0001ui08opq8r9st', Name: 'Wireless Keyboard', Price: 79.50, 'In Stock': false, 'Release Date': '2022-11-01T00:00:00.000Z', 'Created At': '2022-10-20T14:00:00.000Z', 'Last Updated': '2022-11-05T16:45:00.000Z' },
   ],
   'clx18090q0005qp08m2n7b1d5': [ // Customers
     { id: 'clx182dbt0002ui08uvw9x0yz', 'First Name': 'Alice', 'Last Name': 'Johnson', Email: 'alice@example.com', 'Is Premium': true, 'Joined Date': '2021-01-20T00:00:00.000Z' },
@@ -87,6 +89,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         relationshipType: p.type === 'relationship' ? (p.relationshipType || 'one') : undefined,
         unit: p.type === 'number' ? p.unit : undefined,
         precision: p.type === 'number' ? (p.precision === undefined ? 2 : p.precision) : undefined,
+        autoSetOnCreate: p.type === 'date' ? (p.autoSetOnCreate || false) : undefined,
+        autoSetOnUpdate: p.type === 'date' ? (p.autoSetOnUpdate || false) : undefined,
       })),
     };
   };
@@ -147,6 +151,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         relationshipType: p.type === 'relationship' ? (p.relationshipType || 'one') : undefined,
         unit: p.type === 'number' ? p.unit : undefined,
         precision: p.type === 'number' ? (p.precision === undefined ? 2 : p.precision) : undefined,
+        autoSetOnCreate: p.type === 'date' ? (p.autoSetOnCreate || false) : undefined,
+        autoSetOnUpdate: p.type === 'date' ? (p.autoSetOnUpdate || false) : undefined,
       }))
     };
     setModels((prev) => [...prev, newModel]);
@@ -164,6 +170,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
             relationshipType: p.type === 'relationship' ? (p.relationshipType || 'one') : undefined,
             unit: p.type === 'number' ? p.unit : undefined,
             precision: p.type === 'number' ? (p.precision === undefined ? 2 : p.precision) : undefined,
+            autoSetOnCreate: p.type === 'date' ? (p.autoSetOnCreate || false) : undefined,
+            autoSetOnUpdate: p.type === 'date' ? (p.autoSetOnUpdate || false) : undefined,
           })) : model.properties;
           
           updatedModel = {
@@ -185,6 +193,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setObjects((prev) => {
       const newObjects = { ...prev };
       delete newObjects[modelId];
+      // Also remove references from other objects if this model was a target for relationships
+      // This is a complex operation; for now, we'll just clear the objects of the deleted model
+      // A more robust solution would be to update related objects, or prevent deletion if referenced.
+      // For now, also update properties of other models that might reference this one
       setModels(prevModels => prevModels.map(m => ({
         ...m,
         properties: m.properties.map(p => p.relatedModelId === modelId ? { ...p, relatedModelId: undefined } : p)
