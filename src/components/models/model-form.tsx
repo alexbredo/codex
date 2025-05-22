@@ -217,7 +217,20 @@ function PropertyFields({
                             placeholder="e.g., 2" 
                             {...field} 
                             value={field.value ?? 2} // Default to 2 visually if undefined
-                            onChange={e => field.onChange(parseInt(e.target.value, 10))}
+                            onChange={e => {
+                              const valStr = e.target.value;
+                              if (valStr === "") {
+                                field.onChange(undefined); // Allows default to kick in
+                              } else {
+                                const num = parseInt(valStr, 10);
+                                if (!isNaN(num)) {
+                                   field.onChange(num);
+                                }
+                                // If input is invalid (e.g. "abc"), num is NaN.
+                                // We don't call field.onChange, so react-hook-form keeps the last valid state or undefined.
+                                // Zod validation will catch this if the form is submitted with invalid text.
+                              }
+                            }}
                           />
                         </FormControl>
                         <FormMessage />
@@ -261,7 +274,7 @@ function PropertyFields({
             required: false, 
             relationshipType: 'one', 
             unit: undefined, 
-            precision: undefined 
+            precision: undefined // Will be defaulted to 2 visually and on type change
         } as PropertyFormValues)}
         className="mt-2 w-full"
       >
@@ -277,38 +290,49 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
   const fieldArray = useFieldArray({
     control: form.control,
     name: 'properties',
-    keyName: "fieldId"
+    keyName: "fieldId" // Changed from default "id" to avoid conflict with property's own "id"
   });
 
   const modelsForRelations = models.filter(m => !existingModel || m.id !== existingModel.id);
 
   const currentProperties = useWatch({ control: form.control, name: "properties" });
 
-  const displayPropertyOptions = useMemo(() => {
+  const displayPropertyOptions: MultiSelectOption[] = useMemo(() => {
     return (currentProperties || [])
       .filter(p => p.type === 'string' || p.type === 'number' || p.type === 'date')
       .map(p => ({ value: p.name, label: p.name }));
   }, [currentProperties]);
   
+  const selectedDisplayPropertyNamesForSelect = useMemo(() => {
+    const currentSelection = form.getValues("displayPropertyNames");
+    if (!currentSelection || currentSelection.length === 0) {
+      return INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE;
+    }
+    // For multi-select, this logic might need adjustment if we switch to single select again
+    return currentSelection[0] || INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE;
+  }, [form]);
+
+
   const handleFormSubmit = (values: ModelFormValues) => {
     // Ensure displayPropertyNames are valid
     if (values.displayPropertyNames && values.displayPropertyNames.length > 0) {
-      values.displayPropertyNames = values.displayPropertyNames.filter(dpName =>
-        values.properties.some(p => p.name === dpName && (p.type === 'string' || p.type === 'number' || p.type === 'date'))
-      );
-      if (values.displayPropertyNames.length === 0) {
-        values.displayPropertyNames = undefined;
-      }
+        values.displayPropertyNames = values.displayPropertyNames.filter(dpName => 
+            dpName !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE &&
+            values.properties.some(p => p.name === dpName && (p.type === 'string' || p.type === 'number' || p.type === 'date'))
+        );
+        if (values.displayPropertyNames.length === 0) {
+            values.displayPropertyNames = undefined;
+        }
     } else {
-      values.displayPropertyNames = undefined;
+        values.displayPropertyNames = undefined;
     }
-
+    
     // Ensure unit and precision are only set for number types
+    // and precision has a default if not set by user but type is number
     values.properties = values.properties.map(prop => {
       if (prop.type !== 'number') {
         return { ...prop, unit: undefined, precision: undefined };
       } else {
-        // Ensure precision has a default if not set by user but type is number
         return { ...prop, precision: prop.precision === undefined ? 2 : prop.precision };
       }
     });
@@ -351,7 +375,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                 </FormItem>
               )}
             />
-            <FormField
+             <FormField
               control={form.control}
               name="displayPropertyNames"
               render={({ field }) => (
@@ -359,12 +383,12 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                   <FormLabel>Display Properties (Optional)</FormLabel>
                   <MultiSelectAutocomplete
                     options={displayPropertyOptions}
-                    selected={field.value || []}
+                    selected={field.value?.filter(val => val !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE) || []}
                     onChange={(selectedValues) => {
                       const validSelected = selectedValues.filter(val =>
                         (currentProperties || []).some(p => p.name === val && (p.type === 'string' || p.type === 'number' || p.type === 'date'))
                       );
-                      field.onChange(validSelected);
+                      field.onChange(validSelected.length > 0 ? validSelected : []); // Store empty array if nothing valid selected
                     }}
                     placeholder="-- Default (Name/Title/ID) --"
                     emptyIndicator="No string/number/date properties available."
@@ -398,3 +422,5 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     </Form>
   );
 }
+
+    
