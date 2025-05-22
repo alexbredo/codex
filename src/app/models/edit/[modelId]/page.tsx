@@ -42,6 +42,7 @@ export default function EditModelPage() {
             ...p,
             id: p.id || crypto.randomUUID(), // Ensure ID exists
             relationshipType: p.relationshipType || 'one', // Ensure default
+            // unit and precision are part of the Property type and will be included
           } as PropertyFormValues)),
         });
       } else {
@@ -61,6 +62,8 @@ export default function EditModelPage() {
         return;
     }
 
+    // values.properties here are already processed by ModelForm's internal submit handler
+    // to have correct unit/precision based on type
     const modelData = {
       name: values.name,
       description: values.description,
@@ -69,9 +72,11 @@ export default function EditModelPage() {
         id: p.id || crypto.randomUUID(),
         name: p.name,
         type: p.type,
-        relatedModelId: p.relatedModelId,
+        relatedModelId: p.type === 'relationship' ? p.relatedModelId : undefined,
         required: p.required,
         relationshipType: p.type === 'relationship' ? p.relationshipType : undefined,
+        unit: p.unit, // p.unit is correctly set/undefined by ModelForm
+        precision: p.precision, // p.precision is correctly set/undefined/defaulted by ModelForm
       } as Property)),
     };
 
@@ -110,12 +115,10 @@ export default function EditModelPage() {
             onSubmit={onSubmit}
             onCancel={() => router.push('/models')}
             existingModel={currentModel}
-            // isLoading={form.formState.isSubmitting}
+            isLoading={form.formState.isSubmitting}
           />
         </CardContent>
       </Card>
     </div>
   );
 }
-
-    

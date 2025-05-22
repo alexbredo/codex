@@ -25,7 +25,15 @@ export default function CreateModelPage() {
       name: '',
       description: '',
       displayPropertyNames: [],
-      properties: [{ id: crypto.randomUUID(), name: '', type: 'string', required: false, relationshipType: 'one' } as PropertyFormValues],
+      properties: [{ 
+        id: crypto.randomUUID(), 
+        name: '', 
+        type: 'string', 
+        required: false, 
+        relationshipType: 'one',
+        unit: undefined,
+        precision: undefined, // Will be defaulted to 2 by ModelForm if type becomes number
+      } as PropertyFormValues],
     },
   });
 
@@ -36,6 +44,8 @@ export default function CreateModelPage() {
         return;
     }
 
+    // values.properties here are already processed by ModelForm's internal submit handler
+    // to have correct unit/precision based on type
     const modelData = {
       name: values.name,
       description: values.description,
@@ -44,9 +54,11 @@ export default function CreateModelPage() {
         id: p.id || crypto.randomUUID(),
         name: p.name,
         type: p.type,
-        relatedModelId: p.relatedModelId,
+        relatedModelId: p.type === 'relationship' ? p.relatedModelId : undefined,
         required: p.required,
         relationshipType: p.type === 'relationship' ? p.relationshipType : undefined,
+        unit: p.unit, // p.unit is correctly set/undefined by ModelForm
+        precision: p.precision, // p.precision is correctly set/undefined/defaulted by ModelForm
       } as Property)),
     };
 
@@ -79,12 +91,10 @@ export default function CreateModelPage() {
             form={form}
             onSubmit={onSubmit}
             onCancel={() => router.push('/models')}
-            // isLoading={form.formState.isSubmitting} // Use form's submitting state
+            isLoading={form.formState.isSubmitting}
           />
         </CardContent>
       </Card>
     </div>
   );
 }
-
-    
