@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react'; // Added useMemo
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from '@/components/ui/button';
@@ -55,10 +55,20 @@ export default function ModelsPage() {
     toast({ title: "Model Deleted", description: `Model "${modelName}" and its associated data have been successfully deleted.` });
   };
 
-  const filteredModels = models.filter(model =>
-    model.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (model.description && model.description.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const sortedModels = useMemo(() => {
+    return [...models].sort((a, b) => a.name.localeCompare(b.name));
+  }, [models]);
+
+  const filteredModels = useMemo(() => {
+    if (!searchTerm) {
+      return sortedModels;
+    }
+    return sortedModels.filter(model =>
+      model.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (model.description && model.description.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
+  }, [sortedModels, searchTerm]);
+
 
   if (!isReady) {
     return (

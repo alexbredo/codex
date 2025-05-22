@@ -1,6 +1,7 @@
 
 'use client';
 
+import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -11,6 +12,7 @@ import {
 } from '@/components/ui/sidebar';
 import { LayoutDashboard, DatabaseZap, ListChecks, Settings } from 'lucide-react';
 import { useData } from '@/contexts/data-context'; // Added useData
+import type { Model } from '@/lib/types';
 
 const staticNavItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -21,6 +23,11 @@ const staticNavItems = [
 export default function Navigation() {
   const pathname = usePathname();
   const { models, isReady } = useData(); // Get models and readiness state
+
+  const sortedModels = React.useMemo(() => {
+    if (!isReady) return [];
+    return [...models].sort((a, b) => a.name.localeCompare(b.name));
+  }, [models, isReady]);
 
   return (
     <SidebarMenu>
@@ -39,10 +46,10 @@ export default function Navigation() {
         </SidebarMenuItem>
       ))}
 
-      {isReady && models.length > 0 && (
+      {isReady && sortedModels.length > 0 && (
         <>
           <SidebarSeparator className="my-1 mx-2 !w-auto" />
-          {models.map((model) => (
+          {sortedModels.map((model: Model) => (
             <SidebarMenuItem key={model.id}>
               <Link href={`/data/${model.id}`} passHref legacyBehavior>
                 <SidebarMenuButton
