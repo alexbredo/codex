@@ -31,6 +31,8 @@ import { propertyTypes, relationshipTypes } from './model-form-schema';
 import type { Model } from '@/lib/types';
 import { useData } from '@/contexts/data-context';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { MultiSelectAutocomplete, type MultiSelectOption } from '@/components/ui/multi-select-autocomplete';
+import { useMemo } from 'react';
 
 interface ModelFormProps {
   form: UseFormReturn<ModelFormValues>;
@@ -208,7 +210,7 @@ function PropertyFields({
   );
 }
 
-const INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE = "__DEFAULT_DISPLAY_PROPERTY__";
+const INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE = "__DEFAULT_DISPLAY_PROPERTY__"; // Kept for reference if single select is needed elsewhere
 
 export default function ModelForm({ form, onSubmit, onCancel, isLoading, existingModel }: ModelFormProps) {
   const { models } = useData();
@@ -221,14 +223,24 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
   const modelsForRelations = models.filter(m => !existingModel || m.id !== existingModel.id);
 
   const currentProperties = useWatch({ control: form.control, name: "properties" });
-  const stringOrNumberProperties = (currentProperties || [])
-    .filter(p => p.type === 'string' || p.type === 'number')
-    .map(p => p.name);
+
+  const displayPropertyOptions = useMemo(() => {
+    return (currentProperties || [])
+      .filter(p => p.type === 'string' || p.type === 'number')
+      .map(p => ({ value: p.name, label: p.name }));
+  }, [currentProperties]);
 
   const handleFormSubmit = (values: ModelFormValues) => {
-    // Ensure displayPropertyName is valid or cleared
-    if (values.displayPropertyName && !values.properties.find(p => p.name === values.displayPropertyName && (p.type === 'string' || p.type === 'number'))) {
-      values.displayPropertyName = undefined; 
+    // Ensure displayPropertyNames are valid or cleared
+    if (values.displayPropertyNames && values.displayPropertyNames.length > 0) {
+      values.displayPropertyNames = values.displayPropertyNames.filter(dpName =>
+        values.properties.some(p => p.name === dpName && (p.type === 'string' || p.type === 'number'))
+      );
+      if (values.displayPropertyNames.length === 0) {
+        values.displayPropertyNames = undefined;
+      }
+    } else {
+       values.displayPropertyNames = undefined;
     }
     onSubmit(values);
   };
@@ -273,44 +285,23 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                 />
                 <FormField
                   control={form.control}
-                  name="displayPropertyName"
-                  render={({ field }) => {
-                    // If field.value is empty string or undefined, use the internal const for Select's value
-                    // Otherwise, use the actual field.value
-                    const selectValue = !field.value ? INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE : field.value;
-                    
-                    return (
-                      <FormItem>
-                        <FormLabel>Display Property (Optional)</FormLabel>
-                        <Select 
-                          value={selectValue}
-                          onValueChange={(value) => {
-                            // If internal const is selected, set form value to empty string (or undefined)
-                            // Otherwise, set to the selected property name
-                            field.onChange(value === INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE ? "" : value);
-                          }}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="-- Default (ID or Name/Title) --" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value={INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE}>-- Default (ID or Name/Title) --</SelectItem>
-                            {stringOrNumberProperties.map((propName) => (
-                              <SelectItem key={propName} value={propName}>
-                                {propName}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormDescription>
-                          Choose a string or number property to represent this model's objects in lists or relationships.
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    );
-                  }}
+                  name="displayPropertyNames"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Display Properties (Optional)</FormLabel>
+                      <MultiSelectAutocomplete
+                        options={displayPropertyOptions}
+                        selected={field.value || []}
+                        onChange={field.onChange}
+                        placeholder="-- Default (Name/Title/ID) --"
+                        emptyIndicator="No string/number properties available."
+                      />
+                      <FormDescription>
+                        Choose string or number properties to represent this model's objects. They will be shown concatenated.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
               </CardContent>
             </Card>
@@ -336,4 +327,3 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     </Form>
   );
 }
-

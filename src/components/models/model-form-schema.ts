@@ -34,7 +34,7 @@ export const propertyFormSchema = z.object({
 export const modelFormSchema = z.object({
   name: z.string().min(1, "Model name is required."),
   description: z.string().optional(),
-  displayPropertyName: z.string().optional(),
+  displayPropertyNames: z.array(z.string()).optional(), // Changed from displayPropertyName
   properties: z.array(propertyFormSchema).min(1, "At least one property is required."),
 });
 

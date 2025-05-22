@@ -9,7 +9,7 @@ interface DataContextType {
   models: Model[];
   objects: Record<string, DataObject[]>;
   addModel: (modelData: Omit<Model, 'id'>) => Model;
-  updateModel: (modelId: string, updates: Partial<Omit<Model, 'id' | 'properties' | 'displayPropertyName'>> & { properties?: Property[], displayPropertyName?: string }) => Model | undefined;
+  updateModel: (modelId: string, updates: Partial<Omit<Model, 'id' | 'properties' | 'displayPropertyNames'>> & { properties?: Property[], displayPropertyNames?: string[] }) => Model | undefined;
   deleteModel: (modelId: string) => void;
   getModelById: (modelId: string) => Model | undefined;
   getModelByName: (name: string) => Model | undefined;
@@ -28,7 +28,7 @@ const initialModels: Model[] = [
     id: 'clx18090o0000qp08j9q1x0y0',
     name: 'Product',
     description: 'Represents products in the inventory.',
-    displayPropertyName: 'Name',
+    displayPropertyNames: ['Name', 'Price'],
     properties: [
       { id: 'clx18090p0001qp08w6k2y0s3', name: 'Name', type: 'string', required: true },
       { id: 'clx18090p0002qp08l3c8k7j1', name: 'Price', type: 'number', required: true },
@@ -40,7 +40,7 @@ const initialModels: Model[] = [
     id: 'clx18090q0005qp08m2n7b1d5',
     name: 'Customer',
     description: 'Represents customers of the business.',
-    displayPropertyName: 'First Name',
+    displayPropertyNames: ['First Name', 'Last Name'],
     properties: [
       { id: 'clx18090q0006qp08t0u8v9w6', name: 'First Name', type: 'string', required: true },
       { id: 'clx18090q0007qp08a2b3c4d7', name: 'Last Name', type: 'string', required: true },
@@ -76,6 +76,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       } else {
         setModels(initialModels.map(m => ({
           ...m,
+          displayPropertyNames: m.displayPropertyNames || [],
           properties: m.properties.map(p => ({ ...p, relationshipType: p.relationshipType || 'one' }))
         })));
       }
@@ -88,6 +89,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       console.error("Failed to load data from localStorage", error);
       setModels(initialModels.map(m => ({
         ...m,
+        displayPropertyNames: m.displayPropertyNames || [],
         properties: m.properties.map(p => ({ ...p, relationshipType: p.relationshipType || 'one' }))
       })));
       setObjects(initialObjects);
@@ -115,11 +117,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   }, [objects, isReady]);
 
-  const addModel = useCallback((modelData: Omit<Model, 'id' | 'displayPropertyName'> & { displayPropertyName?: string }): Model => {
+  const addModel = useCallback((modelData: Omit<Model, 'id' | 'displayPropertyNames'> & { displayPropertyNames?: string[] }): Model => {
     const newModel: Model = { 
       ...modelData, 
       id: crypto.randomUUID(),
-      displayPropertyName: modelData.displayPropertyName,
+      displayPropertyNames: modelData.displayPropertyNames || [],
       properties: modelData.properties.map(p => ({
         ...p,
         id: p.id || crypto.randomUUID(),
@@ -130,7 +132,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return newModel;
   }, []);
 
-  const updateModel = useCallback((modelId: string, updates: Partial<Omit<Model, 'id' | 'properties' | 'displayPropertyName'>> & { properties?: Property[], displayPropertyName?: string }): Model | undefined => {
+  const updateModel = useCallback((modelId: string, updates: Partial<Omit<Model, 'id' | 'properties' | 'displayPropertyNames'>> & { properties?: Property[], displayPropertyNames?: string[] }): Model | undefined => {
     let updatedModel: Model | undefined;
     setModels((prevModels) =>
       prevModels.map((model) => {
@@ -145,7 +147,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
             ...model, 
             ...updates, 
             properties: newProperties,
-            displayPropertyName: 'displayPropertyName' in updates ? updates.displayPropertyName : model.displayPropertyName
+            displayPropertyNames: 'displayPropertyNames' in updates ? (updates.displayPropertyNames || []) : model.displayPropertyNames
           };
           return updatedModel;
         }
@@ -160,6 +162,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setObjects((prev) => {
       const newObjects = { ...prev };
       delete newObjects[modelId];
+      // Also, remove references to this model from other models' relationship properties
+      setModels(prevModels => prevModels.map(m => ({
+        ...m,
+        properties: m.properties.map(p => p.relatedModelId === modelId ? { ...p, relatedModelId: undefined } : p)
+      })));
+      // And clean up objects that might reference deleted model objects (more complex, for now just deletes the model's own objects)
       return newObjects;
     });
   }, []);

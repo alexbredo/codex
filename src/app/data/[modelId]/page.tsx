@@ -43,38 +43,64 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { format } from 'date-fns';
 import Link from 'next/link';
-import { z } from 'zod'; // Added Zod import
+import { z } from 'zod'; 
 
 const ITEMS_PER_PAGE = 10;
-const MAX_DIRECT_PROPERTIES_IN_TABLE = 3; // Max direct properties to show before incoming relations
+const MAX_DIRECT_PROPERTIES_IN_TABLE = 3; 
 
-const getDisplayPropertyName = (model?: Model): string => {
-  if (!model) return 'id'; // Fallback for no model
-  if (model.displayPropertyName) return model.displayPropertyName;
-  
-  const nameProp = model.properties.find(p => p.name.toLowerCase() === 'name');
-  if (nameProp) return nameProp.name;
-  
-  const titleProp = model.properties.find(p => p.name.toLowerCase() === 'title');
-  if (titleProp) return titleProp.name;
-  
-  const firstStringProp = model.properties.find(p => p.type === 'string');
-  return firstStringProp ? firstStringProp.name : 'id'; // Final fallback to 'id'
-};
+const getObjectDisplayValue = (obj: DataObject | undefined, model: Model | undefined, allModels: Model[], allObjects: Record<string, DataObject[]>): string => {
+  if (!obj || !model) return obj?.id ? `ID: ...${obj.id.slice(-6)}` : 'N/A';
 
-const getObjectDisplayValue = (obj: DataObject | undefined, model: Model | undefined, defaultId?: string): string => {
-    if (!obj || !model) return defaultId || 'N/A';
-    const displayPropName = getDisplayPropertyName(model);
-    const value = obj[displayPropName];
-    if (value !== null && typeof value !== 'undefined' && String(value).trim() !== '') {
-        return String(value);
+  // 1. Use defined displayPropertyNames
+  if (model.displayPropertyNames && model.displayPropertyNames.length > 0) {
+    const displayValues = model.displayPropertyNames
+      .map(propName => {
+        const propValue = obj[propName];
+        if (propValue === null || typeof propValue === 'undefined' || String(propValue).trim() === '') {
+          return null; 
+        }
+        // If this display property is itself a relationship, recursively get its display value
+        const propertyDefinition = model.properties.find(p => p.name === propName);
+        if (propertyDefinition?.type === 'relationship' && propertyDefinition.relatedModelId) {
+            const relatedModelForProp = allModels.find(m => m.id === propertyDefinition.relatedModelId);
+            const relatedObjForProp = (allObjects[propertyDefinition.relatedModelId] || []).find(o => o.id === propValue);
+            return getObjectDisplayValue(relatedObjForProp, relatedModelForProp, allModels, allObjects);
+        }
+        return String(propValue);
+      })
+      .filter(value => value !== null && value.trim() !== ''); // Filter out empty or null values
+
+    if (displayValues.length > 0) {
+      return displayValues.join(' - ');
     }
-    return defaultId || (obj.id ? obj.id.slice(-6) : 'N/A'); // Fallback to ID if displayProp value is empty/null
+  }
+
+  // 2. Fallback: 'Name' property
+  const nameProp = model.properties.find(p => p.name.toLowerCase() === 'name');
+  if (nameProp && obj[nameProp.name] !== null && typeof obj[nameProp.name] !== 'undefined' && String(obj[nameProp.name]).trim() !== '') {
+    return String(obj[nameProp.name]);
+  }
+
+  // 3. Fallback: 'Title' property
+  const titleProp = model.properties.find(p => p.name.toLowerCase() === 'title');
+  if (titleProp && obj[titleProp.name] !== null && typeof obj[titleProp.name] !== 'undefined' && String(obj[titleProp.name]).trim() !== '') {
+    return String(obj[titleProp.name]);
+  }
+  
+  // 4. Fallback: First string property
+  const firstStringProp = model.properties.find(p => p.type === 'string');
+  if (firstStringProp && obj[firstStringProp.name] !== null && typeof obj[firstStringProp.name] !== 'undefined' && String(obj[firstStringProp.name]).trim() !== '') {
+    return String(obj[firstStringProp.name]);
+  }
+
+  // 5. Final fallback: ID
+  return obj.id ? `ID: ...${obj.id.slice(-6)}` : 'N/A';
 };
+
 
 interface IncomingRelationColumn {
-  id: string; // e.g., `${referencingModel.id}-${referencingProperty.name}`
-  headerLabel: string; // e.g., `Ref. by ${referencingModel.name} (via ${referencingProperty.name})`
+  id: string; 
+  headerLabel: string; 
   referencingModel: Model;
   referencingProperty: Property;
 }
@@ -105,6 +131,9 @@ export default function DataObjectsPage() {
   const [editingObject, setEditingObject] = useState<DataObject | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  
+  const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects, isReady]);
+
 
   const dynamicSchema = useMemo(() => currentModel ? createObjectFormSchema(currentModel) : z.object({}), [currentModel]);
 
@@ -135,6 +164,8 @@ export default function DataObjectsPage() {
           if (objectToEdit) {
             handleEdit(objectToEdit);
           } else {
+            // Clear invalid edit ID from URL and show toast
+            router.replace(`/data/${modelId}`, undefined); // undefined for shallow
             toast({ variant: "destructive", title: "Error", description: `Object with ID ${editObjectId} not found.` });
           }
         }
@@ -144,7 +175,7 @@ export default function DataObjectsPage() {
         router.push('/models');
       }
     }
-  }, [modelId, getModelById, getObjectsByModelId, isReady, toast, router, form, editObjectId]);
+  }, [modelId, getModelById, getObjectsByModelId, isReady, toast, router, form, editObjectId]); // editObjectId in dep array
 
 
   const handleCreateNew = () => {
@@ -185,13 +216,13 @@ export default function DataObjectsPage() {
       setObjects(getObjectsByModelId(currentModel.id)); 
       setIsFormOpen(false);
       form.reset();
-      // If there was an editObjectId, remove it from URL
+      
       if (editObjectId) {
-        router.replace(`/data/${modelId}`);
+        router.replace(`/data/${modelId}`, undefined); 
       }
     } catch (error: any) {
       console.error(`Error saving ${currentModel.name}:`, error);
-      if (error.errors) {
+      if (error.errors) { // Assuming Zod-like error structure
         error.errors.forEach((err: any) => {
           form.setError(err.path[0], { type: 'manual', message: err.message });
         });
@@ -212,14 +243,28 @@ export default function DataObjectsPage() {
     return objects.filter(obj =>
       currentModel?.properties.some(prop => {
         const value = obj[prop.name];
-        if (prop.type === 'string' && value && typeof value === 'string') {
-          return value.toLowerCase().includes(searchTerm.toLowerCase());
+        if ((prop.type === 'string' || prop.type === 'number') && value && (typeof value === 'string' || typeof value === 'number') ) {
+          return String(value).toLowerCase().includes(searchTerm.toLowerCase());
         }
-        // TODO: Add search for other types, including relationships
+        // Basic search for related items display value
+        if (prop.type === 'relationship' && prop.relatedModelId) {
+            const relatedModel = getModelById(prop.relatedModelId);
+            if (Array.isArray(value)) { // 'many' relationship
+                return value.some(itemId => {
+                    const relatedObj = getObjectsByModelId(prop.relatedModelId!).find(o => o.id === itemId);
+                    const displayVal = getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
+                    return displayVal.toLowerCase().includes(searchTerm.toLowerCase());
+                });
+            } else if (value) { // 'one' relationship
+                const relatedObj = getObjectsByModelId(prop.relatedModelId).find(o => o.id === value);
+                const displayVal = getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
+                return displayVal.toLowerCase().includes(searchTerm.toLowerCase());
+            }
+        }
         return false;
       }) ?? false
     );
-  }, [objects, searchTerm, currentModel]);
+  }, [objects, searchTerm, currentModel, getModelById, getObjectsByModelId, allModels, allDbObjects]);
 
   const paginatedObjects = useMemo(() => {
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -254,7 +299,7 @@ export default function DataObjectsPage() {
             const relatedObj = getObjectsByModelId(property.relatedModelId!).find(o => o.id === itemId);
             return {
                 id: itemId,
-                name: getObjectDisplayValue(relatedObj, relatedModel, `ID: ...${itemId.slice(-6)}`),
+                name: getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects),
                 obj: relatedObj
             };
           });
@@ -270,12 +315,12 @@ export default function DataObjectsPage() {
           ));
         } else { // 'one'
           const relatedObj = getObjectsByModelId(property.relatedModelId).find(o => o.id === value);
-          const displayVal = getObjectDisplayValue(relatedObj, relatedModel, `ID: ...${String(value).slice(-6)}`);
+          const displayVal = getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
           return relatedObj ? (
              <Link href={`/data/${relatedModel.id}?edit=${relatedObj.id}`} passHref legacyBehavior>
                 <a className="inline-block"><Badge variant="outline" className="hover:bg-secondary">{displayVal}</Badge></a>
             </Link>
-          ) : <span className="text-xs font-mono text-blue-600" title={String(value)}>ID: ...{String(value).slice(-6)}</span>;
+          ) : <span className="text-xs font-mono" title={String(value)}>{displayVal}</span>;
         }
       default:
         const strValue = String(value);
@@ -283,7 +328,6 @@ export default function DataObjectsPage() {
     }
   };
   
-  const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects, isReady]);
 
   const virtualIncomingRelationColumns = useMemo(() => {
     if (!currentModel || !isReady) return [];
@@ -293,7 +337,7 @@ export default function DataObjectsPage() {
       otherModel.properties.forEach(prop => {
         if (prop.type === 'relationship' && prop.relatedModelId === currentModel.id) {
           columns.push({
-            id: `${otherModel.id}-${prop.name}`, // Unique ID for the column
+            id: `${otherModel.id}-${prop.name}`, 
             headerLabel: `Ref. by ${otherModel.name} (via ${prop.name})`,
             referencingModel: otherModel,
             referencingProperty: prop,
@@ -400,7 +444,7 @@ export default function DataObjectsPage() {
                           <Link key={item.id} href={`/data/${colDef.referencingModel.id}?edit=${item.id}`} passHref legacyBehavior>
                             <a className="inline-block">
                               <Badge variant="secondary" className="hover:bg-muted cursor-pointer">
-                                {getObjectDisplayValue(item, colDef.referencingModel)}
+                                {getObjectDisplayValue(item, colDef.referencingModel, allModels, allDbObjects)}
                               </Badge>
                             </a>
                           </Link>
@@ -467,8 +511,8 @@ export default function DataObjectsPage() {
 
       <Dialog open={isFormOpen} onOpenChange={(isOpen) => {
           setIsFormOpen(isOpen);
-          if (!isOpen && editObjectId) { // If dialog closes and we were editing via URL param
-            router.replace(`/data/${modelId}`); // Clear the edit param
+          if (!isOpen && editObjectId) { 
+            router.replace(`/data/${modelId}`, undefined);
           }
         }}>
         <DialogContent className="sm:max-w-[600px] max-h-[90vh] flex flex-col">
@@ -492,5 +536,3 @@ export default function DataObjectsPage() {
     </div>
   );
 }
-
-    

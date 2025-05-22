@@ -30,34 +30,62 @@ import { format } from 'date-fns';
 import { MultiSelectAutocomplete, type MultiSelectOption } from '@/components/ui/multi-select-autocomplete';
 import { useMemo } from 'react';
 
-interface AdaptiveFormFieldProps<TFieldValues extends FieldValues = FieldValues> {
-  control: Control<TFieldValues>;
-  property: Property;
-}
+// Centralized display value logic
+const getObjectDisplayValue = (
+    obj: DataObject | undefined, 
+    model: Model | undefined, 
+    allModels: Model[], 
+    allObjects: Record<string, DataObject[]>
+): string => {
+  if (!obj || !model) return obj?.id ? `ID: ...${obj.id.slice(-6)}` : 'N/A';
 
-const getDisplayPropertyName = (model?: Model): string => {
-  if (!model) return 'id';
-  if (model.displayPropertyName) return model.displayPropertyName;
-  
-  const nameProp = model.properties.find(p => p.name.toLowerCase() === 'name');
-  if (nameProp) return nameProp.name;
-  
-  const titleProp = model.properties.find(p => p.name.toLowerCase() === 'title');
-  if (titleProp) return titleProp.name;
-  
-  const firstStringProp = model.properties.find(p => p.type === 'string');
-  return firstStringProp ? firstStringProp.name : 'id';
-};
+  // 1. Use defined displayPropertyNames
+  if (model.displayPropertyNames && model.displayPropertyNames.length > 0) {
+    const displayValues = model.displayPropertyNames
+      .map(propName => {
+        const propValue = obj[propName];
+        if (propValue === null || typeof propValue === 'undefined' || String(propValue).trim() === '') {
+          return null;
+        }
+        // If this display property is itself a relationship, recursively get its display value
+        const propertyDefinition = model.properties.find(p => p.name === propName);
+        if (propertyDefinition?.type === 'relationship' && propertyDefinition.relatedModelId) {
+            const relatedModelForProp = allModels.find(m => m.id === propertyDefinition.relatedModelId);
+            // Ensure allObjects is correctly scoped or passed if this function is moved
+            const relatedObjForProp = (allObjects[propertyDefinition.relatedModelId] || []).find(o => o.id === propValue);
+            return getObjectDisplayValue(relatedObjForProp, relatedModelForProp, allModels, allObjects);
+        }
+        return String(propValue);
+      })
+      .filter(value => value !== null && value.trim() !== '');
 
-const getObjectDisplayValue = (obj: DataObject | undefined, model: Model | undefined, defaultId?: string): string => {
-    if (!obj || !model) return defaultId || 'N/A';
-    const displayPropName = getDisplayPropertyName(model);
-    const value = obj[displayPropName];
-     if (value !== null && typeof value !== 'undefined' && String(value).trim() !== '') {
-        return String(value);
+    if (displayValues.length > 0) {
+      return displayValues.join(' - ');
     }
-    return defaultId || obj.id.slice(-6);
+  }
+
+  // 2. Fallback: 'Name' property
+  const nameProp = model.properties.find(p => p.name.toLowerCase() === 'name');
+  if (nameProp && obj[nameProp.name] !== null && typeof obj[nameProp.name] !== 'undefined' && String(obj[nameProp.name]).trim() !== '') {
+    return String(obj[nameProp.name]);
+  }
+
+  // 3. Fallback: 'Title' property
+  const titleProp = model.properties.find(p => p.name.toLowerCase() === 'title');
+  if (titleProp && obj[titleProp.name] !== null && typeof obj[titleProp.name] !== 'undefined' && String(obj[titleProp.name]).trim() !== '') {
+    return String(obj[titleProp.name]);
+  }
+  
+  // 4. Fallback: First string property
+  const firstStringProp = model.properties.find(p => p.type === 'string');
+  if (firstStringProp && obj[firstStringProp.name] !== null && typeof obj[firstStringProp.name] !== 'undefined' && String(obj[firstStringProp.name]).trim() !== '') {
+    return String(obj[firstStringProp.name]);
+  }
+
+  // 5. Final fallback: ID
+  return obj.id ? `ID: ...${obj.id.slice(-6)}` : 'N/A';
 };
+
 
 const INTERNAL_NONE_SELECT_VALUE = "__EMPTY_SELECTION_VALUE__";
 
@@ -65,8 +93,11 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
   control,
   property,
 }: AdaptiveFormFieldProps<TFieldValues>) {
-  const { getModelById, getObjectsByModelId } = useData();
+  const { models: allModels, getModelById, getObjectsByModelId, getAllObjects } = useData();
   const fieldName = property.name as FieldPath<TFieldValues>;
+  
+  const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects]);
+
 
   const relatedModel = useMemo(() => {
     if (property.type === 'relationship' && property.relatedModelId) {
@@ -126,7 +157,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
         
         const options: MultiSelectOption[] = relatedObjects.map((obj: DataObject) => ({
           value: obj.id,
-          label: getObjectDisplayValue(obj, relatedModel, obj.id),
+          label: getObjectDisplayValue(obj, relatedModel, allModels, allDbObjects),
         }));
 
         if (property.relationshipType === 'many') {
@@ -140,13 +171,15 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
             />
           );
         } else { // 'one' or undefined
-          const currentSelectValue = controllerField.value === "" ? INTERNAL_NONE_SELECT_VALUE : controllerField.value;
+          const currentSelectValue = controllerField.value === "" || controllerField.value === null || typeof controllerField.value === 'undefined' 
+                                     ? INTERNAL_NONE_SELECT_VALUE 
+                                     : controllerField.value;
           return (
             <Select
               onValueChange={(value) => {
                 controllerField.onChange(value === INTERNAL_NONE_SELECT_VALUE ? "" : value);
               }}
-              value={currentSelectValue || ""} 
+              value={currentSelectValue} 
             >
               <SelectTrigger>
                 <SelectValue placeholder={`Select ${relatedModel.name}`} />

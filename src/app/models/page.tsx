@@ -48,7 +48,7 @@ export default function ModelsPage() {
     defaultValues: {
       name: '',
       description: '',
-      displayPropertyName: '',
+      displayPropertyNames: [],
       properties: [{ id: crypto.randomUUID(), name: '', type: 'string', required: false, relationshipType: 'one' }],
     },
   });
@@ -59,7 +59,7 @@ export default function ModelsPage() {
       form.reset({
         name: editingModel.name,
         description: editingModel.description || '',
-        displayPropertyName: editingModel.displayPropertyName || '',
+        displayPropertyNames: editingModel.displayPropertyNames || [],
         properties: editingModel.properties.map(p => ({ 
             ...p, 
             id: p.id || crypto.randomUUID(),
@@ -70,7 +70,7 @@ export default function ModelsPage() {
       form.reset({
         name: '',
         description: '',
-        displayPropertyName: '',
+        displayPropertyNames: [],
         properties: [{ id: crypto.randomUUID(), name: '', type: 'string', required: false, relationshipType: 'one' }],
       });
     }
@@ -98,7 +98,7 @@ export default function ModelsPage() {
     const modelData = {
       name: values.name,
       description: values.description,
-      displayPropertyName: values.displayPropertyName || undefined, // Ensure it's undefined if empty
+      displayPropertyNames: values.displayPropertyNames && values.displayPropertyNames.length > 0 ? values.displayPropertyNames : undefined,
       properties: values.properties.map(p => ({
         id: p.id || crypto.randomUUID(),
         name: p.name,
@@ -211,9 +211,9 @@ export default function ModelsPage() {
                 <CardDescription className="h-10 overflow-hidden text-ellipsis">
                   {model.description || 'No description provided.'}
                 </CardDescription>
-                 {model.displayPropertyName && (
+                 {model.displayPropertyNames && model.displayPropertyNames.length > 0 && (
                   <div className="text-xs text-muted-foreground pt-1 flex items-center">
-                    <StickyNote size={12} className="mr-1.5 text-primary/70" /> Display As: <span className="font-medium text-primary/90 ml-1">{model.displayPropertyName}</span>
+                    <StickyNote size={12} className="mr-1.5 text-primary/70" /> Display As: <span className="font-medium text-primary/90 ml-1 truncate">{model.displayPropertyNames.join(', ')}</span>
                   </div>
                 )}
               </CardHeader>
@@ -278,7 +278,7 @@ export default function ModelsPage() {
             form.reset({ // Reset form to pristine state for creation
                  name: '',
                  description: '',
-                 displayPropertyName: '',
+                 displayPropertyNames: [],
                  properties: [{ id: crypto.randomUUID(), name: '', type: 'string', required: false, relationshipType: 'one' }],
             });
           }
