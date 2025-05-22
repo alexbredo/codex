@@ -251,15 +251,14 @@ export default function ModelsPage() {
       )}
 
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-        <DialogContent className="sm:max-w-[600px] max-h-[90vh] flex flex-col">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] flex flex-col p-0">
+          <DialogHeader className="p-6 pb-4 flex-shrink-0 border-b">
             <DialogTitle>{editingModel ? 'Edit Model' : 'Create New Model'}</DialogTitle>
             <DialogDescription>
               {editingModel ? `Update the details for the "${editingModel.name}" model.` : 'Define a new data model structure for your application.'}
             </DialogDescription>
           </DialogHeader>
-          {/* Wrapper div to ensure ModelForm correctly utilizes its height and internal scrolling */}
-          <div className="flex-grow min-h-0">
+          <div className="flex-grow min-h-0 overflow-hidden">
             <ModelForm
               form={form}
               onSubmit={onSubmit}

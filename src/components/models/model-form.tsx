@@ -185,7 +185,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col h-full">
         <ScrollArea className="flex-grow">
-          <div className="space-y-8 p-1 pr-4 pb-4"> {/* Added padding for scrollbar and bottom spacing */}
+          <div className="space-y-8 p-6">
             <Card>
               <CardHeader>
                 <CardTitle className="text-xl">Model Details</CardTitle>
@@ -230,7 +230,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
           </div>
         </ScrollArea>
 
-        <div className="flex justify-end space-x-2 pt-4 mt-auto border-t bg-background z-10 flex-shrink-0">
+        <div className="flex justify-end space-x-2 p-6 pt-4 border-t bg-background z-10 flex-shrink-0">
           <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
             Cancel
           </Button>
