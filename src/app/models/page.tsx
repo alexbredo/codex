@@ -88,7 +88,7 @@ export default function ModelsPage() {
     <div className="container mx-auto py-8">
       <header className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
         <div className="text-center md:text-left">
-          <h1 className="text-3xl font-bold text-primary">Data Models</h1>
+          <h1 className="text-3xl font-bold text-primary">Model Admin</h1>
           <p className="text-muted-foreground">Define and manage your dynamic data structures.</p>
         </div>
         <div className="flex gap-2 w-full md:w-auto">

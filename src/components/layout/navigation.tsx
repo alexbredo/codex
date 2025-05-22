@@ -16,7 +16,7 @@ import type { Model } from '@/lib/types';
 
 const staticNavItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/models', label: 'Models', icon: DatabaseZap },
+  { href: '/models', label: 'Model Admin', icon: DatabaseZap },
   // { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
