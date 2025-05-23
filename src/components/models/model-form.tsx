@@ -40,7 +40,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { useToast } from '@/hooks/use-toast'; // Import useToast
+import { useToast } from '@/hooks/use-toast'; 
 
 interface ModelFormProps {
   form: UseFormReturn<ModelFormValues>;
@@ -51,6 +51,7 @@ interface ModelFormProps {
 }
 
 const INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE = "__DEFAULT_DISPLAY_PROPERTY__";
+const INTERNAL_DEFAULT_OPTION_VALUE = "__DEFAULT_OPTION__";
 
 
 function PropertyFields({
@@ -68,29 +69,32 @@ function PropertyFields({
   const [openAccordionItems, setOpenAccordionItems] = React.useState<string[]>([]);
 
   React.useEffect(() => {
-    const itemsToOpenDueToErrors = new Set<string>();
+    const itemsToOpen = new Set<string>();
     const propertiesErrors = form.formState.errors.properties;
 
     if (Array.isArray(propertiesErrors)) {
         fields.forEach((fieldItem, idx) => {
             const propertyErrorAtIndex = propertiesErrors[idx];
             if (propertyErrorAtIndex && typeof propertyErrorAtIndex === 'object' && Object.keys(propertyErrorAtIndex).length > 0) {
-                const fieldLevelErrors = Object.keys(propertyErrorAtIndex).filter(key => key !== 'root');
-                if (fieldLevelErrors.length > 0 && fieldItem.fieldId) { // fieldItem.id changed to fieldItem.fieldId
-                    itemsToOpenDueToErrors.add(fieldItem.fieldId); // fieldItem.id changed to fieldItem.fieldId
+                // Check if there are any messages attached to any field within this property object
+                const hasFieldError = Object.values(propertyErrorAtIndex).some(
+                    (errorField: any) => errorField && typeof errorField.message === 'string'
+                );
+                if (hasFieldError && fieldItem.fieldId) {
+                    itemsToOpen.add(fieldItem.fieldId);
                 }
             }
         });
     }
     
-    if (itemsToOpenDueToErrors.size > 0) {
+    if (itemsToOpen.size > 0) {
       setOpenAccordionItems(prevOpen => {
         const newOpenState = new Set(prevOpen);
-        itemsToOpenDueToErrors.forEach(id => newOpenState.add(id));
+        itemsToOpen.forEach(id => newOpenState.add(id));
         return Array.from(newOpenState);
       });
     }
-  }, [form.formState.errors.properties, fields]);
+  }, [form.formState.errors.properties, fields, setOpenAccordionItems]);
 
 
   const handleTypeChange = (value: string, index: number) => {
@@ -104,7 +108,7 @@ function PropertyFields({
       form.setValue(`properties.${index}.precision`, undefined);
     } else {
       const currentPrecision = form.getValues(`properties.${index}.precision`);
-      if (currentPrecision === undefined) {
+      if (currentPrecision === undefined || currentPrecision === null || isNaN(Number(currentPrecision))) {
         form.setValue(`properties.${index}.precision`, 2);
       }
     }
@@ -280,7 +284,7 @@ function PropertyFields({
                               max="10"
                               placeholder="e.g., 2"
                               {...field}
-                              value={field.value ?? 2} 
+                              value={field.value ?? ''} 
                               onChange={e => {
                                 const valStr = e.target.value;
                                 if (valStr === "") {
@@ -393,7 +397,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
   const fieldArray = useFieldArray({
     control: form.control,
     name: 'properties',
-    keyName: "fieldId" // Use a unique key name
+    keyName: "fieldId" 
   });
 
   const modelsForRelations = models.filter(m => !existingModel || m.id !== existingModel.id);
@@ -410,27 +414,24 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
 
   const selectedValuesForAutocomplete = useMemo(() => {
     const currentDisplayNames = Array.isArray(watchedDisplayPropertyNames) ? watchedDisplayPropertyNames : [];
-    if (currentDisplayNames.length === 0 && !existingModel?.displayPropertyNames?.length) { // Check existingModel as well for initial load
+    if (currentDisplayNames.length === 0 && !existingModel?.displayPropertyNames?.length) {
         return [INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE];
     }
-    // Ensure that the returned array contains only values that exist in displayPropertyOptions or the special default value
+    
     const validSelectedValues = currentDisplayNames.filter(name => 
       name === INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE || displayPropertyOptions.some(opt => opt.value === name)
     );
 
-    // If after filtering, only the default is left, or nothing is left but default should be there
     if (validSelectedValues.length === 0 && (currentDisplayNames.includes(INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE) || !currentDisplayNames.length )) {
         return [INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE];
     }
     if (validSelectedValues.length === 1 && validSelectedValues[0] === INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE && currentDisplayNames.length > 1) {
-      // This case might mean default was erroneously included with actual selections
       return currentDisplayNames.filter(name => name !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
     }
 
     return validSelectedValues.length > 0 ? validSelectedValues : [INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE];
 
   }, [watchedDisplayPropertyNames, displayPropertyOptions, existingModel?.displayPropertyNames]);
-
 
   const handleFormSubmit = (values: ModelFormValues) => {
     const processedValues = { ...values };
@@ -460,12 +461,15 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     onSubmit(processedValues);
   };
   
-  const handleFormInvalid = (/* errors: FieldErrors<ModelFormValues> */) => {
-    // If onInvalid is called, validation has failed.
-    // The useEffect in PropertyFields should handle opening accordions to show specific errors.
+ const handleFormInvalid = (/* errors: FieldErrors<ModelFormValues> */) => {
+    // Log the form values to see what data is causing validation failure
+    console.log("Form validation failed. Current form values:", JSON.stringify(form.getValues(), null, 2)); // DEBUG
+    // Log the authoritative errors object from formState
+    console.error("Client-side form validation. Current form.formState.errors:", form.formState.errors); // DEBUG
+    
     toast({
       title: "Validation Error",
-      description: "Please correct the errors highlighted in the form before submitting. Some errors might be in collapsed sections.",
+      description: "Please correct the errors highlighted in the form. Some errors might be in collapsed sections.",
       variant: "destructive",
     });
   };
@@ -507,15 +511,15 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
               )}
             />
              <FormField
-              control={form.control}
-              name="displayPropertyNames"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Display Properties (Optional)</FormLabel>
-                  <MultiSelectAutocomplete
-                    options={[{value: INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE, label: "-- Default (Name/Title/ID) --"}, ...displayPropertyOptions]}
-                    selected={selectedValuesForAutocomplete} 
-                    onChange={(selectedOptsFromAutocomplete) => {
+                control={form.control}
+                name="displayPropertyNames"
+                render={({ field }) => (
+                    <FormItem>
+                    <FormLabel>Display Properties (Optional)</FormLabel>
+                    <MultiSelectAutocomplete
+                        options={[{ value: INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE, label: "-- Default (Name/Title/ID) --" }, ...displayPropertyOptions]}
+                        selected={selectedValuesForAutocomplete}
+                        onChange={(selectedOptsFromAutocomplete) => {
                         const isDefaultSelected = selectedOptsFromAutocomplete.includes(INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
                         const actualPropertiesSelected = selectedOptsFromAutocomplete.filter(v => v !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
 
@@ -524,14 +528,23 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                         } else {
                             field.onChange(actualPropertiesSelected);
                         }
-                    }}
-                    placeholder="Select properties..."
-                    emptyIndicator={displayPropertyOptions.length === 0 ? "No string/number/date properties available." : "No matching properties."}
-                  />
-                  <FormDescription>
-                    Choose string, number, or date properties to represent this model's objects. They will be shown concatenated with spaces. If empty, a default (Name/Title/ID) will be used.
-                  </FormDescription>
-                  <FormMessage />
+                        }}
+                        placeholder="Select properties..."
+                        emptyIndicator={displayPropertyOptions.length === 0 ? "No string/number/date properties available." : "No matching properties."}
+                    />
+                    <FormDescription>
+                        Choose string, number, or date properties to represent this model's objects. They will be shown concatenated with spaces. If empty, a default (Name/Title/ID) will be used.
+                    </FormDescription>
+                    <FormMessage />
+                    </FormItem>
+                )}
+            />
+            <FormField
+              control={form.control}
+              name="properties" 
+              render={() => (
+                <FormItem>
+                  <FormMessage className="mb-2 text-destructive" />
                 </FormItem>
               )}
             />
@@ -542,16 +555,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
 
         <div>
           <h3 className="text-lg font-medium mb-2">Properties</h3>
-          <FormField
-            control={form.control}
-            name="properties"
-            render={() => (
-              <FormItem>
-                {/* This FormMessage will show errors like "At least one property is required." */}
-                <FormMessage className="mb-2" /> 
-              </FormItem>
-            )}
-          />
+          {/* Removed the top-level properties FormField/FormMessage as errors are now handled within PropertyFields or directly under Model Details */}
           <PropertyFields form={form} fieldArray={fieldArray} modelsForRelations={modelsForRelations} />
         </div>
 
