@@ -73,8 +73,7 @@ const INTERNAL_DEFAULT_OPTION_VALUE = "__DEFAULT_OPTION__";
 
 interface SortablePropertyItemProps {
   id: string;
-  index: number;
-  children: React.ReactElement<{ dragHandleListeners?: any }>; // Children will be AccordionItem
+  children: (props: { dragHandleListeners?: any }) => React.ReactNode; // Children is now a render prop
   className?: string;
 }
 
@@ -91,188 +90,29 @@ function SortablePropertyItem({ id, children, className }: SortablePropertyItemP
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
-    zIndex: isDragging ? 10 : undefined,
+    zIndex: isDragging ? 10 : undefined, // Ensure dragging item is on top
   };
 
   return (
+    // Apply setNodeRef and attributes to this root draggable div
     <div ref={setNodeRef} style={style} {...attributes} className={className}>
-      {/* Pass listeners to the child (AccordionItem) which will pass to drag handle in AccordionTrigger */}
-      {React.cloneElement(children, { dragHandleListeners: listeners })}
+      {/* Execute the children render prop, passing down the drag listeners */}
+      {children({ dragHandleListeners: listeners })}
     </div>
   );
 }
 
 
-function PropertyFields({
-  form,
-  fieldArray,
-  modelsForRelations,
-}: {
-  form: UseFormReturn<ModelFormValues>,
-  fieldArray: UseFieldArrayReturn<ModelFormValues, "properties", "fieldId">,
-  modelsForRelations: Model[]
-}) {
-  const { fields, append, remove, move } = fieldArray;
-  const control = form.control;
-
-  const [openAccordionItems, setOpenAccordionItems] = React.useState<string[]>([]);
-
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
-
-  function handleDragEnd(event: DragEndEvent) {
-    const { active, over } = event;
-    if (over && active.id !== over.id) {
-      const oldIndex = fields.findIndex((field) => field.id === active.id); // field.id is fieldId from useFieldArray
-      const newIndex = fields.findIndex((field) => field.id === over.id);
-      if (oldIndex !== -1 && newIndex !== -1) {
-        move(oldIndex, newIndex);
-      }
-    }
-  }
-  
-  React.useEffect(() => {
-    const itemsToOpen = new Set<string>();
-    const propertiesErrors = form.formState.errors.properties;
-
-    if (Array.isArray(propertiesErrors)) {
-        fields.forEach((fieldItem, idx) => {
-            const propertyErrorAtIndex = propertiesErrors[idx] as FieldErrors<PropertyFormValues> | undefined;
-            if (propertyErrorAtIndex && typeof propertyErrorAtIndex === 'object' && Object.keys(propertyErrorAtIndex).length > 0) {
-                const hasFieldError = Object.values(propertyErrorAtIndex).some(
-                    (errorField: any) => errorField && typeof errorField.message === 'string'
-                );
-                if (hasFieldError && fieldItem.id) { 
-                    itemsToOpen.add(fieldItem.id); // Use field.id which is fieldId
-                }
-            }
-        });
-    }
-    
-    if (itemsToOpen.size > 0) {
-      setOpenAccordionItems(prevOpen => {
-        const newOpenState = new Set(prevOpen);
-        itemsToOpen.forEach(id => newOpenState.add(id));
-        return Array.from(newOpenState);
-      });
-    }
-  }, [form.formState.errors.properties, fields, setOpenAccordionItems]);
-
-
-  const handleTypeChange = (value: string, index: number) => {
-    form.setValue(`properties.${index}.type`, value as PropertyFormValues['type']);
-    if (value !== 'relationship') {
-      form.setValue(`properties.${index}.relationshipType`, 'one');
-      form.setValue(`properties.${index}.relatedModelId`, undefined);
-    }
-    if (value !== 'number') {
-      form.setValue(`properties.${index}.unit`, undefined);
-      form.setValue(`properties.${index}.precision`, undefined);
-    } else {
-      const currentPrecision = form.getValues(`properties.${index}.precision`);
-      if (currentPrecision === undefined || currentPrecision === null || isNaN(Number(currentPrecision))) {
-        form.setValue(`properties.${index}.precision`, 2);
-      }
-    }
-    if (value !== 'date') {
-      form.setValue(`properties.${index}.autoSetOnCreate`, false);
-      form.setValue(`properties.${index}.autoSetOnUpdate`, false);
-    }
-  };
-
-  return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-      <SortableContext items={fields.map(f => f.id)} strategy={verticalListSortingStrategy}>
-        <Accordion
-          type="multiple"
-          className="w-full space-y-2"
-          value={openAccordionItems} 
-          onValueChange={setOpenAccordionItems} 
-        >
-          {fields.map((fieldItem, index) => {
-            const currentPropertyType = form.watch(`properties.${index}.type`);
-            const propertyName = form.watch(`properties.${index}.name`);
-            const headerTitle = propertyName || `Property #${index + 1}`;
-
-            return (
-              // fieldItem.id here is the fieldId from useFieldArray, used for SortableContext items and useSortable id
-              <SortablePropertyItem key={fieldItem.id} id={fieldItem.id} index={index} className="border bg-background/50 rounded-md">
-                <AccordionItem value={fieldItem.id} className="border-0">
-                  {/* dragHandleListeners needs to be passed from SortablePropertyItem to AccordionTrigger */}
-                  {(propsFromSortable: { dragHandleListeners?: any }) => (
-                    <AccordionTrigger className="p-4 hover:no-underline">
-                      <div className="flex justify-between items-center w-full">
-                        <div className="flex items-center gap-2">
-                           <span {...propsFromSortable.dragHandleListeners} className="cursor-grab p-1 -ml-1">
-                            <GripVertical className="h-5 w-5 text-muted-foreground" />
-                          </span>
-                          <span className="text-lg font-medium text-foreground truncate mr-2">{headerTitle}</span>
-                        </div>
-                        <Button
-                          asChild
-                          variant="ghost"
-                          size="icon"
-                          onClick={(e) => {
-                            e.stopPropagation(); 
-                            remove(index);
-                          }}
-                          className="text-destructive hover:bg-destructive/10 flex-shrink-0"
-                          aria-label="Remove property"
-                        >
-                          <span
-                            role="button"
-                            tabIndex={0}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' || e.key === ' ') {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                remove(index);
-                              }
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </span>
-                        </Button>
-                      </div>
-                    </AccordionTrigger>
-                  )}
-                </AccordionItem>
-              </SortablePropertyItem>
-            );
-          })}
-        </Accordion>
-      </SortableContext>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={() => append({
-            id: crypto.randomUUID(), // This is the actual data ID, useFieldArray will manage fieldId
-            name: '',
-            type: 'string',
-            required: false,
-            relationshipType: 'one',
-            unit: undefined,
-            precision: undefined, 
-            autoSetOnCreate: false,
-            autoSetOnUpdate: false,
-            orderIndex: fields.length, // Tentative, will be finalized on save
-        } as PropertyFormValues)}
-        className="mt-2 w-full"
-      >
-        <PlusCircle className="mr-2 h-4 w-4" /> Add Property
-      </Button>
-    </DndContext>
-  );
-}
-
 // Temporarily extract the AccordionItem's content to make the DND setup simpler
 // We will pass dragHandleListeners to the AccordionTrigger now more easily.
-const PropertyAccordionContent = ({ form, index, currentPropertyType, modelsForRelations, control, handleTypeChange }: any) => {
+const PropertyAccordionContent = ({ form, index, currentPropertyType, modelsForRelations, control, handleTypeChange }: {
+  form: UseFormReturn<ModelFormValues>,
+  index: number,
+  currentPropertyType: PropertyFormValues['type'],
+  modelsForRelations: Model[],
+  control: Control<ModelFormValues>,
+  handleTypeChange: (value: string, index: number) => void
+}) => {
   return (
      <AccordionContent className="p-4 pt-0">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -487,7 +327,7 @@ function PropertyFieldsWithDnd({
   modelsForRelations,
 }: {
   form: UseFormReturn<ModelFormValues>,
-  fieldArray: UseFieldArrayReturn<ModelFormValues, "properties", "fieldId">,
+  fieldArray: UseFieldArrayReturn<ModelFormValues, "properties", "id">, // Changed keyName to "id"
   modelsForRelations: Model[]
 }) {
   const { fields, append, remove, move } = fieldArray;
@@ -509,6 +349,11 @@ function PropertyFieldsWithDnd({
       const newIndex = fields.findIndex((field) => field.id === over.id);
       if (oldIndex !== -1 && newIndex !== -1) {
         move(oldIndex, newIndex);
+        // Update orderIndex for all properties after move
+        const newOrderedProperties = arrayMove(form.getValues('properties'), oldIndex, newIndex);
+        newOrderedProperties.forEach((prop, idx) => {
+          form.setValue(`properties.${idx}.orderIndex`, idx);
+        });
       }
     }
   }
@@ -577,57 +422,54 @@ function PropertyFieldsWithDnd({
             const headerTitle = propertyName || `Property #${index + 1}`;
 
             return (
-              <SortablePropertyItem key={fieldItem.id} id={fieldItem.id} index={index} className="bg-card rounded-md border">
-                 {/* Pass dragHandleListeners down to AccordionTrigger */}
-                <AccordionItem value={fieldItem.id} className="border-0"> 
-                  {(dndProps: { dragHandleListeners?: any }) => (
-                    <>
-                      <AccordionTrigger className="p-4 hover:no-underline data-[state=open]:border-b">
-                        <div className="flex justify-between items-center w-full">
-                          <div className="flex items-center gap-2">
-                            <span {...dndProps.dragHandleListeners} className="cursor-grab p-1 -ml-1 text-muted-foreground hover:text-foreground">
-                              <GripVertical className="h-5 w-5" />
-                            </span>
-                            <span className="text-lg font-medium text-foreground truncate mr-2">{headerTitle}</span>
-                          </div>
-                          <Button
-                            asChild
-                            variant="ghost"
-                            size="icon"
-                            onClick={(e) => {
-                              e.stopPropagation(); 
-                              remove(index);
-                            }}
-                            className="text-destructive hover:bg-destructive/10 flex-shrink-0"
-                            aria-label="Remove property"
-                          >
-                            <span
-                              role="button"
-                              tabIndex={0}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' || e.key === ' ') {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  remove(index);
-                                }
-                              }}
+              <SortablePropertyItem key={fieldItem.id} id={fieldItem.id} className="bg-card rounded-md border">
+                 {({ dragHandleListeners }) => (
+                    <AccordionItem value={fieldItem.id} className="border-0"> 
+                        <AccordionTrigger className="p-4 hover:no-underline data-[state=open]:border-b">
+                            <div className="flex justify-between items-center w-full">
+                            <div className="flex items-center gap-2">
+                                <span {...dragHandleListeners} className="cursor-grab p-1 -ml-1 text-muted-foreground hover:text-foreground">
+                                <GripVertical className="h-5 w-5" />
+                                </span>
+                                <span className="text-lg font-medium text-foreground truncate mr-2">{headerTitle}</span>
+                            </div>
+                            <Button
+                                asChild
+                                variant="ghost"
+                                size="icon"
+                                onClick={(e) => {
+                                e.stopPropagation(); 
+                                remove(index);
+                                }}
+                                className="text-destructive hover:bg-destructive/10 flex-shrink-0"
+                                aria-label="Remove property"
                             >
-                              <Trash2 className="h-4 w-4" />
-                            </span>
-                          </Button>
-                        </div>
-                      </AccordionTrigger>
-                      <PropertyAccordionContent
-                        form={form}
-                        index={index}
-                        currentPropertyType={currentPropertyType}
-                        modelsForRelations={modelsForRelations}
-                        control={control}
-                        handleTypeChange={handleTypeChange}
-                      />
-                    </>
-                  )}
-                </AccordionItem>
+                                <span
+                                role="button"
+                                tabIndex={0}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    remove(index);
+                                    }
+                                }}
+                                >
+                                <Trash2 className="h-4 w-4" />
+                                </span>
+                            </Button>
+                            </div>
+                        </AccordionTrigger>
+                        <PropertyAccordionContent
+                            form={form}
+                            index={index}
+                            currentPropertyType={currentPropertyType}
+                            modelsForRelations={modelsForRelations}
+                            control={control}
+                            handleTypeChange={handleTypeChange}
+                        />
+                    </AccordionItem>
+                 )}
               </SortablePropertyItem>
             );
           })}
@@ -638,7 +480,7 @@ function PropertyFieldsWithDnd({
         variant="outline"
         size="sm"
         onClick={() => append({
-            id: crypto.randomUUID(), 
+            // id: crypto.randomUUID(), // RHF provides fieldId, actual ID is set on PropertyFormValues
             name: '',
             type: 'string',
             required: false,
@@ -647,8 +489,8 @@ function PropertyFieldsWithDnd({
             precision: undefined, 
             autoSetOnCreate: false,
             autoSetOnUpdate: false,
-            orderIndex: fields.length,
-        } as PropertyFormValues)}
+            orderIndex: fields.length, // Initial, will be updated
+        } as PropertyFormValues, {shouldFocus: false})} // Added shouldFocus: false
         className="mt-4 w-full border-dashed hover:border-solid"
       >
         <PlusCircle className="mr-2 h-4 w-4" /> Add Property
@@ -664,7 +506,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
   const fieldArray = useFieldArray({
     control: form.control,
     name: 'properties',
-    keyName: "id" // Use fieldItem.id from RHF for dnd keys
+    keyName: "id" 
   });
 
   const modelsForRelations = models.filter(m => !existingModel || m.id !== existingModel.id);
@@ -682,19 +524,19 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
   const selectedValuesForAutocomplete = useMemo(() => {
     const currentDisplayNames = Array.isArray(watchedDisplayPropertyNames) ? watchedDisplayPropertyNames : [];
     
-    if (!currentDisplayNames && !existingModel?.displayPropertyNames?.length) {
+    if (!currentDisplayNames.length && !existingModel?.displayPropertyNames?.length) {
         return [INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE];
     }
     
-    const validSelectedValues = (currentDisplayNames || []).filter(name => 
+    const validSelectedValues = currentDisplayNames.filter(name => 
       name === INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE || displayPropertyOptions.some(opt => opt.value === name)
     );
 
-    if (validSelectedValues.length === 0 && ((currentDisplayNames || []).includes(INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE) || !(currentDisplayNames || []).length )) {
+    if (validSelectedValues.length === 0 && (currentDisplayNames.includes(INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE) || !currentDisplayNames.length )) {
         return [INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE];
     }
-    if (validSelectedValues.length === 1 && validSelectedValues[0] === INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE && (currentDisplayNames || []).length > 1) {
-      return (currentDisplayNames || []).filter(name => name !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
+    if (validSelectedValues.length === 1 && validSelectedValues[0] === INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE && currentDisplayNames.length > 1) {
+      return currentDisplayNames.filter(name => name !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
     }
 
     return validSelectedValues.length > 0 ? validSelectedValues : [INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE];
@@ -712,7 +554,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     }
 
 
-    processedValues.properties = processedValues.properties.map(prop => {
+    processedValues.properties = processedValues.properties.map((prop, index) => { // Add index here
       const finalProp = { ...prop };
       if (prop.type !== 'number') {
         finalProp.unit = undefined;
@@ -724,12 +566,13 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
         finalProp.autoSetOnCreate = false;
         finalProp.autoSetOnUpdate = false;
       }
+      finalProp.orderIndex = index; // Ensure orderIndex is set based on final array order
       return finalProp;
     });
     onSubmit(processedValues);
   };
   
-  const handleFormInvalid = (/* errors: FieldErrors<ModelFormValues> */) => {
+ const handleFormInvalid = (/* errors: FieldErrors<ModelFormValues> */) => {
     // Log the form values to see what data is causing validation failure
     console.log("Form validation failed. Current form values:", JSON.stringify(form.getValues(), null, 2)); // DEBUG
     // Log the authoritative errors object from formState
@@ -801,7 +644,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                         emptyIndicator={displayPropertyOptions.length === 0 ? "No string/number/date properties available." : "No matching properties."}
                     />
                     <FormDescription>
-                        Choose string, number, or date properties to represent this model's objects. They will be shown concatenated with spaces. If empty, a default (Name/Title/ID) will be used.
+                        Choose string, number, or date properties to represent this model's objects. If empty, a default (Name/Title/ID) will be used.
                     </FormDescription>
                     <FormMessage />
                     </FormItem>
@@ -838,3 +681,4 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     </Form>
   );
 }
+
