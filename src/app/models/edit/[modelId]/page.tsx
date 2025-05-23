@@ -13,7 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import type { Model, Property } from '@/lib/types';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Loader2 } from 'lucide-react';
 
 export default function EditModelPage() {
   const router = useRouter();
@@ -42,7 +42,8 @@ export default function EditModelPage() {
             ...p,
             id: p.id || crypto.randomUUID(), // Ensure ID exists
             relationshipType: p.relationshipType || 'one', // Ensure default
-            // unit and precision are part of the Property type and will be included
+            autoSetOnCreate: !!p.autoSetOnCreate,
+            autoSetOnUpdate: !!p.autoSetOnUpdate,
           } as PropertyFormValues)),
         });
       } else {
@@ -53,7 +54,7 @@ export default function EditModelPage() {
     }
   }, [modelId, getModelById, isReady, form, router, toast]);
 
-  const onSubmit = (values: ModelFormValues) => {
+  const onSubmit = async (values: ModelFormValues) => {
     if (!currentModel) return;
 
     const existingByName = getModelByName(values.name);
@@ -62,8 +63,6 @@ export default function EditModelPage() {
         return;
     }
 
-    // values.properties here are already processed by ModelForm's internal submit handler
-    // to have correct unit/precision based on type
     const modelData = {
       name: values.name,
       description: values.description,
@@ -75,34 +74,45 @@ export default function EditModelPage() {
         relatedModelId: p.type === 'relationship' ? p.relatedModelId : undefined,
         required: p.required,
         relationshipType: p.type === 'relationship' ? p.relationshipType : undefined,
-        unit: p.unit, // p.unit is correctly set/undefined by ModelForm
-        precision: p.precision, // p.precision is correctly set/undefined/defaulted by ModelForm
+        unit: p.unit,
+        precision: p.precision,
+        autoSetOnCreate: p.autoSetOnCreate,
+        autoSetOnUpdate: p.autoSetOnUpdate,
       } as Property)),
     };
 
     try {
-      updateModel(currentModel.id, modelData);
+      await updateModel(currentModel.id, modelData);
       toast({ title: "Model Updated", description: `Model "${values.name}" has been successfully updated.` });
       router.push('/models');
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error updating model:", error);
-      toast({ variant: "destructive", title: "Error", description: "Failed to update model." });
+      toast({ variant: "destructive", title: "Error updating model", description: error.message || "An unknown error occurred." });
     }
   };
 
   if (!isReady || isLoadingModel) {
-    return <div className="flex justify-center items-center h-screen"><p>Loading model details...</p></div>;
+    return (
+      <div className="flex flex-col justify-center items-center h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
+        <p className="text-lg text-muted-foreground">Loading model details...</p>
+      </div>
+    );
   }
 
   if (!currentModel) {
-    // This case should be handled by the redirect in useEffect, but as a fallback:
-    return <div className="flex justify-center items-center h-screen"><p>Model not found.</p></div>;
+    return (
+      <div className="flex flex-col justify-center items-center h-screen">
+         <p className="text-lg text-destructive">Model not found.</p>
+         <Button onClick={() => router.push('/models')} className="mt-4">Go to Models</Button>
+      </div>
+    );
   }
 
   return (
     <div className="container mx-auto py-8">
       <Button variant="outline" onClick={() => router.push('/models')} className="mb-6">
-        <ArrowLeft className="mr-2 h-4 w-4" /> Back to Models
+        <ArrowLeft className="mr-2 h-4 w-4" /> Back to Model Admin
       </Button>
       <Card className="max-w-3xl mx-auto">
         <CardHeader>

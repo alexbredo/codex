@@ -32,16 +32,16 @@ const mapDbModelToClientModel = (dbModel: any): Model => {
     description: dbModel.description,
     displayPropertyNames: Array.isArray(dbModel.displayPropertyNames) 
       ? dbModel.displayPropertyNames 
-      : (typeof dbModel.displayPropertyNames === 'string' ? JSON.parse(dbModel.displayPropertyNames) : []),
+      : (typeof dbModel.displayPropertyNames === 'string' && dbModel.displayPropertyNames.length > 2 ? JSON.parse(dbModel.displayPropertyNames) : []),
     properties: (dbModel.properties || []).map((p: any) => ({
       ...p,
       id: p.id || crypto.randomUUID(),
-      required: p.required === 1 || p.required === true, // Handle DB (0/1) and direct boolean
+      required: p.required === 1 || p.required === true, 
       relationshipType: p.type === 'relationship' ? (p.relationshipType || 'one') : undefined,
       unit: p.type === 'number' ? p.unit : undefined,
       precision: p.type === 'number' ? (p.precision === undefined || p.precision === null ? 2 : p.precision) : undefined,
-      autoSetOnCreate: (p.type === 'date' ? (p.autoSetOnCreate === 1 || p.autoSetOnCreate === true) : false),
-      autoSetOnUpdate: (p.type === 'date' ? (p.autoSetOnUpdate === 1 || p.autoSetOnUpdate === true) : false),
+      autoSetOnCreate: p.type === 'date' ? (p.autoSetOnCreate === 1 || p.autoSetOnCreate === true) : false,
+      autoSetOnUpdate: p.type === 'date' ? (p.autoSetOnUpdate === 1 || p.autoSetOnUpdate === true) : false,
     })),
   };
 };
@@ -56,18 +56,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setIsReady(false);
     try {
       const modelsResponse = await fetch('/api/data-weaver/models');
-      if (!modelsResponse.ok) throw new Error('Failed to fetch models');
-      const modelsData: Model[] = await modelsResponse.json();
-      setModels(modelsData.map(mapDbModelToClientModel));
+      if (!modelsResponse.ok) throw new Error(`Failed to fetch models: ${modelsResponse.statusText}`);
+      const modelsDataFromApi: Model[] = await modelsResponse.json();
+      setModels(modelsDataFromApi.map(mapDbModelToClientModel));
 
       const allObjectsResponse = await fetch('/api/data-weaver/objects/all');
-      if (!allObjectsResponse.ok) throw new Error('Failed to fetch all objects');
+      if (!allObjectsResponse.ok) throw new Error(`Failed to fetch all objects: ${allObjectsResponse.statusText}`);
       const allObjectsData: Record<string, DataObject[]> = await allObjectsResponse.json();
       setObjects(allObjectsData);
 
     } catch (error) {
       console.error("Failed to load data from API:", error);
-      // Set to empty state on error
       setModels([]);
       setObjects({});
     }
@@ -90,25 +89,40 @@ export function DataProvider({ children }: { children: ReactNode }) {
     });
     if (!response.ok) {
       const errorData = await response.json();
-      throw new Error(errorData.error || 'Failed to add model');
+      console.error("API Error in addModel:", errorData);
+      throw new Error(errorData.error || 'Failed to add model via API');
     }
     const newModel: Model = await response.json();
     const clientModel = mapDbModelToClientModel(newModel);
     setModels((prev) => [...prev, clientModel]);
+    // Initialize objects for the new model
+    setObjects((prev) => ({ ...prev, [clientModel.id]: [] }));
     return clientModel;
   }, []);
 
   const updateModel = useCallback(async (modelId: string, updates: Partial<Omit<Model, 'id' | 'properties' | 'displayPropertyNames'>> & { properties?: Property[], displayPropertyNames?: string[] }): Promise<Model | undefined> => {
-    const propertiesWithIds = updates.properties?.map(p => ({ ...p, id: p.id || crypto.randomUUID() }));
+    const propertiesWithEnsuredIds = updates.properties?.map(p => ({
+      ...p,
+      id: p.id || crypto.randomUUID(),
+      required: !!p.required,
+      autoSetOnCreate: !!p.autoSetOnCreate,
+      autoSetOnUpdate: !!p.autoSetOnUpdate,
+    }));
+
+    const payload = {
+      ...updates,
+      properties: propertiesWithEnsuredIds,
+    };
 
     const response = await fetch(`/api/data-weaver/models/${modelId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...updates, properties: propertiesWithIds }),
+      body: JSON.stringify(payload),
     });
      if (!response.ok) {
       const errorData = await response.json();
-      throw new Error(errorData.error || 'Failed to update model');
+      console.error("API Error in updateModel:", errorData);
+      throw new Error(errorData.error || 'Failed to update model via API');
     }
     const updatedModelFromApi: Model = await response.json();
     const clientModel = mapDbModelToClientModel(updatedModelFromApi);
@@ -130,19 +144,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const response = await fetch(`/api/data-weaver/models/${modelId}`, {
       method: 'DELETE',
     });
-    if (!response.ok) throw new Error('Failed to delete model');
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error("API Error in deleteModel:", errorData);
+      throw new Error(errorData.error || 'Failed to delete model via API');
+    }
     
     setModels((prev) => prev.filter((model) => model.id !== modelId));
     setObjects((prev) => {
       const newObjects = { ...prev };
       delete newObjects[modelId];
-      // Also update properties of other models that might reference this one
-      setModels(prevModels => prevModels.map(m => ({
-        ...m,
-        properties: m.properties.map(p => p.relatedModelId === modelId ? { ...p, relatedModelId: undefined } : p)
-      })));
       return newObjects;
     });
+    // Properties referencing this model in other models are handled by DB cascade or UI logic for relationships.
   }, []);
 
   const getModelById = useCallback((modelId: string) => {
@@ -161,7 +175,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...objectData, id: objectId }),
     });
-    if (!response.ok) throw new Error('Failed to add object');
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error("API Error in addObject:", errorData);
+      throw new Error(errorData.error || 'Failed to add object via API');
+    }
     const newObject: DataObject = await response.json();
     
     setObjects((prev) => ({
@@ -177,7 +195,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updates),
     });
-    if (!response.ok) throw new Error('Failed to update object');
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error("API Error in updateObject:", errorData);
+      throw new Error(errorData.error || 'Failed to update object via API');
+    }
     const updatedObjectFromApi: DataObject = await response.json();
     
     let returnedObject: DataObject | undefined;
@@ -185,7 +207,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const modelObjects = prevObjects[modelId] || [];
       const newModelObjects = modelObjects.map((obj) => {
         if (obj.id === objectId) {
-          returnedObject = { ...obj, ...updatedObjectFromApi }; // Ensure id from API is used if different, though should be same
+          returnedObject = { ...obj, ...updatedObjectFromApi }; 
           return returnedObject;
         }
         return obj;
@@ -199,7 +221,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const response = await fetch(`/api/data-weaver/models/${modelId}/objects/${objectId}`, {
       method: 'DELETE',
     });
-    if (!response.ok) throw new Error('Failed to delete object');
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error("API Error in deleteObject:", errorData);
+      throw new Error(errorData.error || 'Failed to delete object via API');
+    }
     
     setObjects((prev) => ({
       ...prev,
