@@ -32,6 +32,7 @@ import { useRouter } from 'next/navigation';
 import { useToast } from "@/hooks/use-toast";
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Badge } from '@/components/ui/badge';
 
 export default function ModelsPage() {
   const { models, deleteModel, isReady } = useData(); 
@@ -190,7 +191,7 @@ export default function ModelsPage() {
                         </CardDescription>
                          {model.displayPropertyNames && model.displayPropertyNames.length > 0 && (
                           <div className="text-xs text-muted-foreground pt-1 flex items-center">
-                            <StickyNote size={12} className="mr-1.5 text-primary/70" /> Display As: <span className="font-medium text-primary/90 ml-1 truncate">{model.displayPropertyNames.join(', ')}</span>
+                            <StickyNote size={12} className="mr-1.5 text-primary/70" /> Display As: <span className="font-medium text-primary/90 ml-1 truncate">{model.displayPropertyNames.join(' ')}</span>
                           </div>
                         )}
                       </CardHeader>
