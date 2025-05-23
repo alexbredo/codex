@@ -3,10 +3,10 @@ import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { z } from 'zod';
 
+// Role is now determined by the backend, not sent by client
 const registerSchema = z.object({
   username: z.string().min(3, 'Username must be at least 3 characters').max(50),
   password: z.string().min(6, 'Password must be at least 6 characters').max(100),
-  role: z.enum(['user', 'administrator']).optional().default('user'),
 });
 
 export async function POST(request: Request) {
@@ -18,7 +18,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid input', details: validation.error.flatten().fieldErrors }, { status: 400 });
     }
 
-    const { username, password, role } = validation.data;
+    const { username, password } = validation.data;
     const db = await getDb();
 
     const existingUser = await db.get('SELECT id FROM users WHERE username = ?', username);
@@ -26,9 +26,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Username already taken' }, { status: 409 });
     }
 
+    // Determine role: first user is admin, others are user
+    const userCountResult = await db.get('SELECT COUNT(*) as count FROM users');
+    const userCount = userCountResult?.count || 0;
+    const role = userCount === 0 ? 'administrator' : 'user';
+
     const userId = crypto.randomUUID();
     // WARNING: Storing plaintext password. Highly insecure. For demo only.
-    // In a real application, hash the password using a library like bcrypt.
     await db.run(
       'INSERT INTO users (id, username, password, role) VALUES (?, ?, ?, ?)',
       userId,

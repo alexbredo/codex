@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+// Select components are no longer needed for role
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/contexts/auth-context';
 import { useRouter } from 'next/navigation';
@@ -15,11 +15,11 @@ import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import { useState } from 'react';
 
+// Role is no longer part of the client-side schema for registration
 const registerSchema = z.object({
   username: z.string().min(3, 'Username must be at least 3 characters').max(50),
   password: z.string().min(6, 'Password must be at least 6 characters').max(100),
   confirmPassword: z.string(),
-  role: z.enum(['user', 'administrator']).default('user'),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords don't match",
   path: ['confirmPassword'],
@@ -35,13 +35,13 @@ export default function RegisterPage() {
 
   const form = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
-    defaultValues: { username: '', password: '', confirmPassword: '', role: 'user' },
+    defaultValues: { username: '', password: '', confirmPassword: '' },
   });
 
   const onSubmit = async (values: RegisterFormValues) => {
     setIsLoading(true);
     try {
-      // Do not send confirmPassword to the backend
+      // Do not send confirmPassword or role to the backend for self-registration
       const { confirmPassword, ...registrationData } = values;
       await register(registrationData);
       toast({ title: 'Registration Successful', description: 'You can now log in with your new account.' });
@@ -105,21 +105,7 @@ export default function RegisterPage() {
                 <p className="text-sm text-destructive">{form.formState.errors.confirmPassword.message}</p>
               )}
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="role">Role</Label>
-              <Select onValueChange={(value) => form.setValue('role', value as 'user' | 'administrator')} defaultValue="user">
-                <SelectTrigger id="role" className={form.formState.errors.role ? 'border-destructive' : ''}>
-                  <SelectValue placeholder="Select a role" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="user">User (Can manage data objects)</SelectItem>
-                  <SelectItem value="administrator">Administrator (Can manage models & groups)</SelectItem>
-                </SelectContent>
-              </Select>
-              {form.formState.errors.role && (
-                <p className="text-sm text-destructive">{form.formState.errors.role.message}</p>
-              )}
-            </div>
+            {/* Role selection removed */}
              <p className="text-xs text-center text-destructive font-semibold p-2 bg-destructive/10 rounded-md">
                 WARNING: This is a placeholder authentication system. Passwords are NOT securely stored. DO NOT use real credentials.
             </p>

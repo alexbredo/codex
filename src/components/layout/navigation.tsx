@@ -12,7 +12,7 @@ import {
   SidebarGroup, 
   SidebarGroupLabel,
 } from '@/components/ui/sidebar';
-import { LayoutDashboard, DatabaseZap, ListChecks, FolderOpen, FolderKanban } from 'lucide-react';
+import { LayoutDashboard, DatabaseZap, ListChecks, FolderOpen, FolderKanban, Users } from 'lucide-react'; // Added Users icon
 import { useData } from '@/contexts/data-context'; 
 import { useAuth } from '@/contexts/auth-context';
 import type { Model } from '@/lib/types';
@@ -24,6 +24,7 @@ const staticNavItemsBase = [
 const adminNavItems = [
   { href: '/models', label: 'Model Admin', icon: DatabaseZap, roles: ['administrator'] },
   { href: '/model-groups', label: 'Group Admin', icon: FolderKanban, roles: ['administrator'] },
+  { href: '/admin/users', label: 'User Admin', icon: Users, roles: ['administrator'] }, // Added User Admin
 ];
 
 export default function Navigation() {
@@ -32,7 +33,7 @@ export default function Navigation() {
   const { user, isLoading: authIsLoading } = useAuth();
 
   const visibleStaticNavItems = React.useMemo(() => {
-    if (authIsLoading || !user) return staticNavItemsBase.filter(item => !item.roles || item.roles.length === 0); // Show only public if no user
+    if (authIsLoading || !user) return staticNavItemsBase.filter(item => !item.roles || item.roles.length === 0); 
     return [...staticNavItemsBase, ...adminNavItems].filter(item => item.roles.includes(user.role));
   }, [user, authIsLoading]);
 
@@ -47,7 +48,7 @@ export default function Navigation() {
       }
       groups[namespace].push(model);
     });
-    // Sort models within each namespace
+    
     for (const namespace in groups) {
       groups[namespace].sort((a, b) => a.name.localeCompare(b.name));
     }
