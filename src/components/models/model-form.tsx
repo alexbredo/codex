@@ -65,10 +65,7 @@ function PropertyFields({
   const { fields, append, remove } = fieldArray;
   const control = form.control;
 
-  const [openAccordionItems, setOpenAccordionItems] = React.useState<string[]>(() => {
-    // Initially, no items are open unless they have errors (handled by useEffect)
-    return [];
-  });
+  const [openAccordionItems, setOpenAccordionItems] = React.useState<string[]>([]);
 
   React.useEffect(() => {
     const itemsToOpenDueToErrors = new Set<string>();
@@ -86,8 +83,6 @@ function PropertyFields({
         });
     }
     
-    // If there are errors, update the open state to include these items
-    // This will trigger when form.formState.errors changes after a submission attempt
     if (itemsToOpenDueToErrors.size > 0) {
       setOpenAccordionItems(prevOpen => {
         const newOpenState = new Set(prevOpen);
@@ -450,16 +445,25 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     onSubmit(processedValues);
   };
 
-  const handleFormInvalid = (errors: FieldErrors<ModelFormValues>) => {
-    console.error("Client-side form validation errors:", errors);
-    if (Object.keys(errors).length > 0) {
+  const handleFormInvalid = (/* errors: FieldErrors<ModelFormValues> */) => {
+    // Log the authoritative errors object from formState
+    console.error("Client-side form validation. Current form.formState.errors:", form.formState.errors);
+    
+    // Show toast if form.formState.errors actually has content
+    if (Object.keys(form.formState.errors).length > 0) {
       toast({
         title: "Validation Error",
         description: "Please correct the errors highlighted in the form before submitting.",
         variant: "destructive",
       });
     } else {
-      console.warn("handleFormInvalid called, but the 'errors' argument was empty. Check form.formState.errors for actual validation state.", form.formState.errors);
+      // This case would be strange: form is invalid, onInvalid is called, but formState.errors is empty.
+      console.warn("Form submitted while invalid, but form.formState.errors is empty. Triggering a general validation toast.");
+      toast({
+        title: "Validation Issue",
+        description: "Please check the form for errors. Some fields might be hidden in collapsed sections.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -560,3 +564,4 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     </Form>
   );
 }
+
