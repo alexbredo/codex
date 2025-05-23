@@ -8,59 +8,42 @@ import type { Model, DataObject, Property } from '@/lib/types';
 interface DataContextType {
   models: Model[];
   objects: Record<string, DataObject[]>;
-  addModel: (modelData: Omit<Model, 'id'>) => Model;
-  updateModel: (modelId: string, updates: Partial<Omit<Model, 'id' | 'properties' | 'displayPropertyNames'>> & { properties?: Property[], displayPropertyNames?: string[] }) => Model | undefined;
-  deleteModel: (modelId: string) => void;
+  addModel: (modelData: Omit<Model, 'id'>) => Promise<Model>;
+  updateModel: (modelId: string, updates: Partial<Omit<Model, 'id' | 'properties' | 'displayPropertyNames'>> & { properties?: Property[], displayPropertyNames?: string[] }) => Promise<Model | undefined>;
+  deleteModel: (modelId: string) => Promise<void>;
   getModelById: (modelId: string) => Model | undefined;
   getModelByName: (name: string) => Model | undefined;
-  addObject: (modelId: string, objectData: Omit<DataObject, 'id'>) => DataObject;
-  updateObject: (modelId: string, objectId: string, updates: Partial<Omit<DataObject, 'id'>>) => DataObject | undefined;
-  deleteObject: (modelId: string, objectId: string) => void;
+  addObject: (modelId: string, objectData: Omit<DataObject, 'id'>) => Promise<DataObject>;
+  updateObject: (modelId: string, objectId: string, updates: Partial<Omit<DataObject, 'id'>>) => Promise<DataObject | undefined>;
+  deleteObject: (modelId: string, objectId: string) => Promise<void>;
   getObjectsByModelId: (modelId: string) => DataObject[];
   getAllObjects: () => Record<string, DataObject[]>;
   isReady: boolean;
+  fetchData: () => Promise<void>; // Added for manual refresh if needed
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
-const initialModels: Model[] = [
-  {
-    id: 'clx18090o0000qp08j9q1x0y0',
-    name: 'Product',
-    description: 'Represents products in the inventory.',
-    displayPropertyNames: ['Name', 'Price'],
-    properties: [
-      { id: 'clx18090p0001qp08w6k2y0s3', name: 'Name', type: 'string', required: true },
-      { id: 'clx18090p0002qp08l3c8k7j1', name: 'Price', type: 'number', required: true, unit: 'USD', precision: 2 },
-      { id: 'clx18090p0003qp08q8b5d9e2', name: 'In Stock', type: 'boolean', relationshipType: 'one' },
-      { id: 'clx18090q0004qp08q3z9h7x4', name: 'Release Date', type: 'date', relationshipType: 'one' },
-      { id: 'clx18090q000aqp08createdAt', name: 'Created At', type: 'date', autoSetOnCreate: true, autoSetOnUpdate: false },
-      { id: 'clx18090q000bqp08updatedAt', name: 'Last Updated', type: 'date', autoSetOnCreate: true, autoSetOnUpdate: true },
-    ],
-  },
-  {
-    id: 'clx18090q0005qp08m2n7b1d5',
-    name: 'Customer',
-    description: 'Represents customers of the business.',
-    displayPropertyNames: ['First Name', 'Last Name'],
-    properties: [
-      { id: 'clx18090q0006qp08t0u8v9w6', name: 'First Name', type: 'string', required: true },
-      { id: 'clx18090q0007qp08a2b3c4d7', name: 'Last Name', type: 'string', required: true },
-      { id: 'clx18090q0008qp08e5f6g7h8', name: 'Email', type: 'string', relationshipType: 'one' },
-      { id: 'clx18090r0009qp08i9j0k1l9', name: 'Is Premium', type: 'boolean', relationshipType: 'one' },
-      { id: 'clx18090r000aqp08p2q3r4s0', name: 'Joined Date', type: 'date', relationshipType: 'one' },
-    ],
-  },
-];
-
-const initialObjects: Record<string, DataObject[]> = {
-  'clx18090o0000qp08j9q1x0y0': [ // Products
-    { id: 'clx182dbs0000ui08nsl7y3kz', Name: 'Laptop Pro X', Price: 1499.99, 'In Stock': true, 'Release Date': '2023-05-15T00:00:00.000Z', 'Created At': '2023-05-01T10:00:00.000Z', 'Last Updated': '2023-05-10T12:30:00.000Z' },
-    { id: 'clx182dbt0001ui08opq8r9st', Name: 'Wireless Keyboard', Price: 79.50, 'In Stock': false, 'Release Date': '2022-11-01T00:00:00.000Z', 'Created At': '2022-10-20T14:00:00.000Z', 'Last Updated': '2022-11-05T16:45:00.000Z' },
-  ],
-  'clx18090q0005qp08m2n7b1d5': [ // Customers
-    { id: 'clx182dbt0002ui08uvw9x0yz', 'First Name': 'Alice', 'Last Name': 'Johnson', Email: 'alice@example.com', 'Is Premium': true, 'Joined Date': '2021-01-20T00:00:00.000Z' },
-  ],
+// Helper to map DB row to Model type (client-side)
+const mapDbModelToClientModel = (dbModel: any): Model => {
+  return {
+    id: dbModel.id,
+    name: dbModel.name,
+    description: dbModel.description,
+    displayPropertyNames: Array.isArray(dbModel.displayPropertyNames) 
+      ? dbModel.displayPropertyNames 
+      : (typeof dbModel.displayPropertyNames === 'string' ? JSON.parse(dbModel.displayPropertyNames) : []),
+    properties: (dbModel.properties || []).map((p: any) => ({
+      ...p,
+      id: p.id || crypto.randomUUID(),
+      required: p.required === 1 || p.required === true, // Handle DB (0/1) and direct boolean
+      relationshipType: p.type === 'relationship' ? (p.relationshipType || 'one') : undefined,
+      unit: p.type === 'number' ? p.unit : undefined,
+      precision: p.type === 'number' ? (p.precision === undefined || p.precision === null ? 2 : p.precision) : undefined,
+      autoSetOnCreate: (p.type === 'date' ? (p.autoSetOnCreate === 1 || p.autoSetOnCreate === true) : false),
+      autoSetOnUpdate: (p.type === 'date' ? (p.autoSetOnUpdate === 1 || p.autoSetOnUpdate === true) : false),
+    })),
+  };
 };
 
 
@@ -69,134 +52,91 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [objects, setObjects] = useState<Record<string, DataObject[]>>({});
   const [isReady, setIsReady] = useState(false);
 
-  const mapModelData = (modelData: any): Model => { 
-    let finalDisplayPropertyNames: string[] = [];
-    if (Array.isArray(modelData.displayPropertyNames)) {
-      finalDisplayPropertyNames = modelData.displayPropertyNames;
-    } else if (typeof (modelData as any).displayPropertyName === 'string' && (modelData as any).displayPropertyName) {
-      finalDisplayPropertyNames = [(modelData as any).displayPropertyName];
-    }
-    
-    const { displayPropertyName, ...restOfModelData } = modelData; 
-
-    return {
-      ...restOfModelData,
-      id: modelData.id || crypto.randomUUID(),
-      displayPropertyNames: finalDisplayPropertyNames,
-      properties: (modelData.properties || []).map((p: any) => ({
-        ...p,
-        id: p.id || crypto.randomUUID(),
-        relationshipType: p.type === 'relationship' ? (p.relationshipType || 'one') : undefined,
-        unit: p.type === 'number' ? p.unit : undefined,
-        precision: p.type === 'number' ? (p.precision === undefined ? 2 : p.precision) : undefined,
-        autoSetOnCreate: p.type === 'date' ? (p.autoSetOnCreate || false) : undefined,
-        autoSetOnUpdate: p.type === 'date' ? (p.autoSetOnUpdate || false) : undefined,
-      })),
-    };
-  };
-
-  useEffect(() => {
+  const fetchData = useCallback(async () => {
+    setIsReady(false);
     try {
-      const storedModels = localStorage.getItem('dynamicDataWeaver_models');
-      const storedObjects = localStorage.getItem('dynamicDataWeaver_objects');
-      
-      if (storedModels) {
-        const parsedModels = JSON.parse(storedModels) as any[]; 
-        setModels(parsedModels.map(mapModelData));
-      } else {
-        setModels(initialModels.map(mapModelData));
-      }
+      const modelsResponse = await fetch('/api/data-weaver/models');
+      if (!modelsResponse.ok) throw new Error('Failed to fetch models');
+      const modelsData: Model[] = await modelsResponse.json();
+      setModels(modelsData.map(mapDbModelToClientModel));
 
-      if (storedObjects) {
-        setObjects(JSON.parse(storedObjects));
-      } else {
-        setObjects(initialObjects);
-      }
+      const allObjectsResponse = await fetch('/api/data-weaver/objects/all');
+      if (!allObjectsResponse.ok) throw new Error('Failed to fetch all objects');
+      const allObjectsData: Record<string, DataObject[]> = await allObjectsResponse.json();
+      setObjects(allObjectsData);
+
     } catch (error) {
-      console.error("Failed to load data from localStorage, initializing with defaults.", error);
-      setModels(initialModels.map(mapModelData));
-      setObjects(initialObjects);
+      console.error("Failed to load data from API:", error);
+      // Set to empty state on error
+      setModels([]);
+      setObjects({});
     }
     setIsReady(true);
   }, []);
 
   useEffect(() => {
-    if (isReady) {
-      try {
-        localStorage.setItem('dynamicDataWeaver_models', JSON.stringify(models));
-      } catch (error) {
-        console.error("Failed to save models to localStorage", error);
-      }
-    }
-  }, [models, isReady]);
+    fetchData();
+  }, [fetchData]);
 
-  useEffect(() => {
-    if (isReady) {
-      try {
-        localStorage.setItem('dynamicDataWeaver_objects', JSON.stringify(objects));
-      } catch (error) {
-        console.error("Failed to save objects to localStorage", error);
-      }
-    }
-  }, [objects, isReady]);
 
-  const addModel = useCallback((modelData: Omit<Model, 'id' | 'displayPropertyNames'> & { displayPropertyNames?: string[] }): Model => {
-    const newModel: Model = {
-      ...modelData,
-      id: crypto.randomUUID(),
-      displayPropertyNames: modelData.displayPropertyNames || [],
-      properties: modelData.properties.map(p => ({
-        ...p,
-        id: p.id || crypto.randomUUID(),
-        relationshipType: p.type === 'relationship' ? (p.relationshipType || 'one') : undefined,
-        unit: p.type === 'number' ? p.unit : undefined,
-        precision: p.type === 'number' ? (p.precision === undefined ? 2 : p.precision) : undefined,
-        autoSetOnCreate: p.type === 'date' ? (p.autoSetOnCreate || false) : undefined,
-        autoSetOnUpdate: p.type === 'date' ? (p.autoSetOnUpdate || false) : undefined,
-      }))
-    };
-    setModels((prev) => [...prev, newModel]);
-    return newModel;
+  const addModel = useCallback(async (modelData: Omit<Model, 'id'>): Promise<Model> => {
+    const modelId = crypto.randomUUID();
+    const propertiesWithIds = modelData.properties.map(p => ({ ...p, id: p.id || crypto.randomUUID() }));
+    
+    const response = await fetch('/api/data-weaver/models', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...modelData, id: modelId, properties: propertiesWithIds }),
+    });
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to add model');
+    }
+    const newModel: Model = await response.json();
+    const clientModel = mapDbModelToClientModel(newModel);
+    setModels((prev) => [...prev, clientModel]);
+    return clientModel;
   }, []);
 
-  const updateModel = useCallback((modelId: string, updates: Partial<Omit<Model, 'id' | 'properties' | 'displayPropertyNames'>> & { properties?: Property[], displayPropertyNames?: string[] }): Model | undefined => {
-    let updatedModel: Model | undefined;
+  const updateModel = useCallback(async (modelId: string, updates: Partial<Omit<Model, 'id' | 'properties' | 'displayPropertyNames'>> & { properties?: Property[], displayPropertyNames?: string[] }): Promise<Model | undefined> => {
+    const propertiesWithIds = updates.properties?.map(p => ({ ...p, id: p.id || crypto.randomUUID() }));
+
+    const response = await fetch(`/api/data-weaver/models/${modelId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...updates, properties: propertiesWithIds }),
+    });
+     if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to update model');
+    }
+    const updatedModelFromApi: Model = await response.json();
+    const clientModel = mapDbModelToClientModel(updatedModelFromApi);
+    
+    let returnedModel: Model | undefined;
     setModels((prevModels) =>
       prevModels.map((model) => {
         if (model.id === modelId) {
-          const newProperties = updates.properties ? updates.properties.map(p => ({
-            ...p,
-            id: p.id || crypto.randomUUID(),
-            relationshipType: p.type === 'relationship' ? (p.relationshipType || 'one') : undefined,
-            unit: p.type === 'number' ? p.unit : undefined,
-            precision: p.type === 'number' ? (p.precision === undefined ? 2 : p.precision) : undefined,
-            autoSetOnCreate: p.type === 'date' ? (p.autoSetOnCreate || false) : undefined,
-            autoSetOnUpdate: p.type === 'date' ? (p.autoSetOnUpdate || false) : undefined,
-          })) : model.properties;
-          
-          updatedModel = {
-            ...model,
-            ...updates,
-            properties: newProperties,
-            displayPropertyNames: 'displayPropertyNames' in updates ? (updates.displayPropertyNames || []) : model.displayPropertyNames
-          };
-          return updatedModel;
+          returnedModel = clientModel;
+          return clientModel;
         }
         return model;
       })
     );
-    return updatedModel;
+    return returnedModel;
   }, []);
 
-  const deleteModel = useCallback((modelId: string) => {
+  const deleteModel = useCallback(async (modelId: string) => {
+    const response = await fetch(`/api/data-weaver/models/${modelId}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) throw new Error('Failed to delete model');
+    
     setModels((prev) => prev.filter((model) => model.id !== modelId));
     setObjects((prev) => {
       const newObjects = { ...prev };
       delete newObjects[modelId];
-      // Also remove references from other objects if this model was a target for relationships
-      // This is a complex operation; for now, we'll just clear the objects of the deleted model
-      // A more robust solution would be to update related objects, or prevent deletion if referenced.
-      // For now, also update properties of other models that might reference this one
+      // Also update properties of other models that might reference this one
       setModels(prevModels => prevModels.map(m => ({
         ...m,
         properties: m.properties.map(p => p.relatedModelId === modelId ? { ...p, relatedModelId: undefined } : p)
@@ -214,8 +154,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [models]);
 
 
-  const addObject = useCallback((modelId: string, objectData: Omit<DataObject, 'id'>): DataObject => {
-    const newObject: DataObject = { ...objectData, id: crypto.randomUUID() };
+  const addObject = useCallback(async (modelId: string, objectData: Omit<DataObject, 'id'>): Promise<DataObject> => {
+    const objectId = crypto.randomUUID();
+    const response = await fetch(`/api/data-weaver/models/${modelId}/objects`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...objectData, id: objectId }),
+    });
+    if (!response.ok) throw new Error('Failed to add object');
+    const newObject: DataObject = await response.json();
+    
     setObjects((prev) => ({
       ...prev,
       [modelId]: [...(prev[modelId] || []), newObject],
@@ -223,23 +171,36 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return newObject;
   }, []);
 
-  const updateObject = useCallback((modelId: string, objectId: string, updates: Partial<Omit<DataObject, 'id'>>): DataObject | undefined => {
-    let updatedObject: DataObject | undefined;
+  const updateObject = useCallback(async (modelId: string, objectId: string, updates: Partial<Omit<DataObject, 'id'>>): Promise<DataObject | undefined> => {
+    const response = await fetch(`/api/data-weaver/models/${modelId}/objects/${objectId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+    if (!response.ok) throw new Error('Failed to update object');
+    const updatedObjectFromApi: DataObject = await response.json();
+    
+    let returnedObject: DataObject | undefined;
     setObjects((prevObjects) => {
       const modelObjects = prevObjects[modelId] || [];
       const newModelObjects = modelObjects.map((obj) => {
         if (obj.id === objectId) {
-          updatedObject = { ...obj, ...updates };
-          return updatedObject;
+          returnedObject = { ...obj, ...updatedObjectFromApi }; // Ensure id from API is used if different, though should be same
+          return returnedObject;
         }
         return obj;
       });
       return { ...prevObjects, [modelId]: newModelObjects };
     });
-    return updatedObject;
+    return returnedObject;
   }, []);
 
-  const deleteObject = useCallback((modelId: string, objectId: string) => {
+  const deleteObject = useCallback(async (modelId: string, objectId: string) => {
+    const response = await fetch(`/api/data-weaver/models/${modelId}/objects/${objectId}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) throw new Error('Failed to delete object');
+    
     setObjects((prev) => ({
       ...prev,
       [modelId]: (prev[modelId] || []).filter((obj) => obj.id !== objectId),
@@ -255,7 +216,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [objects]);
 
   return (
-    <DataContext.Provider value={{ models, objects, addModel, updateModel, deleteModel, getModelById, getModelByName, addObject, updateObject, deleteObject, getObjectsByModelId, getAllObjects, isReady }}>
+    <DataContext.Provider value={{ models, objects, addModel, updateModel, deleteModel, getModelById, getModelByName, addObject, updateObject, deleteObject, getObjectsByModelId, getAllObjects, isReady, fetchData }}>
       {children}
     </DataContext.Provider>
   );
