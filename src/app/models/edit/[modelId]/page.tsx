@@ -34,18 +34,20 @@ export default function EditModelPage() {
       const foundModel = getModelById(modelId);
       if (foundModel) {
         setCurrentModel(foundModel);
+        // Ensure properties are sorted by orderIndex before resetting form for consistency
+        const sortedProperties = [...foundModel.properties].sort((a, b) => a.orderIndex - b.orderIndex);
+        
         form.reset({
           name: foundModel.name,
           description: foundModel.description || '',
           displayPropertyNames: foundModel.displayPropertyNames || [],
-          properties: foundModel.properties.map(p => {
+          properties: sortedProperties.map(p => {
             const isRelationship = p.type === 'relationship';
             const isDate = p.type === 'date';
             const isNumber = p.type === 'number';
 
-            // Ensure properties are initialized consistent with their type
             return {
-              id: p.id || crypto.randomUUID(), // Ensure ID exists
+              id: p.id || crypto.randomUUID(),
               name: p.name,
               type: p.type,
               relatedModelId: isRelationship ? p.relatedModelId : undefined,
@@ -55,6 +57,7 @@ export default function EditModelPage() {
               precision: isNumber ? (p.precision === undefined || p.precision === null ? 2 : p.precision) : undefined,
               autoSetOnCreate: isDate ? !!p.autoSetOnCreate : false,
               autoSetOnUpdate: isDate ? !!p.autoSetOnUpdate : false,
+              orderIndex: p.orderIndex,
             } as PropertyFormValues;
           }),
         });
@@ -79,7 +82,7 @@ export default function EditModelPage() {
       name: values.name,
       description: values.description,
       displayPropertyNames: values.displayPropertyNames && values.displayPropertyNames.length > 0 ? values.displayPropertyNames : undefined,
-      properties: values.properties.map(p => ({
+      properties: values.properties.map((p, index) => ({ // Assign orderIndex here
         id: p.id || crypto.randomUUID(),
         name: p.name,
         type: p.type,
@@ -90,6 +93,7 @@ export default function EditModelPage() {
         precision: p.precision,
         autoSetOnCreate: p.autoSetOnCreate,
         autoSetOnUpdate: p.autoSetOnUpdate,
+        orderIndex: index, // Set orderIndex based on current array order
       } as Property)),
     };
 

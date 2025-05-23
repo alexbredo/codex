@@ -42,7 +42,8 @@ const mapDbModelToClientModel = (dbModel: any): Model => {
       precision: p.type === 'number' ? (p.precision === undefined || p.precision === null ? 2 : p.precision) : undefined,
       autoSetOnCreate: p.type === 'date' ? (p.autoSetOnCreate === 1 || p.autoSetOnCreate === true) : false,
       autoSetOnUpdate: p.type === 'date' ? (p.autoSetOnUpdate === 1 || p.autoSetOnUpdate === true) : false,
-    })),
+      orderIndex: p.orderIndex ?? 0, // Ensure orderIndex is present
+    })).sort((a, b) => a.orderIndex - b.orderIndex), // Ensure properties are sorted by orderIndex
   };
 };
 
@@ -80,12 +81,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const addModel = useCallback(async (modelData: Omit<Model, 'id'>): Promise<Model> => {
     const modelId = crypto.randomUUID();
-    const propertiesWithIds = modelData.properties.map(p => ({ ...p, id: p.id || crypto.randomUUID() }));
+    // Ensure properties have IDs and orderIndex is assigned before sending to API
+    const propertiesWithIdsAndOrder = modelData.properties.map((p, index) => ({ 
+      ...p, 
+      id: p.id || crypto.randomUUID(),
+      orderIndex: index // Assign orderIndex based on array order
+    }));
     
     const response = await fetch('/api/data-weaver/models', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...modelData, id: modelId, properties: propertiesWithIds }),
+      body: JSON.stringify({ ...modelData, id: modelId, properties: propertiesWithIdsAndOrder }),
     });
     if (!response.ok) {
       const errorData = await response.json();
@@ -94,24 +100,24 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
     const newModel: Model = await response.json();
     const clientModel = mapDbModelToClientModel(newModel);
-    setModels((prev) => [...prev, clientModel]);
-    // Initialize objects for the new model
+    setModels((prev) => [...prev, clientModel].sort((a, b) => a.name.localeCompare(b.name)));
     setObjects((prev) => ({ ...prev, [clientModel.id]: [] }));
     return clientModel;
   }, []);
 
   const updateModel = useCallback(async (modelId: string, updates: Partial<Omit<Model, 'id' | 'properties' | 'displayPropertyNames'>> & { properties?: Property[], displayPropertyNames?: string[] }): Promise<Model | undefined> => {
-    const propertiesWithEnsuredIds = updates.properties?.map(p => ({
+    const propertiesWithEnsuredIdsAndOrder = updates.properties?.map((p, index) => ({
       ...p,
       id: p.id || crypto.randomUUID(),
       required: !!p.required,
       autoSetOnCreate: !!p.autoSetOnCreate,
       autoSetOnUpdate: !!p.autoSetOnUpdate,
+      orderIndex: index // Assign orderIndex based on current array order
     }));
 
     const payload = {
       ...updates,
-      properties: propertiesWithEnsuredIds,
+      properties: propertiesWithEnsuredIdsAndOrder,
     };
 
     const response = await fetch(`/api/data-weaver/models/${modelId}`, {
@@ -135,7 +141,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           return clientModel;
         }
         return model;
-      })
+      }).sort((a, b) => a.name.localeCompare(b.name))
     );
     return returnedModel;
   }, []);
@@ -156,7 +162,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       delete newObjects[modelId];
       return newObjects;
     });
-    // Properties referencing this model in other models are handled by DB cascade or UI logic for relationships.
   }, []);
 
   const getModelById = useCallback((modelId: string) => {

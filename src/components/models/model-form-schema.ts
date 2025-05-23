@@ -15,6 +15,7 @@ export const propertyFormSchema = z.object({
   precision: z.coerce.number().int().min(0).max(10).optional(),
   autoSetOnCreate: z.boolean().optional().default(false),
   autoSetOnUpdate: z.boolean().optional().default(false),
+  orderIndex: z.number().optional(), // Will be set programmatically
 }).refine(data => {
   if (data.type === 'relationship' && !data.relatedModelId) {
     return false;

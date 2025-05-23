@@ -7,11 +7,11 @@ import type { Model, Property } from '@/lib/types';
 export async function GET() {
   try {
     const db = await getDb();
-    const rows = await db.all('SELECT * FROM models');
+    const rows = await db.all('SELECT * FROM models ORDER BY name ASC');
     
     const modelsWithProperties: Model[] = [];
     for (const modelRow of rows) {
-      const properties = await db.all('SELECT * FROM properties WHERE model_id = ?', modelRow.id);
+      const properties = await db.all('SELECT * FROM properties WHERE model_id = ? ORDER BY orderIndex ASC', modelRow.id);
       modelsWithProperties.push({
         id: modelRow.id,
         name: modelRow.name,
@@ -50,7 +50,7 @@ export async function POST(request: Request) {
 
     for (const prop of newProperties) {
       await db.run(
-        'INSERT INTO properties (id, model_id, name, type, relatedModelId, required, relationshipType, unit, precision, autoSetOnCreate, autoSetOnUpdate) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO properties (id, model_id, name, type, relatedModelId, required, relationshipType, unit, precision, autoSetOnCreate, autoSetOnUpdate, orderIndex) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         prop.id || crypto.randomUUID(),
         modelId,
         prop.name,
@@ -61,7 +61,8 @@ export async function POST(request: Request) {
         prop.unit,
         prop.precision,
         prop.autoSetOnCreate ? 1 : 0,
-        prop.autoSetOnUpdate ? 1 : 0
+        prop.autoSetOnUpdate ? 1 : 0,
+        prop.orderIndex // This is now included
       );
     }
 

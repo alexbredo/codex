@@ -12,6 +12,7 @@ export interface Property {
   precision?: number; // For number type
   autoSetOnCreate?: boolean; // For date type: set to current date on object creation
   autoSetOnUpdate?: boolean; // For date type: set to current date on object update
+  orderIndex: number; // For property display order
 }
 
 export interface Model {
@@ -29,7 +30,8 @@ export interface DataObject {
 
 // For forms
 export type ModelFormData = Omit<Model, 'id'>;
-export type PropertyFormData = Omit<Property, 'id'> & { 
+export type PropertyFormData = Omit<Property, 'id' | 'orderIndex'> & { 
+  orderIndex?: number; // Optional for form, will be set programmatically
   relationshipType?: 'one' | 'many',
   autoSetOnCreate?: boolean,
   autoSetOnUpdate?: boolean,

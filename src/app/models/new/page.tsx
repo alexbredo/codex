@@ -33,6 +33,7 @@ export default function CreateModelPage() {
         relationshipType: 'one',
         unit: undefined,
         precision: undefined, // Will be defaulted to 2 by ModelForm if type becomes number
+        orderIndex: 0, // Initial order index
       } as PropertyFormValues],
     },
   });
@@ -44,21 +45,22 @@ export default function CreateModelPage() {
         return;
     }
 
-    // values.properties here are already processed by ModelForm's internal submit handler
-    // to have correct unit/precision based on type
     const modelData = {
       name: values.name,
       description: values.description,
       displayPropertyNames: values.displayPropertyNames && values.displayPropertyNames.length > 0 ? values.displayPropertyNames : undefined,
-      properties: values.properties.map(p => ({
+      properties: values.properties.map((p, index) => ({ // Assign orderIndex here
         id: p.id || crypto.randomUUID(),
         name: p.name,
         type: p.type,
         relatedModelId: p.type === 'relationship' ? p.relatedModelId : undefined,
         required: p.required,
         relationshipType: p.type === 'relationship' ? p.relationshipType : undefined,
-        unit: p.unit, // p.unit is correctly set/undefined by ModelForm
-        precision: p.precision, // p.precision is correctly set/undefined/defaulted by ModelForm
+        unit: p.unit,
+        precision: p.precision,
+        autoSetOnCreate: p.autoSetOnCreate,
+        autoSetOnUpdate: p.autoSetOnUpdate,
+        orderIndex: index, // Set orderIndex based on current array order
       } as Property)),
     };
 
@@ -66,9 +68,9 @@ export default function CreateModelPage() {
       addModel(modelData);
       toast({ title: "Model Created", description: `Model "${values.name}" has been successfully created.` });
       router.push('/models');
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error creating model:", error);
-      toast({ variant: "destructive", title: "Error", description: "Failed to create model." });
+      toast({ variant: "destructive", title: "Error", description: error.message || "Failed to create model." });
     }
   };
 
@@ -79,7 +81,7 @@ export default function CreateModelPage() {
   return (
     <div className="container mx-auto py-8">
       <Button variant="outline" onClick={() => router.push('/models')} className="mb-6">
-        <ArrowLeft className="mr-2 h-4 w-4" /> Back to Models
+        <ArrowLeft className="mr-2 h-4 w-4" /> Back to Model Admin
       </Button>
       <Card className="max-w-3xl mx-auto">
         <CardHeader>

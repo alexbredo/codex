@@ -17,7 +17,7 @@ export async function GET(request: Request, { params }: Params) {
       return NextResponse.json({ error: 'Model not found' }, { status: 404 });
     }
 
-    const properties = await db.all('SELECT * FROM properties WHERE model_id = ?', params.modelId);
+    const properties = await db.all('SELECT * FROM properties WHERE model_id = ? ORDER BY orderIndex ASC', params.modelId);
     
     const model: Model = {
       id: modelRow.id,
@@ -72,7 +72,7 @@ export async function PUT(request: Request, { params }: Params) {
       await db.run('DELETE FROM properties WHERE model_id = ?', params.modelId);
       for (const prop of updatedProperties) {
         await db.run(
-          'INSERT INTO properties (id, model_id, name, type, relatedModelId, required, relationshipType, unit, precision, autoSetOnCreate, autoSetOnUpdate) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          'INSERT INTO properties (id, model_id, name, type, relatedModelId, required, relationshipType, unit, precision, autoSetOnCreate, autoSetOnUpdate, orderIndex) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
           prop.id || crypto.randomUUID(),
           params.modelId,
           prop.name,
@@ -83,7 +83,8 @@ export async function PUT(request: Request, { params }: Params) {
           prop.unit,
           prop.precision,
           prop.autoSetOnCreate ? 1 : 0,
-          prop.autoSetOnUpdate ? 1 : 0
+          prop.autoSetOnUpdate ? 1 : 0,
+          prop.orderIndex // This is now included
         );
       }
     }
@@ -92,7 +93,7 @@ export async function PUT(request: Request, { params }: Params) {
 
     // Fetch the updated model to return
     const refreshedModelRow = await db.get('SELECT * FROM models WHERE id = ?', params.modelId);
-    const refreshedProperties = await db.all('SELECT * FROM properties WHERE model_id = ?', params.modelId);
+    const refreshedProperties = await db.all('SELECT * FROM properties WHERE model_id = ? ORDER BY orderIndex ASC', params.modelId);
 
     const returnedModel: Model = {
       id: refreshedModelRow.id,

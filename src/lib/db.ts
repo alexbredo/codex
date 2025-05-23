@@ -44,6 +44,7 @@ async function initializeDb(): Promise<Database> {
       precision INTEGER,
       autoSetOnCreate INTEGER DEFAULT 0,
       autoSetOnUpdate INTEGER DEFAULT 0,
+      orderIndex INTEGER NOT NULL DEFAULT 0, -- For property display order
       FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE,
       UNIQUE (model_id, name) 
     );
