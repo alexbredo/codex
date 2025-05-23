@@ -26,7 +26,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { useData } from '@/contexts/data-context';
 import type { Model, DataObject, Property } from '@/lib/types';
-import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye } from 'lucide-react'; // Added Eye
+import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -44,7 +44,7 @@ interface SortConfig {
 }
 
 interface IncomingRelationColumn {
-  id: string; 
+  id: string;
   headerLabel: string;
   referencingModel: Model;
   referencingProperty: Property;
@@ -55,7 +55,7 @@ export default function DataObjectsPage() {
   const router = useRouter();
   const params = useParams();
   const modelId = params.modelId as string;
-  
+
   const {
     models: allModels,
     getModelById,
@@ -71,9 +71,9 @@ export default function DataObjectsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [sortConfig, setSortConfig] = useState<SortConfig | null>(null);
-  
+
   const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects, isReady]);
-  
+
   useEffect(() => {
     if (isReady && modelId) {
       const foundModel = getModelById(modelId);
@@ -96,7 +96,7 @@ export default function DataObjectsPage() {
       otherModel.properties.forEach(prop => {
         if (prop.type === 'relationship' && prop.relatedModelId === currentModel.id) {
           columns.push({
-            id: `${otherModel.id}-${prop.name}`, 
+            id: `${otherModel.id}-${prop.name}`,
             headerLabel: `Ref. by ${otherModel.name} (via ${prop.name})`,
             referencingModel: otherModel,
             referencingProperty: prop,
@@ -116,7 +116,7 @@ export default function DataObjectsPage() {
     if (!currentModel) return;
     router.push(`/data/${currentModel.id}/edit/${obj.id}`);
   };
-  
+
   const handleView = (obj: DataObject) => {
     if (!currentModel) return;
     router.push(`/data/${currentModel.id}/view/${obj.id}`);
@@ -139,7 +139,7 @@ export default function DataObjectsPage() {
       direction = 'desc';
     }
     setSortConfig({ key, direction });
-    setCurrentPage(1); 
+    setCurrentPage(1);
   };
 
   const getSortIcon = (columnKey: string) => {
@@ -162,13 +162,13 @@ export default function DataObjectsPage() {
           }
           if (prop.type === 'relationship' && prop.relatedModelId) {
               const relatedModel = getModelById(prop.relatedModelId);
-              if (Array.isArray(value)) { 
+              if (Array.isArray(value)) {
                   return value.some(itemId => {
                       const relatedObj = (allDbObjects[prop.relatedModelId!] || []).find(o => o.id === itemId);
                       const displayVal = getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
                       return displayVal.toLowerCase().includes(searchTerm.toLowerCase());
                   });
-              } else if (value) { 
+              } else if (value) {
                   const relatedObj = (allDbObjects[prop.relatedModelId!] || []).find(o => o.id === value);
                   const displayVal = getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
                   return displayVal.toLowerCase().includes(searchTerm.toLowerCase());
@@ -220,7 +220,7 @@ export default function DataObjectsPage() {
             if (directPropertyToSort.relationshipType === 'many') {
               aValue = Array.isArray(aValue) ? aValue.length : 0;
               bValue = Array.isArray(bValue) ? bValue.length : 0;
-            } else { 
+            } else {
               const aRelatedObj = (allDbObjects[directPropertyToSort.relatedModelId!] || []).find(o => o.id === aValue);
               const bRelatedObj = (allDbObjects[directPropertyToSort.relatedModelId!] || []).find(o => o.id === bValue);
               aValue = getObjectDisplayValue(aRelatedObj, relatedModel, allModels, allDbObjects).toLowerCase();
@@ -232,7 +232,7 @@ export default function DataObjectsPage() {
             bValue = String(bValue ?? '').toLowerCase();
         }
       } else if (virtualColumnToSort) {
-        
+
         const aReferencingData = allDbObjects[virtualColumnToSort.referencingModel.id] || [];
         aValue = aReferencingData.filter(refObj => {
           const linkedValue = refObj[virtualColumnToSort.referencingProperty.name];
@@ -245,7 +245,7 @@ export default function DataObjectsPage() {
           return virtualColumnToSort.referencingProperty.relationshipType === 'many' ? (Array.isArray(linkedValue) && linkedValue.includes(b.id)) : linkedValue === b.id;
         }).length;
       } else {
-        return 0; 
+        return 0;
       }
 
       if (aValue < bValue) {
@@ -393,11 +393,11 @@ export default function DataObjectsPage() {
                   cellValue = value.map(itemId => {
                     const relatedObj = (allDbObjects[prop.relatedModelId!] || []).find(o => o.id === itemId);
                     return getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
-                  }).join('; '); 
+                  }).join('; ');
                 } else {
                   cellValue = '';
                 }
-              } else { 
+              } else {
                 const relatedObj = (allDbObjects[prop.relatedModelId!] || []).find(o => o.id === value);
                 cellValue = getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
               }
@@ -430,7 +430,7 @@ export default function DataObjectsPage() {
     const csvString = csvRows.join('\n');
     const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
-    if (link.download !== undefined) { 
+    if (link.download !== undefined) {
       const url = URL.createObjectURL(blob);
       link.setAttribute('href', url);
       link.setAttribute('download', `${currentModel.name}-data.csv`);
@@ -444,7 +444,7 @@ export default function DataObjectsPage() {
       toast({ variant: "destructive", title: "Export Failed", description: "Your browser doesn't support this feature." });
     }
   };
-  
+
 
   if (!isReady || !currentModel) {
     return (
@@ -453,13 +453,13 @@ export default function DataObjectsPage() {
       </div>
     );
   }
-  
+
   const directPropertiesToShowInTable = currentModel.properties.sort((a,b) => a.orderIndex - b.orderIndex);
 
   return (
     <div className="container mx-auto py-8">
       <Button variant="outline" onClick={() => router.push('/models')} className="mb-6">
-        <ArrowLeft className="mr-2 h-4 w-4" /> Back to Models
+        <ArrowLeft className="mr-2 h-4 w-4" /> Back to Model Admin
       </Button>
 
       <header className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
@@ -515,6 +515,7 @@ export default function DataObjectsPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-[60px] text-center">View</TableHead> {/* New header for View icon */}
                 {directPropertiesToShowInTable.map((prop) => (
                   <TableHead key={prop.id}>
                     <Button variant="ghost" onClick={() => requestSort(prop.id)} className="px-1">
@@ -531,12 +532,17 @@ export default function DataObjectsPage() {
                     </Button>
                   </TableHead>
                 ))}
-                <TableHead className="text-right w-[150px]">Actions</TableHead>
+                <TableHead className="text-right w-[120px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {paginatedObjects.map((obj) => (
                 <TableRow key={obj.id}>
+                  <TableCell className="text-center"> {/* New cell for View icon */}
+                    <Button variant="ghost" size="icon" onClick={() => handleView(obj)} className="hover:text-primary">
+                        <Eye className="h-4 w-4" />
+                    </Button>
+                  </TableCell>
                   {directPropertiesToShowInTable.map((prop) => (
                     <TableCell key={`${obj.id}-${prop.id}`}>
                       {displayCellContent(obj, prop)}
@@ -555,7 +561,7 @@ export default function DataObjectsPage() {
                     if (linkedItems.length === 0) {
                       return <TableCell key={colDef.id}><span className="text-muted-foreground">N/A</span></TableCell>;
                     }
-                    
+
                     return (
                       <TableCell key={colDef.id} className="space-x-1 space-y-1">
                         {linkedItems.map(item => (
@@ -571,9 +577,6 @@ export default function DataObjectsPage() {
                     );
                   })}
                   <TableCell className="text-right">
-                    <Button variant="ghost" size="icon" onClick={() => handleView(obj)} className="mr-2 hover:text-primary">
-                        <Eye className="h-4 w-4" />
-                    </Button>
                     <Button variant="ghost" size="icon" onClick={() => handleEdit(obj)} className="mr-2 hover:text-primary">
                       <Edit className="h-4 w-4" />
                     </Button>
@@ -633,4 +636,4 @@ export default function DataObjectsPage() {
   );
 }
 
-    
+
