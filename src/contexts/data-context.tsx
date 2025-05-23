@@ -19,12 +19,11 @@ interface DataContextType {
   getObjectsByModelId: (modelId: string) => DataObject[];
   getAllObjects: () => Record<string, DataObject[]>;
   isReady: boolean;
-  fetchData: () => Promise<void>; // Added for manual refresh if needed
+  fetchData: () => Promise<void>; 
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
-// Helper to map DB row to Model type (client-side)
 const mapDbModelToClientModel = (dbModel: any): Model => {
   let parsedDisplayPropertyNames: string[] = [];
   if (Array.isArray(dbModel.displayPropertyNames)) {
@@ -36,7 +35,6 @@ const mapDbModelToClientModel = (dbModel: any): Model => {
         parsedDisplayPropertyNames = temp.filter((name: any) => typeof name === 'string');
       }
     } catch (e) {
-      // Keep parsedDisplayPropertyNames as [] if parsing fails
       console.warn(`Could not parse displayPropertyNames for model ${dbModel.id}: '${dbModel.displayPropertyNames}'`, e);
     }
   }
@@ -57,6 +55,7 @@ const mapDbModelToClientModel = (dbModel: any): Model => {
       precision: p.type === 'number' ? (p.precision === undefined || p.precision === null || isNaN(Number(p.precision)) ? 2 : Number(p.precision)) : undefined,
       autoSetOnCreate: p.type === 'date' ? (p.autoSetOnCreate === 1 || p.autoSetOnCreate === true) : false,
       autoSetOnUpdate: p.type === 'date' ? (p.autoSetOnUpdate === 1 || p.autoSetOnUpdate === true) : false,
+      isUnique: p.type === 'string' ? (p.isUnique === 1 || p.isUnique === true) : false,
       orderIndex: p.orderIndex ?? 0,
     })).sort((a, b) => a.orderIndex - b.orderIndex),
   };
@@ -67,6 +66,28 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [models, setModels] = useState<Model[]>([]);
   const [objects, setObjects] = useState<Record<string, DataObject[]>>({});
   const [isReady, setIsReady] = useState(false);
+
+  const formatApiError = async (response: Response, defaultMessage: string): Promise<string> => {
+    let errorMessage = defaultMessage;
+    try {
+      const errorData = await response.json();
+      console.error(`API Error (raw data from ${response.url}):`, errorData);
+      if (errorData && errorData.error) {
+        errorMessage = errorData.error;
+        if (errorData.details) {
+          errorMessage += ` (Details: ${errorData.details})`;
+        }
+      } else if (response.statusText) {
+        errorMessage = `${defaultMessage}: ${response.status} ${response.statusText}`;
+      } else {
+         errorMessage = `${defaultMessage}: Server responded with status ${response.status} but no error details.`;
+      }
+    } catch (e) {
+      console.error(`Failed to parse error response from server or non-JSON error response from ${response.url}:`, e);
+      errorMessage = `${defaultMessage}: Server responded with status ${response.status} and non-JSON error body.`;
+    }
+    return errorMessage;
+  };
 
   const fetchData = useCallback(async () => {
     setIsReady(false);
@@ -117,29 +138,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     fetchData();
   }, [fetchData]);
 
-  const formatApiError = async (response: Response, defaultMessage: string): Promise<string> => {
-    let errorMessage = defaultMessage;
-    try {
-      const errorData = await response.json();
-      console.error(`API Error (raw data from ${response.url}):`, errorData);
-      if (errorData && errorData.error) {
-        errorMessage = errorData.error;
-        if (errorData.details) {
-          errorMessage += ` (Details: ${errorData.details})`;
-        }
-      } else if (response.statusText) {
-        errorMessage = `${defaultMessage}: ${response.status} ${response.statusText}`;
-      } else {
-         errorMessage = `${defaultMessage}: Server responded with status ${response.status} but no error details.`;
-      }
-    } catch (e) {
-      console.error(`Failed to parse error response from server or non-JSON error response from ${response.url}:`, e);
-      errorMessage = `${defaultMessage}: Server responded with status ${response.status} and non-JSON error body.`;
-    }
-    return errorMessage;
-  };
-
-
   const addModel = useCallback(async (modelData: Omit<Model, 'id'>): Promise<Model> => {
     const modelId = crypto.randomUUID();
     const propertiesWithIdsAndOrder = modelData.properties.map((p, index) => ({ 
@@ -171,6 +169,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       required: !!p.required,
       autoSetOnCreate: !!p.autoSetOnCreate,
       autoSetOnUpdate: !!p.autoSetOnUpdate,
+      isUnique: !!p.isUnique,
       orderIndex: index
     }));
 
@@ -238,7 +237,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ ...objectData, id: objectId }),
     });
     if (!response.ok) {
-      const errorMessage = await formatApiError(response, 'Failed to add object');
+      const errorMessage = await formatApiError(response, `Failed to add object to model ${modelId}`);
       throw new Error(errorMessage);
     }
     const newObject: DataObject = await response.json();
@@ -257,7 +256,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify(updates),
     });
     if (!response.ok) {
-      const errorMessage = await formatApiError(response, 'Failed to update object');
+      const errorMessage = await formatApiError(response, `Failed to update object ${objectId} in model ${modelId}`);
       throw new Error(errorMessage);
     }
     const updatedObjectFromApi: DataObject = await response.json();
@@ -282,7 +281,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       method: 'DELETE',
     });
     if (!response.ok) {
-      const errorMessage = await formatApiError(response, 'Failed to delete object');
+      const errorMessage = await formatApiError(response, `Failed to delete object ${objectId} from model ${modelId}`);
       throw new Error(errorMessage);
     }
     
@@ -314,4 +313,3 @@ export function useData(): DataContextType {
   }
   return context;
 }
-

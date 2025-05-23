@@ -1,7 +1,7 @@
 
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import type { DataObject } from '@/lib/types';
+import type { DataObject, Model, Property } from '@/lib/types';
 
 interface Params {
   params: { modelId: string };
@@ -34,9 +34,31 @@ export async function POST(request: Request, { params }: Params) {
     const { id: objectId, ...objectData }: Omit<DataObject, 'id'> & { id: string } = await request.json();
     const db = await getDb();
 
-    const modelExists = await db.get('SELECT id FROM models WHERE id = ?', params.modelId);
-    if (!modelExists) {
+    const modelRow = await db.get('SELECT id FROM models WHERE id = ?', params.modelId);
+    if (!modelRow) {
       return NextResponse.json({ error: 'Model not found' }, { status: 404 });
+    }
+
+    const properties: Property[] = await db.all('SELECT name, type, isUnique FROM properties WHERE model_id = ?', params.modelId);
+
+    // Uniqueness check
+    for (const prop of properties) {
+      if (prop.type === 'string' && prop.isUnique) {
+        const valueToCheck = objectData[prop.name];
+        if (valueToCheck !== null && typeof valueToCheck !== 'undefined' && String(valueToCheck).trim() !== '') {
+          const existingObject = await db.get(
+            `SELECT id FROM data_objects WHERE model_id = ? AND json_extract(data, '$.${prop.name}') = ?`,
+            params.modelId,
+            valueToCheck
+          );
+          if (existingObject) {
+            return NextResponse.json({ 
+              error: `Value '${valueToCheck}' for property '${prop.name}' must be unique. It already exists.`,
+              field: prop.name 
+            }, { status: 409 }); // 409 Conflict
+          }
+        }
+      }
     }
 
     await db.run(
@@ -48,8 +70,12 @@ export async function POST(request: Request, { params }: Params) {
     
     const createdObject: DataObject = { id: objectId, ...objectData };
     return NextResponse.json(createdObject, { status: 201 });
-  } catch (error) {
+  } catch (error: any) {
     console.error(`Failed to create object for model ${params.modelId}:`, error);
-    return NextResponse.json({ error: 'Failed to create object' }, { status: 500 });
+    let errorMessage = 'Failed to create object';
+    if (error.message) {
+        errorMessage += `: ${error.message}`;
+    }
+    return NextResponse.json({ error: errorMessage, details: error.message }, { status: 500 });
   }
 }

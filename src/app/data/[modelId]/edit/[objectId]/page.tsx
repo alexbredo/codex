@@ -64,7 +64,7 @@ export default function EditObjectPage() {
     }
   }, [modelId, objectId, getModelById, getObjectsByModelId, isReady, form, router, toast]);
 
-  const onSubmit = (values: Record<string, any>) => {
+  const onSubmit = async (values: Record<string, any>) => {
     if (!currentModel || !editingObject) return;
 
     const processedValues = { ...values };
@@ -72,18 +72,17 @@ export default function EditObjectPage() {
 
     currentModel.properties.forEach(prop => {
       if (prop.type === 'date' && prop.autoSetOnUpdate) {
-        processedValues[prop.name] = currentDateISO; // Forcefully set if autoSetOnUpdate is true
+        processedValues[prop.name] = currentDateISO;
       }
-      // autoSetOnCreate is historical, its value is already in 'values' from the loaded object.
     });
 
     try {
-      updateObject(currentModel.id, editingObject.id, processedValues);
+      await updateObject(currentModel.id, editingObject.id, processedValues);
       toast({ title: `${currentModel.name} Updated`, description: `The ${currentModel.name.toLowerCase()} has been updated.` });
       router.push(`/data/${currentModel.id}`);
     } catch (error: any) {
       console.error(`Error updating ${currentModel.name}:`, error);
-      toast({ variant: "destructive", title: "Error", description: `Failed to update ${currentModel.name.toLowerCase()}. ${error.message}` });
+      toast({ variant: "destructive", title: "Error Updating Object", description: error.message || `Failed to update ${currentModel.name.toLowerCase()}.` });
     }
   };
 

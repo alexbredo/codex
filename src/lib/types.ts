@@ -12,6 +12,7 @@ export interface Property {
   precision?: number; // For number type
   autoSetOnCreate?: boolean; // For date type: set to current date on object creation
   autoSetOnUpdate?: boolean; // For date type: set to current date on object update
+  isUnique?: boolean; // For string type: enforce unique value across objects of this model
   orderIndex: number; // For property display order
 }
 
@@ -35,5 +36,6 @@ export type PropertyFormData = Omit<Property, 'id' | 'orderIndex'> & {
   relationshipType?: 'one' | 'many',
   autoSetOnCreate?: boolean,
   autoSetOnUpdate?: boolean,
+  isUnique?: boolean,
 };
 export type ObjectFormData = Omit<DataObject, 'id'>;

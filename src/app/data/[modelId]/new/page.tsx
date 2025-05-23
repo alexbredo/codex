@@ -57,7 +57,7 @@ export default function CreateObjectPage() {
     }
   }, [modelId, getModelById, isReady, form, router, toast]);
 
-  const onSubmit = (values: Record<string, any>) => {
+  const onSubmit = async (values: Record<string, any>) => {
     if (!currentModel) return;
 
     const processedValues = { ...values };
@@ -65,18 +65,17 @@ export default function CreateObjectPage() {
 
     currentModel.properties.forEach(prop => {
       if (prop.type === 'date' && prop.autoSetOnCreate) {
-        processedValues[prop.name] = currentDateISO; // Forcefully set if autoSetOnCreate is true
+        processedValues[prop.name] = currentDateISO; 
       }
-      // autoSetOnUpdate is not relevant for new object creation
     });
 
     try {
-      addObject(currentModel.id, processedValues);
+      await addObject(currentModel.id, processedValues);
       toast({ title: `${currentModel.name} Created`, description: `A new ${currentModel.name.toLowerCase()} has been created.` });
       router.push(`/data/${currentModel.id}`);
     } catch (error: any) {
       console.error(`Error creating ${currentModel.name}:`, error);
-      toast({ variant: "destructive", title: "Error", description: `Failed to create ${currentModel.name.toLowerCase()}. ${error.message}` });
+      toast({ variant: "destructive", title: "Error Creating Object", description: error.message || `Failed to create ${currentModel.name.toLowerCase()}.` });
     }
   };
 

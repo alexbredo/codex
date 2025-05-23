@@ -24,7 +24,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle } from '@/components/ui/card'; // Removed CardContent as it's now part of AccordionContent
 import { Separator } from '@/components/ui/separator';
 import { Trash2, PlusCircle, GripVertical } from 'lucide-react';
 import type { ModelFormValues, PropertyFormValues } from './model-form-schema';
@@ -68,12 +68,12 @@ interface ModelFormProps {
 }
 
 const INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE = "__DEFAULT_DISPLAY_PROPERTY__";
-const INTERNAL_DEFAULT_OPTION_VALUE = "__DEFAULT_OPTION__";
+// const INTERNAL_DEFAULT_OPTION_VALUE = "__DEFAULT_OPTION__"; // Not used, can be removed if not needed elsewhere
 
 
 interface SortablePropertyItemProps {
-  id: string;
-  children: (props: { dragHandleListeners?: any }) => React.ReactNode; // Children is now a render prop
+  id: string; // This ID is from react-hook-form's field array, used by DND Kit
+  children: (props: { dragHandleListeners?: any }) => React.ReactNode;
   className?: string;
 }
 
@@ -90,21 +90,17 @@ function SortablePropertyItem({ id, children, className }: SortablePropertyItemP
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
-    zIndex: isDragging ? 10 : undefined, // Ensure dragging item is on top
+    zIndex: isDragging ? 10 : undefined,
   };
 
   return (
-    // Apply setNodeRef and attributes to this root draggable div
     <div ref={setNodeRef} style={style} {...attributes} className={className}>
-      {/* Execute the children render prop, passing down the drag listeners */}
       {children({ dragHandleListeners: listeners })}
     </div>
   );
 }
 
 
-// Temporarily extract the AccordionItem's content to make the DND setup simpler
-// We will pass dragHandleListeners to the AccordionTrigger now more easily.
 const PropertyAccordionContent = ({ form, index, currentPropertyType, modelsForRelations, control, handleTypeChange }: {
   form: UseFormReturn<ModelFormValues>,
   index: number,
@@ -294,6 +290,26 @@ const PropertyAccordionContent = ({ form, index, currentPropertyType, modelsForR
               />
             </>
           )}
+          {currentPropertyType === 'string' && (
+             <FormField
+                control={form.control}
+                name={`properties.${index}.isUnique`}
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3 md:col-span-2">
+                    <FormControl>
+                      <Checkbox
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                    <div className="space-y-0.5 leading-none">
+                      <FormLabel className="text-sm">Enforce Unique Value</FormLabel>
+                      <FormDescription className="text-xs">Ensure this property's value is unique across all objects of this model.</FormDescription>
+                    </div>
+                  </FormItem>
+                )}
+              />
+          )}
           <FormField
             control={form.control}
             name={`properties.${index}.required`}
@@ -320,14 +336,13 @@ const PropertyAccordionContent = ({ form, index, currentPropertyType, modelsForR
 };
 
 
-// Re-integrate PropertyFields with the modified AccordionItem structure for DND
 function PropertyFieldsWithDnd({
   form,
   fieldArray,
   modelsForRelations,
 }: {
   form: UseFormReturn<ModelFormValues>,
-  fieldArray: UseFieldArrayReturn<ModelFormValues, "properties", "id">, // Changed keyName to "id"
+  fieldArray: UseFieldArrayReturn<ModelFormValues, "properties", "id">,
   modelsForRelations: Model[]
 }) {
   const { fields, append, remove, move } = fieldArray;
@@ -352,7 +367,7 @@ function PropertyFieldsWithDnd({
         // Update orderIndex for all properties after move
         const newOrderedProperties = arrayMove(form.getValues('properties'), oldIndex, newIndex);
         newOrderedProperties.forEach((prop, idx) => {
-          form.setValue(`properties.${idx}.orderIndex`, idx);
+          form.setValue(`properties.${idx}.orderIndex`, idx, { shouldValidate: false, shouldDirty: true, shouldTouch: true });
         });
       }
     }
@@ -383,13 +398,14 @@ function PropertyFieldsWithDnd({
         return Array.from(newOpenState);
       });
     }
-  }, [form.formState.errors.properties, fields, setOpenAccordionItems]);
+  }, [form.formState.errors.properties, fields]);
 
 
   const handleTypeChange = (value: string, index: number) => {
     form.setValue(`properties.${index}.type`, value as PropertyFormValues['type']);
+    // Reset fields that are not applicable to the new type
     if (value !== 'relationship') {
-      form.setValue(`properties.${index}.relationshipType`, 'one');
+      form.setValue(`properties.${index}.relationshipType`, 'one'); // Default or clear
       form.setValue(`properties.${index}.relatedModelId`, undefined);
     }
     if (value !== 'number') {
@@ -398,12 +414,15 @@ function PropertyFieldsWithDnd({
     } else {
       const currentPrecision = form.getValues(`properties.${index}.precision`);
       if (currentPrecision === undefined || currentPrecision === null || isNaN(Number(currentPrecision))) {
-        form.setValue(`properties.${index}.precision`, 2);
+        form.setValue(`properties.${index}.precision`, 2); // Default precision for number
       }
     }
     if (value !== 'date') {
       form.setValue(`properties.${index}.autoSetOnCreate`, false);
       form.setValue(`properties.${index}.autoSetOnUpdate`, false);
+    }
+    if (value !== 'string') {
+      form.setValue(`properties.${index}.isUnique`, false);
     }
   };
 
@@ -438,8 +457,8 @@ function PropertyFieldsWithDnd({
                                 variant="ghost"
                                 size="icon"
                                 onClick={(e) => {
-                                e.stopPropagation(); 
-                                remove(index);
+                                  e.stopPropagation(); 
+                                  remove(index);
                                 }}
                                 className="text-destructive hover:bg-destructive/10 flex-shrink-0"
                                 aria-label="Remove property"
@@ -449,9 +468,9 @@ function PropertyFieldsWithDnd({
                                 tabIndex={0}
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter' || e.key === ' ') {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    remove(index);
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      remove(index);
                                     }
                                 }}
                                 >
@@ -480,7 +499,6 @@ function PropertyFieldsWithDnd({
         variant="outline"
         size="sm"
         onClick={() => append({
-            // id: crypto.randomUUID(), // RHF provides fieldId, actual ID is set on PropertyFormValues
             name: '',
             type: 'string',
             required: false,
@@ -489,8 +507,9 @@ function PropertyFieldsWithDnd({
             precision: undefined, 
             autoSetOnCreate: false,
             autoSetOnUpdate: false,
-            orderIndex: fields.length, // Initial, will be updated
-        } as PropertyFormValues, {shouldFocus: false})} // Added shouldFocus: false
+            isUnique: false,
+            orderIndex: fields.length,
+        } as PropertyFormValues, {shouldFocus: false})}
         className="mt-4 w-full border-dashed hover:border-solid"
       >
         <PlusCircle className="mr-2 h-4 w-4" /> Add Property
@@ -553,8 +572,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
         processedValues.displayPropertyNames = undefined;
     }
 
-
-    processedValues.properties = processedValues.properties.map((prop, index) => { // Add index here
+    processedValues.properties = processedValues.properties.map((prop, index) => {
       const finalProp = { ...prop };
       if (prop.type !== 'number') {
         finalProp.unit = undefined;
@@ -566,16 +584,17 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
         finalProp.autoSetOnCreate = false;
         finalProp.autoSetOnUpdate = false;
       }
-      finalProp.orderIndex = index; // Ensure orderIndex is set based on final array order
+      if (prop.type !== 'string') {
+        finalProp.isUnique = false;
+      }
+      finalProp.orderIndex = index;
       return finalProp;
     });
     onSubmit(processedValues);
   };
   
  const handleFormInvalid = (/* errors: FieldErrors<ModelFormValues> */) => {
-    // Log the form values to see what data is causing validation failure
-    console.log("Form validation failed. Current form values:", JSON.stringify(form.getValues(), null, 2)); // DEBUG
-    // Log the authoritative errors object from formState
+    // console.log("Form validation failed. Current form values:", JSON.stringify(form.getValues(), null, 2)); // DEBUG
     // console.error("Client-side form validation. Current form.formState.errors:", form.formState.errors); // DEBUG
     
     toast({
@@ -593,73 +612,77 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
           <CardHeader>
             <CardTitle className="text-xl">Model Details</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Model Name</FormLabel>
-                  <FormControl>
-                    <Input placeholder="e.g., Product, User, Article" {...field} />
-                  </FormControl>
-                  <FormDescription>A unique name for your data model.</FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Description (Optional)</FormLabel>
-                  <FormControl>
-                    <Textarea placeholder="A brief description of what this model represents." {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-             <FormField
-                control={form.control}
-                name="displayPropertyNames"
-                render={({ field }) => (
+          <Accordion type="single" collapsible defaultValue="model-details-content" className="w-full">
+            <AccordionItem value="model-details-content" className="border-0">
+              <AccordionContent className="p-6 pt-0 space-y-4">
+                <FormField
+                  control={form.control}
+                  name="name"
+                  render={({ field }) => (
                     <FormItem>
-                    <FormLabel>Display Properties (Optional)</FormLabel>
-                    <MultiSelectAutocomplete
-                        options={[{ value: INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE, label: "-- Default (Name/Title/ID) --" }, ...displayPropertyOptions]}
-                        selected={selectedValuesForAutocomplete}
-                        onChange={(selectedOptsFromAutocomplete) => {
-                        const isDefaultSelected = selectedOptsFromAutocomplete.includes(INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
-                        const actualPropertiesSelected = selectedOptsFromAutocomplete.filter(v => v !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
-
-                        if (isDefaultSelected && actualPropertiesSelected.length === 0) {
-                            field.onChange([]); 
-                        } else {
-                            field.onChange(actualPropertiesSelected);
-                        }
-                        }}
-                        placeholder="Select properties..."
-                        emptyIndicator={displayPropertyOptions.length === 0 ? "No string/number/date properties available." : "No matching properties."}
-                    />
-                    <FormDescription>
-                        Choose string, number, or date properties to represent this model's objects. If empty, a default (Name/Title/ID) will be used.
-                    </FormDescription>
-                    <FormMessage />
+                      <FormLabel>Model Name</FormLabel>
+                      <FormControl>
+                        <Input placeholder="e.g., Product, User, Article" {...field} />
+                      </FormControl>
+                      <FormDescription>A unique name for your data model.</FormDescription>
+                      <FormMessage />
                     </FormItem>
-                )}
-            />
-             <FormField
-              control={form.control}
-              name="properties" 
-              render={() => ( 
-                <FormItem>
-                  <FormMessage className="text-destructive" />
-                </FormItem>
-              )}
-            />
-          </CardContent>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="description"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Description (Optional)</FormLabel>
+                      <FormControl>
+                        <Textarea placeholder="A brief description of what this model represents." {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                 <FormField
+                    control={form.control}
+                    name="displayPropertyNames"
+                    render={({ field }) => (
+                        <FormItem>
+                        <FormLabel>Display Properties (Optional)</FormLabel>
+                        <MultiSelectAutocomplete
+                            options={[{ value: INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE, label: "-- Default (Name/Title/ID) --" }, ...displayPropertyOptions]}
+                            selected={selectedValuesForAutocomplete}
+                            onChange={(selectedOptsFromAutocomplete) => {
+                            const isDefaultSelected = selectedOptsFromAutocomplete.includes(INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
+                            const actualPropertiesSelected = selectedOptsFromAutocomplete.filter(v => v !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
+
+                            if (isDefaultSelected && actualPropertiesSelected.length === 0) {
+                                field.onChange([]); 
+                            } else {
+                                field.onChange(actualPropertiesSelected);
+                            }
+                            }}
+                            placeholder="Select properties..."
+                            emptyIndicator={displayPropertyOptions.length === 0 ? "No string/number/date properties available." : "No matching properties."}
+                        />
+                        <FormDescription>
+                            Choose string, number, or date properties to represent this model's objects. If empty, a default (Name/Title/ID) will be used.
+                        </FormDescription>
+                        <FormMessage />
+                        </FormItem>
+                    )}
+                />
+                <FormField
+                  control={form.control}
+                  name="properties" 
+                  render={() => ( 
+                    <FormItem>
+                      <FormMessage className="text-destructive mt-2" />
+                    </FormItem>
+                  )}
+                />
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         </Card>
 
         <Separator />
@@ -681,4 +704,3 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     </Form>
   );
 }
-

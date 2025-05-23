@@ -15,6 +15,7 @@ export const propertyFormSchema = z.object({
   precision: z.coerce.number().int().min(0).max(10).optional(),
   autoSetOnCreate: z.boolean().optional().default(false),
   autoSetOnUpdate: z.boolean().optional().default(false),
+  isUnique: z.boolean().optional().default(false),
   orderIndex: z.number().optional(), // Will be set programmatically
 }).refine(data => {
   if (data.type === 'relationship' && !data.relatedModelId) {
@@ -55,7 +56,15 @@ export const propertyFormSchema = z.object({
   return true;
 }, {
   message: "Auto-set options are only available for date type properties.",
-  path: ["type"], // General path, or could target autoSetOnCreate/autoSetOnUpdate
+  path: ["type"], 
+}).refine(data => {
+  if (data.type !== 'string' && data.isUnique) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Unique constraint can only be set for string type properties.",
+  path: ["isUnique"],
 });
 
 export const modelFormSchema = z.object({

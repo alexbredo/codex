@@ -23,19 +23,17 @@ export async function GET() {
                 }
             } catch (parseError) {
                 console.warn(`Could not parse displayPropertyNames for model ${modelRow.id}: '${modelRow.displayPropertyNames}'`, parseError);
-                // Keep parsedDisplayPropertyNames as []
             }
         }
 
         const mappedProperties = properties.map(p_row => {
-            // Defensive mapping in case of unexpected data from DB
             if (!p_row || typeof p_row.type === 'undefined') {
               console.warn(`API: Malformed property data for model ${modelRow.id}, property id ${p_row?.id}:`, p_row);
               return {
                   id: p_row?.id || `unknown_prop_${Date.now()}`,
                   model_id: modelRow.id,
                   name: p_row?.name || 'Unknown Property',
-                  type: p_row?.type || 'string', // Default to string if type is missing
+                  type: p_row?.type || 'string', 
                   relatedModelId: p_row?.relatedModelId,
                   required: p_row?.required === 1,
                   relationshipType: p_row?.relationshipType,
@@ -43,12 +41,13 @@ export async function GET() {
                   precision: p_row?.precision,
                   autoSetOnCreate: p_row?.autoSetOnCreate === 1,
                   autoSetOnUpdate: p_row?.autoSetOnUpdate === 1,
+                  isUnique: p_row?.isUnique === 1,
                   orderIndex: p_row?.orderIndex ?? 0,
               } as Property;
             }
             return {
               id: p_row.id,
-              model_id: p_row.model_id, // ensure model_id is included if needed by type Property
+              model_id: p_row.model_id, 
               name: p_row.name,
               type: p_row.type,
               relatedModelId: p_row.relatedModelId,
@@ -58,6 +57,7 @@ export async function GET() {
               precision: p_row.precision,
               autoSetOnCreate: p_row.autoSetOnCreate === 1,
               autoSetOnUpdate: p_row.autoSetOnUpdate === 1,
+              isUnique: p_row.isUnique === 1,
               orderIndex: p_row.orderIndex,
             } as Property;
           });
@@ -75,8 +75,6 @@ export async function GET() {
               stack: modelProcessingError.stack,
               modelData: modelRow 
           });
-          // Re-throw to be caught by the outer catch, which will send a 500 response
-          // This helps in identifying if a specific model's data is causing issues.
           throw new Error(`Processing failed for model ${modelRow?.name || modelRow?.id}. Original error: ${modelProcessingError.message}`);
       }
     }
@@ -84,9 +82,7 @@ export async function GET() {
   } catch (error: any) {
     const errorMessage = error.message || 'An unknown server error occurred while fetching models.';
     const errorStack = error.stack || 'No stack trace available.';
-    // Log the detailed error on the server
     console.error(`API Error - Failed to fetch models. Message: ${errorMessage}, Stack: ${errorStack}`, error);
-    // Send a more informative error message to the client
     return NextResponse.json({ error: 'Failed to fetch models', details: errorMessage }, { status: 500 });
   }
 }
@@ -109,7 +105,7 @@ export async function POST(request: Request) {
 
     for (const prop of newProperties) {
       await db.run(
-        'INSERT INTO properties (id, model_id, name, type, relatedModelId, required, relationshipType, unit, precision, autoSetOnCreate, autoSetOnUpdate, orderIndex) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO properties (id, model_id, name, type, relatedModelId, required, relationshipType, unit, precision, autoSetOnCreate, autoSetOnUpdate, isUnique, orderIndex) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         prop.id || crypto.randomUUID(),
         modelId,
         prop.name,
@@ -121,7 +117,8 @@ export async function POST(request: Request) {
         prop.precision,
         prop.autoSetOnCreate ? 1 : 0,
         prop.autoSetOnUpdate ? 1 : 0,
-        prop.orderIndex // This is now included
+        prop.isUnique ? 1 : 0,
+        prop.orderIndex 
       );
     }
 
@@ -137,6 +134,7 @@ export async function POST(request: Request) {
             required: !!p.required,
             autoSetOnCreate: !!p.autoSetOnCreate,
             autoSetOnUpdate: !!p.autoSetOnUpdate,
+            isUnique: !!p.isUnique,
         })),
     };
 

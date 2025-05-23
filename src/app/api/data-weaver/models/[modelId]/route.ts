@@ -27,7 +27,7 @@ export async function GET(request: Request, { params }: Params) {
                 parsedDisplayPropertyNames = tempParsed.filter(name => typeof name === 'string');
             }
         } catch (parseError) {
-            console.warn(`Could not parse displayPropertyNames for model ${modelRow.id}: '${modelRow.displayPropertyNames}'`, parseError);
+            console.warn(`API: Could not parse displayPropertyNames for model ${modelRow.id}: '${modelRow.displayPropertyNames}'`, parseError);
             // Keep parsedDisplayPropertyNames as []
         }
     }
@@ -37,8 +37,7 @@ export async function GET(request: Request, { params }: Params) {
       name: modelRow.name,
       description: modelRow.description,
       displayPropertyNames: parsedDisplayPropertyNames,
-      properties: properties.map(p_row => { // Use a different variable name to avoid conflict with Property type
-        // Defensive mapping in case of unexpected data from DB
+      properties: properties.map(p_row => { 
         if (!p_row || typeof p_row.type === 'undefined') {
             console.warn(`API: Malformed property data for model ${modelRow.id}, property id ${p_row?.id}:`, p_row);
             return {
@@ -53,6 +52,7 @@ export async function GET(request: Request, { params }: Params) {
                 precision: p_row?.precision,
                 autoSetOnCreate: p_row?.autoSetOnCreate === 1,
                 autoSetOnUpdate: p_row?.autoSetOnUpdate === 1,
+                isUnique: p_row?.isUnique === 1,
                 orderIndex: p_row?.orderIndex ?? 0,
             } as Property;
         }
@@ -68,6 +68,7 @@ export async function GET(request: Request, { params }: Params) {
             precision: p_row.precision,
             autoSetOnCreate: p_row.autoSetOnCreate === 1,
             autoSetOnUpdate: p_row.autoSetOnUpdate === 1,
+            isUnique: p_row.isUnique === 1,
             orderIndex: p_row.orderIndex,
         } as Property;
       }),
@@ -113,7 +114,7 @@ export async function PUT(request: Request, { params }: Params) {
       await db.run('DELETE FROM properties WHERE model_id = ?', params.modelId);
       for (const prop of updatedProperties) {
         await db.run(
-          'INSERT INTO properties (id, model_id, name, type, relatedModelId, required, relationshipType, unit, precision, autoSetOnCreate, autoSetOnUpdate, orderIndex) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          'INSERT INTO properties (id, model_id, name, type, relatedModelId, required, relationshipType, unit, precision, autoSetOnCreate, autoSetOnUpdate, isUnique, orderIndex) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
           prop.id || crypto.randomUUID(),
           params.modelId,
           prop.name,
@@ -125,6 +126,7 @@ export async function PUT(request: Request, { params }: Params) {
           prop.precision,
           prop.autoSetOnCreate ? 1 : 0,
           prop.autoSetOnUpdate ? 1 : 0,
+          prop.isUnique ? 1 : 0,
           prop.orderIndex
         );
       }
@@ -157,6 +159,7 @@ export async function PUT(request: Request, { params }: Params) {
         required: p.required === 1,
         autoSetOnCreate: p.autoSetOnCreate === 1,
         autoSetOnUpdate: p.autoSetOnUpdate === 1,
+        isUnique: p.isUnique === 1,
       })),
     };
 
@@ -186,6 +189,7 @@ export async function DELETE(request: Request, { params }: Params) {
 
     await db.run('BEGIN TRANSACTION');
     await db.run('DELETE FROM models WHERE id = ?', params.modelId);
+    // Properties and data_objects are deleted via CASCADE
     await db.run('COMMIT');
 
     return NextResponse.json({ message: 'Model deleted successfully' });

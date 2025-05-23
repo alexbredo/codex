@@ -1,7 +1,7 @@
 
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import type { DataObject } from '@/lib/types';
+import type { DataObject, Property } from '@/lib/types';
 
 interface Params {
   params: { modelId: string; objectId: string };
@@ -30,12 +30,36 @@ export async function PUT(request: Request, { params }: Params) {
     const { id, model_id, ...updates }: Partial<DataObject> & {id?: string, model_id?:string} = await request.json();
     const db = await getDb();
 
-    const existingObject = await db.get('SELECT data FROM data_objects WHERE id = ? AND model_id = ?', params.objectId, params.modelId);
-    if (!existingObject) {
+    const existingObjectRecord = await db.get('SELECT data FROM data_objects WHERE id = ? AND model_id = ?', params.objectId, params.modelId);
+    if (!existingObjectRecord) {
       return NextResponse.json({ error: 'Object not found' }, { status: 404 });
     }
 
-    const currentData = JSON.parse(existingObject.data);
+    const properties: Property[] = await db.all('SELECT name, type, isUnique FROM properties WHERE model_id = ?', params.modelId);
+    const currentData = JSON.parse(existingObjectRecord.data);
+
+    // Uniqueness check for updated fields
+    for (const prop of properties) {
+      if (prop.type === 'string' && prop.isUnique && updates.hasOwnProperty(prop.name)) {
+        const newValue = updates[prop.name];
+        // Only check if the value has actually changed and is not empty
+        if (newValue !== currentData[prop.name] && newValue !== null && typeof newValue !== 'undefined' && String(newValue).trim() !== '') {
+          const conflictingObject = await db.get(
+            `SELECT id FROM data_objects WHERE model_id = ? AND id != ? AND json_extract(data, '$.${prop.name}') = ?`,
+            params.modelId,
+            params.objectId,
+            newValue
+          );
+          if (conflictingObject) {
+            return NextResponse.json({ 
+              error: `Value '${newValue}' for property '${prop.name}' must be unique. It already exists.`,
+              field: prop.name
+            }, { status: 409 }); // 409 Conflict
+          }
+        }
+      }
+    }
+
     const newData = { ...currentData, ...updates };
 
     await db.run(
@@ -47,9 +71,13 @@ export async function PUT(request: Request, { params }: Params) {
     
     const updatedObject: DataObject = { id: params.objectId, ...newData };
     return NextResponse.json(updatedObject);
-  } catch (error) {
+  } catch (error: any) {
     console.error(`Failed to update object ${params.objectId}:`, error);
-    return NextResponse.json({ error: 'Failed to update object' }, { status: 500 });
+    let errorMessage = 'Failed to update object';
+    if (error.message) {
+        errorMessage += `: ${error.message}`;
+    }
+    return NextResponse.json({ error: errorMessage, details: error.message }, { status: 500 });
   }
 }
 
