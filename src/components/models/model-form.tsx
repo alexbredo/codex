@@ -74,13 +74,12 @@ function PropertyFields({
 
     if (Array.isArray(propertiesErrors)) {
         fields.forEach((fieldItem, idx) => {
-            const propertyErrorAtIndex = propertiesErrors[idx];
+            const propertyErrorAtIndex = propertiesErrors[idx] as FieldErrors<PropertyFormValues> | undefined;
             if (propertyErrorAtIndex && typeof propertyErrorAtIndex === 'object' && Object.keys(propertyErrorAtIndex).length > 0) {
-                // Check if there are any messages attached to any field within this property object
                 const hasFieldError = Object.values(propertyErrorAtIndex).some(
                     (errorField: any) => errorField && typeof errorField.message === 'string'
                 );
-                if (hasFieldError && fieldItem.fieldId) {
+                if (hasFieldError && fieldItem.fieldId) { 
                     itemsToOpen.add(fieldItem.fieldId);
                 }
             }
@@ -414,19 +413,20 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
 
   const selectedValuesForAutocomplete = useMemo(() => {
     const currentDisplayNames = Array.isArray(watchedDisplayPropertyNames) ? watchedDisplayPropertyNames : [];
-    if (currentDisplayNames.length === 0 && !existingModel?.displayPropertyNames?.length) {
+    // Handle the case where the form might be initialized with `undefined` for displayPropertyNames
+    if (!currentDisplayNames && !existingModel?.displayPropertyNames?.length) {
         return [INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE];
     }
     
-    const validSelectedValues = currentDisplayNames.filter(name => 
+    const validSelectedValues = (currentDisplayNames || []).filter(name => 
       name === INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE || displayPropertyOptions.some(opt => opt.value === name)
     );
 
-    if (validSelectedValues.length === 0 && (currentDisplayNames.includes(INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE) || !currentDisplayNames.length )) {
+    if (validSelectedValues.length === 0 && ((currentDisplayNames || []).includes(INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE) || !(currentDisplayNames || []).length )) {
         return [INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE];
     }
-    if (validSelectedValues.length === 1 && validSelectedValues[0] === INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE && currentDisplayNames.length > 1) {
-      return currentDisplayNames.filter(name => name !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
+    if (validSelectedValues.length === 1 && validSelectedValues[0] === INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE && (currentDisplayNames || []).length > 1) {
+      return (currentDisplayNames || []).filter(name => name !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
     }
 
     return validSelectedValues.length > 0 ? validSelectedValues : [INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE];
@@ -464,8 +464,6 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
  const handleFormInvalid = (/* errors: FieldErrors<ModelFormValues> */) => {
     // Log the form values to see what data is causing validation failure
     console.log("Form validation failed. Current form values:", JSON.stringify(form.getValues(), null, 2)); // DEBUG
-    // Log the authoritative errors object from formState
-    console.error("Client-side form validation. Current form.formState.errors:", form.formState.errors); // DEBUG
     
     toast({
       title: "Validation Error",
@@ -539,12 +537,13 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                     </FormItem>
                 )}
             />
-            <FormField
+             <FormField
               control={form.control}
               name="properties" 
-              render={() => (
+              render={() => ( // This field is for array-level errors like "min items"
                 <FormItem>
-                  <FormMessage className="mb-2 text-destructive" />
+                  {/* FormLabel could be hidden or used for a general properties section title if needed */}
+                  <FormMessage className="text-destructive" />
                 </FormItem>
               )}
             />
@@ -555,7 +554,6 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
 
         <div>
           <h3 className="text-lg font-medium mb-2">Properties</h3>
-          {/* Removed the top-level properties FormField/FormMessage as errors are now handled within PropertyFields or directly under Model Details */}
           <PropertyFields form={form} fieldArray={fieldArray} modelsForRelations={modelsForRelations} />
         </div>
 
