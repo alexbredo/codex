@@ -74,11 +74,14 @@ export default function ModelsPage() {
   }, [models, searchTerm]);
 
   const sortedNamespaces = useMemo(() => {
-    return Object.keys(groupedModels).sort((a, b) => a.localeCompare(b));
+    return Object.keys(groupedModels).sort((a, b) => {
+      if (a === 'Default') return -1;
+      if (b === 'Default') return 1;
+      return a.localeCompare(b);
+    });
   }, [groupedModels]);
 
   useEffect(() => {
-    // Open all namespace accordions by default when models are ready
     if (isReady && sortedNamespaces.length > 0) {
       setOpenAccordionItems(sortedNamespaces);
     }
@@ -241,9 +244,16 @@ export default function ModelsPage() {
                         </AlertDialog>
 
                         <Link href={`/data/${model.id}`} passHref legacyBehavior>
-                          <a className="w-full col-span-3 mt-2 md:col-span-1 md:mt-0">
+                          <a className="w-full">
                             <Button variant="default" size="sm" className="w-full">
                               <Eye className="mr-1 h-3 w-3" /> View Data
+                            </Button>
+                          </a>
+                        </Link>
+                        <Link href={`/data/${model.id}/new`} passHref legacyBehavior>
+                          <a className="w-full col-span-3 mt-2">
+                            <Button variant="secondary" size="sm" className="w-full">
+                              <PlusCircle className="mr-1 h-3 w-3" /> Create New {model.name} Object
                             </Button>
                           </a>
                         </Link>
@@ -259,3 +269,4 @@ export default function ModelsPage() {
     </div>
   );
 }
+
