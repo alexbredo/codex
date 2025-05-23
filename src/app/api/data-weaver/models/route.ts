@@ -72,7 +72,7 @@ export async function POST(request: Request) {
         id: modelId,
         name,
         description,
-        displayPropertyNames,
+        displayPropertyNames: displayPropertyNames || [],
         properties: newProperties.map(p => ({
             ...p,
             required: !!p.required,
