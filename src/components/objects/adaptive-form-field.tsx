@@ -48,7 +48,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
   const { models: allModels, getModelById, getObjectsByModelId, getAllObjects } = useData();
   const fieldName = property.name as FieldPath<TFieldValues>;
 
-  const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects, property.type, property.relatedModelId]); // Added dependencies
+  const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects, property.type, property.relatedModelId]);
 
   const relatedModel = useMemo(() => {
     if (property.type === 'relationship' && property.relatedModelId) {
@@ -61,7 +61,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
     if (relatedModel && property.relatedModelId) {
       const objects = getObjectsByModelId(property.relatedModelId);
       return objects.reduce((acc, obj) => {
-        const relatedM = allModels.find(m => m.id === property.relatedModelId); // Find the full model definition
+        const relatedM = allModels.find(m => m.id === property.relatedModelId); 
         const namespace = relatedM?.namespace || 'Default';
         if (!acc[namespace]) {
           acc[namespace] = [];
@@ -86,7 +86,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
     if (property.type === 'date' && formContext === 'edit' && (property.autoSetOnCreate || property.autoSetOnUpdate)) {
       fieldIsDisabled = true;
     }
-    if (property.type === 'date' && formContext === 'create' && property.autoSetOnCreate){ // Though this case is hidden by returning null above
+     if (property.type === 'date' && formContext === 'create' && property.autoSetOnCreate){
         fieldIsDisabled = true;
     }
 
@@ -97,6 +97,8 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
             return <Textarea placeholder={`Enter ${property.name}`} {...controllerField} value={controllerField.value ?? ''} />;
         }
         return <Input placeholder={`Enter ${property.name}`} {...controllerField} value={controllerField.value ?? ''} />;
+      case 'markdown':
+        return <Textarea placeholder={`Enter ${property.name} (Markdown supported)`} {...controllerField} value={controllerField.value ?? ''} rows={10} />;
       case 'number':
         return <Input type="number" placeholder={`Enter ${property.name}`} {...controllerField}  value={controllerField.value ?? ''} onChange={e => controllerField.onChange(parseFloat(e.target.value) || null)} />;
       case 'boolean':
@@ -156,12 +158,11 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
         if (property.relationshipType === 'many') {
           return (
             <MultiSelectAutocomplete
-              options={flatOptions} // Pass flat options here; grouping is visual in dropdown only
+              options={flatOptions} 
               selected={controllerField.value || []}
               onChange={controllerField.onChange}
               placeholder={`Select ${relatedModel.name}(s)...`}
               emptyIndicator={`No ${relatedModel.name.toLowerCase()}s found.`}
-              // For future improvement: could pass grouped options to MultiSelectAutocomplete if it supported it
             />
           );
         } else { 

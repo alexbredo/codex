@@ -21,6 +21,14 @@ export function createObjectFormSchema(model: Model | undefined) {
           fieldSchema = fieldSchema.optional().or(z.literal('')); 
         }
         break;
+      case 'markdown': // Added markdown type
+        fieldSchema = z.string();
+        if (prop.required) {
+          fieldSchema = fieldSchema.min(1, `${prop.name} is required.`);
+        } else {
+          fieldSchema = fieldSchema.optional().or(z.literal(''));
+        }
+        break;
       case 'number':
         fieldSchema = z.coerce.number();
         if (prop.required) {
@@ -33,19 +41,15 @@ export function createObjectFormSchema(model: Model | undefined) {
         fieldSchema = z.boolean().default(false);
         break;
       case 'date':
-        // Base schema for a date field
-        let baseDateSchema = z.union([z.string().datetime({ offset: true }), z.date()]);
+        let baseDateSchema = z.union([z.string().datetime({ offset: true }), z.date()]).nullable();
 
         if (prop.autoSetOnCreate || prop.autoSetOnUpdate) {
-          // If the date is auto-set, it's optional and nullable from the form's perspective,
-          // as the onSubmit logic will handle providing the actual value.
-          fieldSchema = baseDateSchema.optional().nullable();
+          fieldSchema = baseDateSchema.optional();
         } else {
-          // If not auto-set, apply required/optional logic as usual.
           if (prop.required) {
-            fieldSchema = baseDateSchema; // Implicitly required by not being optional
+            fieldSchema = baseDateSchema.refine(val => val !== null, { message: `${prop.name} is required.` });
           } else {
-            fieldSchema = baseDateSchema.optional().nullable();
+            fieldSchema = baseDateSchema.optional();
           }
         }
         break;
@@ -57,7 +61,7 @@ export function createObjectFormSchema(model: Model | undefined) {
           } else {
             fieldSchema = baseArraySchema.default([]);
           }
-        } else { // 'one' or undefined (defaults to 'one')
+        } else { 
           fieldSchema = z.string();
           if (prop.required) {
             fieldSchema = fieldSchema.min(1, `Related ${prop.name} is required.`);
@@ -74,4 +78,3 @@ export function createObjectFormSchema(model: Model | undefined) {
 
   return z.object(shape);
 }
-

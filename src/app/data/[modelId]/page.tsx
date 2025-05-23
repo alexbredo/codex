@@ -92,7 +92,7 @@ export default function DataObjectsPage() {
     if (!currentModel || !isReady) return [];
     const columns: IncomingRelationColumn[] = [];
     allModels.forEach(otherModel => {
-      if (otherModel.id === currentModel.id) return; // Skip self-referencing for this virtual view
+      if (otherModel.id === currentModel.id) return; 
       otherModel.properties.forEach(prop => {
         if (prop.type === 'relationship' && prop.relatedModelId === currentModel.id) {
           columns.push({
@@ -157,7 +157,7 @@ export default function DataObjectsPage() {
       searchableObjects = objects.filter(obj =>
         currentModel.properties.some(prop => {
           const value = obj[prop.name];
-          if ((prop.type === 'string' || prop.type === 'number') && value !== null && value !== undefined) {
+          if ((prop.type === 'string' || prop.type === 'number' || prop.type === 'markdown') && value !== null && value !== undefined) {
             return String(value).toLowerCase().includes(searchTerm.toLowerCase());
           }
           if (prop.type === 'relationship' && prop.relatedModelId) {
@@ -200,6 +200,7 @@ export default function DataObjectsPage() {
 
         switch (directPropertyToSort.type) {
           case 'string':
+          case 'markdown':
             aValue = String(aValue ?? '').toLowerCase();
             bValue = String(bValue ?? '').toLowerCase();
             break;
@@ -268,9 +269,12 @@ export default function DataObjectsPage() {
 
   const displayCellContent = (obj: DataObject, property: Property) => {
     const value = obj[property.name];
-    if (value === null || typeof value === 'undefined' || (Array.isArray(value) && value.length === 0)) {
+    if (value === null || typeof value === 'undefined' || (Array.isArray(value) && value.length === 0) || String(value).trim() === '') {
       if (property.type === 'number' && property.unit) {
         return <span className="text-muted-foreground">N/A ({property.unit})</span>;
+      }
+      if (property.type === 'markdown') {
+        return <span className="text-muted-foreground">N/A</span>;
       }
       return <span className="text-muted-foreground">N/A</span>;
     }
@@ -295,6 +299,8 @@ export default function DataObjectsPage() {
           return <span className="text-muted-foreground">N/A{displayUnit}</span>;
         }
         return `${parsedValue.toFixed(precision)}${unitText ? ` ${unitText}` : ''}`;
+      case 'markdown':
+        return <Badge variant="outline">Markdown</Badge>;
       case 'relationship':
         if (!property.relatedModelId) return <span className="text-destructive">Config Err</span>;
         const relatedModel = getModelById(property.relatedModelId);
@@ -364,7 +370,6 @@ export default function DataObjectsPage() {
 
     sortedObjects.forEach(obj => {
       const row: string[] = [];
-      // Direct properties
       currentModel.properties.forEach(prop => {
         const value = obj[prop.name];
         let cellValue = '';
@@ -385,6 +390,9 @@ export default function DataObjectsPage() {
               const precision = prop.precision === undefined ? 2 : prop.precision;
               const parsedNum = parseFloat(value);
               cellValue = isNaN(parsedNum) ? String(value) : parsedNum.toFixed(precision);
+              break;
+            case 'markdown': // For CSV, export the raw markdown string
+              cellValue = String(value);
               break;
             case 'relationship':
               const relatedModel = getModelById(prop.relatedModelId!);
@@ -515,7 +523,7 @@ export default function DataObjectsPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[60px] text-center">View</TableHead> {/* New header for View icon */}
+                <TableHead className="w-[60px] text-center">View</TableHead>
                 {directPropertiesToShowInTable.map((prop) => (
                   <TableHead key={prop.id}>
                     <Button variant="ghost" onClick={() => requestSort(prop.id)} className="px-1">
@@ -538,7 +546,7 @@ export default function DataObjectsPage() {
             <TableBody>
               {paginatedObjects.map((obj) => (
                 <TableRow key={obj.id}>
-                  <TableCell className="text-center"> {/* New cell for View icon */}
+                  <TableCell className="text-center">
                     <Button variant="ghost" size="icon" onClick={() => handleView(obj)} className="hover:text-primary">
                         <Eye className="h-4 w-4" />
                     </Button>
@@ -635,5 +643,3 @@ export default function DataObjectsPage() {
     </div>
   );
 }
-
-

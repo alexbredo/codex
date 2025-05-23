@@ -1,7 +1,7 @@
 
 import { z } from 'zod';
 
-export const propertyTypes = ['string', 'number', 'boolean', 'date', 'relationship'] as const;
+export const propertyTypes = ['string', 'number', 'boolean', 'date', 'relationship', 'markdown'] as const;
 export const relationshipTypes = ['one', 'many'] as const;
 
 export const propertyFormSchema = z.object({

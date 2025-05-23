@@ -1,5 +1,5 @@
 
-export type PropertyType = 'string' | 'number' | 'boolean' | 'date' | 'relationship';
+export type PropertyType = 'string' | 'number' | 'boolean' | 'date' | 'relationship' | 'markdown';
 
 export interface Property {
   id: string;
@@ -41,6 +41,7 @@ export type ModelFormData = Omit<Model, 'id' | 'namespace'> & {
   namespace?: string; // Optional in form, will be defaulted
 };
 export type PropertyFormData = Omit<Property, 'id' | 'orderIndex'> & { 
+  id?: string; // Make ID optional for new properties in form
   orderIndex?: number; // Optional for form, will be set programmatically
   relationshipType?: 'one' | 'many',
   autoSetOnCreate?: boolean,

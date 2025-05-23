@@ -12,6 +12,7 @@ import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
 import Link from 'next/link';
 import { getObjectDisplayValue } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
+import ReactMarkdown from 'react-markdown';
 
 export default function ViewObjectPage() {
   const router = useRouter();
@@ -38,12 +39,10 @@ export default function ViewObjectPage() {
         if (objectToView) {
           setViewingObject(objectToView);
         } else {
-          // toast({ variant: "destructive", title: "Error", description: `Object with ID ${objectId} not found.` });
-          router.push(`/data/${modelId}`); // Consider a toast message here
+          router.push(`/data/${modelId}`); 
         }
       } else {
-        // toast({ variant: "destructive", title: "Error", description: `Model with ID ${modelId} not found.` });
-        router.push('/models'); // Consider a toast message here
+        router.push('/models'); 
       }
       setIsLoadingData(false);
     }
@@ -60,7 +59,7 @@ export default function ViewObjectPage() {
       case 'date':
         try {
           const date = new Date(value);
-          return isDateValid(date) ? formatDateFns(date, 'PPP p') : String(value); // Added time
+          return isDateValid(date) ? formatDateFns(date, 'PPP p') : String(value); 
         } catch {
           return String(value);
         }
@@ -70,6 +69,12 @@ export default function ViewObjectPage() {
         const parsedValue = parseFloat(value);
         if (isNaN(parsedValue)) return <span className="text-muted-foreground italic">Invalid number</span>;
         return `${parsedValue.toFixed(precision)}${unitText ? ` ${unitText}` : ''}`;
+      case 'markdown':
+        return (
+          <div className="prose prose-sm dark:prose-invert max-w-none bg-muted p-3 rounded-md">
+            <ReactMarkdown>{String(value)}</ReactMarkdown>
+          </div>
+        );
       case 'relationship':
         if (!property.relatedModelId) return <span className="text-destructive">Config Err</span>;
         const relatedModel = getModelById(property.relatedModelId);
@@ -96,7 +101,7 @@ export default function ViewObjectPage() {
               })}
             </div>
           );
-        } else { // 'one' relationship
+        } else { 
           const relatedObj = (allDbObjects[property.relatedModelId] || []).find(o => o.id === value);
           const displayVal = getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
           return relatedObj ? (
@@ -133,7 +138,6 @@ export default function ViewObjectPage() {
     );
   }
 
-  // Sort properties by orderIndex
   const sortedProperties = [...currentModel.properties].sort((a,b) => a.orderIndex - b.orderIndex);
 
   return (
@@ -170,5 +174,3 @@ export default function ViewObjectPage() {
     </div>
   );
 }
-
-    

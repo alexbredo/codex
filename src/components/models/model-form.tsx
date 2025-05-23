@@ -26,7 +26,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { Card, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardContent as UiCardContent } from '@/components/ui/card'; // Renamed CardContent
 import { Separator } from '@/components/ui/separator';
 import { Trash2, PlusCircle, GripVertical, FolderOpen } from 'lucide-react';
 import type { ModelFormValues, PropertyFormValues } from './model-form-schema';
@@ -386,7 +386,7 @@ function PropertyFieldsWithDnd({
     if (Array.isArray(propertiesErrors)) {
         fields.forEach((fieldItem, idx) => {
             const propertyErrorAtIndex = propertiesErrors[idx] as FieldErrors<PropertyFormValues> | undefined;
-            if (propertyErrorAtIndex && typeof propertyErrorAtIndex === 'object' && Object.keys(propertyErrorAtIndex).length > 0) {
+             if (propertyErrorAtIndex && typeof propertyErrorAtIndex === 'object' && Object.keys(propertyErrorAtIndex).length > 0) {
                  const hasFieldError = Object.values(propertyErrorAtIndex).some(
                     (errorField: any) => errorField && typeof errorField.message === 'string'
                 );
@@ -408,27 +408,24 @@ function PropertyFieldsWithDnd({
 
 
   const handleTypeChange = (value: string, index: number) => {
-    form.setValue(`properties.${index}.type`, value as PropertyFormValues['type']);
-    if (value !== 'relationship') {
-      form.setValue(`properties.${index}.relationshipType`, 'one'); 
-      form.setValue(`properties.${index}.relatedModelId`, undefined);
-    }
-    if (value !== 'number') {
-      form.setValue(`properties.${index}.unit`, undefined);
-      form.setValue(`properties.${index}.precision`, undefined);
-    } else {
-      const currentPrecision = form.getValues(`properties.${index}.precision`);
-      if (currentPrecision === undefined || currentPrecision === null || isNaN(Number(currentPrecision))) {
-        form.setValue(`properties.${index}.precision`, 2);
-      }
-    }
-    if (value !== 'date') {
-      form.setValue(`properties.${index}.autoSetOnCreate`, false);
-      form.setValue(`properties.${index}.autoSetOnUpdate`, false);
-    }
-    if (value !== 'string') {
-      form.setValue(`properties.${index}.isUnique`, false);
-    }
+    const propertyType = value as PropertyFormValues['type'];
+    form.setValue(`properties.${index}.type`, propertyType);
+
+    const isRelationship = propertyType === 'relationship';
+    const isNumber = propertyType === 'number';
+    const isDate = propertyType === 'date';
+    const isString = propertyType === 'string';
+
+    form.setValue(`properties.${index}.relationshipType`, isRelationship ? (form.getValues(`properties.${index}.relationshipType`) || 'one') : undefined);
+    form.setValue(`properties.${index}.relatedModelId`, isRelationship ? form.getValues(`properties.${index}.relatedModelId`) : undefined);
+    
+    form.setValue(`properties.${index}.unit`, isNumber ? form.getValues(`properties.${index}.unit`) : undefined);
+    form.setValue(`properties.${index}.precision`, isNumber ? (form.getValues(`properties.${index}.precision`) ?? 2) : undefined);
+    
+    form.setValue(`properties.${index}.autoSetOnCreate`, isDate ? form.getValues(`properties.${index}.autoSetOnCreate`) : false);
+    form.setValue(`properties.${index}.autoSetOnUpdate`, isDate ? form.getValues(`properties.${index}.autoSetOnUpdate`) : false);
+    
+    form.setValue(`properties.${index}.isUnique`, isString ? form.getValues(`properties.${index}.isUnique`) : false);
   };
 
   return (
@@ -598,7 +595,8 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     }
 
     processedValues.properties = processedValues.properties.map((prop, index) => {
-      const finalProp = { ...prop };
+      const finalProp: PropertyFormValues = { ...prop };
+      finalProp.orderIndex = index;
       if (prop.type !== 'number') {
         finalProp.unit = undefined;
         finalProp.precision = undefined;
@@ -612,7 +610,10 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
       if (prop.type !== 'string') {
         finalProp.isUnique = false;
       }
-      finalProp.orderIndex = index;
+       if (prop.type !== 'relationship') {
+        finalProp.relatedModelId = undefined;
+        finalProp.relationshipType = undefined;
+      }
       return finalProp;
     });
     onSubmit(processedValues);
@@ -620,7 +621,6 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
   
   const handleFormInvalid = (/* errors: FieldErrors<ModelFormValues> */) => {
     console.log("Form validation failed. Current form values:", JSON.stringify(form.getValues(), null, 2)); // DEBUG
-    // Log the authoritative errors object from formState
     // console.error("Client-side form validation. Current form.formState.errors:", form.formState.errors); // DEBUG
     
     toast({
@@ -640,7 +640,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
           </CardHeader>
           <Accordion type="single" collapsible defaultValue="model-details-content" className="w-full">
             <AccordionItem value="model-details-content" className="border-0">
-              <AccordionContent className="p-6 pt-0 space-y-4">
+              <UiCardContent className="p-6 pt-0 space-y-4"> {/* Use UiCardContent to avoid name clash */}
                 <FormField
                   control={form.control}
                   name="name"
@@ -663,7 +663,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                         <FormLabel>Namespace</FormLabel>
                         <Select
                             onValueChange={(value) => field.onChange(value === INTERNAL_DEFAULT_NAMESPACE_VALUE ? 'Default' : value)}
-                            defaultValue={field.value === 'Default' ? INTERNAL_DEFAULT_NAMESPACE_VALUE : field.value || INTERNAL_DEFAULT_NAMESPACE_VALUE}
+                            defaultValue={field.value === 'Default' || !field.value ? INTERNAL_DEFAULT_NAMESPACE_VALUE : field.value}
                         >
                             <FormControl>
                             <SelectTrigger>
@@ -691,7 +691,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                     <FormItem>
                       <FormLabel>Description (Optional)</FormLabel>
                       <FormControl>
-                        <Textarea placeholder="A brief description of what this model represents." {...field} />
+                        <Textarea placeholder="A brief description of what this model represents." {...field} value={field.value ?? ''}/>
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -726,17 +726,17 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                         </FormItem>
                     )}
                 />
+                 {/* This FormField is for displaying array-level errors (e.g., "At least one property is required") */}
                 <FormField
                   control={form.control}
                   name="properties" 
                   render={() => ( 
                     <FormItem>
-                      {/* This is where the "At least one property is required" message will appear if that validation fails. */}
                       <FormMessage className="text-destructive mt-2" />
                     </FormItem>
                   )}
                 />
-              </AccordionContent>
+              </UiCardContent>
             </AccordionItem>
           </Accordion>
         </Card>
