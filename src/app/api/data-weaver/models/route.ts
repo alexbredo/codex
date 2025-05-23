@@ -11,38 +11,83 @@ export async function GET() {
     
     const modelsWithProperties: Model[] = [];
     for (const modelRow of rows) {
-      const properties = await db.all('SELECT * FROM properties WHERE model_id = ? ORDER BY orderIndex ASC', modelRow.id);
-      
-      let parsedDisplayPropertyNames: string[] = [];
-      if (modelRow.displayPropertyNames && typeof modelRow.displayPropertyNames === 'string') {
-          try {
-              const tempParsed = JSON.parse(modelRow.displayPropertyNames);
-              if (Array.isArray(tempParsed)) {
-                  parsedDisplayPropertyNames = tempParsed.filter(name => typeof name === 'string');
-              }
-          } catch (parseError) {
-              console.warn(`Could not parse displayPropertyNames for model ${modelRow.id}: '${modelRow.displayPropertyNames}'`, parseError);
-              // Keep parsedDisplayPropertyNames as []
-          }
-      }
+      try {
+        const properties = await db.all('SELECT * FROM properties WHERE model_id = ? ORDER BY orderIndex ASC', modelRow.id);
+        
+        let parsedDisplayPropertyNames: string[] = [];
+        if (modelRow.displayPropertyNames && typeof modelRow.displayPropertyNames === 'string') {
+            try {
+                const tempParsed = JSON.parse(modelRow.displayPropertyNames);
+                if (Array.isArray(tempParsed)) {
+                    parsedDisplayPropertyNames = tempParsed.filter(name => typeof name === 'string');
+                }
+            } catch (parseError) {
+                console.warn(`Could not parse displayPropertyNames for model ${modelRow.id}: '${modelRow.displayPropertyNames}'`, parseError);
+                // Keep parsedDisplayPropertyNames as []
+            }
+        }
 
-      modelsWithProperties.push({
-        id: modelRow.id,
-        name: modelRow.name,
-        description: modelRow.description,
-        displayPropertyNames: parsedDisplayPropertyNames,
-        properties: properties.map(p => ({
-            ...p,
-            required: p.required === 1,
-            autoSetOnCreate: p.autoSetOnCreate === 1,
-            autoSetOnUpdate: p.autoSetOnUpdate === 1,
-        })),
-      });
+        const mappedProperties = properties.map(p_row => {
+            // Defensive mapping in case of unexpected data from DB
+            if (!p_row || typeof p_row.type === 'undefined') {
+              console.warn(`API: Malformed property data for model ${modelRow.id}, property id ${p_row?.id}:`, p_row);
+              return {
+                  id: p_row?.id || `unknown_prop_${Date.now()}`,
+                  model_id: modelRow.id,
+                  name: p_row?.name || 'Unknown Property',
+                  type: p_row?.type || 'string', // Default to string if type is missing
+                  relatedModelId: p_row?.relatedModelId,
+                  required: p_row?.required === 1,
+                  relationshipType: p_row?.relationshipType,
+                  unit: p_row?.unit,
+                  precision: p_row?.precision,
+                  autoSetOnCreate: p_row?.autoSetOnCreate === 1,
+                  autoSetOnUpdate: p_row?.autoSetOnUpdate === 1,
+                  orderIndex: p_row?.orderIndex ?? 0,
+              } as Property;
+            }
+            return {
+              id: p_row.id,
+              model_id: p_row.model_id, // ensure model_id is included if needed by type Property
+              name: p_row.name,
+              type: p_row.type,
+              relatedModelId: p_row.relatedModelId,
+              required: p_row.required === 1,
+              relationshipType: p_row.relationshipType,
+              unit: p_row.unit,
+              precision: p_row.precision,
+              autoSetOnCreate: p_row.autoSetOnCreate === 1,
+              autoSetOnUpdate: p_row.autoSetOnUpdate === 1,
+              orderIndex: p_row.orderIndex,
+            } as Property;
+          });
+
+        modelsWithProperties.push({
+          id: modelRow.id,
+          name: modelRow.name,
+          description: modelRow.description,
+          displayPropertyNames: parsedDisplayPropertyNames,
+          properties: mappedProperties,
+        });
+      } catch (modelProcessingError: any) {
+          console.error(`API Error - Error processing model ${modelRow?.id} (${modelRow?.name}):`, {
+              message: modelProcessingError.message,
+              stack: modelProcessingError.stack,
+              modelData: modelRow 
+          });
+          // Re-throw to be caught by the outer catch, which will send a 500 response
+          // This helps in identifying if a specific model's data is causing issues.
+          throw new Error(`Processing failed for model ${modelRow?.name || modelRow?.id}. Original error: ${modelProcessingError.message}`);
+      }
     }
     return NextResponse.json(modelsWithProperties);
-  } catch (error) {
-    console.error('Failed to fetch models:', error);
-    return NextResponse.json({ error: 'Failed to fetch models' }, { status: 500 });
+  } catch (error: any) {
+    const errorMessage = error.message || 'An unknown server error occurred while fetching models.';
+    const errorStack = error.stack || 'No stack trace available.';
+    // Log the detailed error on the server
+    console.error(`API Error - Failed to fetch models. Message: ${errorMessage}, Stack: ${errorStack}`, error);
+    // Send a more informative error message to the client
+    return NextResponse.json({ error: 'Failed to fetch models', details: errorMessage }, { status: 500 });
   }
 }
 
@@ -99,10 +144,12 @@ export async function POST(request: Request) {
   } catch (error: any) {
     const db = await getDb();
     await db.run('ROLLBACK');
-    console.error('Failed to create model:', error);
+    const errorMessage = error.message || 'An unknown server error occurred while creating the model.';
+    const errorStack = error.stack || 'No stack trace available.';
+    console.error(`API Error - Failed to create model. Message: ${errorMessage}, Stack: ${errorStack}`, error);
     if (error.message && error.message.includes('UNIQUE constraint failed: models.name')) {
-      return NextResponse.json({ error: 'A model with this name already exists.' }, { status: 409 });
+      return NextResponse.json({ error: 'A model with this name already exists.', details: errorMessage }, { status: 409 });
     }
-    return NextResponse.json({ error: 'Failed to create model' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to create model', details: errorMessage }, { status: 500 });
   }
 }

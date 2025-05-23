@@ -37,17 +37,47 @@ export async function GET(request: Request, { params }: Params) {
       name: modelRow.name,
       description: modelRow.description,
       displayPropertyNames: parsedDisplayPropertyNames,
-      properties: properties.map(p => ({
-        ...p,
-        required: p.required === 1,
-        autoSetOnCreate: p.autoSetOnCreate === 1,
-        autoSetOnUpdate: p.autoSetOnUpdate === 1,
-      })),
+      properties: properties.map(p_row => { // Use a different variable name to avoid conflict with Property type
+        // Defensive mapping in case of unexpected data from DB
+        if (!p_row || typeof p_row.type === 'undefined') {
+            console.warn(`API: Malformed property data for model ${modelRow.id}, property id ${p_row?.id}:`, p_row);
+            return {
+                id: p_row?.id || `unknown_prop_${Date.now()}`,
+                model_id: modelRow.id,
+                name: p_row?.name || 'Unknown Property',
+                type: p_row?.type || 'string',
+                relatedModelId: p_row?.relatedModelId,
+                required: p_row?.required === 1,
+                relationshipType: p_row?.relationshipType,
+                unit: p_row?.unit,
+                precision: p_row?.precision,
+                autoSetOnCreate: p_row?.autoSetOnCreate === 1,
+                autoSetOnUpdate: p_row?.autoSetOnUpdate === 1,
+                orderIndex: p_row?.orderIndex ?? 0,
+            } as Property;
+        }
+        return {
+            id: p_row.id,
+            model_id: p_row.model_id,
+            name: p_row.name,
+            type: p_row.type,
+            relatedModelId: p_row.relatedModelId,
+            required: p_row.required === 1,
+            relationshipType: p_row.relationshipType,
+            unit: p_row.unit,
+            precision: p_row.precision,
+            autoSetOnCreate: p_row.autoSetOnCreate === 1,
+            autoSetOnUpdate: p_row.autoSetOnUpdate === 1,
+            orderIndex: p_row.orderIndex,
+        } as Property;
+      }),
     };
     return NextResponse.json(model);
-  } catch (error) {
-    console.error(`Failed to fetch model ${params.modelId}:`, error);
-    return NextResponse.json({ error: 'Failed to fetch model' }, { status: 500 });
+  } catch (error: any) {
+    const errorMessage = error.message || `An unknown server error occurred while fetching model ${params.modelId}.`;
+    const errorStack = error.stack || 'No stack trace available.';
+    console.error(`API Error - Failed to fetch model ${params.modelId}. Message: ${errorMessage}, Stack: ${errorStack}`, error);
+    return NextResponse.json({ error: 'Failed to fetch model', details: errorMessage }, { status: 500 });
   }
 }
 
@@ -62,7 +92,6 @@ export async function PUT(request: Request, { params }: Params) {
       return NextResponse.json({ error: 'Model not found' }, { status: 404 });
     }
     
-    // Check for name conflict if name is being changed
     if (name && name !== existingModel.name) {
         const nameCheck = await db.get('SELECT id FROM models WHERE name = ? AND id != ?', name, params.modelId);
         if (nameCheck) {
@@ -81,7 +110,6 @@ export async function PUT(request: Request, { params }: Params) {
     );
 
     if (updatedProperties) {
-      // Delete old properties and insert new ones
       await db.run('DELETE FROM properties WHERE model_id = ?', params.modelId);
       for (const prop of updatedProperties) {
         await db.run(
@@ -97,14 +125,13 @@ export async function PUT(request: Request, { params }: Params) {
           prop.precision,
           prop.autoSetOnCreate ? 1 : 0,
           prop.autoSetOnUpdate ? 1 : 0,
-          prop.orderIndex // This is now included
+          prop.orderIndex
         );
       }
     }
 
     await db.run('COMMIT');
 
-    // Fetch the updated model to return
     const refreshedModelRow = await db.get('SELECT * FROM models WHERE id = ?', params.modelId);
     const refreshedProperties = await db.all('SELECT * FROM properties WHERE model_id = ? ORDER BY orderIndex ASC', params.modelId);
 
@@ -137,11 +164,13 @@ export async function PUT(request: Request, { params }: Params) {
   } catch (error: any) {
     const db = await getDb();
     await db.run('ROLLBACK');
-    console.error(`Failed to update model ${params.modelId}:`, error);
+    const errorMessage = error.message || `An unknown server error occurred while updating model ${params.modelId}.`;
+    const errorStack = error.stack || 'No stack trace available.';
+    console.error(`API Error - Failed to update model ${params.modelId}. Message: ${errorMessage}, Stack: ${errorStack}`, error);
     if (error.message && error.message.includes('UNIQUE constraint failed: models.name')) {
-      return NextResponse.json({ error: 'A model with this name already exists.' }, { status: 409 });
+      return NextResponse.json({ error: 'A model with this name already exists.', details: errorMessage }, { status: 409 });
     }
-    return NextResponse.json({ error: 'Failed to update model' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to update model', details: errorMessage }, { status: 500 });
   }
 }
 
@@ -156,15 +185,16 @@ export async function DELETE(request: Request, { params }: Params) {
     }
 
     await db.run('BEGIN TRANSACTION');
-    // Properties and data_objects are deleted via CASCADE constraint from models table
     await db.run('DELETE FROM models WHERE id = ?', params.modelId);
     await db.run('COMMIT');
 
     return NextResponse.json({ message: 'Model deleted successfully' });
-  } catch (error) {
+  } catch (error: any) {
     const db = await getDb();
     await db.run('ROLLBACK');
-    console.error(`Failed to delete model ${params.modelId}:`, error);
-    return NextResponse.json({ error: 'Failed to delete model' }, { status: 500 });
+    const errorMessage = error.message || `An unknown server error occurred while deleting model ${params.modelId}.`;
+    const errorStack = error.stack || 'No stack trace available.';
+    console.error(`API Error - Failed to delete model ${params.modelId}. Message: ${errorMessage}, Stack: ${errorStack}`, error);
+    return NextResponse.json({ error: 'Failed to delete model', details: errorMessage }, { status: 500 });
   }
 }
