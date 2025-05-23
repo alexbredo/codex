@@ -38,13 +38,25 @@ export default function EditModelPage() {
           name: foundModel.name,
           description: foundModel.description || '',
           displayPropertyNames: foundModel.displayPropertyNames || [],
-          properties: foundModel.properties.map(p => ({
-            ...p,
-            id: p.id || crypto.randomUUID(), // Ensure ID exists
-            relationshipType: p.relationshipType || 'one', // Ensure default
-            autoSetOnCreate: !!p.autoSetOnCreate,
-            autoSetOnUpdate: !!p.autoSetOnUpdate,
-          } as PropertyFormValues)),
+          properties: foundModel.properties.map(p => {
+            const isRelationship = p.type === 'relationship';
+            const isDate = p.type === 'date';
+            const isNumber = p.type === 'number';
+
+            // Ensure properties are initialized consistent with their type
+            return {
+              id: p.id || crypto.randomUUID(), // Ensure ID exists
+              name: p.name,
+              type: p.type,
+              relatedModelId: isRelationship ? p.relatedModelId : undefined,
+              required: !!p.required,
+              relationshipType: isRelationship ? (p.relationshipType || 'one') : undefined,
+              unit: isNumber ? p.unit : undefined,
+              precision: isNumber ? (p.precision === undefined || p.precision === null ? 2 : p.precision) : undefined,
+              autoSetOnCreate: isDate ? !!p.autoSetOnCreate : false,
+              autoSetOnUpdate: isDate ? !!p.autoSetOnUpdate : false,
+            } as PropertyFormValues;
+          }),
         });
       } else {
         toast({ variant: "destructive", title: "Error", description: "Model not found." });
