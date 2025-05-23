@@ -50,6 +50,22 @@ async function initializeDb(): Promise<Database> {
     );
   `);
 
+  // Migration: Attempt to add orderIndex to properties table if it's an older schema
+  try {
+    // Using db.run for a single statement that might affect rows or schema
+    await db.run('ALTER TABLE properties ADD COLUMN orderIndex INTEGER NOT NULL DEFAULT 0');
+    console.log("Migration: Successfully added 'orderIndex' column to 'properties' table.");
+  } catch (e: any) {
+    if (e.message && (e.message.toLowerCase().includes('duplicate column name') || e.message.toLowerCase().includes('already has a column named orderindex'))) {
+      // This is expected if the column already exists, so we can ignore it.
+      console.log("Migration: 'orderIndex' column already present in 'properties' table.");
+    } else {
+      // For any other error, log it and re-throw to indicate a more serious issue.
+      console.error("Migration: Error trying to add 'orderIndex' column to 'properties' table:", e);
+      throw e;
+    }
+  }
+
   // Data Objects Table
   await db.exec(`
     CREATE TABLE IF NOT EXISTS data_objects (
@@ -70,3 +86,4 @@ export function getDb(): Promise<Database> {
   }
   return dbInstance;
 }
+
