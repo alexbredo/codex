@@ -2,8 +2,6 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog,
@@ -25,6 +23,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { useData } from '@/contexts/data-context';
+import { useAuth, withAuth } from '@/contexts/auth-context'; // Import withAuth
 import type { Model } from '@/lib/types';
 import { PlusCircle, Edit, Trash2, Eye, DatabaseZap, ListChecks, Search, Info, Code2, StickyNote, FolderOpen } from 'lucide-react';
 import Link from 'next/link';
@@ -34,7 +33,7 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 
-export default function ModelsPage() {
+function ModelsPageInternal() {
   const { models, deleteModel, isReady } = useData(); 
   const { toast } = useToast();
   const router = useRouter(); 
@@ -49,9 +48,13 @@ export default function ModelsPage() {
     router.push(`/models/edit/${model.id}`);
   };
   
-  const handleDelete = (modelId: string, modelName: string) => {
-    deleteModel(modelId);
-    toast({ title: "Model Deleted", description: `Model "${modelName}" and its associated data have been successfully deleted.` });
+  const handleDelete = async (modelId: string, modelName: string) => {
+    try {
+      await deleteModel(modelId);
+      toast({ title: "Model Deleted", description: `Model "${modelName}" and its associated data have been successfully deleted.` });
+    } catch (error: any) {
+       toast({ variant: "destructive", title: "Error Deleting Model", description: error.message || "Failed to delete model." });
+    }
   };
 
   const groupedModels = useMemo(() => {
@@ -82,16 +85,16 @@ export default function ModelsPage() {
   }, [groupedModels]);
 
   useEffect(() => {
-    if (isReady && sortedNamespaces.length > 0) {
-      setOpenAccordionItems(sortedNamespaces);
+    if (isReady && sortedNamespaces.length > 0 && openAccordionItems.length === 0) {
+      setOpenAccordionItems(sortedNamespaces); // Open all by default if none are open
     }
-  }, [isReady, sortedNamespaces]);
+  }, [isReady, sortedNamespaces, openAccordionItems.length]);
 
 
   if (!isReady) {
     return (
       <div className="flex justify-center items-center h-screen">
-        <p className="text-lg text-muted-foreground">Loading models...</p>
+        <p className="text-lg text-muted-foreground">Loading model admin...</p>
       </div>
     );
   }
@@ -203,7 +206,7 @@ export default function ModelsPage() {
                         {model.properties.length > 0 ? (
                           <ScrollArea className="h-24">
                             <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
-                              {model.properties.slice(0, 5).map((prop) => (
+                              {model.properties.sort((a,b) => a.orderIndex - b.orderIndex).slice(0, 5).map((prop) => (
                                 <li key={prop.id} className="truncate">
                                   {prop.name} <span className="text-xs opacity-70">({prop.type}{prop.type === 'relationship' ? ` - ${prop.relationshipType}` : ''})</span>
                                 </li>
@@ -269,3 +272,6 @@ export default function ModelsPage() {
     </div>
   );
 }
+
+// Wrap the page component with the HOC for role protection
+export default withAuth(ModelsPageInternal, ['administrator']);

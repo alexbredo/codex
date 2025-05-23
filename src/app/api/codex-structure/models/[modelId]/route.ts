@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import type { Model, Property } from '@/lib/types';
+import { getCurrentUserFromCookie } from '@/lib/auth'; // Auth helper
 
 interface Params {
   params: { modelId: string };
@@ -9,6 +10,7 @@ interface Params {
 
 // GET a single model by ID
 export async function GET(request: Request, { params }: Params) {
+  // No specific role check for getting a single model, as viewers might need this.
   try {
     const db = await getDb();
     const modelRow = await db.get('SELECT * FROM models WHERE id = ?', params.modelId);
@@ -28,7 +30,6 @@ export async function GET(request: Request, { params }: Params) {
             }
         } catch (parseError) {
             console.warn(`API (GET /models/[modelId]): Could not parse displayPropertyNames for model ${modelRow.id}: '${modelRow.displayPropertyNames}'`, parseError);
-            // Keep parsedDisplayPropertyNames as []
         }
     }
     
@@ -85,6 +86,11 @@ export async function GET(request: Request, { params }: Params) {
 
 // PUT (update) a model
 export async function PUT(request: Request, { params }: Params) {
+  const currentUser = await getCurrentUserFromCookie();
+  if (!currentUser || currentUser.role !== 'administrator') {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+  }
+
   try {
     const { name, description, namespace, displayPropertyNames, properties: updatedProperties }: Partial<Omit<Model, 'id'>> & { properties?: Property[] } = await request.json();
     const db = await getDb();
@@ -183,6 +189,10 @@ export async function PUT(request: Request, { params }: Params) {
 
 // DELETE a model
 export async function DELETE(request: Request, { params }: Params) {
+  const currentUser = await getCurrentUserFromCookie();
+  if (!currentUser || currentUser.role !== 'administrator') {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+  }
   try {
     const db = await getDb();
     

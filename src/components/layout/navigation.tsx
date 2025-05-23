@@ -12,22 +12,33 @@ import {
   SidebarGroup, 
   SidebarGroupLabel,
 } from '@/components/ui/sidebar';
-import { LayoutDashboard, DatabaseZap, ListChecks, FolderOpen, FolderKanban } from 'lucide-react'; // Added FolderKanban
+import { LayoutDashboard, DatabaseZap, ListChecks, FolderOpen, FolderKanban } from 'lucide-react';
 import { useData } from '@/contexts/data-context'; 
+import { useAuth } from '@/contexts/auth-context';
 import type { Model } from '@/lib/types';
 
-const staticNavItems = [
-  { href: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/models', label: 'Model Admin', icon: DatabaseZap },
-  { href: '/model-groups', label: 'Group Admin', icon: FolderKanban }, // New link for Model Group Admin
+const staticNavItemsBase = [
+  { href: '/', label: 'Dashboard', icon: LayoutDashboard, roles: ['user', 'administrator'] },
+];
+
+const adminNavItems = [
+  { href: '/models', label: 'Model Admin', icon: DatabaseZap, roles: ['administrator'] },
+  { href: '/model-groups', label: 'Group Admin', icon: FolderKanban, roles: ['administrator'] },
 ];
 
 export default function Navigation() {
   const pathname = usePathname();
-  const { models, isReady } = useData(); 
+  const { models, isReady: dataIsReady } = useData(); 
+  const { user, isLoading: authIsLoading } = useAuth();
+
+  const visibleStaticNavItems = React.useMemo(() => {
+    if (authIsLoading || !user) return staticNavItemsBase.filter(item => !item.roles || item.roles.length === 0); // Show only public if no user
+    return [...staticNavItemsBase, ...adminNavItems].filter(item => item.roles.includes(user.role));
+  }, [user, authIsLoading]);
+
 
   const groupedModels = React.useMemo(() => {
-    if (!isReady) return {};
+    if (!dataIsReady) return {};
     const groups: Record<string, Model[]> = {};
     models.forEach(model => {
       const namespace = model.namespace || 'Default';
@@ -41,19 +52,23 @@ export default function Navigation() {
       groups[namespace].sort((a, b) => a.name.localeCompare(b.name));
     }
     return groups;
-  }, [models, isReady]);
+  }, [models, dataIsReady]);
 
   const sortedNamespaces = React.useMemo(() => {
     return Object.keys(groupedModels).sort((a, b) => {
-        if (a === 'Default') return -1; // Always put "Default" first
+        if (a === 'Default') return -1; 
         if (b === 'Default') return 1;
         return a.localeCompare(b);
     });
   }, [groupedModels]);
 
+  if (authIsLoading) {
+    return <div className="p-4 text-sm text-sidebar-foreground/70">Loading navigation...</div>;
+  }
+
   return (
     <SidebarMenu>
-      {staticNavItems.map((item) => (
+      {visibleStaticNavItems.map((item) => (
         <SidebarMenuItem key={item.label}>
           <Link href={item.href} passHref legacyBehavior>
             <SidebarMenuButton
@@ -68,7 +83,7 @@ export default function Navigation() {
         </SidebarMenuItem>
       ))}
 
-      {isReady && sortedNamespaces.length > 0 && (
+      {dataIsReady && user && sortedNamespaces.length > 0 && (
         <>
           <SidebarSeparator className="my-2 mx-2 !w-auto" />
           <SidebarGroupLabel className="px-2 text-xs text-sidebar-foreground/70 group-data-[collapsible=icon]:justify-center">
@@ -88,9 +103,8 @@ export default function Navigation() {
                       isActive={pathname.startsWith(`/data/${model.id}`)}
                       tooltip={{ children: `View ${model.name} Data (${namespace})`, side: 'right', align: 'center' }}
                       aria-label={`${model.name} (${namespace})`}
-                      className="ml-2" // Indent model items
+                      className="ml-2" 
                     >
-                      {/* Using a generic list icon, or could use model-specific icons in future */}
                       <ListChecks size={18} /> 
                       <span className="truncate">{model.name}</span>
                     </SidebarMenuButton>

@@ -2,9 +2,12 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import type { Model, Property } from '@/lib/types';
+import { getCurrentUserFromCookie } from '@/lib/auth'; // Auth helper
 
 // GET all models
-export async function GET() {
+export async function GET(request: Request) {
+  // No specific role check for listing models, as viewers might need this.
+  // Finer-grained control can be added if needed.
   try {
     const db = await getDb();
     const rows = await db.all('SELECT * FROM models ORDER BY namespace ASC, name ASC');
@@ -76,8 +79,6 @@ export async function GET() {
               stack: modelProcessingError.stack,
               modelData: modelRow 
           });
-          // Re-throw or handle as appropriate. Here, we'll let the outer catch handle it
-          // by stopping the process and returning a 500.
           throw new Error(`Processing failed for model ${modelRow?.name || modelRow?.id}. Original error: ${modelProcessingError.message}`);
       }
     }
@@ -92,6 +93,11 @@ export async function GET() {
 
 // POST a new model
 export async function POST(request: Request) {
+  const currentUser = await getCurrentUserFromCookie();
+  if (!currentUser || currentUser.role !== 'administrator') {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+  }
+
   try {
     const { id: modelId, name, description, namespace, displayPropertyNames, properties: newProperties }: Omit<Model, 'id'> & {id: string} = await request.json();
     const db = await getDb();

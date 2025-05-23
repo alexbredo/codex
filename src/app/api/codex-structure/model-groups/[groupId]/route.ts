@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import type { ModelGroup } from '@/lib/types';
+import { getCurrentUserFromCookie } from '@/lib/auth'; // Auth helper
 
 interface Params {
   params: { groupId: string };
@@ -9,6 +10,7 @@ interface Params {
 
 // GET a single model group by ID
 export async function GET(request: Request, { params }: Params) {
+  // No specific role check for getting a single group.
   try {
     const db = await getDb();
     const group = await db.get('SELECT * FROM model_groups WHERE id = ?', params.groupId);
@@ -25,6 +27,11 @@ export async function GET(request: Request, { params }: Params) {
 
 // PUT (update) a model group
 export async function PUT(request: Request, { params }: Params) {
+  const currentUser = await getCurrentUserFromCookie();
+  if (!currentUser || currentUser.role !== 'administrator') {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+  }
+
   try {
     const { name, description }: Partial<Omit<ModelGroup, 'id'>> = await request.json();
     const db = await getDb();
@@ -33,6 +40,13 @@ export async function PUT(request: Request, { params }: Params) {
     if (!existingGroup) {
       return NextResponse.json({ error: 'Model group not found' }, { status: 404 });
     }
+     if (existingGroup.name.toLowerCase() === 'default' && name && name.trim().toLowerCase() !== 'default') {
+      return NextResponse.json({ error: 'The "Default" group name cannot be changed.' }, { status: 400 });
+    }
+    if (name && name.trim().toLowerCase() === 'default' && existingGroup.name.toLowerCase() !== 'default') {
+       return NextResponse.json({ error: 'Cannot rename a group to "Default".' }, { status: 400 });
+    }
+
 
     if (name && name.trim() === '') {
         return NextResponse.json({ error: 'Group name cannot be empty.' }, { status: 400 });
@@ -69,12 +83,21 @@ export async function PUT(request: Request, { params }: Params) {
 
 // DELETE a model group
 export async function DELETE(request: Request, { params }: Params) {
+  const currentUser = await getCurrentUserFromCookie();
+  if (!currentUser || currentUser.role !== 'administrator') {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+  }
+
   try {
     const db = await getDb();
     const groupToDelete = await db.get('SELECT name FROM model_groups WHERE id = ?', params.groupId);
     if (!groupToDelete) {
       return NextResponse.json({ error: 'Model group not found' }, { status: 404 });
     }
+    if (groupToDelete.name.toLowerCase() === 'default') {
+        return NextResponse.json({ error: 'The "Default" group cannot be deleted.' }, { status: 400 });
+    }
+
 
     // Check if any models are using this namespace
     const modelsInGroup = await db.get('SELECT COUNT(*) as count FROM models WHERE namespace = ?', groupToDelete.name);
@@ -86,7 +109,6 @@ export async function DELETE(request: Request, { params }: Params) {
 
     const result = await db.run('DELETE FROM model_groups WHERE id = ?', params.groupId);
     if (result.changes === 0) {
-        // Should have been caught by the check above, but as a safeguard
         return NextResponse.json({ error: 'Model group not found or already deleted' }, { status: 404 });
     }
     return NextResponse.json({ message: 'Model group deleted successfully' });

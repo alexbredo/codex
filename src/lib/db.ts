@@ -53,12 +53,9 @@ async function initializeDb(): Promise<Database> {
 
   try {
     await db.run("ALTER TABLE models ADD COLUMN namespace TEXT NOT NULL DEFAULT 'Default'");
-    console.log("Migration: Successfully added 'namespace' column to 'models' table.");
   } catch (e: any) {
-    if (e.message && (e.message.toLowerCase().includes('duplicate column name') || e.message.toLowerCase().includes('already has a column named namespace'))) {
-      // console.log("Migration: 'namespace' column already present in 'models' table.");
-    } else {
-      console.error("Migration: Error trying to add 'namespace' column to 'models' table:", e.message);
+    if (!(e.message && (e.message.toLowerCase().includes('duplicate column name') || e.message.toLowerCase().includes('already has a column named namespace')))) {
+      console.error("Migration: Error trying to add 'namespace' column to 'models' table (this might be an issue if it doesn't exist):", e.message);
     }
   }
 
@@ -85,23 +82,17 @@ async function initializeDb(): Promise<Database> {
 
   try {
     await db.run('ALTER TABLE properties ADD COLUMN orderIndex INTEGER NOT NULL DEFAULT 0');
-    console.log("Migration: Successfully added 'orderIndex' column to 'properties' table.");
   } catch (e: any) {
-    if (e.message && (e.message.toLowerCase().includes('duplicate column name') || e.message.toLowerCase().includes('already has a column named orderindex'))) {
-      // console.log("Migration: 'orderIndex' column already present in 'properties' table.");
-    } else {
-      // console.error("Migration: Error trying to add 'orderIndex' column to 'properties' table (this might be expected if it exists):", e.message);
+    if (!(e.message && (e.message.toLowerCase().includes('duplicate column name') || e.message.toLowerCase().includes('already has a column named orderindex')))) {
+        console.error("Migration: Error trying to add 'orderIndex' column to 'properties' table (this might be an issue if it doesn't exist):", e.message);
     }
   }
   
   try {
     await db.run('ALTER TABLE properties ADD COLUMN isUnique INTEGER DEFAULT 0');
-    // console.log("Migration: Successfully added 'isUnique' column to 'properties' table.");
   } catch (e: any) {
-    if (e.message && (e.message.toLowerCase().includes('duplicate column name') || e.message.toLowerCase().includes('already has a column named isunique'))) {
-      // console.log("Migration: 'isUnique' column already present in 'properties' table.");
-    } else {
-      // console.error("Migration: Error trying to add 'isUnique' column to 'properties' table (this might be expected if it exists):", e.message);
+     if (!(e.message && (e.message.toLowerCase().includes('duplicate column name') || e.message.toLowerCase().includes('already has a column named isunique')))) {
+        console.error("Migration: Error trying to add 'isUnique' column to 'properties' table (this might be an issue if it doesn't exist):", e.message);
     }
   }
 
@@ -115,6 +106,18 @@ async function initializeDb(): Promise<Database> {
       FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE
     );
   `);
+
+  // Users Table (for placeholder authentication)
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      username TEXT NOT NULL UNIQUE,
+      password TEXT NOT NULL, -- WARNING: Storing plaintext passwords. Highly insecure. For demo only.
+      role TEXT NOT NULL DEFAULT 'user' -- 'user' or 'administrator'
+    );
+  `);
+  console.log("Users table (for placeholder auth) ensured.");
+
 
   console.log(`Database initialized at ${dbPath}`);
   return db;

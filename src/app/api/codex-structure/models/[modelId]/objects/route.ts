@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import type { DataObject, Model, Property } from '@/lib/types';
+import { getCurrentUserFromCookie } from '@/lib/auth'; // Auth helper
 
 interface Params {
   params: { modelId: string };
@@ -9,6 +10,11 @@ interface Params {
 
 // GET all objects for a model
 export async function GET(request: Request, { params }: Params) {
+  const currentUser = await getCurrentUserFromCookie();
+  if (!currentUser || !['user', 'administrator'].includes(currentUser.role)) {
+    // Allow 'user' and 'administrator' to view objects
+    return NextResponse.json({ error: 'Unauthorized to view objects' }, { status: 403 });
+  }
   try {
     const db = await getDb();
     const modelExists = await db.get('SELECT id FROM models WHERE id = ?', params.modelId);
@@ -30,6 +36,10 @@ export async function GET(request: Request, { params }: Params) {
 
 // POST a new object for a model
 export async function POST(request: Request, { params }: Params) {
+  const currentUser = await getCurrentUserFromCookie();
+  if (!currentUser || !['user', 'administrator'].includes(currentUser.role)) {
+    return NextResponse.json({ error: 'Unauthorized to create objects' }, { status: 403 });
+  }
   try {
     const { id: objectId, ...objectData }: Omit<DataObject, 'id'> & { id: string } = await request.json();
     const db = await getDb();
@@ -55,7 +65,7 @@ export async function POST(request: Request, { params }: Params) {
             return NextResponse.json({ 
               error: `Value '${valueToCheck}' for property '${prop.name}' must be unique. It already exists.`,
               field: prop.name 
-            }, { status: 409 }); // 409 Conflict
+            }, { status: 409 });
           }
         }
       }

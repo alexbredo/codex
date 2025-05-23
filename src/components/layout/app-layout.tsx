@@ -1,3 +1,6 @@
+
+'use client';
+
 import type { ReactNode } from 'react';
 import {
   SidebarProvider,
@@ -10,14 +13,30 @@ import {
 } from '@/components/ui/sidebar';
 import Navigation from './navigation';
 import { Button } from '@/components/ui/button';
-import { UserCircle, LogOut } from 'lucide-react';
+import { UserCircle, LogOut, LogIn, UserPlus } from 'lucide-react';
 import Link from 'next/link';
+import { useAuth } from '@/contexts/auth-context';
 
 interface AppLayoutProps {
   children: ReactNode;
 }
 
 export default function AppLayout({ children }: AppLayoutProps) {
+  const { user, logout, isLoading } = useAuth();
+
+  // If loading auth state, or if user is null and on login/register page, don't render full layout
+  if (isLoading) {
+    return <div className="flex justify-center items-center h-screen"><p>Loading application...</p></div>;
+  }
+  
+  // Simple check to hide layout on login/register pages if user is not logged in.
+  // This could be more robust with route checks.
+  const isAuthPage = typeof window !== 'undefined' && (window.location.pathname === '/login' || window.location.pathname === '/register');
+  if (!user && isAuthPage) {
+    return <>{children}</>; // Render only children for login/register pages if not logged in
+  }
+
+
   return (
     <SidebarProvider defaultOpen>
       <div className="flex min-h-screen">
@@ -32,7 +51,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                 <circle cx="50" cy="50" r="10" fill="currentColor"/>
               </svg>
               <h1 className="text-xl font-semibold text-sidebar-foreground group-data-[collapsible=icon]:hidden">
-                Codex
+                CodexStructure
               </h1>
             </Link>
           </SidebarHeader>
@@ -40,12 +59,30 @@ export default function AppLayout({ children }: AppLayoutProps) {
             <Navigation />
           </SidebarContent>
           <SidebarFooter className="group-data-[collapsible=icon]:hidden">
-            <Button variant="ghost" className="justify-start gap-2">
-              <UserCircle size={20} /> Account
-            </Button>
-            <Button variant="ghost" className="justify-start gap-2 text-destructive hover:text-destructive hover:bg-destructive/10">
-              <LogOut size={20} /> Logout
-            </Button>
+            {user ? (
+              <>
+                <div className="px-2 py-1 text-sm text-sidebar-foreground/80">
+                  <UserCircle size={16} className="inline mr-2" />
+                  {user.username} ({user.role})
+                </div>
+                <Button variant="ghost" className="justify-start gap-2 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={logout}>
+                  <LogOut size={20} /> Logout
+                </Button>
+              </>
+            ) : (
+              <>
+                <Link href="/login" passHref legacyBehavior>
+                  <Button variant="ghost" className="justify-start gap-2 w-full">
+                    <LogIn size={20} /> Login
+                  </Button>
+                </Link>
+                <Link href="/register" passHref legacyBehavior>
+                  <Button variant="ghost" className="justify-start gap-2 w-full">
+                    <UserPlus size={20} /> Register
+                  </Button>
+                </Link>
+              </>
+            )}
           </SidebarFooter>
         </Sidebar>
         <SidebarInset>
@@ -54,6 +91,11 @@ export default function AppLayout({ children }: AppLayoutProps) {
             <div className="flex-1 text-center text-lg font-medium text-foreground">
               {/* Current Page Title could go here, or leave empty for simplicity */}
             </div>
+             {user && (
+              <Button variant="ghost" size="sm" onClick={logout} className="text-destructive hover:text-destructive hover:bg-destructive/10 md:hidden">
+                <LogOut size={18} className="mr-1" /> Logout
+              </Button>
+            )}
           </header>
           <main className="flex-1 p-6 overflow-auto">
             {children}

@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { useData } from '@/contexts/data-context';
+import { useAuth, withAuth } from '@/contexts/auth-context'; // Import withAuth
 import type { ModelGroup, ModelGroupFormValues } from '@/lib/types';
 import { modelGroupFormSchema } from '@/components/model-groups/model-group-form-schema';
 import ModelGroupForm from '@/components/model-groups/model-group-form';
@@ -38,12 +39,12 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
-  DialogClose
+  // DialogTrigger, // No longer needed as button opens dialog programmatically
+  // DialogClose // No longer needed if form handles close
 } from "@/components/ui/dialog";
 
 
-export default function ModelGroupsPage() {
+function ModelGroupsPageInternal() {
   const { modelGroups, addModelGroup, updateModelGroup, deleteModelGroup, getModelGroupByName, isReady, fetchData } = useData();
   const { toast } = useToast();
   
@@ -65,7 +66,7 @@ export default function ModelGroupsPage() {
     } else {
       form.reset({ name: '', description: '' });
     }
-  }, [editingGroup, form]);
+  }, [editingGroup, form, isFormOpen]); // Added isFormOpen to reset on dialog close too
 
   const filteredGroups = useMemo(() => {
     return modelGroups.filter(group =>
@@ -76,7 +77,7 @@ export default function ModelGroupsPage() {
 
   const handleCreateNew = () => {
     setEditingGroup(null);
-    form.reset({ name: '', description: '' });
+    // form.reset is handled by useEffect based on editingGroup
     setIsFormOpen(true);
   };
 
@@ -110,7 +111,7 @@ export default function ModelGroupsPage() {
         toast({ title: "Model Group Created", description: `Group "${values.name}" has been created.` });
       }
       setIsFormOpen(false);
-      setEditingGroup(null);
+      setEditingGroup(null); // Ensure editingGroup is cleared
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error Saving Group", description: error.message });
     }
@@ -120,7 +121,7 @@ export default function ModelGroupsPage() {
     return (
       <div className="flex flex-col justify-center items-center h-screen">
         <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
-        <p className="text-lg text-muted-foreground">Loading model groups...</p>
+        <p className="text-lg text-muted-foreground">Loading model groups admin...</p>
       </div>
     );
   }
@@ -151,7 +152,7 @@ export default function ModelGroupsPage() {
 
       <Dialog open={isFormOpen} onOpenChange={(open) => {
           setIsFormOpen(open);
-          if (!open) setEditingGroup(null);
+          if (!open) setEditingGroup(null); // Clear editing state when dialog closes
       }}>
         <DialogContent className="sm:max-w-[525px]">
           <DialogHeader>
@@ -204,7 +205,7 @@ export default function ModelGroupsPage() {
                     <Button variant="ghost" size="icon" onClick={() => handleEdit(group)} className="mr-2 hover:text-primary">
                       <Edit className="h-4 w-4" />
                     </Button>
-                    {group.name !== 'Default' && ( // Prevent deleting the conceptual "Default" if it were a record
+                    {group.name !== 'Default' && ( 
                         <AlertDialog>
                         <AlertDialogTrigger asChild>
                             <Button variant="ghost" size="icon" className="hover:text-destructive">
@@ -239,3 +240,4 @@ export default function ModelGroupsPage() {
   );
 }
 
+export default withAuth(ModelGroupsPageInternal, ['administrator']);

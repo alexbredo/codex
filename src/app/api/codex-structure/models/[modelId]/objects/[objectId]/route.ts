@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import type { DataObject, Property } from '@/lib/types';
+import { getCurrentUserFromCookie } from '@/lib/auth'; // Auth helper
 
 interface Params {
   params: { modelId: string; objectId: string };
@@ -9,6 +10,10 @@ interface Params {
 
 // GET a single object
 export async function GET(request: Request, { params }: Params) {
+  const currentUser = await getCurrentUserFromCookie();
+  if (!currentUser || !['user', 'administrator'].includes(currentUser.role)) {
+    return NextResponse.json({ error: 'Unauthorized to view object' }, { status: 403 });
+  }
   try {
     const db = await getDb();
     const row = await db.get('SELECT id, data FROM data_objects WHERE id = ? AND model_id = ?', params.objectId, params.modelId);
@@ -26,6 +31,10 @@ export async function GET(request: Request, { params }: Params) {
 
 // PUT (update) an object
 export async function PUT(request: Request, { params }: Params) {
+  const currentUser = await getCurrentUserFromCookie();
+  if (!currentUser || !['user', 'administrator'].includes(currentUser.role)) {
+    return NextResponse.json({ error: 'Unauthorized to update object' }, { status: 403 });
+  }
   try {
     const { id, model_id, ...updates }: Partial<DataObject> & {id?: string, model_id?:string} = await request.json();
     const db = await getDb();
@@ -38,11 +47,9 @@ export async function PUT(request: Request, { params }: Params) {
     const properties: Property[] = await db.all('SELECT name, type, isUnique FROM properties WHERE model_id = ?', params.modelId);
     const currentData = JSON.parse(existingObjectRecord.data);
 
-    // Uniqueness check for updated fields
     for (const prop of properties) {
       if (prop.type === 'string' && prop.isUnique && updates.hasOwnProperty(prop.name)) {
         const newValue = updates[prop.name];
-        // Only check if the value has actually changed and is not empty
         if (newValue !== currentData[prop.name] && newValue !== null && typeof newValue !== 'undefined' && String(newValue).trim() !== '') {
           const conflictingObject = await db.get(
             `SELECT id FROM data_objects WHERE model_id = ? AND id != ? AND json_extract(data, '$.${prop.name}') = ?`,
@@ -54,7 +61,7 @@ export async function PUT(request: Request, { params }: Params) {
             return NextResponse.json({ 
               error: `Value '${newValue}' for property '${prop.name}' must be unique. It already exists.`,
               field: prop.name
-            }, { status: 409 }); // 409 Conflict
+            }, { status: 409 }); 
           }
         }
       }
@@ -83,6 +90,10 @@ export async function PUT(request: Request, { params }: Params) {
 
 // DELETE an object
 export async function DELETE(request: Request, { params }: Params) {
+  const currentUser = await getCurrentUserFromCookie();
+  if (!currentUser || !['user', 'administrator'].includes(currentUser.role)) {
+    return NextResponse.json({ error: 'Unauthorized to delete object' }, { status: 403 });
+  }
   try {
     const db = await getDb();
     const result = await db.run('DELETE FROM data_objects WHERE id = ? AND model_id = ?', params.objectId, params.modelId);
