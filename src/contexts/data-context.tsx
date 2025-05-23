@@ -26,24 +26,39 @@ const DataContext = createContext<DataContextType | undefined>(undefined);
 
 // Helper to map DB row to Model type (client-side)
 const mapDbModelToClientModel = (dbModel: any): Model => {
+  let parsedDisplayPropertyNames: string[] = [];
+  if (Array.isArray(dbModel.displayPropertyNames)) {
+    parsedDisplayPropertyNames = dbModel.displayPropertyNames;
+  } else if (typeof dbModel.displayPropertyNames === 'string') {
+    try {
+      const temp = JSON.parse(dbModel.displayPropertyNames);
+      if (Array.isArray(temp)) {
+        parsedDisplayPropertyNames = temp.filter((name: any) => typeof name === 'string');
+      }
+    } catch (e) {
+      // Keep parsedDisplayPropertyNames as [] if parsing fails
+      console.warn(`Could not parse displayPropertyNames for model ${dbModel.id}: '${dbModel.displayPropertyNames}'`, e);
+    }
+  }
+
   return {
     id: dbModel.id,
     name: dbModel.name,
     description: dbModel.description,
-    displayPropertyNames: Array.isArray(dbModel.displayPropertyNames) 
-      ? dbModel.displayPropertyNames 
-      : (typeof dbModel.displayPropertyNames === 'string' && dbModel.displayPropertyNames.length > 2 ? JSON.parse(dbModel.displayPropertyNames) : []),
+    displayPropertyNames: parsedDisplayPropertyNames,
     properties: (dbModel.properties || []).map((p: any) => ({
-      ...p,
       id: p.id || crypto.randomUUID(),
+      name: p.name,
+      type: p.type,
+      relatedModelId: p.type === 'relationship' ? p.relatedModelId : undefined,
       required: p.required === 1 || p.required === true, 
       relationshipType: p.type === 'relationship' ? (p.relationshipType || 'one') : undefined,
       unit: p.type === 'number' ? p.unit : undefined,
-      precision: p.type === 'number' ? (p.precision === undefined || p.precision === null ? 2 : p.precision) : undefined,
+      precision: p.type === 'number' ? (p.precision === undefined || p.precision === null || isNaN(Number(p.precision)) ? 2 : Number(p.precision)) : undefined,
       autoSetOnCreate: p.type === 'date' ? (p.autoSetOnCreate === 1 || p.autoSetOnCreate === true) : false,
       autoSetOnUpdate: p.type === 'date' ? (p.autoSetOnUpdate === 1 || p.autoSetOnUpdate === true) : false,
-      orderIndex: p.orderIndex ?? 0, // Ensure orderIndex is present
-    })).sort((a, b) => a.orderIndex - b.orderIndex), // Ensure properties are sorted by orderIndex
+      orderIndex: p.orderIndex ?? 0,
+    })).sort((a, b) => a.orderIndex - b.orderIndex),
   };
 };
 
@@ -63,9 +78,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
           const errorData = await modelsResponse.json();
           if (errorData && errorData.error) {
             errorMessage += ` - Server: ${errorData.error}`;
+            if (errorData.details) errorMessage += ` Details: ${errorData.details}`;
           }
         } catch (e) {
-          // Failed to parse error JSON, or no JSON body
           errorMessage += ` - ${modelsResponse.statusText || 'Server did not provide detailed error.'}`;
         }
         throw new Error(errorMessage);
@@ -80,6 +95,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
             const errorData = await allObjectsResponse.json();
             if (errorData && errorData.error) {
                 errorMessage += ` - Server: ${errorData.error}`;
+                if (errorData.details) errorMessage += ` Details: ${errorData.details}`;
             }
         } catch (e) {
             errorMessage += ` - ${allObjectsResponse.statusText || 'Server did not provide detailed error.'}`;
@@ -101,14 +117,35 @@ export function DataProvider({ children }: { children: ReactNode }) {
     fetchData();
   }, [fetchData]);
 
+  const formatApiError = async (response: Response, defaultMessage: string): Promise<string> => {
+    let errorMessage = defaultMessage;
+    try {
+      const errorData = await response.json();
+      console.error(`API Error (raw data from ${response.url}):`, errorData);
+      if (errorData && errorData.error) {
+        errorMessage = errorData.error;
+        if (errorData.details) {
+          errorMessage += ` (Details: ${errorData.details})`;
+        }
+      } else if (response.statusText) {
+        errorMessage = `${defaultMessage}: ${response.status} ${response.statusText}`;
+      } else {
+         errorMessage = `${defaultMessage}: Server responded with status ${response.status} but no error details.`;
+      }
+    } catch (e) {
+      console.error(`Failed to parse error response from server or non-JSON error response from ${response.url}:`, e);
+      errorMessage = `${defaultMessage}: Server responded with status ${response.status} and non-JSON error body.`;
+    }
+    return errorMessage;
+  };
+
 
   const addModel = useCallback(async (modelData: Omit<Model, 'id'>): Promise<Model> => {
     const modelId = crypto.randomUUID();
-    // Ensure properties have IDs and orderIndex is assigned before sending to API
     const propertiesWithIdsAndOrder = modelData.properties.map((p, index) => ({ 
       ...p, 
       id: p.id || crypto.randomUUID(),
-      orderIndex: index // Assign orderIndex based on array order
+      orderIndex: index 
     }));
     
     const response = await fetch('/api/data-weaver/models', {
@@ -117,9 +154,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ ...modelData, id: modelId, properties: propertiesWithIdsAndOrder }),
     });
     if (!response.ok) {
-      const errorData = await response.json();
-      console.error("API Error in addModel:", errorData);
-      throw new Error(errorData.error || 'Failed to add model via API');
+      const errorMessage = await formatApiError(response, 'Failed to add model');
+      throw new Error(errorMessage);
     }
     const newModel: Model = await response.json();
     const clientModel = mapDbModelToClientModel(newModel);
@@ -135,7 +171,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       required: !!p.required,
       autoSetOnCreate: !!p.autoSetOnCreate,
       autoSetOnUpdate: !!p.autoSetOnUpdate,
-      orderIndex: index // Assign orderIndex based on current array order
+      orderIndex: index
     }));
 
     const payload = {
@@ -149,9 +185,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify(payload),
     });
      if (!response.ok) {
-      const errorData = await response.json();
-      console.error("API Error in updateModel:", errorData);
-      throw new Error(errorData.error || 'Failed to update model via API');
+      const errorMessage = await formatApiError(response, 'Failed to update model');
+      throw new Error(errorMessage);
     }
     const updatedModelFromApi: Model = await response.json();
     const clientModel = mapDbModelToClientModel(updatedModelFromApi);
@@ -174,9 +209,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       method: 'DELETE',
     });
     if (!response.ok) {
-      const errorData = await response.json();
-      console.error("API Error in deleteModel:", errorData);
-      throw new Error(errorData.error || 'Failed to delete model via API');
+      const errorMessage = await formatApiError(response, 'Failed to delete model');
+      throw new Error(errorMessage);
     }
     
     setModels((prev) => prev.filter((model) => model.id !== modelId));
@@ -204,9 +238,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ ...objectData, id: objectId }),
     });
     if (!response.ok) {
-      const errorData = await response.json();
-      console.error("API Error in addObject:", errorData);
-      throw new Error(errorData.error || 'Failed to add object via API');
+      const errorMessage = await formatApiError(response, 'Failed to add object');
+      throw new Error(errorMessage);
     }
     const newObject: DataObject = await response.json();
     
@@ -224,9 +257,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify(updates),
     });
     if (!response.ok) {
-      const errorData = await response.json();
-      console.error("API Error in updateObject:", errorData);
-      throw new Error(errorData.error || 'Failed to update object via API');
+      const errorMessage = await formatApiError(response, 'Failed to update object');
+      throw new Error(errorMessage);
     }
     const updatedObjectFromApi: DataObject = await response.json();
     
@@ -250,9 +282,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       method: 'DELETE',
     });
     if (!response.ok) {
-      const errorData = await response.json();
-      console.error("API Error in deleteObject:", errorData);
-      throw new Error(errorData.error || 'Failed to delete object via API');
+      const errorMessage = await formatApiError(response, 'Failed to delete object');
+      throw new Error(errorMessage);
     }
     
     setObjects((prev) => ({
