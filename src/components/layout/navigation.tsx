@@ -12,13 +12,14 @@ import {
   SidebarGroup, 
   SidebarGroupLabel,
 } from '@/components/ui/sidebar';
-import { LayoutDashboard, DatabaseZap, ListChecks, FolderOpen } from 'lucide-react';
+import { LayoutDashboard, DatabaseZap, ListChecks, FolderOpen, FolderKanban } from 'lucide-react'; // Added FolderKanban
 import { useData } from '@/contexts/data-context'; 
 import type { Model } from '@/lib/types';
 
 const staticNavItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/models', label: 'Model Admin', icon: DatabaseZap },
+  { href: '/model-groups', label: 'Group Admin', icon: FolderKanban }, // New link for Model Group Admin
 ];
 
 export default function Navigation() {
@@ -43,7 +44,11 @@ export default function Navigation() {
   }, [models, isReady]);
 
   const sortedNamespaces = React.useMemo(() => {
-    return Object.keys(groupedModels).sort((a, b) => a.localeCompare(b));
+    return Object.keys(groupedModels).sort((a, b) => {
+        if (a === 'Default') return -1; // Always put "Default" first
+        if (b === 'Default') return 1;
+        return a.localeCompare(b);
+    });
   }, [groupedModels]);
 
   return (
@@ -66,6 +71,10 @@ export default function Navigation() {
       {isReady && sortedNamespaces.length > 0 && (
         <>
           <SidebarSeparator className="my-2 mx-2 !w-auto" />
+          <SidebarGroupLabel className="px-2 text-xs text-sidebar-foreground/70 group-data-[collapsible=icon]:justify-center">
+            <ListChecks size={16} className="mr-2 group-data-[collapsible=icon]:mr-0" />
+             <span className="group-data-[collapsible=icon]:hidden">Data Objects</span>
+          </SidebarGroupLabel>
           {sortedNamespaces.map(namespace => (
             <SidebarGroup key={namespace} className="p-0 pt-1">
               <SidebarGroupLabel className="px-2 text-xs text-sidebar-foreground/70 group-data-[collapsible=icon]:justify-center">
@@ -81,7 +90,8 @@ export default function Navigation() {
                       aria-label={`${model.name} (${namespace})`}
                       className="ml-2" // Indent model items
                     >
-                      <ListChecks size={18} /> {/* Slightly smaller icon */}
+                      {/* Using a generic list icon, or could use model-specific icons in future */}
+                      <ListChecks size={18} /> 
                       <span className="truncate">{model.name}</span>
                     </SidebarMenuButton>
                   </Link>

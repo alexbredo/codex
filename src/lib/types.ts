@@ -25,6 +25,12 @@ export interface Model {
   displayPropertyNames?: string[]; // Property names to use for display purposes
 }
 
+export interface ModelGroup {
+  id: string;
+  name: string;
+  description?: string;
+}
+
 export interface DataObject {
   id: string;
   [key: string]: any; // Dynamic properties based on the model
@@ -42,3 +48,5 @@ export type PropertyFormData = Omit<Property, 'id' | 'orderIndex'> & {
   isUnique?: boolean,
 };
 export type ObjectFormData = Omit<DataObject, 'id'>;
+
+export type ModelGroupFormData = Omit<ModelGroup, 'id'>;

@@ -70,7 +70,7 @@ export const propertyFormSchema = z.object({
 export const modelFormSchema = z.object({
   name: z.string().min(1, "Model name is required."),
   description: z.string().optional(),
-  namespace: z.string().optional(), // Will default to 'Default' if empty on submission
+  namespace: z.string().optional(), // Will default to 'Default' if empty or special value
   displayPropertyNames: z.array(z.string()).optional(),
   properties: z.array(propertyFormSchema).min(1, "At least one property is required."),
 });

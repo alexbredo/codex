@@ -3,11 +3,12 @@
 
 import type { ReactNode } from 'react';
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import type { Model, DataObject, Property } from '@/lib/types';
+import type { Model, DataObject, Property, ModelGroup } from '@/lib/types';
 
 interface DataContextType {
   models: Model[];
   objects: Record<string, DataObject[]>;
+  modelGroups: ModelGroup[];
   addModel: (modelData: Omit<Model, 'id' | 'namespace'> & { namespace?: string }) => Promise<Model>;
   updateModel: (modelId: string, updates: Partial<Omit<Model, 'id' | 'properties' | 'displayPropertyNames' | 'namespace'>> & { properties?: Property[], displayPropertyNames?: string[], namespace?: string }) => Promise<Model | undefined>;
   deleteModel: (modelId: string) => Promise<void>;
@@ -18,6 +19,14 @@ interface DataContextType {
   deleteObject: (modelId: string, objectId: string) => Promise<void>;
   getObjectsByModelId: (modelId: string) => DataObject[];
   getAllObjects: () => Record<string, DataObject[]>;
+  
+  addModelGroup: (groupData: Omit<ModelGroup, 'id'>) => Promise<ModelGroup>;
+  updateModelGroup: (groupId: string, updates: Partial<Omit<ModelGroup, 'id'>>) => Promise<ModelGroup | undefined>;
+  deleteModelGroup: (groupId: string) => Promise<void>;
+  getModelGroupById: (groupId: string) => ModelGroup | undefined;
+  getModelGroupByName: (name: string) => ModelGroup | undefined;
+  getAllModelGroups: () => ModelGroup[];
+
   isReady: boolean;
   fetchData: () => Promise<void>; 
 }
@@ -35,7 +44,7 @@ const mapDbModelToClientModel = (dbModel: any): Model => {
         parsedDisplayPropertyNames = temp.filter((name: any) => typeof name === 'string');
       }
     } catch (e) {
-      console.warn(`Could not parse displayPropertyNames for model ${dbModel.id}: '${dbModel.displayPropertyNames}'`, e);
+      console.warn(`Context: Could not parse displayPropertyNames for model ${dbModel.id}: '${dbModel.displayPropertyNames}'`, e);
     }
   }
 
@@ -66,13 +75,14 @@ const mapDbModelToClientModel = (dbModel: any): Model => {
 export function DataProvider({ children }: { children: ReactNode }) {
   const [models, setModels] = useState<Model[]>([]);
   const [objects, setObjects] = useState<Record<string, DataObject[]>>({});
+  const [modelGroups, setModelGroups] = useState<ModelGroup[]>([]);
   const [isReady, setIsReady] = useState(false);
 
   const formatApiError = async (response: Response, defaultMessage: string): Promise<string> => {
     let errorMessage = defaultMessage;
     try {
       const errorData = await response.json();
-      console.error(`API Error (raw data from ${response.url}):`, errorData); // Keep this for server-side detailed logs
+      console.error(`API Error (raw data from ${response.url}):`, errorData); 
       if (errorData && errorData.error) {
         errorMessage = errorData.error;
         if (errorData.details) {
@@ -93,35 +103,28 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const fetchData = useCallback(async () => {
     setIsReady(false);
     try {
+      // Fetch Model Groups first
+      const groupsResponse = await fetch('/api/data-weaver/model-groups');
+      if (!groupsResponse.ok) {
+        const errorMessage = await formatApiError(groupsResponse, 'Failed to fetch model groups');
+        throw new Error(errorMessage);
+      }
+      const groupsData: ModelGroup[] = await groupsResponse.json();
+      setModelGroups(groupsData.sort((a, b) => a.name.localeCompare(b.name)));
+
+      // Fetch Models
       const modelsResponse = await fetch('/api/data-weaver/models');
       if (!modelsResponse.ok) {
-        let errorMessage = `Failed to fetch models. Status: ${modelsResponse.status}`;
-        try {
-          const errorData = await modelsResponse.json();
-          if (errorData && errorData.error) {
-            errorMessage += ` - Server: ${errorData.error}`;
-            if (errorData.details) errorMessage += ` Details: ${errorData.details}`;
-          }
-        } catch (e) {
-          errorMessage += ` - ${modelsResponse.statusText || 'Server did not provide detailed error.'}`;
-        }
+        const errorMessage = await formatApiError(modelsResponse, 'Failed to fetch models');
         throw new Error(errorMessage);
       }
       const modelsDataFromApi: Model[] = await modelsResponse.json();
       setModels(modelsDataFromApi.map(mapDbModelToClientModel));
 
+      // Fetch All Objects
       const allObjectsResponse = await fetch('/api/data-weaver/objects/all');
       if (!allObjectsResponse.ok) {
-        let errorMessage = `Failed to fetch all objects. Status: ${allObjectsResponse.status}`;
-        try {
-            const errorData = await allObjectsResponse.json();
-            if (errorData && errorData.error) {
-                errorMessage += ` - Server: ${errorData.error}`;
-                if (errorData.details) errorMessage += ` Details: ${errorData.details}`;
-            }
-        } catch (e) {
-            errorMessage += ` - ${allObjectsResponse.statusText || 'Server did not provide detailed error.'}`;
-        }
+        const errorMessage = await formatApiError(allObjectsResponse, 'Failed to fetch all objects');
         throw new Error(errorMessage);
       }
       const allObjectsData: Record<string, DataObject[]> = await allObjectsResponse.json();
@@ -131,6 +134,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       console.error("Failed to load data from API:", error);
       setModels([]);
       setObjects({});
+      setModelGroups([]);
     }
     setIsReady(true);
   }, []);
@@ -139,11 +143,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
     fetchData();
   }, [fetchData]);
 
+  // Model CRUD
   const addModel = useCallback(async (modelData: Omit<Model, 'id' | 'namespace'> & { namespace?: string }): Promise<Model> => {
     const modelId = crypto.randomUUID();
     const propertiesWithIdsAndOrder = modelData.properties.map((p, index) => ({ 
       ...p, 
       id: p.id || crypto.randomUUID(),
+      required: !!p.required,
+      autoSetOnCreate: !!p.autoSetOnCreate,
+      autoSetOnUpdate: !!p.autoSetOnUpdate,
+      isUnique: !!p.isUnique,
       orderIndex: index 
     }));
     const finalNamespace = (modelData.namespace && modelData.namespace.trim() !== '') ? modelData.namespace.trim() : 'Default';
@@ -179,11 +188,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
       orderIndex: index
     }));
 
-    const finalNamespace = (updates.namespace && updates.namespace.trim() !== '') ? updates.namespace.trim() : undefined; // If undefined, API defaults
+    const finalNamespace = (updates.namespace && updates.namespace.trim() !== '') ? updates.namespace.trim() : 'Default';
 
     const payload = {
       ...updates,
-      namespace: finalNamespace, // Send possibly undefined, let API default if needed
+      namespace: finalNamespace, 
       properties: propertiesWithEnsuredIdsAndOrder,
     };
 
@@ -241,7 +250,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return models.find((model) => model.name.toLowerCase() === name.toLowerCase());
   }, [models]);
 
-
+  // Data Object CRUD
   const addObject = useCallback(async (modelId: string, objectData: Omit<DataObject, 'id'>): Promise<DataObject> => {
     const objectId = crypto.randomUUID();
     const response = await fetch(`/api/data-weaver/models/${modelId}/objects`, {
@@ -312,8 +321,71 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return objects;
   }, [objects]);
 
+  // Model Group CRUD
+  const addModelGroup = useCallback(async (groupData: Omit<ModelGroup, 'id'>): Promise<ModelGroup> => {
+    const response = await fetch('/api/data-weaver/model-groups', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(groupData),
+    });
+    if (!response.ok) {
+      const errorMessage = await formatApiError(response, 'Failed to add model group');
+      throw new Error(errorMessage);
+    }
+    const newGroup: ModelGroup = await response.json();
+    setModelGroups((prev) => [...prev, newGroup].sort((a,b) => a.name.localeCompare(b.name)));
+    return newGroup;
+  }, []);
+
+  const updateModelGroup = useCallback(async (groupId: string, updates: Partial<Omit<ModelGroup, 'id'>>): Promise<ModelGroup | undefined> => {
+    const response = await fetch(`/api/data-weaver/model-groups/${groupId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+    if (!response.ok) {
+      const errorMessage = await formatApiError(response, 'Failed to update model group');
+      throw new Error(errorMessage);
+    }
+    const updatedGroup: ModelGroup = await response.json();
+    setModelGroups((prev) =>
+      prev.map((group) => (group.id === groupId ? updatedGroup : group)).sort((a,b) => a.name.localeCompare(b.name))
+    );
+    return updatedGroup;
+  }, []);
+
+  const deleteModelGroup = useCallback(async (groupId: string) => {
+    const response = await fetch(`/api/data-weaver/model-groups/${groupId}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+       const errorMessage = await formatApiError(response, 'Failed to delete model group');
+      throw new Error(errorMessage);
+    }
+    setModelGroups((prev) => prev.filter((group) => group.id !== groupId));
+  }, []);
+
+  const getModelGroupById = useCallback((groupId: string) => {
+    return modelGroups.find((group) => group.id === groupId);
+  }, [modelGroups]);
+
+  const getModelGroupByName = useCallback((name: string) => {
+    return modelGroups.find((group) => group.name.toLowerCase() === name.toLowerCase());
+  }, [modelGroups]);
+
+  const getAllModelGroups = useCallback(() => {
+    return modelGroups;
+  }, [modelGroups]);
+
+
   return (
-    <DataContext.Provider value={{ models, objects, addModel, updateModel, deleteModel, getModelById, getModelByName, addObject, updateObject, deleteObject, getObjectsByModelId, getAllObjects, isReady, fetchData }}>
+    <DataContext.Provider value={{ 
+        models, objects, modelGroups,
+        addModel, updateModel, deleteModel, getModelById, getModelByName, 
+        addObject, updateObject, deleteObject, getObjectsByModelId, getAllObjects, 
+        addModelGroup, updateModelGroup, deleteModelGroup, getModelGroupById, getModelGroupByName, getAllModelGroups,
+        isReady, fetchData 
+    }}>
       {children}
     </DataContext.Provider>
   );

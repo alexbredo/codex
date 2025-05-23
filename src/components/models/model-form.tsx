@@ -12,7 +12,7 @@ import {
   SelectContent,
   SelectGroup,
   SelectItem,
-  SelectLabel as UiSelectLabel, // Renamed to avoid conflict
+  SelectLabel as UiSelectLabel, 
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -31,7 +31,7 @@ import { Separator } from '@/components/ui/separator';
 import { Trash2, PlusCircle, GripVertical, FolderOpen } from 'lucide-react';
 import type { ModelFormValues, PropertyFormValues } from './model-form-schema';
 import { propertyTypes, relationshipTypes } from './model-form-schema';
-import type { Model } from '@/lib/types';
+import type { Model, ModelGroup } from '@/lib/types';
 import { useData } from '@/contexts/data-context';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { MultiSelectAutocomplete, type MultiSelectOption } from '@/components/ui/multi-select-autocomplete';
@@ -70,7 +70,7 @@ interface ModelFormProps {
 }
 
 const INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE = "__DEFAULT_DISPLAY_PROPERTY__";
-const INTERNAL_DEFAULT_OPTION_VALUE = "__DEFAULT_SELECT_OPTION__";
+const INTERNAL_DEFAULT_NAMESPACE_VALUE = "__DEFAULT_NAMESPACE_VALUE__";
 
 
 interface SortablePropertyItemProps {
@@ -526,7 +526,7 @@ function PropertyFieldsWithDnd({
 
 
 export default function ModelForm({ form, onSubmit, onCancel, isLoading, existingModel }: ModelFormProps) {
-  const { models } = useData();
+  const { models, modelGroups, isReady: dataReady } = useData();
   const { toast } = useToast(); 
   const fieldArray = useFieldArray({
     control: form.control,
@@ -593,7 +593,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
         processedValues.displayPropertyNames = undefined;
     }
 
-    if (!processedValues.namespace || processedValues.namespace.trim() === '') {
+    if (!processedValues.namespace || processedValues.namespace.trim() === '' || processedValues.namespace === INTERNAL_DEFAULT_NAMESPACE_VALUE) {
       processedValues.namespace = 'Default';
     }
 
@@ -619,7 +619,8 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
   };
   
   const handleFormInvalid = (/* errors: FieldErrors<ModelFormValues> */) => {
-    // console.log("Form validation failed. Current form values:", JSON.stringify(form.getValues(), null, 2)); // DEBUG
+    console.log("Form validation failed. Current form values:", JSON.stringify(form.getValues(), null, 2)); // DEBUG
+    // Log the authoritative errors object from formState
     // console.error("Client-side form validation. Current form.formState.errors:", form.formState.errors); // DEBUG
     
     toast({
@@ -655,18 +656,33 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                   )}
                 />
                 <FormField
-                  control={form.control}
-                  name="namespace"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Namespace (Optional)</FormLabel>
-                      <FormControl>
-                        <Input placeholder="e.g., Core, Sales, Marketing (defaults to 'Default')" {...field} value={field.value ?? ''} />
-                      </FormControl>
-                      <FormDescription>Organize models into groups. If empty, 'Default' will be used.</FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                    control={form.control}
+                    name="namespace"
+                    render={({ field }) => (
+                        <FormItem>
+                        <FormLabel>Namespace</FormLabel>
+                        <Select
+                            onValueChange={(value) => field.onChange(value === INTERNAL_DEFAULT_NAMESPACE_VALUE ? 'Default' : value)}
+                            defaultValue={field.value === 'Default' ? INTERNAL_DEFAULT_NAMESPACE_VALUE : field.value || INTERNAL_DEFAULT_NAMESPACE_VALUE}
+                        >
+                            <FormControl>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select a namespace" />
+                            </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                                <SelectItem value={INTERNAL_DEFAULT_NAMESPACE_VALUE}>-- Default --</SelectItem>
+                                {dataReady && modelGroups.sort((a,b) => a.name.localeCompare(b.name)).map((group) => (
+                                    <SelectItem key={group.id} value={group.name}>
+                                        {group.name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <FormDescription>Organize models into groups. Select an existing group or use 'Default'.</FormDescription>
+                        <FormMessage />
+                        </FormItem>
+                    )}
                 />
                 <FormField
                   control={form.control}
@@ -715,6 +731,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                   name="properties" 
                   render={() => ( 
                     <FormItem>
+                      {/* This is where the "At least one property is required" message will appear if that validation fails. */}
                       <FormMessage className="text-destructive mt-2" />
                     </FormItem>
                   )}

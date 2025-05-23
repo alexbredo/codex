@@ -19,6 +19,15 @@ async function initializeDb(): Promise<Database> {
   // Enable foreign key support
   await db.exec('PRAGMA foreign_keys = ON;');
 
+  // Model Groups Table
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS model_groups (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      description TEXT
+    );
+  `);
+
   // Models Table
   await db.exec(`
     CREATE TABLE IF NOT EXISTS models (
@@ -26,10 +35,11 @@ async function initializeDb(): Promise<Database> {
       name TEXT NOT NULL UNIQUE,
       description TEXT,
       displayPropertyNames TEXT,
-      namespace TEXT NOT NULL DEFAULT 'Default'
+      namespace TEXT NOT NULL DEFAULT 'Default' 
     );
   `);
   // displayPropertyNames will store JSON string array: '["prop1", "prop2"]'
+  // namespace refers to model_groups.name, or 'Default'
 
   // Migration: Add namespace column to models if it doesn't exist
   try {
@@ -37,7 +47,7 @@ async function initializeDb(): Promise<Database> {
     console.log("Migration: Successfully added 'namespace' column to 'models' table.");
   } catch (e: any) {
     if (e.message && (e.message.toLowerCase().includes('duplicate column name') || e.message.toLowerCase().includes('already has a column named namespace'))) {
-      console.log("Migration: 'namespace' column already present in 'models' table.");
+      // console.log("Migration: 'namespace' column already present in 'models' table.");
     } else {
       console.error("Migration: Error trying to add 'namespace' column to 'models' table:", e.message);
     }
