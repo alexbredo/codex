@@ -57,12 +57,35 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setIsReady(false);
     try {
       const modelsResponse = await fetch('/api/data-weaver/models');
-      if (!modelsResponse.ok) throw new Error(`Failed to fetch models: ${modelsResponse.statusText}`);
+      if (!modelsResponse.ok) {
+        let errorMessage = `Failed to fetch models. Status: ${modelsResponse.status}`;
+        try {
+          const errorData = await modelsResponse.json();
+          if (errorData && errorData.error) {
+            errorMessage += ` - Server: ${errorData.error}`;
+          }
+        } catch (e) {
+          // Failed to parse error JSON, or no JSON body
+          errorMessage += ` - ${modelsResponse.statusText || 'Server did not provide detailed error.'}`;
+        }
+        throw new Error(errorMessage);
+      }
       const modelsDataFromApi: Model[] = await modelsResponse.json();
       setModels(modelsDataFromApi.map(mapDbModelToClientModel));
 
       const allObjectsResponse = await fetch('/api/data-weaver/objects/all');
-      if (!allObjectsResponse.ok) throw new Error(`Failed to fetch all objects: ${allObjectsResponse.statusText}`);
+      if (!allObjectsResponse.ok) {
+        let errorMessage = `Failed to fetch all objects. Status: ${allObjectsResponse.status}`;
+        try {
+            const errorData = await allObjectsResponse.json();
+            if (errorData && errorData.error) {
+                errorMessage += ` - Server: ${errorData.error}`;
+            }
+        } catch (e) {
+            errorMessage += ` - ${allObjectsResponse.statusText || 'Server did not provide detailed error.'}`;
+        }
+        throw new Error(errorMessage);
+      }
       const allObjectsData: Record<string, DataObject[]> = await allObjectsResponse.json();
       setObjects(allObjectsData);
 
@@ -260,3 +283,4 @@ export function useData(): DataContextType {
   }
   return context;
 }
+
