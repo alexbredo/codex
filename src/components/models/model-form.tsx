@@ -3,6 +3,7 @@
 
 import type { Control, UseFormReturn, UseFieldArrayReturn } from 'react-hook-form';
 import { useFieldArray, useWatch } from 'react-hook-form';
+import * as React from 'react'; // Ensure React is imported for useState, useEffect, useMemo
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -39,6 +40,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import { useToast } from '@/hooks/use-toast'; // Import useToast
 
 interface ModelFormProps {
   form: UseFormReturn<ModelFormValues>;
@@ -49,6 +51,8 @@ interface ModelFormProps {
 }
 
 const INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE = "__DEFAULT_DISPLAY_PROPERTY__";
+const INTERNAL_DEFAULT_PROPERTY_VALUE = "__DEFAULT_PROPERTY_VALUE__";
+
 
 function PropertyFields({
   form,
@@ -56,11 +60,49 @@ function PropertyFields({
   modelsForRelations,
 }: {
   form: UseFormReturn<ModelFormValues>,
-  fieldArray: UseFieldArrayReturn<ModelFormValues, "properties", "id">,
+  fieldArray: UseFieldArrayReturn<ModelFormValues, "properties", "fieldId">, // Note: keyName is fieldId
   modelsForRelations: Model[]
 }) {
   const { fields, append, remove } = fieldArray;
   const control = form.control;
+
+  // State to control open accordion items
+  const [openAccordionItems, setOpenAccordionItems] = React.useState<string[]>(() => {
+    const initiallyOpen: string[] = [];
+    const propertiesErrors = form.formState.errors.properties;
+    if (Array.isArray(propertiesErrors)) {
+      fields.forEach((fieldItem, idx) => {
+        if (propertiesErrors[idx] && typeof propertiesErrors[idx] === 'object' && Object.keys(propertiesErrors[idx]!).length > 0 && fieldItem.fieldId) {
+          initiallyOpen.push(fieldItem.fieldId);
+        }
+      });
+    }
+    return initiallyOpen;
+  });
+
+  React.useEffect(() => {
+    const itemsToOpenDueToErrors = new Set<string>();
+    const propertiesErrors = form.formState.errors.properties;
+
+    if (Array.isArray(propertiesErrors)) {
+        fields.forEach((fieldItem, idx) => {
+            if (propertiesErrors[idx] && typeof propertiesErrors[idx] === 'object' && Object.keys(propertiesErrors[idx]!).length > 0) {
+                if (fieldItem.fieldId) {
+                    itemsToOpenDueToErrors.add(fieldItem.fieldId);
+                }
+            }
+        });
+    }
+
+    if (itemsToOpenDueToErrors.size > 0) {
+      setOpenAccordionItems(prevOpen => {
+        const newOpenState = new Set(prevOpen);
+        itemsToOpenDueToErrors.forEach(id => newOpenState.add(id));
+        return Array.from(newOpenState);
+      });
+    }
+  }, [form.formState.errors.properties, fields]);
+
 
   const handleTypeChange = (value: string, index: number) => {
     form.setValue(`properties.${index}.type`, value as PropertyFormValues['type']);
@@ -87,15 +129,16 @@ function PropertyFields({
     <Accordion
       type="multiple"
       className="w-full space-y-2"
-      defaultValue={[]} // Collapsed by default
+      value={openAccordionItems} // Controlled
+      onValueChange={setOpenAccordionItems} // Allow user to open/close
     >
-      {fields.map((field, index) => {
+      {fields.map((fieldItem, index) => {
         const currentPropertyType = form.watch(`properties.${index}.type`);
         const propertyName = form.watch(`properties.${index}.name`);
         const headerTitle = propertyName || `Property #${index + 1}`;
 
         return (
-          <AccordionItem key={field.fieldId || index} value={field.fieldId || `item-${index}`} className="border bg-background/50 rounded-md">
+          <AccordionItem key={fieldItem.fieldId} value={fieldItem.fieldId} className="border bg-background/50 rounded-md">
             <AccordionTrigger className="p-4 hover:no-underline">
               <div className="flex justify-between items-center w-full">
                 <span className="text-lg font-medium text-foreground truncate mr-2">{headerTitle}</span>
@@ -104,7 +147,7 @@ function PropertyFields({
                   variant="ghost"
                   size="icon"
                   onClick={(e) => {
-                    e.stopPropagation(); // Prevent accordion toggle
+                    e.stopPropagation(); 
                     remove(index);
                   }}
                   className="text-destructive hover:bg-destructive/10 flex-shrink-0"
@@ -336,7 +379,7 @@ function PropertyFields({
         variant="outline"
         size="sm"
         onClick={() => append({
-            id: crypto.randomUUID(),
+            id: crypto.randomUUID(), // Property's own data ID
             name: '',
             type: 'string',
             required: false,
@@ -357,6 +400,7 @@ function PropertyFields({
 
 export default function ModelForm({ form, onSubmit, onCancel, isLoading, existingModel }: ModelFormProps) {
   const { models } = useData();
+  const { toast } = useToast(); // Get toast function
   const fieldArray = useFieldArray({
     control: form.control,
     name: 'properties',
@@ -376,10 +420,12 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
   }, [currentProperties]);
 
   const selectedValuesForAutocomplete = useMemo(() => {
-    if (!watchedDisplayPropertyNames || watchedDisplayPropertyNames.length === 0) {
-      return [INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE]; 
+     // Ensure watchedDisplayPropertyNames is an array before using .includes
+    const currentDisplayNames = Array.isArray(watchedDisplayPropertyNames) ? watchedDisplayPropertyNames : [];
+    if (currentDisplayNames.length === 0 || (currentDisplayNames.length === 1 && currentDisplayNames[0] === INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE)) {
+        return [INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE];
     }
-    return watchedDisplayPropertyNames;
+    return currentDisplayNames.filter(name => name !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
   }, [watchedDisplayPropertyNames]);
 
 
@@ -411,10 +457,20 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     onSubmit(processedValues);
   };
 
+  const handleFormInvalid = (errors: Partial<Record<keyof ModelFormValues | `properties.${number}.${keyof PropertyFormValues}`, any>>) => {
+    console.error("Client-side form validation errors:", errors);
+    toast({
+      title: "Validation Error",
+      description: "Please correct the errors highlighted in the form before submitting.",
+      variant: "destructive",
+    });
+    // Logic to open accordions with errors is handled within PropertyFields useEffect
+  };
+
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-8">
+      <form onSubmit={form.handleSubmit(handleFormSubmit, handleFormInvalid)} className="space-y-8">
         <Card>
           <CardHeader>
             <CardTitle className="text-xl">Model Details</CardTitle>
@@ -460,11 +516,11 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                         const isDefaultSelected = selectedOptsFromAutocomplete.includes(INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
                         const actualPropertiesSelected = selectedOptsFromAutocomplete.filter(v => v !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
 
-                        if (isDefaultSelected && actualPropertiesSelected.length > 0) {
-                            field.onChange(actualPropertiesSelected);
-                        } else if (isDefaultSelected && actualPropertiesSelected.length === 0) {
+                        if (isDefaultSelected && actualPropertiesSelected.length === 0) {
+                            // If only "-- Default --" is selected (or becomes the only one selected), pass empty array to signify default behavior
                             field.onChange([]); 
-                        } else { 
+                        } else {
+                            // Otherwise, pass only the actual properties selected
                             field.onChange(actualPropertiesSelected);
                         }
                     }}
@@ -472,7 +528,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                     emptyIndicator={displayPropertyOptions.length === 0 ? "No string/number/date properties available." : "No matching properties."}
                   />
                   <FormDescription>
-                    Choose string, number, or date properties to represent this model's objects. They will be shown concatenated with spaces.
+                    Choose string, number, or date properties to represent this model's objects. They will be shown concatenated with spaces. If empty, a default (Name/Title/ID) will be used.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -485,13 +541,11 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
 
         <div>
           <h3 className="text-lg font-medium mb-2">Properties</h3>
-           {/* Display array-level validation errors for 'properties' field */}
           <FormField
             control={form.control}
             name="properties"
             render={() => (
               <FormItem>
-                {/* No FormLabel or FormControl needed here if it's just for the message */}
                 <FormMessage className="mb-2" />
               </FormItem>
             )}
