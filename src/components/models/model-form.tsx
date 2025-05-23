@@ -76,8 +76,8 @@ function PropertyFields({
             const propertyErrorAtIndex = propertiesErrors[idx];
             if (propertyErrorAtIndex && typeof propertyErrorAtIndex === 'object' && Object.keys(propertyErrorAtIndex).length > 0) {
                 const fieldLevelErrors = Object.keys(propertyErrorAtIndex).filter(key => key !== 'root');
-                if (fieldLevelErrors.length > 0 && fieldItem.fieldId) {
-                    itemsToOpenDueToErrors.add(fieldItem.fieldId);
+                if (fieldLevelErrors.length > 0 && fieldItem.fieldId) { // fieldItem.id changed to fieldItem.fieldId
+                    itemsToOpenDueToErrors.add(fieldItem.fieldId); // fieldItem.id changed to fieldItem.fieldId
                 }
             }
         });
@@ -393,7 +393,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
   const fieldArray = useFieldArray({
     control: form.control,
     name: 'properties',
-    keyName: "fieldId" 
+    keyName: "fieldId" // Use a unique key name
   });
 
   const modelsForRelations = models.filter(m => !existingModel || m.id !== existingModel.id);
@@ -410,11 +410,26 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
 
   const selectedValuesForAutocomplete = useMemo(() => {
     const currentDisplayNames = Array.isArray(watchedDisplayPropertyNames) ? watchedDisplayPropertyNames : [];
-    if (currentDisplayNames.length === 0 || (currentDisplayNames.length === 1 && currentDisplayNames[0] === INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE)) {
+    if (currentDisplayNames.length === 0 && !existingModel?.displayPropertyNames?.length) { // Check existingModel as well for initial load
         return [INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE];
     }
-    return currentDisplayNames.filter(name => name !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
-  }, [watchedDisplayPropertyNames]);
+    // Ensure that the returned array contains only values that exist in displayPropertyOptions or the special default value
+    const validSelectedValues = currentDisplayNames.filter(name => 
+      name === INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE || displayPropertyOptions.some(opt => opt.value === name)
+    );
+
+    // If after filtering, only the default is left, or nothing is left but default should be there
+    if (validSelectedValues.length === 0 && (currentDisplayNames.includes(INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE) || !currentDisplayNames.length )) {
+        return [INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE];
+    }
+    if (validSelectedValues.length === 1 && validSelectedValues[0] === INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE && currentDisplayNames.length > 1) {
+      // This case might mean default was erroneously included with actual selections
+      return currentDisplayNames.filter(name => name !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
+    }
+
+    return validSelectedValues.length > 0 ? validSelectedValues : [INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE];
+
+  }, [watchedDisplayPropertyNames, displayPropertyOptions, existingModel?.displayPropertyNames]);
 
 
   const handleFormSubmit = (values: ModelFormValues) => {
@@ -444,27 +459,15 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     });
     onSubmit(processedValues);
   };
-
+  
   const handleFormInvalid = (/* errors: FieldErrors<ModelFormValues> */) => {
-    // Log the authoritative errors object from formState
-    console.error("Client-side form validation. Current form.formState.errors:", form.formState.errors);
-    
-    // Show toast if form.formState.errors actually has content
-    if (Object.keys(form.formState.errors).length > 0) {
-      toast({
-        title: "Validation Error",
-        description: "Please correct the errors highlighted in the form before submitting.",
-        variant: "destructive",
-      });
-    } else {
-      // This case would be strange: form is invalid, onInvalid is called, but formState.errors is empty.
-      console.warn("Form submitted while invalid, but form.formState.errors is empty. Triggering a general validation toast.");
-      toast({
-        title: "Validation Issue",
-        description: "Please check the form for errors. Some fields might be hidden in collapsed sections.",
-        variant: "destructive",
-      });
-    }
+    // If onInvalid is called, validation has failed.
+    // The useEffect in PropertyFields should handle opening accordions to show specific errors.
+    toast({
+      title: "Validation Error",
+      description: "Please correct the errors highlighted in the form before submitting. Some errors might be in collapsed sections.",
+      variant: "destructive",
+    });
   };
 
 
