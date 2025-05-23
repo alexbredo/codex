@@ -24,6 +24,7 @@ export default function CreateModelPage() {
     defaultValues: {
       name: '',
       description: '',
+      namespace: 'Default',
       displayPropertyNames: [],
       properties: [{ 
         id: crypto.randomUUID(), 
@@ -32,11 +33,11 @@ export default function CreateModelPage() {
         required: false, 
         relationshipType: 'one',
         unit: undefined,
-        precision: undefined, // Will be defaulted to 2 by ModelForm if type becomes number
+        precision: undefined, 
         autoSetOnCreate: false,
         autoSetOnUpdate: false,
         isUnique: false,
-        orderIndex: 0, // Initial order index
+        orderIndex: 0, 
       } as PropertyFormValues],
     },
   });
@@ -51,6 +52,7 @@ export default function CreateModelPage() {
     const modelData = {
       name: values.name,
       description: values.description,
+      namespace: (values.namespace && values.namespace.trim() !== '') ? values.namespace.trim() : 'Default',
       displayPropertyNames: values.displayPropertyNames && values.displayPropertyNames.length > 0 ? values.displayPropertyNames : undefined,
       properties: values.properties.map((p, index) => ({
         id: p.id || crypto.randomUUID(),
@@ -63,7 +65,7 @@ export default function CreateModelPage() {
         precision: p.precision,
         autoSetOnCreate: p.autoSetOnCreate,
         autoSetOnUpdate: p.autoSetOnUpdate,
-        isUnique: p.isUnique, // Ensure isUnique is passed
+        isUnique: p.isUnique, 
         orderIndex: index,
       } as Property)),
     };

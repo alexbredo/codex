@@ -36,6 +36,7 @@ export async function GET(request: Request, { params }: Params) {
       id: modelRow.id,
       name: modelRow.name,
       description: modelRow.description,
+      namespace: modelRow.namespace || 'Default',
       displayPropertyNames: parsedDisplayPropertyNames,
       properties: properties.map(p_row => { 
         if (!p_row || typeof p_row.type === 'undefined') {
@@ -85,8 +86,9 @@ export async function GET(request: Request, { params }: Params) {
 // PUT (update) a model
 export async function PUT(request: Request, { params }: Params) {
   try {
-    const { name, description, displayPropertyNames, properties: updatedProperties }: Partial<Omit<Model, 'id'>> & { properties?: Property[] } = await request.json();
+    const { name, description, namespace, displayPropertyNames, properties: updatedProperties }: Partial<Omit<Model, 'id'>> & { properties?: Property[] } = await request.json();
     const db = await getDb();
+    const finalNamespace = (namespace && namespace.trim() !== '') ? namespace.trim() : 'Default';
 
     const existingModel = await db.get('SELECT * FROM models WHERE id = ?', params.modelId);
     if (!existingModel) {
@@ -103,9 +105,10 @@ export async function PUT(request: Request, { params }: Params) {
     await db.run('BEGIN TRANSACTION');
 
     await db.run(
-      'UPDATE models SET name = ?, description = ?, displayPropertyNames = ? WHERE id = ?',
+      'UPDATE models SET name = ?, description = ?, namespace = ?, displayPropertyNames = ? WHERE id = ?',
       name ?? existingModel.name,
       description ?? existingModel.description,
+      finalNamespace,
       displayPropertyNames ? JSON.stringify(displayPropertyNames) : existingModel.displayPropertyNames,
       params.modelId
     );
@@ -153,6 +156,7 @@ export async function PUT(request: Request, { params }: Params) {
       id: refreshedModelRow.id,
       name: refreshedModelRow.name,
       description: refreshedModelRow.description,
+      namespace: refreshedModelRow.namespace || 'Default',
       displayPropertyNames: refreshedParsedDpn,
       properties: refreshedProperties.map(p => ({
         ...p,

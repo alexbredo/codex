@@ -10,7 +10,9 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel as UiSelectLabel, // Renamed to avoid conflict
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -24,9 +26,9 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { Card, CardHeader, CardTitle } from '@/components/ui/card'; // Removed CardContent as it's now part of AccordionContent
+import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { Trash2, PlusCircle, GripVertical } from 'lucide-react';
+import { Trash2, PlusCircle, GripVertical, FolderOpen } from 'lucide-react';
 import type { ModelFormValues, PropertyFormValues } from './model-form-schema';
 import { propertyTypes, relationshipTypes } from './model-form-schema';
 import type { Model } from '@/lib/types';
@@ -68,11 +70,11 @@ interface ModelFormProps {
 }
 
 const INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE = "__DEFAULT_DISPLAY_PROPERTY__";
-// const INTERNAL_DEFAULT_OPTION_VALUE = "__DEFAULT_OPTION__"; // Not used, can be removed if not needed elsewhere
+const INTERNAL_DEFAULT_OPTION_VALUE = "__DEFAULT_SELECT_OPTION__";
 
 
 interface SortablePropertyItemProps {
-  id: string; // This ID is from react-hook-form's field array, used by DND Kit
+  id: string; 
   children: (props: { dragHandleListeners?: any }) => React.ReactNode;
   className?: string;
 }
@@ -101,11 +103,11 @@ function SortablePropertyItem({ id, children, className }: SortablePropertyItemP
 }
 
 
-const PropertyAccordionContent = ({ form, index, currentPropertyType, modelsForRelations, control, handleTypeChange }: {
+const PropertyAccordionContent = ({ form, index, currentPropertyType, modelsForRelationsGrouped, control, handleTypeChange }: {
   form: UseFormReturn<ModelFormValues>,
   index: number,
   currentPropertyType: PropertyFormValues['type'],
-  modelsForRelations: Model[],
+  modelsForRelationsGrouped: Record<string, Model[]>,
   control: Control<ModelFormValues>,
   handleTypeChange: (value: string, index: number) => void
 }) => {
@@ -167,10 +169,15 @@ const PropertyAccordionContent = ({ form, index, currentPropertyType, modelsForR
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {modelsForRelations.map((model: Model) => (
-                          <SelectItem key={model.id} value={model.id}>
-                            {model.name}
-                          </SelectItem>
+                        {Object.entries(modelsForRelationsGrouped).map(([namespace, modelsInNamespace]) => (
+                          <SelectGroup key={namespace}>
+                            <UiSelectLabel>{namespace}</UiSelectLabel>
+                            {modelsInNamespace.map((model: Model) => (
+                              <SelectItem key={model.id} value={model.id}>
+                                {model.name}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
                         ))}
                       </SelectContent>
                     </Select>
@@ -339,11 +346,11 @@ const PropertyAccordionContent = ({ form, index, currentPropertyType, modelsForR
 function PropertyFieldsWithDnd({
   form,
   fieldArray,
-  modelsForRelations,
+  modelsForRelationsGrouped,
 }: {
   form: UseFormReturn<ModelFormValues>,
   fieldArray: UseFieldArrayReturn<ModelFormValues, "properties", "id">,
-  modelsForRelations: Model[]
+  modelsForRelationsGrouped: Record<string, Model[]>
 }) {
   const { fields, append, remove, move } = fieldArray;
   const control = form.control;
@@ -364,7 +371,6 @@ function PropertyFieldsWithDnd({
       const newIndex = fields.findIndex((field) => field.id === over.id);
       if (oldIndex !== -1 && newIndex !== -1) {
         move(oldIndex, newIndex);
-        // Update orderIndex for all properties after move
         const newOrderedProperties = arrayMove(form.getValues('properties'), oldIndex, newIndex);
         newOrderedProperties.forEach((prop, idx) => {
           form.setValue(`properties.${idx}.orderIndex`, idx, { shouldValidate: false, shouldDirty: true, shouldTouch: true });
@@ -381,7 +387,7 @@ function PropertyFieldsWithDnd({
         fields.forEach((fieldItem, idx) => {
             const propertyErrorAtIndex = propertiesErrors[idx] as FieldErrors<PropertyFormValues> | undefined;
             if (propertyErrorAtIndex && typeof propertyErrorAtIndex === 'object' && Object.keys(propertyErrorAtIndex).length > 0) {
-                const hasFieldError = Object.values(propertyErrorAtIndex).some(
+                 const hasFieldError = Object.values(propertyErrorAtIndex).some(
                     (errorField: any) => errorField && typeof errorField.message === 'string'
                 );
                 if (hasFieldError && fieldItem.id) { 
@@ -403,9 +409,8 @@ function PropertyFieldsWithDnd({
 
   const handleTypeChange = (value: string, index: number) => {
     form.setValue(`properties.${index}.type`, value as PropertyFormValues['type']);
-    // Reset fields that are not applicable to the new type
     if (value !== 'relationship') {
-      form.setValue(`properties.${index}.relationshipType`, 'one'); // Default or clear
+      form.setValue(`properties.${index}.relationshipType`, 'one'); 
       form.setValue(`properties.${index}.relatedModelId`, undefined);
     }
     if (value !== 'number') {
@@ -414,7 +419,7 @@ function PropertyFieldsWithDnd({
     } else {
       const currentPrecision = form.getValues(`properties.${index}.precision`);
       if (currentPrecision === undefined || currentPrecision === null || isNaN(Number(currentPrecision))) {
-        form.setValue(`properties.${index}.precision`, 2); // Default precision for number
+        form.setValue(`properties.${index}.precision`, 2);
       }
     }
     if (value !== 'date') {
@@ -442,12 +447,12 @@ function PropertyFieldsWithDnd({
 
             return (
               <SortablePropertyItem key={fieldItem.id} id={fieldItem.id} className="bg-card rounded-md border">
-                 {({ dragHandleListeners }) => (
+                 {(dndProps) => (
                     <AccordionItem value={fieldItem.id} className="border-0"> 
                         <AccordionTrigger className="p-4 hover:no-underline data-[state=open]:border-b">
                             <div className="flex justify-between items-center w-full">
                             <div className="flex items-center gap-2">
-                                <span {...dragHandleListeners} className="cursor-grab p-1 -ml-1 text-muted-foreground hover:text-foreground">
+                                <span {...dndProps.dragHandleListeners} className="cursor-grab p-1 -ml-1 text-muted-foreground hover:text-foreground">
                                 <GripVertical className="h-5 w-5" />
                                 </span>
                                 <span className="text-lg font-medium text-foreground truncate mr-2">{headerTitle}</span>
@@ -483,7 +488,7 @@ function PropertyFieldsWithDnd({
                             form={form}
                             index={index}
                             currentPropertyType={currentPropertyType}
-                            modelsForRelations={modelsForRelations}
+                            modelsForRelationsGrouped={modelsForRelationsGrouped}
                             control={control}
                             handleTypeChange={handleTypeChange}
                         />
@@ -499,6 +504,7 @@ function PropertyFieldsWithDnd({
         variant="outline"
         size="sm"
         onClick={() => append({
+            id: crypto.randomUUID(),
             name: '',
             type: 'string',
             required: false,
@@ -528,7 +534,21 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     keyName: "id" 
   });
 
-  const modelsForRelations = models.filter(m => !existingModel || m.id !== existingModel.id);
+  const modelsForRelations = useMemo(() => {
+    return models.filter(m => !existingModel || m.id !== existingModel.id);
+  }, [models, existingModel]);
+
+  const modelsForRelationsGrouped = useMemo(() => {
+    return modelsForRelations.reduce((acc, model) => {
+      const namespace = model.namespace || 'Default';
+      if (!acc[namespace]) {
+        acc[namespace] = [];
+      }
+      acc[namespace].push(model);
+      return acc;
+    }, {} as Record<string, Model[]>);
+  }, [modelsForRelations]);
+
 
   const currentProperties = useWatch({ control: form.control, name: "properties" });
   const watchedDisplayPropertyNames = useWatch({ control: form.control, name: "displayPropertyNames" });
@@ -562,6 +582,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
 
   }, [watchedDisplayPropertyNames, displayPropertyOptions, existingModel?.displayPropertyNames]);
 
+
   const handleFormSubmit = (values: ModelFormValues) => {
     const processedValues = { ...values };
     
@@ -570,6 +591,10 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
         processedValues.displayPropertyNames = filtered.length > 0 ? filtered : undefined;
     } else if (processedValues.displayPropertyNames && processedValues.displayPropertyNames.length === 0) {
         processedValues.displayPropertyNames = undefined;
+    }
+
+    if (!processedValues.namespace || processedValues.namespace.trim() === '') {
+      processedValues.namespace = 'Default';
     }
 
     processedValues.properties = processedValues.properties.map((prop, index) => {
@@ -593,7 +618,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     onSubmit(processedValues);
   };
   
- const handleFormInvalid = (/* errors: FieldErrors<ModelFormValues> */) => {
+  const handleFormInvalid = (/* errors: FieldErrors<ModelFormValues> */) => {
     // console.log("Form validation failed. Current form values:", JSON.stringify(form.getValues(), null, 2)); // DEBUG
     // console.error("Client-side form validation. Current form.formState.errors:", form.formState.errors); // DEBUG
     
@@ -625,6 +650,20 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                         <Input placeholder="e.g., Product, User, Article" {...field} />
                       </FormControl>
                       <FormDescription>A unique name for your data model.</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="namespace"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Namespace (Optional)</FormLabel>
+                      <FormControl>
+                        <Input placeholder="e.g., Core, Sales, Marketing (defaults to 'Default')" {...field} value={field.value ?? ''} />
+                      </FormControl>
+                      <FormDescription>Organize models into groups. If empty, 'Default' will be used.</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -689,7 +728,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
 
         <div>
           <h3 className="text-lg font-medium mb-2">Properties</h3>
-          <PropertyFieldsWithDnd form={form} fieldArray={fieldArray} modelsForRelations={modelsForRelations} />
+          <PropertyFieldsWithDnd form={form} fieldArray={fieldArray} modelsForRelationsGrouped={modelsForRelationsGrouped} />
         </div>
 
         <div className="flex justify-end space-x-2 pt-4 border-t">

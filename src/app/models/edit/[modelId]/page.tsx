@@ -34,12 +34,12 @@ export default function EditModelPage() {
       const foundModel = getModelById(modelId);
       if (foundModel) {
         setCurrentModel(foundModel);
-        // Ensure properties are sorted by orderIndex before resetting form for consistency
         const sortedProperties = [...foundModel.properties].sort((a, b) => a.orderIndex - b.orderIndex);
         
         form.reset({
           name: foundModel.name,
           description: foundModel.description || '',
+          namespace: foundModel.namespace || 'Default',
           displayPropertyNames: foundModel.displayPropertyNames || [],
           properties: sortedProperties.map(p => {
             const isRelationship = p.type === 'relationship';
@@ -58,7 +58,7 @@ export default function EditModelPage() {
               precision: isNumber ? (p.precision === undefined || p.precision === null ? 2 : p.precision) : undefined,
               autoSetOnCreate: isDate ? !!p.autoSetOnCreate : false,
               autoSetOnUpdate: isDate ? !!p.autoSetOnUpdate : false,
-              isUnique: isString ? !!p.isUnique : false, // Ensure isUnique is correctly initialized
+              isUnique: isString ? !!p.isUnique : false, 
               orderIndex: p.orderIndex,
             } as PropertyFormValues;
           }),
@@ -83,6 +83,7 @@ export default function EditModelPage() {
     const modelData = {
       name: values.name,
       description: values.description,
+      namespace: (values.namespace && values.namespace.trim() !== '') ? values.namespace.trim() : 'Default',
       displayPropertyNames: values.displayPropertyNames && values.displayPropertyNames.length > 0 ? values.displayPropertyNames : undefined,
       properties: values.properties.map((p, index) => ({
         id: p.id || crypto.randomUUID(),
@@ -95,7 +96,7 @@ export default function EditModelPage() {
         precision: p.precision,
         autoSetOnCreate: p.autoSetOnCreate,
         autoSetOnUpdate: p.autoSetOnUpdate,
-        isUnique: p.isUnique, // Ensure isUnique is passed
+        isUnique: p.isUnique, 
         orderIndex: index,
       } as Property)),
     };
@@ -136,7 +137,7 @@ export default function EditModelPage() {
       <Card className="max-w-3xl mx-auto">
         <CardHeader>
           <CardTitle className="text-2xl">Edit Model: {currentModel.name}</CardTitle>
-          <CardDescription>Update the details for the "{currentModel.name}" model.</CardDescription>
+          <CardDescription>Update the details for the "{currentModel.name}" model in namespace "{currentModel.namespace}".</CardDescription>
         </CardHeader>
         <CardContent>
           <ModelForm

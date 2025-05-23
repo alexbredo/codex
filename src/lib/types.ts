@@ -20,6 +20,7 @@ export interface Model {
   id:string;
   name: string;
   description?: string;
+  namespace: string; // Will always have a value, defaulting to 'Default'
   properties: Property[];
   displayPropertyNames?: string[]; // Property names to use for display purposes
 }
@@ -30,7 +31,9 @@ export interface DataObject {
 }
 
 // For forms
-export type ModelFormData = Omit<Model, 'id'>;
+export type ModelFormData = Omit<Model, 'id' | 'namespace'> & {
+  namespace?: string; // Optional in form, will be defaulted
+};
 export type PropertyFormData = Omit<Property, 'id' | 'orderIndex'> & { 
   orderIndex?: number; // Optional for form, will be set programmatically
   relationshipType?: 'one' | 'many',

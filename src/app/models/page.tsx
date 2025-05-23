@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect, useMemo } from 'react'; // Added useMemo
+import { useState, useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from '@/components/ui/button';
@@ -24,29 +24,21 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-// ModelForm is no longer rendered directly here, but on its own pages
-// import ModelForm from '@/components/models/model-form'; 
-// import type { ModelFormValues } from '@/components/models/model-form-schema';
-// import { modelFormSchema } from '@/components/models/model-form-schema';
 import { useData } from '@/contexts/data-context';
 import type { Model } from '@/lib/types';
-import { PlusCircle, Edit, Trash2, Eye, DatabaseZap, ListChecks, Search, Info, Code2, StickyNote, ChevronDown } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, Eye, DatabaseZap, ListChecks, Search, Info, Code2, StickyNote, FolderOpen } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation'; // For navigation
+import { useRouter } from 'next/navigation';
 import { useToast } from "@/hooks/use-toast";
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 export default function ModelsPage() {
-  const { models, deleteModel, isReady } = useData(); // Removed addModel, updateModel, getModelByName as they are handled on new/edit pages
+  const { models, deleteModel, isReady } = useData(); 
   const { toast } = useToast();
-  const router = useRouter(); // For navigation
+  const router = useRouter(); 
   const [searchTerm, setSearchTerm] = useState('');
-
-  // Form state and logic are moved to dedicated new/edit pages
-  // const [isFormOpen, setIsFormOpen] = useState(false);
-  // const [editingModel, setEditingModel] = useState<Model | null>(null);
-  // const form = useForm<ModelFormValues>({ ... });
+  const [openAccordionItems, setOpenAccordionItems] = useState<string[]>([]);
 
   const handleCreateNew = () => {
     router.push('/models/new');
@@ -61,19 +53,35 @@ export default function ModelsPage() {
     toast({ title: "Model Deleted", description: `Model "${modelName}" and its associated data have been successfully deleted.` });
   };
 
-  const sortedModels = useMemo(() => {
-    return [...models].sort((a, b) => a.name.localeCompare(b.name));
-  }, [models]);
+  const groupedModels = useMemo(() => {
+    const filtered = searchTerm
+      ? models.filter(model =>
+          model.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (model.description && model.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
+          model.namespace.toLowerCase().includes(searchTerm.toLowerCase())
+        )
+      : models;
 
-  const filteredModels = useMemo(() => {
-    if (!searchTerm) {
-      return sortedModels;
+    return filtered.reduce((acc, model) => {
+      const namespace = model.namespace || 'Default';
+      if (!acc[namespace]) {
+        acc[namespace] = [];
+      }
+      acc[namespace].push(model);
+      return acc;
+    }, {} as Record<string, Model[]>);
+  }, [models, searchTerm]);
+
+  const sortedNamespaces = useMemo(() => {
+    return Object.keys(groupedModels).sort((a, b) => a.localeCompare(b));
+  }, [groupedModels]);
+
+  useEffect(() => {
+    // Open all namespace accordions by default when models are ready
+    if (isReady && sortedNamespaces.length > 0) {
+      setOpenAccordionItems(sortedNamespaces);
     }
-    return sortedModels.filter(model =>
-      model.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (model.description && model.description.toLowerCase().includes(searchTerm.toLowerCase()))
-    );
-  }, [sortedModels, searchTerm]);
+  }, [isReady, sortedNamespaces]);
 
 
   if (!isReady) {
@@ -118,8 +126,7 @@ export default function ModelsPage() {
           </AccordionTrigger>
           <AccordionContent className="p-0">
             <Alert variant="default" className="border-0 rounded-t-none">
-              {/* AlertTitle is now part of AccordionTrigger */}
-              <AlertDescription className="pt-2 px-4 pb-4"> {/* Added padding for content */}
+              <AlertDescription className="pt-2 px-4 pb-4"> 
                 You can programmatically access your models and data objects using an internal API. Here are some example endpoints:
                 <ul className="list-disc pl-5 mt-2 space-y-1">
                   <li><code>GET /api/data-weaver/models</code> - Retrieves a list of all defined models.</li>
@@ -129,7 +136,7 @@ export default function ModelsPage() {
                 </ul>
                 <p className="mt-3 text-xs text-muted-foreground">
                   <Info size={14} className="inline mr-1 relative -top-px" />
-                  <strong>Important Note:</strong> The current application prototype uses client-side browser storage (localStorage) for data persistence. The API endpoints listed above are illustrative examples. For these APIs to serve data dynamically from a persistent backend store (like a database), further backend development to connect to such a data source would be required.
+                  <strong>Important Note:</strong> The application uses an SQLite database for persistence.
                 </p>
               </AlertDescription>
             </Alert>
@@ -138,7 +145,7 @@ export default function ModelsPage() {
       </Accordion>
 
 
-      {filteredModels.length === 0 ? (
+      {sortedNamespaces.length === 0 ? (
          <Card className="col-span-full text-center py-12">
           <CardContent>
             <DatabaseZap size={48} className="mx-auto text-muted-foreground mb-4" />
@@ -154,83 +161,100 @@ export default function ModelsPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredModels.map((model) => (
-            <Card key={model.id} className="flex flex-col shadow-lg hover:shadow-xl transition-shadow duration-300">
-              <CardHeader>
-                <div className="flex justify-between items-start">
-                  <CardTitle className="text-xl text-primary">{model.name}</CardTitle>
-                  <DatabaseZap className="h-6 w-6 text-muted-foreground" />
+        <Accordion 
+          type="multiple" 
+          value={openAccordionItems}
+          onValueChange={setOpenAccordionItems}
+          className="w-full space-y-4"
+        >
+          {sortedNamespaces.map((namespace) => (
+            <AccordionItem key={namespace} value={namespace} className="border rounded-lg">
+              <AccordionTrigger className="p-4 hover:no-underline data-[state=open]:border-b">
+                <div className="flex items-center text-xl">
+                  <FolderOpen className="h-6 w-6 mr-3 text-primary" />
+                  <span className="font-semibold">{namespace}</span>
+                  <Badge variant="secondary" className="ml-3">{groupedModels[namespace].length} model(s)</Badge>
                 </div>
-                <CardDescription className="h-10 overflow-hidden text-ellipsis">
-                  {model.description || 'No description provided.'}
-                </CardDescription>
-                 {model.displayPropertyNames && model.displayPropertyNames.length > 0 && (
-                  <div className="text-xs text-muted-foreground pt-1 flex items-center">
-                    <StickyNote size={12} className="mr-1.5 text-primary/70" /> Display As: <span className="font-medium text-primary/90 ml-1 truncate">{model.displayPropertyNames.join(', ')}</span>
-                  </div>
-                )}
-              </CardHeader>
-              <CardContent className="flex-grow">
-                <h4 className="font-semibold mb-2 text-sm">Properties ({model.properties.length}):</h4>
-                {model.properties.length > 0 ? (
-                  <ScrollArea className="h-24">
-                    <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
-                      {model.properties.slice(0, 5).map((prop) => (
-                        <li key={prop.id} className="truncate">
-                          {prop.name} <span className="text-xs opacity-70">({prop.type}{prop.type === 'relationship' ? ` - ${prop.relationshipType}` : ''})</span>
-                        </li>
-                      ))}
-                      {model.properties.length > 5 && <li className="text-xs opacity-70">...and {model.properties.length - 5} more</li>}
-                    </ul>
-                  </ScrollArea>
-                ) : (
-                  <p className="text-sm text-muted-foreground">No properties defined.</p>
-                )}
-              </CardContent>
-              <CardFooter className="grid grid-cols-3 gap-2 pt-4"> {/* Added pt-4 for spacing */}
-                <Button variant="outline" size="sm" onClick={() => handleEdit(model)} className="w-full">
-                  <Edit className="mr-1 h-3 w-3" /> Edit
-                </Button>
-                
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button variant="destructive" size="sm" className="w-full">
-                      <Trash2 className="mr-1 h-3 w-3" /> Delete
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        This action cannot be undone. This will permanently delete the model
-                        "{model.name}" and all its associated data objects.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction onClick={() => handleDelete(model.id, model.name)}>
-                        Delete
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+              </AccordionTrigger>
+              <AccordionContent className="p-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {groupedModels[namespace].sort((a,b) => a.name.localeCompare(b.name)).map((model) => (
+                    <Card key={model.id} className="flex flex-col shadow-lg hover:shadow-xl transition-shadow duration-300">
+                      <CardHeader>
+                        <div className="flex justify-between items-start">
+                          <CardTitle className="text-xl text-primary">{model.name}</CardTitle>
+                          <DatabaseZap className="h-6 w-6 text-muted-foreground" />
+                        </div>
+                        <CardDescription className="h-10 overflow-hidden text-ellipsis">
+                          {model.description || 'No description provided.'}
+                        </CardDescription>
+                         {model.displayPropertyNames && model.displayPropertyNames.length > 0 && (
+                          <div className="text-xs text-muted-foreground pt-1 flex items-center">
+                            <StickyNote size={12} className="mr-1.5 text-primary/70" /> Display As: <span className="font-medium text-primary/90 ml-1 truncate">{model.displayPropertyNames.join(', ')}</span>
+                          </div>
+                        )}
+                      </CardHeader>
+                      <CardContent className="flex-grow">
+                        <h4 className="font-semibold mb-2 text-sm">Properties ({model.properties.length}):</h4>
+                        {model.properties.length > 0 ? (
+                          <ScrollArea className="h-24">
+                            <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
+                              {model.properties.slice(0, 5).map((prop) => (
+                                <li key={prop.id} className="truncate">
+                                  {prop.name} <span className="text-xs opacity-70">({prop.type}{prop.type === 'relationship' ? ` - ${prop.relationshipType}` : ''})</span>
+                                </li>
+                              ))}
+                              {model.properties.length > 5 && <li className="text-xs opacity-70">...and {model.properties.length - 5} more</li>}
+                            </ul>
+                          </ScrollArea>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">No properties defined.</p>
+                        )}
+                      </CardContent>
+                      <CardFooter className="grid grid-cols-3 gap-2 pt-4">
+                        <Button variant="outline" size="sm" onClick={() => handleEdit(model)} className="w-full">
+                          <Edit className="mr-1 h-3 w-3" /> Edit
+                        </Button>
+                        
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="destructive" size="sm" className="w-full">
+                              <Trash2 className="mr-1 h-3 w-3" /> Delete
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This action cannot be undone. This will permanently delete the model
+                                "{model.name}" and all its associated data objects.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => handleDelete(model.id, model.name)}>
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
 
-                <Link href={`/data/${model.id}`} passHref legacyBehavior>
-                  <a className="w-full col-span-3 mt-2 md:col-span-1 md:mt-0">
-                    <Button variant="default" size="sm" className="w-full">
-                      <Eye className="mr-1 h-3 w-3" /> View Data
-                    </Button>
-                  </a>
-                </Link>
-              </CardFooter>
-            </Card>
+                        <Link href={`/data/${model.id}`} passHref legacyBehavior>
+                          <a className="w-full col-span-3 mt-2 md:col-span-1 md:mt-0">
+                            <Button variant="default" size="sm" className="w-full">
+                              <Eye className="mr-1 h-3 w-3" /> View Data
+                            </Button>
+                          </a>
+                        </Link>
+                      </CardFooter>
+                    </Card>
+                  ))}
+                </div>
+              </AccordionContent>
+            </AccordionItem>
           ))}
-        </div>
+        </Accordion>
       )}
-      {/* Dialog for ModelForm removed */}
     </div>
   );
 }
-
-    

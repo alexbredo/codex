@@ -8,26 +8,43 @@ import {
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
-  SidebarSeparator, // Added SidebarSeparator
+  SidebarSeparator,
+  SidebarGroup, 
+  SidebarGroupLabel,
 } from '@/components/ui/sidebar';
-import { LayoutDashboard, DatabaseZap, ListChecks, Settings } from 'lucide-react';
-import { useData } from '@/contexts/data-context'; // Added useData
+import { LayoutDashboard, DatabaseZap, ListChecks, FolderOpen } from 'lucide-react';
+import { useData } from '@/contexts/data-context'; 
 import type { Model } from '@/lib/types';
 
 const staticNavItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/models', label: 'Model Admin', icon: DatabaseZap },
-  // { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
 export default function Navigation() {
   const pathname = usePathname();
-  const { models, isReady } = useData(); // Get models and readiness state
+  const { models, isReady } = useData(); 
 
-  const sortedModels = React.useMemo(() => {
-    if (!isReady) return [];
-    return [...models].sort((a, b) => a.name.localeCompare(b.name));
+  const groupedModels = React.useMemo(() => {
+    if (!isReady) return {};
+    const groups: Record<string, Model[]> = {};
+    models.forEach(model => {
+      const namespace = model.namespace || 'Default';
+      if (!groups[namespace]) {
+        groups[namespace] = [];
+      }
+      groups[namespace].push(model);
+    });
+    // Sort models within each namespace
+    for (const namespace in groups) {
+      groups[namespace].sort((a, b) => a.name.localeCompare(b.name));
+    }
+    return groups;
   }, [models, isReady]);
+
+  const sortedNamespaces = React.useMemo(() => {
+    return Object.keys(groupedModels).sort((a, b) => a.localeCompare(b));
+  }, [groupedModels]);
 
   return (
     <SidebarMenu>
@@ -46,22 +63,31 @@ export default function Navigation() {
         </SidebarMenuItem>
       ))}
 
-      {isReady && sortedModels.length > 0 && (
+      {isReady && sortedNamespaces.length > 0 && (
         <>
-          <SidebarSeparator className="my-1 mx-2 !w-auto" />
-          {sortedModels.map((model: Model) => (
-            <SidebarMenuItem key={model.id}>
-              <Link href={`/data/${model.id}`} passHref legacyBehavior>
-                <SidebarMenuButton
-                  isActive={pathname.startsWith(`/data/${model.id}`)} // Simpler active check for model data pages
-                  tooltip={{ children: `View ${model.name} Data`, side: 'right', align: 'center' }}
-                  aria-label={model.name}
-                >
-                  <ListChecks size={20} /> {/* Icon for viewing data objects */}
-                  <span className="truncate">{model.name}</span>
-                </SidebarMenuButton>
-              </Link>
-            </SidebarMenuItem>
+          <SidebarSeparator className="my-2 mx-2 !w-auto" />
+          {sortedNamespaces.map(namespace => (
+            <SidebarGroup key={namespace} className="p-0 pt-1">
+              <SidebarGroupLabel className="px-2 text-xs text-sidebar-foreground/70 group-data-[collapsible=icon]:justify-center">
+                <FolderOpen size={16} className="mr-2 group-data-[collapsible=icon]:mr-0" />
+                <span className="group-data-[collapsible=icon]:hidden">{namespace}</span>
+              </SidebarGroupLabel>
+              {groupedModels[namespace].map((model: Model) => (
+                <SidebarMenuItem key={model.id}>
+                  <Link href={`/data/${model.id}`} passHref legacyBehavior>
+                    <SidebarMenuButton
+                      isActive={pathname.startsWith(`/data/${model.id}`)}
+                      tooltip={{ children: `View ${model.name} Data (${namespace})`, side: 'right', align: 'center' }}
+                      aria-label={`${model.name} (${namespace})`}
+                      className="ml-2" // Indent model items
+                    >
+                      <ListChecks size={18} /> {/* Slightly smaller icon */}
+                      <span className="truncate">{model.name}</span>
+                    </SidebarMenuButton>
+                  </Link>
+                </SidebarMenuItem>
+              ))}
+            </SidebarGroup>
           ))}
         </>
       )}

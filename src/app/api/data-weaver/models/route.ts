@@ -7,7 +7,7 @@ import type { Model, Property } from '@/lib/types';
 export async function GET() {
   try {
     const db = await getDb();
-    const rows = await db.all('SELECT * FROM models ORDER BY name ASC');
+    const rows = await db.all('SELECT * FROM models ORDER BY namespace ASC, name ASC');
     
     const modelsWithProperties: Model[] = [];
     for (const modelRow of rows) {
@@ -22,7 +22,7 @@ export async function GET() {
                     parsedDisplayPropertyNames = tempParsed.filter(name => typeof name === 'string');
                 }
             } catch (parseError) {
-                console.warn(`Could not parse displayPropertyNames for model ${modelRow.id}: '${modelRow.displayPropertyNames}'`, parseError);
+                console.warn(`API: Could not parse displayPropertyNames for model ${modelRow.id}: '${modelRow.displayPropertyNames}'`, parseError);
             }
         }
 
@@ -66,6 +66,7 @@ export async function GET() {
           id: modelRow.id,
           name: modelRow.name,
           description: modelRow.description,
+          namespace: modelRow.namespace || 'Default',
           displayPropertyNames: parsedDisplayPropertyNames,
           properties: mappedProperties,
         });
@@ -90,16 +91,19 @@ export async function GET() {
 // POST a new model
 export async function POST(request: Request) {
   try {
-    const { id: modelId, name, description, displayPropertyNames, properties: newProperties }: Omit<Model, 'id'> & {id: string} = await request.json();
+    const { id: modelId, name, description, namespace, displayPropertyNames, properties: newProperties }: Omit<Model, 'id'> & {id: string} = await request.json();
     const db = await getDb();
+    const finalNamespace = (namespace && namespace.trim() !== '') ? namespace.trim() : 'Default';
+
 
     await db.run('BEGIN TRANSACTION');
 
     await db.run(
-      'INSERT INTO models (id, name, description, displayPropertyNames) VALUES (?, ?, ?, ?)',
+      'INSERT INTO models (id, name, description, namespace, displayPropertyNames) VALUES (?, ?, ?, ?, ?)',
       modelId,
       name,
       description,
+      finalNamespace,
       JSON.stringify(displayPropertyNames || [])
     );
 
@@ -128,6 +132,7 @@ export async function POST(request: Request) {
         id: modelId,
         name,
         description,
+        namespace: finalNamespace,
         displayPropertyNames: displayPropertyNames || [],
         properties: newProperties.map(p => ({
             ...p,

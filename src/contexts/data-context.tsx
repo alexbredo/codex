@@ -8,8 +8,8 @@ import type { Model, DataObject, Property } from '@/lib/types';
 interface DataContextType {
   models: Model[];
   objects: Record<string, DataObject[]>;
-  addModel: (modelData: Omit<Model, 'id'>) => Promise<Model>;
-  updateModel: (modelId: string, updates: Partial<Omit<Model, 'id' | 'properties' | 'displayPropertyNames'>> & { properties?: Property[], displayPropertyNames?: string[] }) => Promise<Model | undefined>;
+  addModel: (modelData: Omit<Model, 'id' | 'namespace'> & { namespace?: string }) => Promise<Model>;
+  updateModel: (modelId: string, updates: Partial<Omit<Model, 'id' | 'properties' | 'displayPropertyNames' | 'namespace'>> & { properties?: Property[], displayPropertyNames?: string[], namespace?: string }) => Promise<Model | undefined>;
   deleteModel: (modelId: string) => Promise<void>;
   getModelById: (modelId: string) => Model | undefined;
   getModelByName: (name: string) => Model | undefined;
@@ -43,6 +43,7 @@ const mapDbModelToClientModel = (dbModel: any): Model => {
     id: dbModel.id,
     name: dbModel.name,
     description: dbModel.description,
+    namespace: dbModel.namespace || 'Default',
     displayPropertyNames: parsedDisplayPropertyNames,
     properties: (dbModel.properties || []).map((p: any) => ({
       id: p.id || crypto.randomUUID(),
@@ -71,7 +72,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     let errorMessage = defaultMessage;
     try {
       const errorData = await response.json();
-      console.error(`API Error (raw data from ${response.url}):`, errorData);
+      console.error(`API Error (raw data from ${response.url}):`, errorData); // Keep this for server-side detailed logs
       if (errorData && errorData.error) {
         errorMessage = errorData.error;
         if (errorData.details) {
@@ -138,18 +139,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
     fetchData();
   }, [fetchData]);
 
-  const addModel = useCallback(async (modelData: Omit<Model, 'id'>): Promise<Model> => {
+  const addModel = useCallback(async (modelData: Omit<Model, 'id' | 'namespace'> & { namespace?: string }): Promise<Model> => {
     const modelId = crypto.randomUUID();
     const propertiesWithIdsAndOrder = modelData.properties.map((p, index) => ({ 
       ...p, 
       id: p.id || crypto.randomUUID(),
       orderIndex: index 
     }));
+    const finalNamespace = (modelData.namespace && modelData.namespace.trim() !== '') ? modelData.namespace.trim() : 'Default';
     
     const response = await fetch('/api/data-weaver/models', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...modelData, id: modelId, properties: propertiesWithIdsAndOrder }),
+      body: JSON.stringify({ ...modelData, id: modelId, namespace: finalNamespace, properties: propertiesWithIdsAndOrder }),
     });
     if (!response.ok) {
       const errorMessage = await formatApiError(response, 'Failed to add model');
@@ -157,12 +159,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
     const newModel: Model = await response.json();
     const clientModel = mapDbModelToClientModel(newModel);
-    setModels((prev) => [...prev, clientModel].sort((a, b) => a.name.localeCompare(b.name)));
+    setModels((prev) => [...prev, clientModel].sort((a, b) => {
+      if (a.namespace.toLowerCase() < b.namespace.toLowerCase()) return -1;
+      if (a.namespace.toLowerCase() > b.namespace.toLowerCase()) return 1;
+      return a.name.localeCompare(b.name);
+    }));
     setObjects((prev) => ({ ...prev, [clientModel.id]: [] }));
     return clientModel;
   }, []);
 
-  const updateModel = useCallback(async (modelId: string, updates: Partial<Omit<Model, 'id' | 'properties' | 'displayPropertyNames'>> & { properties?: Property[], displayPropertyNames?: string[] }): Promise<Model | undefined> => {
+  const updateModel = useCallback(async (modelId: string, updates: Partial<Omit<Model, 'id' | 'properties' | 'displayPropertyNames' | 'namespace'>> & { properties?: Property[], displayPropertyNames?: string[], namespace?: string }): Promise<Model | undefined> => {
     const propertiesWithEnsuredIdsAndOrder = updates.properties?.map((p, index) => ({
       ...p,
       id: p.id || crypto.randomUUID(),
@@ -173,8 +179,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
       orderIndex: index
     }));
 
+    const finalNamespace = (updates.namespace && updates.namespace.trim() !== '') ? updates.namespace.trim() : undefined; // If undefined, API defaults
+
     const payload = {
       ...updates,
+      namespace: finalNamespace, // Send possibly undefined, let API default if needed
       properties: propertiesWithEnsuredIdsAndOrder,
     };
 
@@ -198,7 +207,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
           return clientModel;
         }
         return model;
-      }).sort((a, b) => a.name.localeCompare(b.name))
+      }).sort((a, b) => {
+        if (a.namespace.toLowerCase() < b.namespace.toLowerCase()) return -1;
+        if (a.namespace.toLowerCase() > b.namespace.toLowerCase()) return 1;
+        return a.name.localeCompare(b.name);
+      })
     );
     return returnedModel;
   }, []);

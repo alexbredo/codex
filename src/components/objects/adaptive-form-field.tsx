@@ -9,7 +9,9 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel as UiSelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -46,12 +48,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
   const { models: allModels, getModelById, getObjectsByModelId, getAllObjects } = useData();
   const fieldName = property.name as FieldPath<TFieldValues>;
 
-  const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects]);
-
-  // Logic to hide the field on create form if autoSetOnCreate is true for a date property
-  if (formContext === 'create' && property.type === 'date' && property.autoSetOnCreate) {
-    return null; // Render nothing for this field
-  }
+  const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects, property.type, property.relatedModelId]); // Added dependencies
 
   const relatedModel = useMemo(() => {
     if (property.type === 'relationship' && property.relatedModelId) {
@@ -60,22 +57,39 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
     return undefined;
   }, [property.type, property.relatedModelId, getModelById]);
 
-  const relatedObjects = useMemo(() => {
+  const relatedObjectsGrouped = useMemo(() => {
     if (relatedModel && property.relatedModelId) {
-      return getObjectsByModelId(property.relatedModelId);
+      const objects = getObjectsByModelId(property.relatedModelId);
+      return objects.reduce((acc, obj) => {
+        const relatedM = allModels.find(m => m.id === property.relatedModelId); // Find the full model definition
+        const namespace = relatedM?.namespace || 'Default';
+        if (!acc[namespace]) {
+          acc[namespace] = [];
+        }
+        acc[namespace].push({
+          value: obj.id,
+          label: getObjectDisplayValue(obj, relatedM, allModels, allDbObjects),
+        });
+        return acc;
+      }, {} as Record<string, MultiSelectOption[]>);
     }
-    return [];
-  }, [relatedModel, property.relatedModelId, getObjectsByModelId]);
+    return {};
+  }, [relatedModel, property.relatedModelId, getObjectsByModelId, allModels, allDbObjects]);
 
+
+  if (formContext === 'create' && property.type === 'date' && property.autoSetOnCreate) {
+    return null; 
+  }
 
   const renderField = (controllerField: ControllerRenderProps<TFieldValues, FieldPath<TFieldValues>>) => {
     let fieldIsDisabled = false;
-    // For edit forms, disable date fields that are auto-set (either on create or on update)
     if (property.type === 'date' && formContext === 'edit' && (property.autoSetOnCreate || property.autoSetOnUpdate)) {
       fieldIsDisabled = true;
     }
-    // Note: On create forms, if autoSetOnCreate is true, the component returns null above, so this part isn't reached.
-    // If autoSetOnCreate is false for a create form, it proceeds as a normal editable field.
+    if (property.type === 'date' && formContext === 'create' && property.autoSetOnCreate){ // Though this case is hidden by returning null above
+        fieldIsDisabled = true;
+    }
+
 
     switch (property.type) {
       case 'string':
@@ -96,9 +110,9 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
             dateButtonText = "Invalid Date"; 
           }
         } else {
-          if (fieldIsDisabled) { // This condition is now mainly for edit forms for autoSetOnUpdate or historical autoSetOnCreate
+          if (fieldIsDisabled) { 
             dateButtonText = "Auto-set by system";
-          } else { // For create forms (if not autoSetOnCreate) or editable date fields on edit forms
+          } else { 
             dateButtonText = <span>Pick a date</span>;
           }
         }
@@ -136,22 +150,21 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
           return <p className="text-destructive">Configuration error: Related model info missing.</p>;
         }
 
-        const options: MultiSelectOption[] = relatedObjects.map((obj: DataObject) => ({
-          value: obj.id,
-          label: getObjectDisplayValue(obj, relatedModel, allModels, allDbObjects),
-        }));
+        const flatOptions: MultiSelectOption[] = Object.values(relatedObjectsGrouped).flat();
+
 
         if (property.relationshipType === 'many') {
           return (
             <MultiSelectAutocomplete
-              options={options}
+              options={flatOptions} // Pass flat options here; grouping is visual in dropdown only
               selected={controllerField.value || []}
               onChange={controllerField.onChange}
               placeholder={`Select ${relatedModel.name}(s)...`}
               emptyIndicator={`No ${relatedModel.name.toLowerCase()}s found.`}
+              // For future improvement: could pass grouped options to MultiSelectAutocomplete if it supported it
             />
           );
-        } else { // 'one' or undefined
+        } else { 
           const currentSelectValue = controllerField.value === "" || controllerField.value === null || typeof controllerField.value === 'undefined'
                                      ? INTERNAL_NONE_SELECT_VALUE
                                      : controllerField.value;
@@ -167,10 +180,15 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={INTERNAL_NONE_SELECT_VALUE}>-- None --</SelectItem>
-                {options.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
+                {Object.entries(relatedObjectsGrouped).map(([namespace, optionsInNamespace]) => (
+                  <SelectGroup key={namespace}>
+                    <UiSelectLabel>{namespace}</UiSelectLabel>
+                    {optionsInNamespace.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
                 ))}
               </SelectContent>
             </Select>

@@ -25,10 +25,23 @@ async function initializeDb(): Promise<Database> {
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL UNIQUE,
       description TEXT,
-      displayPropertyNames TEXT 
+      displayPropertyNames TEXT,
+      namespace TEXT NOT NULL DEFAULT 'Default'
     );
   `);
   // displayPropertyNames will store JSON string array: '["prop1", "prop2"]'
+
+  // Migration: Add namespace column to models if it doesn't exist
+  try {
+    await db.run("ALTER TABLE models ADD COLUMN namespace TEXT NOT NULL DEFAULT 'Default'");
+    console.log("Migration: Successfully added 'namespace' column to 'models' table.");
+  } catch (e: any) {
+    if (e.message && (e.message.toLowerCase().includes('duplicate column name') || e.message.toLowerCase().includes('already has a column named namespace'))) {
+      console.log("Migration: 'namespace' column already present in 'models' table.");
+    } else {
+      console.error("Migration: Error trying to add 'namespace' column to 'models' table:", e.message);
+    }
+  }
 
   // Properties Table
   await db.exec(`
@@ -57,10 +70,9 @@ async function initializeDb(): Promise<Database> {
     console.log("Migration: Successfully added 'orderIndex' column to 'properties' table.");
   } catch (e: any) {
     if (e.message && (e.message.toLowerCase().includes('duplicate column name') || e.message.toLowerCase().includes('already has a column named orderindex'))) {
-      console.log("Migration: 'orderIndex' column already present in 'properties' table.");
+      // console.log("Migration: 'orderIndex' column already present in 'properties' table.");
     } else {
       console.error("Migration: Error trying to add 'orderIndex' column to 'properties' table (this might be expected if it exists):", e.message);
-      // Not re-throwing, as this might be a common scenario during development.
     }
   }
 
@@ -70,7 +82,7 @@ async function initializeDb(): Promise<Database> {
     console.log("Migration: Successfully added 'isUnique' column to 'properties' table.");
   } catch (e: any) {
     if (e.message && (e.message.toLowerCase().includes('duplicate column name') || e.message.toLowerCase().includes('already has a column named isunique'))) {
-      console.log("Migration: 'isUnique' column already present in 'properties' table.");
+      // console.log("Migration: 'isUnique' column already present in 'properties' table.");
     } else {
       console.error("Migration: Error trying to add 'isUnique' column to 'properties' table (this might be expected if it exists):", e.message);
     }
