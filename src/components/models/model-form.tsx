@@ -87,7 +87,7 @@ function PropertyFields({
     <Accordion
       type="multiple"
       className="w-full space-y-2"
-      defaultValue={[]}
+      defaultValue={[]} // Collapsed by default
     >
       {fields.map((field, index) => {
         const currentPropertyType = form.watch(`properties.${index}.type`);
@@ -95,22 +95,34 @@ function PropertyFields({
         const headerTitle = propertyName || `Property #${index + 1}`;
 
         return (
-          <AccordionItem key={field.fieldId} value={field.fieldId} className="border bg-background/50 rounded-md">
+          <AccordionItem key={field.fieldId || index} value={field.fieldId || `item-${index}`} className="border bg-background/50 rounded-md">
             <AccordionTrigger className="p-4 hover:no-underline">
               <div className="flex justify-between items-center w-full">
-                <span className="text-lg font-medium text-foreground">{headerTitle}</span>
+                <span className="text-lg font-medium text-foreground truncate mr-2">{headerTitle}</span>
                 <Button
-                  type="button"
+                  asChild
                   variant="ghost"
                   size="icon"
                   onClick={(e) => {
-                    e.stopPropagation();
+                    e.stopPropagation(); // Prevent accordion toggle
                     remove(index);
                   }}
-                  className="text-destructive hover:bg-destructive/10"
+                  className="text-destructive hover:bg-destructive/10 flex-shrink-0"
                   aria-label="Remove property"
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        remove(index);
+                      }
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </span>
                 </Button>
               </div>
             </AccordionTrigger>
@@ -236,11 +248,11 @@ function PropertyFields({
                               max="10"
                               placeholder="e.g., 2"
                               {...field}
-                              value={field.value ?? 2}
+                              value={field.value ?? 2} // Default to 2 in UI if undefined
                               onChange={e => {
                                 const valStr = e.target.value;
                                 if (valStr === "") {
-                                  field.onChange(undefined);
+                                  field.onChange(undefined); // Use undefined if empty for proper default handling
                                 } else {
                                   const num = parseInt(valStr, 10);
                                   field.onChange(isNaN(num) ? undefined : num);
@@ -330,7 +342,7 @@ function PropertyFields({
             required: false,
             relationshipType: 'one',
             unit: undefined,
-            precision: undefined,
+            precision: undefined, // Will be defaulted by logic if type becomes number
             autoSetOnCreate: false,
             autoSetOnUpdate: false,
         } as PropertyFormValues)}
@@ -348,7 +360,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
   const fieldArray = useFieldArray({
     control: form.control,
     name: 'properties',
-    keyName: "fieldId"
+    keyName: "fieldId" // Ensures unique key for each item
   });
 
   const modelsForRelations = models.filter(m => !existingModel || m.id !== existingModel.id);
@@ -359,13 +371,13 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
 
   const displayPropertyOptions: MultiSelectOption[] = useMemo(() => {
     return (currentProperties || [])
-      .filter(p => p.name && (p.type === 'string' || p.type === 'number' || p.type === 'date'))
-      .map(p => ({ value: p.name, label: p.name }));
+      .filter(p => p.name && (p.type === 'string' || p.type === 'number' || p.type === 'date')) // Ensure p.name is truthy
+      .map(p => ({ value: p.name!, label: p.name! })); // Add non-null assertion if confident name is always there
   }, [currentProperties]);
 
   const selectedValuesForAutocomplete = useMemo(() => {
     if (!watchedDisplayPropertyNames || watchedDisplayPropertyNames.length === 0) {
-      return [INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE];
+      return [INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE]; // Should be an array
     }
     return watchedDisplayPropertyNames;
   }, [watchedDisplayPropertyNames]);
@@ -373,12 +385,14 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
 
   const handleFormSubmit = (values: ModelFormValues) => {
     const processedValues = { ...values };
+    
     if (processedValues.displayPropertyNames && processedValues.displayPropertyNames.includes(INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE)) {
-        processedValues.displayPropertyNames = processedValues.displayPropertyNames.filter(dpName => dpName !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
-    }
-    if (processedValues.displayPropertyNames && processedValues.displayPropertyNames.length === 0) {
+        const filtered = processedValues.displayPropertyNames.filter(dpName => dpName !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
+        processedValues.displayPropertyNames = filtered.length > 0 ? filtered : undefined;
+    } else if (processedValues.displayPropertyNames && processedValues.displayPropertyNames.length === 0) {
         processedValues.displayPropertyNames = undefined;
     }
+
 
     processedValues.properties = processedValues.properties.map(prop => {
       const finalProp = { ...prop };
@@ -386,7 +400,8 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
         finalProp.unit = undefined;
         finalProp.precision = undefined;
       } else {
-        finalProp.precision = prop.precision === undefined ? 2 : prop.precision;
+        // Ensure precision is a number or undefined. Default to 2 if undefined.
+        finalProp.precision = (prop.precision === undefined || prop.precision === null || isNaN(Number(prop.precision))) ? 2 : Number(prop.precision);
       }
       if (prop.type !== 'date') {
         finalProp.autoSetOnCreate = false;
@@ -441,26 +456,26 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                   <FormLabel>Display Properties (Optional)</FormLabel>
                   <MultiSelectAutocomplete
                     options={[{value: INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE, label: "-- Default (Name/Title/ID) --"}, ...displayPropertyOptions]}
-                    selected={selectedValuesForAutocomplete}
-                    onChange={(selectedValuesFromAutocomplete) => {
-                        const isDefaultSelected = selectedValuesFromAutocomplete.includes(INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
-                        const actualPropertiesSelected = selectedValuesFromAutocomplete.filter(v => v !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
+                    selected={selectedValuesForAutocomplete} // This is already an array
+                    onChange={(selectedOptsFromAutocomplete) => {
+                        const isDefaultSelected = selectedOptsFromAutocomplete.includes(INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
+                        const actualPropertiesSelected = selectedOptsFromAutocomplete.filter(v => v !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
 
                         if (isDefaultSelected && actualPropertiesSelected.length > 0) {
+                             // If default is selected along with others, ignore default
                             field.onChange(actualPropertiesSelected);
                         } else if (isDefaultSelected && actualPropertiesSelected.length === 0) {
-                            field.onChange([]);
-                        } else if (!isDefaultSelected && actualPropertiesSelected.length > 0) {
+                            // Only default is selected, means reset to system default (empty array -> undefined behavior)
+                            field.onChange([]); 
+                        } else { // No default, or only actual properties selected
                             field.onChange(actualPropertiesSelected);
-                        } else { // (!isDefaultSelected && actualPropertiesSelected.length === 0)
-                            field.onChange([]);
                         }
                     }}
                     placeholder="Select properties..."
                     emptyIndicator={displayPropertyOptions.length === 0 ? "No string/number/date properties available." : "No matching properties."}
                   />
                   <FormDescription>
-                    Choose string, number, or date properties to represent this model's objects. They will be shown concatenated.
+                    Choose string, number, or date properties to represent this model's objects. They will be shown concatenated with spaces.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -488,3 +503,6 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     </Form>
   );
 }
+
+    
+  
