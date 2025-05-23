@@ -26,25 +26,25 @@ import {
 import { Input } from '@/components/ui/input';
 import { useData } from '@/contexts/data-context';
 import type { Model, DataObject, Property } from '@/lib/types';
-import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye } from 'lucide-react'; // Added Eye
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
 import Link from 'next/link';
-import { getObjectDisplayValue } from '@/lib/utils'; // Import centralized function
+import { getObjectDisplayValue } from '@/lib/utils';
 import { z } from 'zod';
 
 const ITEMS_PER_PAGE = 10;
 
 type SortDirection = 'asc' | 'desc';
 interface SortConfig {
-  key: string; // property.id for direct properties, or col.id for virtual columns
+  key: string;
   direction: SortDirection;
 }
 
 interface IncomingRelationColumn {
-  id: string; // Unique ID for this virtual column, e.g., otherModel.id + '-' + referencingProperty.name
+  id: string; 
   headerLabel: string;
   referencingModel: Model;
   referencingProperty: Property;
@@ -92,11 +92,11 @@ export default function DataObjectsPage() {
     if (!currentModel || !isReady) return [];
     const columns: IncomingRelationColumn[] = [];
     allModels.forEach(otherModel => {
-      if (otherModel.id === currentModel.id) return;
+      if (otherModel.id === currentModel.id) return; // Skip self-referencing for this virtual view
       otherModel.properties.forEach(prop => {
         if (prop.type === 'relationship' && prop.relatedModelId === currentModel.id) {
           columns.push({
-            id: `${otherModel.id}-${prop.name}`, // Unique ID for sort key
+            id: `${otherModel.id}-${prop.name}`, 
             headerLabel: `Ref. by ${otherModel.name} (via ${prop.name})`,
             referencingModel: otherModel,
             referencingProperty: prop,
@@ -117,11 +117,20 @@ export default function DataObjectsPage() {
     router.push(`/data/${currentModel.id}/edit/${obj.id}`);
   };
   
-  const handleDelete = (objectId: string) => {
+  const handleView = (obj: DataObject) => {
     if (!currentModel) return;
-    deleteObject(currentModel.id, objectId);
-    setObjects(getObjectsByModelId(currentModel.id)); 
-    toast({ title: `${currentModel.name} Deleted`, description: `The ${currentModel.name.toLowerCase()} has been deleted.` });
+    router.push(`/data/${currentModel.id}/view/${obj.id}`);
+  };
+
+  const handleDelete = async (objectId: string) => {
+    if (!currentModel) return;
+    try {
+        await deleteObject(currentModel.id, objectId);
+        setObjects(prev => prev.filter(obj => obj.id !== objectId));
+        toast({ title: `${currentModel.name} Deleted`, description: `The ${currentModel.name.toLowerCase()} has been deleted.` });
+    } catch (error: any) {
+        toast({ variant: "destructive", title: "Error Deleting Object", description: error.message || "An unexpected error occurred." });
+    }
   };
 
   const requestSort = (key: string) => {
@@ -130,7 +139,7 @@ export default function DataObjectsPage() {
       direction = 'desc';
     }
     setSortConfig({ key, direction });
-    setCurrentPage(1); // Reset to first page on sort
+    setCurrentPage(1); 
   };
 
   const getSortIcon = (columnKey: string) => {
@@ -153,13 +162,13 @@ export default function DataObjectsPage() {
           }
           if (prop.type === 'relationship' && prop.relatedModelId) {
               const relatedModel = getModelById(prop.relatedModelId);
-              if (Array.isArray(value)) { // 'many' relationship
+              if (Array.isArray(value)) { 
                   return value.some(itemId => {
                       const relatedObj = (allDbObjects[prop.relatedModelId!] || []).find(o => o.id === itemId);
                       const displayVal = getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
                       return displayVal.toLowerCase().includes(searchTerm.toLowerCase());
                   });
-              } else if (value) { // 'one' relationship
+              } else if (value) { 
                   const relatedObj = (allDbObjects[prop.relatedModelId!] || []).find(o => o.id === value);
                   const displayVal = getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
                   return displayVal.toLowerCase().includes(searchTerm.toLowerCase());
@@ -211,7 +220,7 @@ export default function DataObjectsPage() {
             if (directPropertyToSort.relationshipType === 'many') {
               aValue = Array.isArray(aValue) ? aValue.length : 0;
               bValue = Array.isArray(bValue) ? bValue.length : 0;
-            } else { // 'one'
+            } else { 
               const aRelatedObj = (allDbObjects[directPropertyToSort.relatedModelId!] || []).find(o => o.id === aValue);
               const bRelatedObj = (allDbObjects[directPropertyToSort.relatedModelId!] || []).find(o => o.id === bValue);
               aValue = getObjectDisplayValue(aRelatedObj, relatedModel, allModels, allDbObjects).toLowerCase();
@@ -223,7 +232,7 @@ export default function DataObjectsPage() {
             bValue = String(bValue ?? '').toLowerCase();
         }
       } else if (virtualColumnToSort) {
-        // Sort by count of referencing items for virtual columns
+        
         const aReferencingData = allDbObjects[virtualColumnToSort.referencingModel.id] || [];
         aValue = aReferencingData.filter(refObj => {
           const linkedValue = refObj[virtualColumnToSort.referencingProperty.name];
@@ -236,7 +245,7 @@ export default function DataObjectsPage() {
           return virtualColumnToSort.referencingProperty.relationshipType === 'many' ? (Array.isArray(linkedValue) && linkedValue.includes(b.id)) : linkedValue === b.id;
         }).length;
       } else {
-        return 0; // Should not happen if keys are managed correctly
+        return 0; 
       }
 
       if (aValue < bValue) {
@@ -376,7 +385,6 @@ export default function DataObjectsPage() {
               const precision = prop.precision === undefined ? 2 : prop.precision;
               const parsedNum = parseFloat(value);
               cellValue = isNaN(parsedNum) ? String(value) : parsedNum.toFixed(precision);
-              // Unit is not typically included in raw CSV data unless specifically requested for each column.
               break;
             case 'relationship':
               const relatedModel = getModelById(prop.relatedModelId!);
@@ -385,11 +393,11 @@ export default function DataObjectsPage() {
                   cellValue = value.map(itemId => {
                     const relatedObj = (allDbObjects[prop.relatedModelId!] || []).find(o => o.id === itemId);
                     return getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
-                  }).join('; '); // Use semicolon for multi-value cells, or choose another strategy
+                  }).join('; '); 
                 } else {
                   cellValue = '';
                 }
-              } else { // 'one'
+              } else { 
                 const relatedObj = (allDbObjects[prop.relatedModelId!] || []).find(o => o.id === value);
                 cellValue = getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
               }
@@ -401,7 +409,6 @@ export default function DataObjectsPage() {
         row.push(escapeCsvCell(cellValue));
       });
 
-      // Virtual incoming relation columns
       virtualIncomingRelationColumns.forEach(colDef => {
         const referencingData = allDbObjects[colDef.referencingModel.id] || [];
         const linkedItems = referencingData.filter(refObj => {
@@ -423,7 +430,7 @@ export default function DataObjectsPage() {
     const csvString = csvRows.join('\n');
     const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
-    if (link.download !== undefined) { // Feature detection
+    if (link.download !== undefined) { 
       const url = URL.createObjectURL(blob);
       link.setAttribute('href', url);
       link.setAttribute('download', `${currentModel.name}-data.csv`);
@@ -447,7 +454,7 @@ export default function DataObjectsPage() {
     );
   }
   
-  const directPropertiesToShowInTable = currentModel.properties;
+  const directPropertiesToShowInTable = currentModel.properties.sort((a,b) => a.orderIndex - b.orderIndex);
 
   return (
     <div className="container mx-auto py-8">
@@ -564,6 +571,9 @@ export default function DataObjectsPage() {
                     );
                   })}
                   <TableCell className="text-right">
+                    <Button variant="ghost" size="icon" onClick={() => handleView(obj)} className="mr-2 hover:text-primary">
+                        <Eye className="h-4 w-4" />
+                    </Button>
                     <Button variant="ghost" size="icon" onClick={() => handleEdit(obj)} className="mr-2 hover:text-primary">
                       <Edit className="h-4 w-4" />
                     </Button>
@@ -623,3 +633,4 @@ export default function DataObjectsPage() {
   );
 }
 
+    
