@@ -33,12 +33,15 @@ export default function CreateModelPage() {
         relationshipType: 'one',
         unit: undefined,
         precision: undefined, // Will be defaulted to 2 by ModelForm if type becomes number
+        autoSetOnCreate: false,
+        autoSetOnUpdate: false,
+        isUnique: false,
         orderIndex: 0, // Initial order index
       } as PropertyFormValues],
     },
   });
 
-  const onSubmit = (values: ModelFormValues) => {
+  const onSubmit = async (values: ModelFormValues) => {
     const existingByName = getModelByName(values.name);
     if (existingByName) {
         form.setError("name", { type: "manual", message: "A model with this name already exists." });
@@ -49,7 +52,7 @@ export default function CreateModelPage() {
       name: values.name,
       description: values.description,
       displayPropertyNames: values.displayPropertyNames && values.displayPropertyNames.length > 0 ? values.displayPropertyNames : undefined,
-      properties: values.properties.map((p, index) => ({ // Assign orderIndex here
+      properties: values.properties.map((p, index) => ({
         id: p.id || crypto.randomUUID(),
         name: p.name,
         type: p.type,
@@ -60,12 +63,13 @@ export default function CreateModelPage() {
         precision: p.precision,
         autoSetOnCreate: p.autoSetOnCreate,
         autoSetOnUpdate: p.autoSetOnUpdate,
-        orderIndex: index, // Set orderIndex based on current array order
+        isUnique: p.isUnique, // Ensure isUnique is passed
+        orderIndex: index,
       } as Property)),
     };
 
     try {
-      addModel(modelData);
+      await addModel(modelData);
       toast({ title: "Model Created", description: `Model "${values.name}" has been successfully created.` });
       router.push('/models');
     } catch (error: any) {

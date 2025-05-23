@@ -45,6 +45,7 @@ export default function EditModelPage() {
             const isRelationship = p.type === 'relationship';
             const isDate = p.type === 'date';
             const isNumber = p.type === 'number';
+            const isString = p.type === 'string';
 
             return {
               id: p.id || crypto.randomUUID(),
@@ -57,6 +58,7 @@ export default function EditModelPage() {
               precision: isNumber ? (p.precision === undefined || p.precision === null ? 2 : p.precision) : undefined,
               autoSetOnCreate: isDate ? !!p.autoSetOnCreate : false,
               autoSetOnUpdate: isDate ? !!p.autoSetOnUpdate : false,
+              isUnique: isString ? !!p.isUnique : false, // Ensure isUnique is correctly initialized
               orderIndex: p.orderIndex,
             } as PropertyFormValues;
           }),
@@ -82,7 +84,7 @@ export default function EditModelPage() {
       name: values.name,
       description: values.description,
       displayPropertyNames: values.displayPropertyNames && values.displayPropertyNames.length > 0 ? values.displayPropertyNames : undefined,
-      properties: values.properties.map((p, index) => ({ // Assign orderIndex here
+      properties: values.properties.map((p, index) => ({
         id: p.id || crypto.randomUUID(),
         name: p.name,
         type: p.type,
@@ -93,7 +95,8 @@ export default function EditModelPage() {
         precision: p.precision,
         autoSetOnCreate: p.autoSetOnCreate,
         autoSetOnUpdate: p.autoSetOnUpdate,
-        orderIndex: index, // Set orderIndex based on current array order
+        isUnique: p.isUnique, // Ensure isUnique is passed
+        orderIndex: index,
       } as Property)),
     };
 
