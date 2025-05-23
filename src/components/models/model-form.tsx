@@ -1,7 +1,7 @@
 
 'use client';
 
-import type { Control, UseFormReturn, UseFieldArrayReturn } from 'react-hook-form';
+import type { Control, UseFormReturn, UseFieldArrayReturn, FieldErrors } from 'react-hook-form';
 import { useFieldArray, useWatch } from 'react-hook-form';
 import * as React from 'react'; // Ensure React is imported for useState, useEffect, useMemo
 import { Button } from '@/components/ui/button';
@@ -51,7 +51,6 @@ interface ModelFormProps {
 }
 
 const INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE = "__DEFAULT_DISPLAY_PROPERTY__";
-const INTERNAL_DEFAULT_PROPERTY_VALUE = "__DEFAULT_PROPERTY_VALUE__";
 
 
 function PropertyFields({
@@ -60,24 +59,15 @@ function PropertyFields({
   modelsForRelations,
 }: {
   form: UseFormReturn<ModelFormValues>,
-  fieldArray: UseFieldArrayReturn<ModelFormValues, "properties", "fieldId">, // Note: keyName is fieldId
+  fieldArray: UseFieldArrayReturn<ModelFormValues, "properties", "fieldId">,
   modelsForRelations: Model[]
 }) {
   const { fields, append, remove } = fieldArray;
   const control = form.control;
 
-  // State to control open accordion items
   const [openAccordionItems, setOpenAccordionItems] = React.useState<string[]>(() => {
-    const initiallyOpen: string[] = [];
-    const propertiesErrors = form.formState.errors.properties;
-    if (Array.isArray(propertiesErrors)) {
-      fields.forEach((fieldItem, idx) => {
-        if (propertiesErrors[idx] && typeof propertiesErrors[idx] === 'object' && Object.keys(propertiesErrors[idx]!).length > 0 && fieldItem.fieldId) {
-          initiallyOpen.push(fieldItem.fieldId);
-        }
-      });
-    }
-    return initiallyOpen;
+    // Initially, no items are open unless they have errors (handled by useEffect)
+    return [];
   });
 
   React.useEffect(() => {
@@ -86,14 +76,18 @@ function PropertyFields({
 
     if (Array.isArray(propertiesErrors)) {
         fields.forEach((fieldItem, idx) => {
-            if (propertiesErrors[idx] && typeof propertiesErrors[idx] === 'object' && Object.keys(propertiesErrors[idx]!).length > 0) {
-                if (fieldItem.fieldId) {
+            const propertyErrorAtIndex = propertiesErrors[idx];
+            if (propertyErrorAtIndex && typeof propertyErrorAtIndex === 'object' && Object.keys(propertyErrorAtIndex).length > 0) {
+                const fieldLevelErrors = Object.keys(propertyErrorAtIndex).filter(key => key !== 'root');
+                if (fieldLevelErrors.length > 0 && fieldItem.fieldId) {
                     itemsToOpenDueToErrors.add(fieldItem.fieldId);
                 }
             }
         });
     }
-
+    
+    // If there are errors, update the open state to include these items
+    // This will trigger when form.formState.errors changes after a submission attempt
     if (itemsToOpenDueToErrors.size > 0) {
       setOpenAccordionItems(prevOpen => {
         const newOpenState = new Set(prevOpen);
@@ -129,8 +123,8 @@ function PropertyFields({
     <Accordion
       type="multiple"
       className="w-full space-y-2"
-      value={openAccordionItems} // Controlled
-      onValueChange={setOpenAccordionItems} // Allow user to open/close
+      value={openAccordionItems} 
+      onValueChange={setOpenAccordionItems} 
     >
       {fields.map((fieldItem, index) => {
         const currentPropertyType = form.watch(`properties.${index}.type`);
@@ -379,7 +373,7 @@ function PropertyFields({
         variant="outline"
         size="sm"
         onClick={() => append({
-            id: crypto.randomUUID(), // Property's own data ID
+            id: crypto.randomUUID(), 
             name: '',
             type: 'string',
             required: false,
@@ -400,7 +394,7 @@ function PropertyFields({
 
 export default function ModelForm({ form, onSubmit, onCancel, isLoading, existingModel }: ModelFormProps) {
   const { models } = useData();
-  const { toast } = useToast(); // Get toast function
+  const { toast } = useToast(); 
   const fieldArray = useFieldArray({
     control: form.control,
     name: 'properties',
@@ -420,7 +414,6 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
   }, [currentProperties]);
 
   const selectedValuesForAutocomplete = useMemo(() => {
-     // Ensure watchedDisplayPropertyNames is an array before using .includes
     const currentDisplayNames = Array.isArray(watchedDisplayPropertyNames) ? watchedDisplayPropertyNames : [];
     if (currentDisplayNames.length === 0 || (currentDisplayNames.length === 1 && currentDisplayNames[0] === INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE)) {
         return [INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE];
@@ -457,14 +450,17 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     onSubmit(processedValues);
   };
 
-  const handleFormInvalid = (errors: Partial<Record<keyof ModelFormValues | `properties.${number}.${keyof PropertyFormValues}`, any>>) => {
+  const handleFormInvalid = (errors: FieldErrors<ModelFormValues>) => {
     console.error("Client-side form validation errors:", errors);
-    toast({
-      title: "Validation Error",
-      description: "Please correct the errors highlighted in the form before submitting.",
-      variant: "destructive",
-    });
-    // Logic to open accordions with errors is handled within PropertyFields useEffect
+    if (Object.keys(errors).length > 0) {
+      toast({
+        title: "Validation Error",
+        description: "Please correct the errors highlighted in the form before submitting.",
+        variant: "destructive",
+      });
+    } else {
+      console.warn("handleFormInvalid called, but the 'errors' argument was empty. Check form.formState.errors for actual validation state.", form.formState.errors);
+    }
   };
 
 
@@ -517,10 +513,8 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                         const actualPropertiesSelected = selectedOptsFromAutocomplete.filter(v => v !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
 
                         if (isDefaultSelected && actualPropertiesSelected.length === 0) {
-                            // If only "-- Default --" is selected (or becomes the only one selected), pass empty array to signify default behavior
                             field.onChange([]); 
                         } else {
-                            // Otherwise, pass only the actual properties selected
                             field.onChange(actualPropertiesSelected);
                         }
                     }}
@@ -546,7 +540,8 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
             name="properties"
             render={() => (
               <FormItem>
-                <FormMessage className="mb-2" />
+                {/* This FormMessage will show errors like "At least one property is required." */}
+                <FormMessage className="mb-2" /> 
               </FormItem>
             )}
           />
