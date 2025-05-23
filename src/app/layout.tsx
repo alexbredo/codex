@@ -17,8 +17,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Dynamic Data Weaver',
-  description: 'Web-based dynamic data management system.',
+  title: 'CodexStructure',
+  description: 'A web application to dynamically define and manage data structures and objects.',
 };
 
 export default function RootLayout({

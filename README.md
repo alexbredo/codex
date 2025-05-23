@@ -1,7 +1,7 @@
 
-# Dynamic Data Weaver (Firebase Studio Project)
+# CodexStructure (Firebase Studio Project)
 
-This is a Next.js application built with Firebase Studio, designed for dynamic data management. It allows users to define data models, manage data objects through adaptive forms, and utilize a smart search functionality. The backend is powered by Next.js API Routes with an SQLite database for persistence.
+CodexStructure is a web application designed to empower users to dynamically define and manage their own data structures (models) and the data objects associated with them. It provides tools for creating models with various property types (text, numbers, dates, relationships), organizing these models into logical groups (model groups), and performing CRUD (Create, Read, Update, Delete) operations on data entries through adaptive forms. The goal is to offer a flexible, user-centric way to build custom information systems without requiring deep database expertise, supported by an internal API for programmatic data access.
 
 ## Prerequisites
 
@@ -62,7 +62,7 @@ Follow these steps to get the project up and running on your local machine:
 ## Project Structure Highlights
 
 -   `src/app/`: Contains the Next.js App Router pages and layouts.
-    -   `src/app/api/`: Backend API routes for CRUD operations.
+    -   `src/app/api/`: Backend API routes for CRUD operations (e.g., under `src/app/api/codex-structure/`).
 -   `src/components/`: Reusable React components, including ShadCN UI components and custom application components.
 -   `src/contexts/`: React Context providers (e.g., `DataContext`).
 -   `src/lib/`: Utility functions, database setup (`db.ts`), and type definitions (`types.ts`).
@@ -80,4 +80,4 @@ And to start the production server:
 npm run start
 ```
 
-Enjoy exploring and developing Dynamic Data Weaver!
+Enjoy exploring and developing CodexStructure!

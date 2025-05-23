@@ -32,7 +32,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                 <circle cx="50" cy="50" r="10" fill="currentColor"/>
               </svg>
               <h1 className="text-xl font-semibold text-sidebar-foreground group-data-[collapsible=icon]:hidden">
-                DataWeaver
+                Codex
               </h1>
             </Link>
           </SidebarHeader>

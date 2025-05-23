@@ -133,10 +133,10 @@ export default function ModelsPage() {
               <AlertDescription className="pt-2 px-4 pb-4"> 
                 You can programmatically access your models and data objects using an internal API. Here are some example endpoints:
                 <ul className="list-disc pl-5 mt-2 space-y-1">
-                  <li><code>GET /api/data-weaver/models</code> - Retrieves a list of all defined models.</li>
-                  <li><code>GET /api/data-weaver/models/{'{modelId}'}</code> - Retrieves details for a specific model.</li>
-                  <li><code>GET /api/data-weaver/models/{'{modelId}'}/objects</code> - Retrieves all data objects for a specific model.</li>
-                  <li><code>GET /api/data-weaver/models/{'{modelId}'}/objects/{'{objectId}'}</code> - Retrieves a specific data object.</li>
+                  <li><code>GET /api/codex-structure/models</code> - Retrieves a list of all defined models.</li>
+                  <li><code>GET /api/codex-structure/models/{'{modelId}'}</code> - Retrieves details for a specific model.</li>
+                  <li><code>GET /api/codex-structure/models/{'{modelId}'}/objects</code> - Retrieves all data objects for a specific model.</li>
+                  <li><code>GET /api/codex-structure/models/{'{modelId}'}/objects/{'{objectId}'}</code> - Retrieves a specific data object.</li>
                 </ul>
                 <p className="mt-3 text-xs text-muted-foreground">
                   <Info size={14} className="inline mr-1 relative -top-px" />
@@ -269,4 +269,3 @@ export default function ModelsPage() {
     </div>
   );
 }
-

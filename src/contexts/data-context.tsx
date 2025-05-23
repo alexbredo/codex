@@ -44,7 +44,7 @@ const mapDbModelToClientModel = (dbModel: any): Model => {
         parsedDisplayPropertyNames = temp.filter((name: any) => typeof name === 'string');
       }
     } catch (e) {
-      console.warn(`Context: Could not parse displayPropertyNames for model ${dbModel.id}: '${dbModel.displayPropertyNames}'`, e);
+      // console.warn(`Context: Could not parse displayPropertyNames for model ${dbModel.id}: '${dbModel.displayPropertyNames}'`, e);
     }
   }
 
@@ -71,6 +71,27 @@ const mapDbModelToClientModel = (dbModel: any): Model => {
   };
 };
 
+const formatApiError = async (response: Response, defaultMessage: string): Promise<string> => {
+    let errorMessage = defaultMessage;
+    try {
+      const errorData = await response.json();
+      if (errorData && errorData.error) {
+        errorMessage = errorData.error;
+        if (errorData.details) {
+          errorMessage += ` Details: ${errorData.details}`;
+        }
+      } else if(response.statusText) {
+        errorMessage = `${defaultMessage}. Status: ${response.status} - Server: ${response.statusText}`;
+      } else {
+         errorMessage = `${defaultMessage}. Status: ${response.status} - Server did not provide detailed error.`;
+      }
+    } catch (e) {
+      // Non-JSON response or other parsing error
+      errorMessage = `${defaultMessage}. Status: ${response.status} - ${response.statusText || 'Server did not provide detailed error.'}`;
+    }
+    return errorMessage;
+  };
+
 
 export function DataProvider({ children }: { children: ReactNode }) {
   const [models, setModels] = useState<Model[]>([]);
@@ -78,33 +99,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [modelGroups, setModelGroups] = useState<ModelGroup[]>([]);
   const [isReady, setIsReady] = useState(false);
 
-  const formatApiError = async (response: Response, defaultMessage: string): Promise<string> => {
-    let errorMessage = defaultMessage;
-    try {
-      const errorData = await response.json();
-      console.error(`API Error (raw data from ${response.url}):`, errorData); 
-      if (errorData && errorData.error) {
-        errorMessage = errorData.error;
-        if (errorData.details) {
-          errorMessage += ` (Details: ${errorData.details})`;
-        }
-      } else if (response.statusText) {
-        errorMessage = `${defaultMessage}: ${response.status} ${response.statusText}`;
-      } else {
-         errorMessage = `${defaultMessage}: Server responded with status ${response.status} but no error details.`;
-      }
-    } catch (e) {
-      console.error(`Failed to parse error response from server or non-JSON error response from ${response.url}:`, e);
-      errorMessage = `${defaultMessage}: Server responded with status ${response.status} and non-JSON error body.`;
-    }
-    return errorMessage;
-  };
-
   const fetchData = useCallback(async () => {
     setIsReady(false);
     try {
       // Fetch Model Groups first
-      const groupsResponse = await fetch('/api/data-weaver/model-groups');
+      const groupsResponse = await fetch('/api/codex-structure/model-groups');
       if (!groupsResponse.ok) {
         const errorMessage = await formatApiError(groupsResponse, 'Failed to fetch model groups');
         throw new Error(errorMessage);
@@ -113,7 +112,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setModelGroups(groupsData.sort((a, b) => a.name.localeCompare(b.name)));
 
       // Fetch Models
-      const modelsResponse = await fetch('/api/data-weaver/models');
+      const modelsResponse = await fetch('/api/codex-structure/models');
       if (!modelsResponse.ok) {
         const errorMessage = await formatApiError(modelsResponse, 'Failed to fetch models');
         throw new Error(errorMessage);
@@ -122,7 +121,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setModels(modelsDataFromApi.map(mapDbModelToClientModel));
 
       // Fetch All Objects
-      const allObjectsResponse = await fetch('/api/data-weaver/objects/all');
+      const allObjectsResponse = await fetch('/api/codex-structure/objects/all');
       if (!allObjectsResponse.ok) {
         const errorMessage = await formatApiError(allObjectsResponse, 'Failed to fetch all objects');
         throw new Error(errorMessage);
@@ -130,8 +129,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const allObjectsData: Record<string, DataObject[]> = await allObjectsResponse.json();
       setObjects(allObjectsData);
 
-    } catch (error) {
-      console.error("Failed to load data from API:", error);
+    } catch (error: any) {
+      console.error("Failed to load data from API:", error.message);
       setModels([]);
       setObjects({});
       setModelGroups([]);
@@ -157,7 +156,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }));
     const finalNamespace = (modelData.namespace && modelData.namespace.trim() !== '') ? modelData.namespace.trim() : 'Default';
     
-    const response = await fetch('/api/data-weaver/models', {
+    const response = await fetch('/api/codex-structure/models', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...modelData, id: modelId, namespace: finalNamespace, properties: propertiesWithIdsAndOrder }),
@@ -196,7 +195,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       properties: propertiesWithEnsuredIdsAndOrder,
     };
 
-    const response = await fetch(`/api/data-weaver/models/${modelId}`, {
+    const response = await fetch(`/api/codex-structure/models/${modelId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -226,7 +225,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const deleteModel = useCallback(async (modelId: string) => {
-    const response = await fetch(`/api/data-weaver/models/${modelId}`, {
+    const response = await fetch(`/api/codex-structure/models/${modelId}`, {
       method: 'DELETE',
     });
     if (!response.ok) {
@@ -253,7 +252,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   // Data Object CRUD
   const addObject = useCallback(async (modelId: string, objectData: Omit<DataObject, 'id'>): Promise<DataObject> => {
     const objectId = crypto.randomUUID();
-    const response = await fetch(`/api/data-weaver/models/${modelId}/objects`, {
+    const response = await fetch(`/api/codex-structure/models/${modelId}/objects`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...objectData, id: objectId }),
@@ -272,7 +271,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateObject = useCallback(async (modelId: string, objectId: string, updates: Partial<Omit<DataObject, 'id'>>): Promise<DataObject | undefined> => {
-    const response = await fetch(`/api/data-weaver/models/${modelId}/objects/${objectId}`, {
+    const response = await fetch(`/api/codex-structure/models/${modelId}/objects/${objectId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updates),
@@ -299,7 +298,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const deleteObject = useCallback(async (modelId: string, objectId: string) => {
-    const response = await fetch(`/api/data-weaver/models/${modelId}/objects/${objectId}`, {
+    const response = await fetch(`/api/codex-structure/models/${modelId}/objects/${objectId}`, {
       method: 'DELETE',
     });
     if (!response.ok) {
@@ -323,7 +322,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   // Model Group CRUD
   const addModelGroup = useCallback(async (groupData: Omit<ModelGroup, 'id'>): Promise<ModelGroup> => {
-    const response = await fetch('/api/data-weaver/model-groups', {
+    const response = await fetch('/api/codex-structure/model-groups', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(groupData),
@@ -338,7 +337,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateModelGroup = useCallback(async (groupId: string, updates: Partial<Omit<ModelGroup, 'id'>>): Promise<ModelGroup | undefined> => {
-    const response = await fetch(`/api/data-weaver/model-groups/${groupId}`, {
+    const response = await fetch(`/api/codex-structure/model-groups/${groupId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updates),
@@ -355,7 +354,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const deleteModelGroup = useCallback(async (groupId: string) => {
-    const response = await fetch(`/api/data-weaver/model-groups/${groupId}`, {
+    const response = await fetch(`/api/codex-structure/model-groups/${groupId}`, {
       method: 'DELETE',
     });
     if (!response.ok) {
