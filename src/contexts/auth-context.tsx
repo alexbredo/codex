@@ -34,6 +34,30 @@ async function fetchCurrentUser(): Promise<User | null> {
   return data as User | null;
 }
 
+const formatApiError = async (response: Response, defaultMessage: string): Promise<string> => {
+    let errorMessage = defaultMessage;
+    try {
+      const errorData = await response.json();
+      if (errorData && errorData.error) {
+        errorMessage = errorData.error;
+        if (errorData.details && typeof errorData.details === 'string') {
+          errorMessage += ` Details: ${errorData.details}`;
+        } else if (errorData.details && typeof errorData.details === 'object') {
+          errorMessage += ` Details: ${JSON.stringify(errorData.details)}`;
+        }
+      } else if(response.statusText) {
+        errorMessage = `${defaultMessage}. Status: ${response.status} - Server: ${response.statusText}`;
+      } else {
+         errorMessage = `${defaultMessage}. Status: ${response.status} - Server did not provide detailed error.`;
+      }
+    } catch (e) {
+      // Non-JSON response or other parsing error
+      errorMessage = `${defaultMessage}. Status: ${response.status} - ${response.statusText || 'Server did not provide detailed error.'}`;
+    }
+    return errorMessage;
+  };
+
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const router = useRouter();
@@ -53,12 +77,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify(credentials),
       });
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Login failed');
+        const errorMessage = await formatApiError(response, 'Login failed');
+        throw new Error(errorMessage);
       }
       const loggedInUser = await response.json();
-      await queryClient.invalidateQueries({ queryKey: ['currentUser'] }); // Refetch user
-      refetch(); // Manually trigger refetch
+      await queryClient.invalidateQueries({ queryKey: ['currentUser'] });
+      await refetch(); // Await the refetch to complete
       return loggedInUser as User;
     } catch (error) {
       console.error("Login error in context:", error);
@@ -69,13 +93,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(async () => {
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
-    } catch (error) {
+    } catch (error: any) {
         console.error("Logout error in context:", error);
         // Should still proceed to clear client state
     } finally {
         await queryClient.setQueryData(['currentUser'], null); // Optimistically update
         await queryClient.invalidateQueries({ queryKey: ['currentUser'] });
-        refetch();
+        await refetch(); // Ensure context state is updated before navigating
         router.push('/login'); // Redirect to login after logout
     }
   }, [queryClient, router, refetch]);
@@ -88,12 +112,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify(credentials),
       });
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Registration failed');
+        const errorMessage = await formatApiError(response, 'Registration failed');
+        throw new Error(errorMessage);
       }
       const newUser = await response.json();
-      // Optionally log in the user after registration
-      // await login({ username: credentials.username, password: credentials.password });
       return newUser as User;
     } catch (error) {
       console.error("Registration error in context:", error);
@@ -137,7 +159,7 @@ export function withAuth<P extends object>(
       }
     }, [user, isLoading, router, allowedRoles]);
 
-    if (isLoading || !user || (allowedRoles && !allowedRoles.includes(user.role))) {
+    if (isLoading || (!user && (!allowedRoles || allowedRoles.length > 0)) || (user && allowedRoles && !allowedRoles.includes(user.role))) {
       return (
         <div className="flex justify-center items-center h-screen">
           <p>Loading or checking authorization...</p>
