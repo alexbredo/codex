@@ -19,11 +19,24 @@ export async function GET(request: Request, { params }: Params) {
 
     const properties = await db.all('SELECT * FROM properties WHERE model_id = ? ORDER BY orderIndex ASC', params.modelId);
     
+    let parsedDisplayPropertyNames: string[] = [];
+    if (modelRow.displayPropertyNames && typeof modelRow.displayPropertyNames === 'string') {
+        try {
+            const tempParsed = JSON.parse(modelRow.displayPropertyNames);
+            if (Array.isArray(tempParsed)) {
+                parsedDisplayPropertyNames = tempParsed.filter(name => typeof name === 'string');
+            }
+        } catch (parseError) {
+            console.warn(`Could not parse displayPropertyNames for model ${modelRow.id}: '${modelRow.displayPropertyNames}'`, parseError);
+            // Keep parsedDisplayPropertyNames as []
+        }
+    }
+    
     const model: Model = {
       id: modelRow.id,
       name: modelRow.name,
       description: modelRow.description,
-      displayPropertyNames: modelRow.displayPropertyNames ? JSON.parse(modelRow.displayPropertyNames) : [],
+      displayPropertyNames: parsedDisplayPropertyNames,
       properties: properties.map(p => ({
         ...p,
         required: p.required === 1,
@@ -95,11 +108,23 @@ export async function PUT(request: Request, { params }: Params) {
     const refreshedModelRow = await db.get('SELECT * FROM models WHERE id = ?', params.modelId);
     const refreshedProperties = await db.all('SELECT * FROM properties WHERE model_id = ? ORDER BY orderIndex ASC', params.modelId);
 
+    let refreshedParsedDpn: string[] = [];
+    if (refreshedModelRow.displayPropertyNames && typeof refreshedModelRow.displayPropertyNames === 'string') {
+        try {
+            const temp = JSON.parse(refreshedModelRow.displayPropertyNames);
+            if (Array.isArray(temp)) {
+                refreshedParsedDpn = temp.filter(name => typeof name === 'string');
+            }
+        } catch (e) {
+            console.warn(`Invalid JSON for displayPropertyNames for model ${refreshedModelRow.id} after update: ${refreshedModelRow.displayPropertyNames}`);
+        }
+    }
+
     const returnedModel: Model = {
       id: refreshedModelRow.id,
       name: refreshedModelRow.name,
       description: refreshedModelRow.description,
-      displayPropertyNames: refreshedModelRow.displayPropertyNames ? JSON.parse(refreshedModelRow.displayPropertyNames) : [],
+      displayPropertyNames: refreshedParsedDpn,
       properties: refreshedProperties.map(p => ({
         ...p,
         required: p.required === 1,

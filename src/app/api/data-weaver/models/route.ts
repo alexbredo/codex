@@ -12,11 +12,25 @@ export async function GET() {
     const modelsWithProperties: Model[] = [];
     for (const modelRow of rows) {
       const properties = await db.all('SELECT * FROM properties WHERE model_id = ? ORDER BY orderIndex ASC', modelRow.id);
+      
+      let parsedDisplayPropertyNames: string[] = [];
+      if (modelRow.displayPropertyNames && typeof modelRow.displayPropertyNames === 'string') {
+          try {
+              const tempParsed = JSON.parse(modelRow.displayPropertyNames);
+              if (Array.isArray(tempParsed)) {
+                  parsedDisplayPropertyNames = tempParsed.filter(name => typeof name === 'string');
+              }
+          } catch (parseError) {
+              console.warn(`Could not parse displayPropertyNames for model ${modelRow.id}: '${modelRow.displayPropertyNames}'`, parseError);
+              // Keep parsedDisplayPropertyNames as []
+          }
+      }
+
       modelsWithProperties.push({
         id: modelRow.id,
         name: modelRow.name,
         description: modelRow.description,
-        displayPropertyNames: modelRow.displayPropertyNames ? JSON.parse(modelRow.displayPropertyNames) : [],
+        displayPropertyNames: parsedDisplayPropertyNames,
         properties: properties.map(p => ({
             ...p,
             required: p.required === 1,
