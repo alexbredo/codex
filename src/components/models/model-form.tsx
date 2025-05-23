@@ -248,11 +248,11 @@ function PropertyFields({
                               max="10"
                               placeholder="e.g., 2"
                               {...field}
-                              value={field.value ?? 2} // Default to 2 in UI if undefined
+                              value={field.value ?? 2} 
                               onChange={e => {
                                 const valStr = e.target.value;
                                 if (valStr === "") {
-                                  field.onChange(undefined); // Use undefined if empty for proper default handling
+                                  field.onChange(undefined); 
                                 } else {
                                   const num = parseInt(valStr, 10);
                                   field.onChange(isNaN(num) ? undefined : num);
@@ -342,7 +342,7 @@ function PropertyFields({
             required: false,
             relationshipType: 'one',
             unit: undefined,
-            precision: undefined, // Will be defaulted by logic if type becomes number
+            precision: undefined, 
             autoSetOnCreate: false,
             autoSetOnUpdate: false,
         } as PropertyFormValues)}
@@ -360,7 +360,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
   const fieldArray = useFieldArray({
     control: form.control,
     name: 'properties',
-    keyName: "fieldId" // Ensures unique key for each item
+    keyName: "fieldId" 
   });
 
   const modelsForRelations = models.filter(m => !existingModel || m.id !== existingModel.id);
@@ -371,13 +371,13 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
 
   const displayPropertyOptions: MultiSelectOption[] = useMemo(() => {
     return (currentProperties || [])
-      .filter(p => p.name && (p.type === 'string' || p.type === 'number' || p.type === 'date')) // Ensure p.name is truthy
-      .map(p => ({ value: p.name!, label: p.name! })); // Add non-null assertion if confident name is always there
+      .filter(p => p.name && (p.type === 'string' || p.type === 'number' || p.type === 'date')) 
+      .map(p => ({ value: p.name!, label: p.name! })); 
   }, [currentProperties]);
 
   const selectedValuesForAutocomplete = useMemo(() => {
     if (!watchedDisplayPropertyNames || watchedDisplayPropertyNames.length === 0) {
-      return [INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE]; // Should be an array
+      return [INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE]; 
     }
     return watchedDisplayPropertyNames;
   }, [watchedDisplayPropertyNames]);
@@ -400,7 +400,6 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
         finalProp.unit = undefined;
         finalProp.precision = undefined;
       } else {
-        // Ensure precision is a number or undefined. Default to 2 if undefined.
         finalProp.precision = (prop.precision === undefined || prop.precision === null || isNaN(Number(prop.precision))) ? 2 : Number(prop.precision);
       }
       if (prop.type !== 'date') {
@@ -456,18 +455,16 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                   <FormLabel>Display Properties (Optional)</FormLabel>
                   <MultiSelectAutocomplete
                     options={[{value: INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE, label: "-- Default (Name/Title/ID) --"}, ...displayPropertyOptions]}
-                    selected={selectedValuesForAutocomplete} // This is already an array
+                    selected={selectedValuesForAutocomplete} 
                     onChange={(selectedOptsFromAutocomplete) => {
                         const isDefaultSelected = selectedOptsFromAutocomplete.includes(INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
                         const actualPropertiesSelected = selectedOptsFromAutocomplete.filter(v => v !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
 
                         if (isDefaultSelected && actualPropertiesSelected.length > 0) {
-                             // If default is selected along with others, ignore default
                             field.onChange(actualPropertiesSelected);
                         } else if (isDefaultSelected && actualPropertiesSelected.length === 0) {
-                            // Only default is selected, means reset to system default (empty array -> undefined behavior)
                             field.onChange([]); 
-                        } else { // No default, or only actual properties selected
+                        } else { 
                             field.onChange(actualPropertiesSelected);
                         }
                     }}
@@ -487,7 +484,18 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
         <Separator />
 
         <div>
-          <h3 className="text-lg font-medium mb-4">Properties</h3>
+          <h3 className="text-lg font-medium mb-2">Properties</h3>
+           {/* Display array-level validation errors for 'properties' field */}
+          <FormField
+            control={form.control}
+            name="properties"
+            render={() => (
+              <FormItem>
+                {/* No FormLabel or FormControl needed here if it's just for the message */}
+                <FormMessage className="mb-2" />
+              </FormItem>
+            )}
+          />
           <PropertyFields form={form} fieldArray={fieldArray} modelsForRelations={modelsForRelations} />
         </div>
 
@@ -503,6 +511,3 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     </Form>
   );
 }
-
-    
-  
