@@ -37,7 +37,7 @@ export default function ObjectForm({
                 {model.properties.map((property) => (
                 <AdaptiveFormField
                     key={property.id}
-                    control={form.control}
+                    form={form} // Pass the full form object
                     property={property}
                     formContext={formContext}
                     modelId={model.id}
@@ -58,3 +58,4 @@ export default function ObjectForm({
     </Form>
   );
 }
+
