@@ -101,7 +101,23 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
       case 'markdown':
         return <Textarea placeholder={`Enter ${property.name} (Markdown supported)`} {...controllerField} value={controllerField.value ?? ''} rows={10} />;
       case 'image':
-        return <Input type="url" placeholder={`Enter Image URL for ${property.name}`} {...controllerField} value={controllerField.value ?? ''} />;
+        // Store the original onChange to use for other props if needed
+        const { onChange: onFileChange, ...restFileField } = controllerField;
+        return (
+          <Input
+            type="file"
+            accept="image/*"
+            onChange={(e) => {
+              if (e.target.files && e.target.files.length > 0) {
+                onFileChange(e.target.files[0].name); // Store filename
+              } else {
+                onFileChange(''); // Clear if no file selected
+              }
+            }}
+            {...restFileField} // Spread other props like name, ref, onBlur
+            // value will be managed by react-hook-form based on the filename string
+          />
+        );
       case 'number':
         return <Input type="number" placeholder={`Enter ${property.name}`} {...controllerField}  value={controllerField.value ?? ''} onChange={e => controllerField.onChange(parseFloat(e.target.value) || null)} />;
       case 'boolean':
@@ -225,9 +241,9 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
     case 'rating':
       defaultValue = 0; 
       break;
-    case 'image': // Image URL default
+    case 'image': 
     default:
-      defaultValue = '';
+      defaultValue = ''; // For image (filename) and string types
   }
 
 
