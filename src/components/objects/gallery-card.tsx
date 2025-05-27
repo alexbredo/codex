@@ -10,6 +10,17 @@ import Image from 'next/image';
 import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { StarDisplay } from '@/components/ui/star-display';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface GalleryCardProps {
   obj: DataObject;
@@ -139,4 +150,3 @@ export default function GalleryCard({
     </Card>
   );
 }
-
