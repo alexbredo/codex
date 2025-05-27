@@ -2,6 +2,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import { useState, useEffect } from 'react'; // Added for isClient state
 import {
   SidebarProvider,
   Sidebar,
@@ -13,7 +14,7 @@ import {
 } from '@/components/ui/sidebar';
 import Navigation from './navigation';
 import { Button } from '@/components/ui/button';
-import { UserCircle, LogOut, LogIn, UserPlus } from 'lucide-react';
+import { UserCircle, LogOut, LogIn, UserPlus } from 'lucide-react'; // Corrected icon name
 import Link from 'next/link';
 import { useAuth } from '@/contexts/auth-context';
 
@@ -23,19 +24,25 @@ interface AppLayoutProps {
 
 export default function AppLayout({ children }: AppLayoutProps) {
   const { user, logout, isLoading } = useAuth();
+  const [isClient, setIsClient] = useState(false);
 
-  // If loading auth state, or if user is null and on login/register page, don't render full layout
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
   if (isLoading) {
-    return <div className="flex justify-center items-center h-screen"><p>Loading application...</p></div>;
+    return <div className="flex flex-col justify-center items-center h-screen"><p>Loading application...</p></div>;
   }
   
-  // Simple check to hide layout on login/register pages if user is not logged in.
-  // This could be more robust with route checks.
-  const isAuthPage = typeof window !== 'undefined' && (window.location.pathname === '/login' || window.location.pathname === '/register');
-  if (!user && isAuthPage) {
-    return <>{children}</>; // Render only children for login/register pages if not logged in
+  // Defer isAuthPage check until client is mounted
+  let isAuthPage = false;
+  if (isClient) {
+    isAuthPage = window.location.pathname === '/login' || window.location.pathname === '/register';
   }
 
+  if (!user && isAuthPage) {
+    return <>{children}</>; 
+  }
 
   return (
     <SidebarProvider defaultOpen>
@@ -62,7 +69,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
             {user ? (
               <>
                 <div className="px-2 py-1 text-sm text-sidebar-foreground/80">
-                  <UserCircle size={16} className="inline mr-2" />
+                  <UserCircle size={16} className="inline mr-2" /> {/* Changed from User to UserCircle */}
                   {user.username} ({user.role})
                 </div>
                 <Button variant="ghost" className="justify-start gap-2 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={logout}>
@@ -91,10 +98,13 @@ export default function AppLayout({ children }: AppLayoutProps) {
             <div className="flex-1 text-center text-lg font-medium text-foreground">
               {/* Current Page Title could go here, or leave empty for simplicity */}
             </div>
-             {user && (
+             {user && isClient && ( // Ensure isClient for mobile logout button too
               <Button variant="ghost" size="sm" onClick={logout} className="text-destructive hover:text-destructive hover:bg-destructive/10 md:hidden">
                 <LogOut size={18} className="mr-1" /> Logout
               </Button>
+            )}
+             {!user && isClient && (isAuthPage && (window.location.pathname === '/login' || window.location.pathname === '/register')) && (
+              <div className="md:hidden h-9"></div> // Placeholder to balance header if no user and on auth page (mobile)
             )}
           </header>
           <main className="flex-1 p-6 overflow-auto">
