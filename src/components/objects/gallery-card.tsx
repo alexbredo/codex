@@ -29,7 +29,7 @@ interface GalleryCardProps {
   allObjects: Record<string, DataObject[]>;
   onView: (obj: DataObject) => void;
   onEdit: (obj: DataObject) => void;
-  onDelete: (objId: string) => void; 
+  onDelete: (objId: string) => void;
 }
 
 export default function GalleryCard({
@@ -51,11 +51,11 @@ export default function GalleryCard({
   // Fallback: find string properties with names like 'image', 'picture', 'photo', 'url'
   if (!imageUrl) {
     const fallbackImageProp = model.properties.find(
-      (p) => (p.name.toLowerCase().includes('image') || 
-              p.name.toLowerCase().includes('picture') ||  
-              p.name.toLowerCase().includes('photo') || 
-              p.name.toLowerCase().includes('url')) && 
-              p.type === 'string' && 
+      (p) => (p.name.toLowerCase().includes('image') ||
+              p.name.toLowerCase().includes('picture') ||
+              p.name.toLowerCase().includes('photo') ||
+              p.name.toLowerCase().includes('url')) &&
+              p.type === 'string' &&
               obj[p.name]
     );
     if (fallbackImageProp && obj[fallbackImageProp.name]) {
@@ -64,7 +64,7 @@ export default function GalleryCard({
       imageProp = fallbackImageProp; // For excluding from displayProperties
     }
   }
-  
+
   // If still no image, use placeholder
   if (!imageUrl) {
     imageUrl = `https://placehold.co/600x400.png`;
@@ -73,9 +73,9 @@ export default function GalleryCard({
 
 
   const displayProperties = model.properties
-    .filter(p => p.name !== imageProp?.name && model.displayPropertyNames?.includes(p.name) === false) 
+    .filter(p => p.name !== imageProp?.name && model.displayPropertyNames?.includes(p.name) === false)
     .sort((a,b) => a.orderIndex - b.orderIndex)
-    .slice(0, 2); 
+    .slice(0, 2);
 
   const displayPropertyValue = (property: Property, value: any) => {
      if (value === null || typeof value === 'undefined' || (Array.isArray(value) && value.length === 0) || String(value).trim() === '') {
@@ -109,7 +109,7 @@ export default function GalleryCard({
       case 'rating':
         return <StarDisplay rating={value as number} size="sm"/>;
       case 'relationship':
-        return <Badge variant="outline" className="text-xs">Relationship</Badge>; 
+        return <Badge variant="outline" className="text-xs">Relationship</Badge>;
       default:
         const strValue = String(value);
         return <span className="text-xs truncate" title={strValue}>{strValue.length > 30 ? strValue.substring(0, 27) + '...' : strValue}</span>;
@@ -124,10 +124,10 @@ export default function GalleryCard({
             src={imageUrl}
             alt={imageAltText}
             layout="fill"
-            objectFit="cover" 
+            objectFit="cover"
             data-ai-hint={model.name.toLowerCase()}
             onError={(e) => {
-              (e.target as HTMLImageElement).src = `https://placehold.co/600x400.png`; 
+              (e.target as HTMLImageElement).src = `https://placehold.co/600x400.png`;
               (e.target as HTMLImageElement).dataset.aiHint = 'placeholder image';
             }}
           />
@@ -146,7 +146,7 @@ export default function GalleryCard({
         <Button variant="ghost" size="icon" onClick={() => onView(obj)} title="View Details">
           <Eye className="h-4 w-4" />
         </Button>
-        <Button variant="ghost" size="icon" onClick={() => handleEdit(obj)} title="Edit Object">
+        <Button variant="ghost" size="icon" onClick={() => onEdit(obj)} title="Edit Object">
           <Edit className="h-4 w-4" />
         </Button>
         <AlertDialog>
