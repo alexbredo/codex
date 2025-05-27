@@ -6,6 +6,14 @@ import { createContext, useContext, useState, useEffect, useCallback } from 'rea
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 
+// DEBUG MODE FLAG
+const DEBUG_MODE = true; // <<< SET TO true TO BYPASS LOGIN FOR DEVELOPMENT
+const MOCK_ADMIN_USER: User = {
+  id: 'debug-admin-user',
+  username: 'DebugAdmin',
+  role: 'administrator',
+};
+
 interface User {
   id: string;
   username: string;
@@ -24,9 +32,11 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 async function fetchCurrentUser(): Promise<User | null> {
+  if (DEBUG_MODE) {
+    return Promise.resolve(MOCK_ADMIN_USER);
+  }
   const response = await fetch('/api/auth/me');
   if (!response.ok) {
-    // Don't throw error for 401 or similar, just return null
     if (response.status === 401 || response.status === 403) return null;
     throw new Error('Failed to fetch current user');
   }
@@ -51,7 +61,6 @@ const formatApiError = async (response: Response, defaultMessage: string): Promi
          errorMessage = `${defaultMessage}. Status: ${response.status} - Server did not provide detailed error.`;
       }
     } catch (e) {
-      // Non-JSON response or other parsing error
       errorMessage = `${defaultMessage}. Status: ${response.status} - ${response.statusText || 'Server did not provide detailed error.'}`;
     }
     return errorMessage;
@@ -65,11 +74,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const { data: user, isLoading, refetch } = useQuery<User | null>({
     queryKey: ['currentUser'],
     queryFn: fetchCurrentUser,
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    retry: false, // Don't retry on error, as it might be an auth issue
+    staleTime: DEBUG_MODE ? Infinity : 5 * 60 * 1000,
+    retry: DEBUG_MODE ? false : undefined,
+    enabled: !DEBUG_MODE, // Only run query if not in debug mode initially
+    initialData: DEBUG_MODE ? MOCK_ADMIN_USER : undefined,
   });
+  
+  const finalUser = DEBUG_MODE ? MOCK_ADMIN_USER : user;
+  const finalIsLoading = DEBUG_MODE ? false : isLoading;
+
 
   const login = useCallback(async (credentials: Record<string, string>) => {
+    if (DEBUG_MODE) {
+      console.warn("DEBUG_MODE: Login skipped.");
+      queryClient.setQueryData(['currentUser'], MOCK_ADMIN_USER);
+      refetch();
+      return MOCK_ADMIN_USER;
+    }
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
@@ -82,29 +103,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       const loggedInUser = await response.json();
       await queryClient.invalidateQueries({ queryKey: ['currentUser'] });
-      await refetch(); // Await the refetch to complete
+      await refetch();
       return loggedInUser as User;
     } catch (error) {
       console.error("Login error in context:", error);
-      throw error; // Re-throw to be caught by UI
+      throw error;
     }
   }, [queryClient, refetch]);
 
   const logout = useCallback(async () => {
+    if (DEBUG_MODE) {
+      console.warn("DEBUG_MODE: Logout skipped, user remains mock admin.");
+      // In a real debug logout, you might want to set user to null
+      // but for this request, bypassing login means always being admin.
+      return;
+    }
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
     } catch (error: any) {
         console.error("Logout error in context:", error);
-        // Should still proceed to clear client state
     } finally {
-        await queryClient.setQueryData(['currentUser'], null); // Optimistically update
+        await queryClient.setQueryData(['currentUser'], null);
         await queryClient.invalidateQueries({ queryKey: ['currentUser'] });
-        await refetch(); // Ensure context state is updated before navigating
-        router.push('/login'); // Redirect to login after logout
+        await refetch();
+        router.push('/login');
     }
   }, [queryClient, router, refetch]);
 
   const register = useCallback(async (credentials: Record<string, string>) => {
+     if (DEBUG_MODE) {
+      console.warn("DEBUG_MODE: Registration skipped.");
+      return MOCK_ADMIN_USER; // Or null, depending on desired debug behavior
+    }
     try {
       const response = await fetch('/api/auth/register', {
         method: 'POST',
@@ -119,16 +149,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return newUser as User;
     } catch (error) {
       console.error("Registration error in context:", error);
-      throw error; // Re-throw
+      throw error;
     }
   }, []);
 
   const refetchUser = useCallback(() => {
+    if (DEBUG_MODE) {
+      console.warn("DEBUG_MODE: refetchUser called, providing mock admin.");
+      queryClient.setQueryData(['currentUser'], MOCK_ADMIN_USER);
+      return;
+    }
     refetch();
-  }, [refetch]);
+  }, [refetch, queryClient]);
 
   return (
-    <AuthContext.Provider value={{ user: user || null, isLoading, login, logout, register, refetchUser }}>
+    <AuthContext.Provider value={{ user: finalUser || null, isLoading: finalIsLoading, login, logout, register, refetchUser }}>
       {children}
     </AuthContext.Provider>
   );
@@ -142,7 +177,6 @@ export function useAuth(): AuthContextType {
   return context;
 }
 
-// Higher-Order Component for route protection
 export function withAuth<P extends object>(
   WrappedComponent: React.ComponentType<P>,
   allowedRoles?: Array<User['role']>
@@ -152,12 +186,19 @@ export function withAuth<P extends object>(
     const router = useRouter();
 
     useEffect(() => {
+      if (DEBUG_MODE) {
+        return; // Bypass all auth checks in debug mode
+      }
       if (!isLoading && !user) {
         router.replace('/login');
       } else if (!isLoading && user && allowedRoles && !allowedRoles.includes(user.role)) {
-        router.replace('/'); // Or a dedicated unauthorized page
+        router.replace('/');
       }
     }, [user, isLoading, router, allowedRoles]);
+
+    if (DEBUG_MODE) {
+      return <WrappedComponent {...props} />;
+    }
 
     if (isLoading || (!user && (!allowedRoles || allowedRoles.length > 0)) || (user && allowedRoles && !allowedRoles.includes(user.role))) {
       return (

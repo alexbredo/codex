@@ -2,13 +2,27 @@
 import { cookies } from 'next/headers';
 import { getDb } from '@/lib/db';
 
+// DEBUG MODE FLAG - Should match the one in auth-context.tsx for consistency during dev
+const DEBUG_MODE = true; // <<< SET TO true TO BYPASS API AUTH FOR DEVELOPMENT
+
 interface UserSession {
   id: string;
   username: string;
   role: 'user' | 'administrator';
 }
 
+const MOCK_API_ADMIN_USER: UserSession = {
+  id: 'debug-api-admin-user',
+  username: 'DebugApiAdmin',
+  role: 'administrator',
+};
+
 export async function getCurrentUserFromCookie(): Promise<UserSession | null> {
+  if (DEBUG_MODE) {
+    console.warn("DEBUG_MODE (API): getCurrentUserFromCookie returning mock admin.");
+    return MOCK_API_ADMIN_USER;
+  }
+
   const cookieStore = cookies();
   const sessionId = cookieStore.get('codex_structure_session')?.value;
 
@@ -18,16 +32,14 @@ export async function getCurrentUserFromCookie(): Promise<UserSession | null> {
 
   try {
     const db = await getDb();
-    // Ensure you select all necessary fields for UserSession
     const user = await db.get('SELECT id, username, role FROM users WHERE id = ?', sessionId);
     
     if (!user) {
       return null;
     }
-    // Ensure the role is one of the expected values
     if (user.role !== 'user' && user.role !== 'administrator') {
         console.warn(`User ${user.id} has an invalid role: ${user.role}. Defaulting to 'user'.`);
-        user.role = 'user'; // Or handle as an error
+        user.role = 'user';
     }
 
     return user as UserSession;
