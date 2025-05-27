@@ -7,13 +7,14 @@ import { useData } from '@/contexts/data-context';
 import type { Model, DataObject, Property } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Edit, Loader2, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Edit, Loader2, ExternalLink, ImageIcon } from 'lucide-react';
 import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
 import Link from 'next/link';
 import { getObjectDisplayValue } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import ReactMarkdown from 'react-markdown';
-import { StarDisplay } from '@/components/ui/star-display'; // Import StarDisplay
+import { StarDisplay } from '@/components/ui/star-display';
+import Image from 'next/image';
 
 export default function ViewObjectPage() {
   const router = useRouter();
@@ -52,7 +53,7 @@ export default function ViewObjectPage() {
   const displayFieldValue = (property: Property, value: any) => {
     if (value === null || typeof value === 'undefined' || (Array.isArray(value) && value.length === 0)) {
       if (property.type === 'rating') {
-        return <StarDisplay rating={0} size="md"/>; // Show "Not rated"
+        return <StarDisplay rating={0} size="md"/>; 
       }
       return <span className="text-muted-foreground italic">Not set</span>;
     }
@@ -77,6 +78,17 @@ export default function ViewObjectPage() {
         return (
           <div className="prose prose-sm dark:prose-invert max-w-none bg-muted p-3 rounded-md">
             <ReactMarkdown>{String(value)}</ReactMarkdown>
+          </div>
+        );
+      case 'image':
+        const imageUrl = String(value);
+        if (!imageUrl) return <span className="text-muted-foreground italic">No image URL</span>;
+        return (
+          <div className="relative w-full max-w-md aspect-video rounded-md overflow-hidden border">
+            <Image src={imageUrl} alt={`${property.name} for ${getObjectDisplayValue(viewingObject, currentModel, allModels, allDbObjects)}`} layout="fill" objectFit="contain" />
+             <a href={imageUrl} target="_blank" rel="noopener noreferrer" className="absolute bottom-2 right-2 bg-background/70 p-1 rounded-sm hover:bg-background">
+              <ExternalLink className="h-4 w-4 text-muted-foreground" />
+            </a>
           </div>
         );
       case 'rating':
@@ -122,7 +134,6 @@ export default function ViewObjectPage() {
         }
       default:
         const strValue = String(value);
-        // For general string fields, allow pre-wrap for better readability if it's long
         return <pre className="whitespace-pre-wrap text-sm">{strValue}</pre>;
     }
   };

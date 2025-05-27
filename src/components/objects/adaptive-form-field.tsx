@@ -31,7 +31,7 @@ import { cn, getObjectDisplayValue } from '@/lib/utils';
 import { format } from 'date-fns';
 import { MultiSelectAutocomplete, type MultiSelectOption } from '@/components/ui/multi-select-autocomplete';
 import { useMemo } from 'react';
-import { StarRatingInput } from '@/components/ui/star-rating-input'; // Import StarRatingInput
+import { StarRatingInput } from '@/components/ui/star-rating-input'; 
 
 interface AdaptiveFormFieldProps<TFieldValues extends FieldValues = FieldValues> {
   control: Control<TFieldValues>;
@@ -88,7 +88,6 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
       fieldIsDisabled = true;
     }
      if (property.type === 'date' && formContext === 'create' && property.autoSetOnCreate){
-        // This field is hidden by the check above, but if it were to render, it would be disabled.
         fieldIsDisabled = true; 
     }
 
@@ -101,6 +100,8 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
         return <Input placeholder={`Enter ${property.name}`} {...controllerField} value={controllerField.value ?? ''} />;
       case 'markdown':
         return <Textarea placeholder={`Enter ${property.name} (Markdown supported)`} {...controllerField} value={controllerField.value ?? ''} rows={10} />;
+      case 'image':
+        return <Input type="url" placeholder={`Enter Image URL for ${property.name}`} {...controllerField} value={controllerField.value ?? ''} />;
       case 'number':
         return <Input type="number" placeholder={`Enter ${property.name}`} {...controllerField}  value={controllerField.value ?? ''} onChange={e => controllerField.onChange(parseFloat(e.target.value) || null)} />;
       case 'boolean':
@@ -202,7 +203,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
           <StarRatingInput
             value={controllerField.value ?? 0}
             onChange={controllerField.onChange}
-            disabled={fieldIsDisabled} // Though rating fields typically aren't auto-set
+            disabled={fieldIsDisabled} 
           />
         );
       default:
@@ -222,8 +223,9 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
       defaultValue = null;
       break;
     case 'rating':
-      defaultValue = 0; // 0 for not rated
+      defaultValue = 0; 
       break;
+    case 'image': // Image URL default
     default:
       defaultValue = '';
   }

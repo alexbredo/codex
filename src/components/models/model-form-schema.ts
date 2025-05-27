@@ -1,7 +1,7 @@
 
 import { z } from 'zod';
 
-export const propertyTypes = ['string', 'number', 'boolean', 'date', 'relationship', 'markdown', 'rating'] as const;
+export const propertyTypes = ['string', 'number', 'boolean', 'date', 'relationship', 'markdown', 'rating', 'image'] as const;
 export const relationshipTypes = ['one', 'many'] as const;
 
 export const propertyFormSchema = z.object({
@@ -66,30 +66,24 @@ export const propertyFormSchema = z.object({
   message: "Unique constraint can only be set for string type properties.",
   path: ["isUnique"],
 })
-// Refinements for 'rating' type - cannot have unit, precision, relatedModelId, relationshipType, autoSet, isUnique
-.refine(data => data.type === 'rating' ? (data.unit === undefined || data.unit === '') : true, {
-    message: "Unit cannot be set for rating type properties.",
-    path: ["unit"],
+// Refinements for 'rating', 'markdown', or 'image' types - cannot have certain fields
+.refine(data => ['rating', 'markdown', 'image'].includes(data.type) ? (data.unit === undefined || data.unit === '') : true, {
+    message: "Unit cannot be set for this property type.", path: ["unit"],
 })
-.refine(data => data.type === 'rating' ? data.precision === undefined : true, {
-    message: "Precision cannot be set for rating type properties.",
-    path: ["precision"],
+.refine(data => ['rating', 'markdown', 'image'].includes(data.type) ? data.precision === undefined : true, {
+    message: "Precision cannot be set for this property type.", path: ["precision"],
 })
-.refine(data => data.type === 'rating' ? data.relatedModelId === undefined : true, {
-    message: "Related Model ID cannot be set for rating type properties.",
-    path: ["relatedModelId"],
+.refine(data => ['rating', 'markdown', 'image'].includes(data.type) ? data.relatedModelId === undefined : true, {
+    message: "Related Model ID cannot be set for this property type.", path: ["relatedModelId"],
 })
-.refine(data => data.type === 'rating' ? data.relationshipType === undefined || data.relationshipType === 'one' : true, { // 'one' is default, should be cleared
-    message: "Relationship Type cannot be set for rating type properties.",
-    path: ["relationshipType"],
+.refine(data => ['rating', 'markdown', 'image'].includes(data.type) ? data.relationshipType === undefined || data.relationshipType === 'one' : true, {
+    message: "Relationship Type cannot be set for this property type.", path: ["relationshipType"],
 })
-.refine(data => data.type === 'rating' ? (!data.autoSetOnCreate && !data.autoSetOnUpdate) : true, {
-    message: "Auto-set options are not available for rating type properties.",
-    path: ["autoSetOnCreate"], // Could target 'type' as well.
+.refine(data => ['rating', 'markdown', 'image'].includes(data.type) ? (!data.autoSetOnCreate && !data.autoSetOnUpdate) : true, {
+    message: "Auto-set options are not available for this property type.", path: ["autoSetOnCreate"],
 })
-.refine(data => data.type === 'rating' ? !data.isUnique : true, {
-    message: "Unique constraint cannot be set for rating type properties.",
-    path: ["isUnique"],
+.refine(data => ['rating', 'markdown', 'image'].includes(data.type) ? !data.isUnique : true, {
+    message: "Unique constraint cannot be set for this property type.", path: ["isUnique"],
 });
 
 

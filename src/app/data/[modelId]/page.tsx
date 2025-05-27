@@ -26,7 +26,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { useData } from '@/contexts/data-context';
 import type { Model, DataObject, Property } from '@/lib/types';
-import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye, LayoutGrid, List as ListIcon } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye, LayoutGrid, List as ListIcon, ExternalLink, Image as ImageIcon } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -34,7 +34,7 @@ import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
 import Link from 'next/link';
 import { getObjectDisplayValue } from '@/lib/utils';
 import { StarDisplay } from '@/components/ui/star-display';
-import GalleryCard from '@/components/objects/gallery-card'; // New import
+import GalleryCard from '@/components/objects/gallery-card'; 
 
 const ITEMS_PER_PAGE = 10;
 type ViewMode = 'table' | 'gallery';
@@ -77,36 +77,6 @@ export default function DataObjectsPage() {
 
   const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects, isReady]);
 
-  useEffect(() => {
-    if (isReady && modelId) {
-      const foundModel = getModelById(modelId);
-      if (foundModel) {
-        setCurrentModel(foundModel);
-        const modelObjects = getObjectsByModelId(modelId);
-        setObjects(modelObjects);
-
-        // Load view mode from sessionStorage
-        const savedViewMode = sessionStorage.getItem(`codexStructure-viewMode-${modelId}`) as ViewMode | null;
-        if (savedViewMode && (savedViewMode === 'table' || savedViewMode === 'gallery')) {
-          setViewMode(savedViewMode);
-        } else {
-          setViewMode('table'); // Default
-        }
-
-      } else {
-        toast({ variant: "destructive", title: "Error", description: "Model not found." });
-        router.push('/models');
-      }
-    }
-  }, [modelId, getModelById, getObjectsByModelId, isReady, toast, router]);
-
-  const handleViewModeChange = (newMode: ViewMode) => {
-    setViewMode(newMode);
-    if (modelId) {
-      sessionStorage.setItem(`codexStructure-viewMode-${modelId}`, newMode);
-    }
-  };
-
   const virtualIncomingRelationColumns = useMemo(() => {
     if (!currentModel || !isReady) return [];
     const columns: IncomingRelationColumn[] = [];
@@ -125,6 +95,36 @@ export default function DataObjectsPage() {
     });
     return columns;
   }, [currentModel, allModels, isReady]);
+
+  useEffect(() => {
+    if (isReady && modelId) {
+      const foundModel = getModelById(modelId);
+      if (foundModel) {
+        setCurrentModel(foundModel);
+        const modelObjects = getObjectsByModelId(modelId);
+        setObjects(modelObjects);
+
+        const savedViewMode = sessionStorage.getItem(`codexStructure-viewMode-${modelId}`) as ViewMode | null;
+        if (savedViewMode && (savedViewMode === 'table' || savedViewMode === 'gallery')) {
+          setViewMode(savedViewMode);
+        } else {
+          setViewMode('table'); 
+        }
+
+      } else {
+        toast({ variant: "destructive", title: "Error", description: "Model not found." });
+        router.push('/models');
+      }
+    }
+  }, [modelId, getModelById, getObjectsByModelId, isReady, toast, router]);
+
+  const handleViewModeChange = (newMode: ViewMode) => {
+    setViewMode(newMode);
+    if (modelId) {
+      sessionStorage.setItem(`codexStructure-viewMode-${modelId}`, newMode);
+    }
+  };
+
 
   const handleCreateNew = () => {
     if (!currentModel) return;
@@ -176,7 +176,7 @@ export default function DataObjectsPage() {
       searchableObjects = objects.filter(obj =>
         currentModel.properties.some(prop => {
           const value = obj[prop.name];
-          if ((prop.type === 'string' || prop.type === 'number' || prop.type === 'markdown') && value !== null && value !== undefined) {
+          if ((prop.type === 'string' || prop.type === 'number' || prop.type === 'markdown' || prop.type === 'image') && value !== null && value !== undefined) {
             return String(value).toLowerCase().includes(searchTerm.toLowerCase());
           }
           if (prop.type === 'relationship' && prop.relatedModelId) {
@@ -220,6 +220,7 @@ export default function DataObjectsPage() {
         switch (directPropertyToSort.type) {
           case 'string':
           case 'markdown':
+          case 'image':
             aValue = String(aValue ?? '').toLowerCase();
             bValue = String(bValue ?? '').toLowerCase();
             break;
@@ -294,6 +295,7 @@ export default function DataObjectsPage() {
         return <span className="text-muted-foreground">N/A ({property.unit})</span>;
       }
       if (property.type === 'markdown') return <Badge variant="outline">Markdown</Badge>;
+      if (property.type === 'image') return <Badge variant="outline">Image</Badge>;
       if (property.type === 'rating') return <StarDisplay rating={0} />;
       return <span className="text-muted-foreground">N/A</span>;
     }
@@ -320,6 +322,15 @@ export default function DataObjectsPage() {
         return `${parsedValue.toFixed(precision)}${unitText ? ` ${unitText}` : ''}`;
       case 'markdown':
         return <Badge variant="outline">Markdown</Badge>;
+      case 'image':
+        const imgUrl = String(value);
+        return (
+          <a href={imgUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center text-xs">
+            <ImageIcon className="h-3 w-3 mr-1" />
+            {imgUrl.length > 30 ? imgUrl.substring(0, 27) + '...' : imgUrl}
+            <ExternalLink className="h-3 w-3 ml-1 opacity-70" />
+          </a>
+        );
       case 'rating':
         return <StarDisplay rating={value as number} />;
       case 'relationship':
@@ -413,6 +424,7 @@ export default function DataObjectsPage() {
               cellValue = isNaN(parsedNum) ? String(value) : parsedNum.toFixed(precision);
               break;
             case 'markdown':
+            case 'image':
               cellValue = String(value);
               break;
             case 'rating':
@@ -659,7 +671,7 @@ export default function DataObjectsPage() {
             </TableBody>
           </Table>
         </Card>
-      ) : ( // Gallery View
+      ) : ( 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
           {paginatedObjects.map((obj) => (
             <GalleryCard
@@ -702,4 +714,3 @@ export default function DataObjectsPage() {
     </div>
   );
 }
-

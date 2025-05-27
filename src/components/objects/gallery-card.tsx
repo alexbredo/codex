@@ -29,7 +29,7 @@ interface GalleryCardProps {
   allObjects: Record<string, DataObject[]>;
   onView: (obj: DataObject) => void;
   onEdit: (obj: DataObject) => void;
-  onDelete: (objId: string) => void; // Pass only ID for delete confirmation
+  onDelete: (objId: string) => void; 
 }
 
 export default function GalleryCard({
@@ -43,17 +43,39 @@ export default function GalleryCard({
 }: GalleryCardProps) {
   const displayName = getObjectDisplayValue(obj, model, allModels, allObjects);
 
-  // Attempt to find an image URL property
-  const imageProp = model.properties.find(
-    (p) => (p.name.toLowerCase().includes('image') || p.name.toLowerCase().includes('picture') ||  p.name.toLowerCase().includes('photo') || p.name.toLowerCase().includes('url')) && p.type === 'string'
-  );
-  const imageUrl = imageProp && obj[imageProp.name] ? String(obj[imageProp.name]) : `https://placehold.co/600x400.png`;
-  const imageAltText = imageProp ? `${displayName} ${imageProp.name}` : `${displayName} placeholder image`;
+  // Find the first 'image' type property with a value
+  let imageProp = model.properties.find(p => p.type === 'image' && obj[p.name]);
+  let imageUrl = imageProp && obj[imageProp.name] ? String(obj[imageProp.name]) : null;
+  let imageAltText = imageProp ? `${displayName} ${imageProp.name}` : `${displayName} gallery image`;
+
+  // Fallback: find string properties with names like 'image', 'picture', 'photo', 'url'
+  if (!imageUrl) {
+    const fallbackImageProp = model.properties.find(
+      (p) => (p.name.toLowerCase().includes('image') || 
+              p.name.toLowerCase().includes('picture') ||  
+              p.name.toLowerCase().includes('photo') || 
+              p.name.toLowerCase().includes('url')) && 
+              p.type === 'string' && 
+              obj[p.name]
+    );
+    if (fallbackImageProp && obj[fallbackImageProp.name]) {
+      imageUrl = String(obj[fallbackImageProp.name]);
+      imageAltText = `${displayName} ${fallbackImageProp.name}`;
+      imageProp = fallbackImageProp; // For excluding from displayProperties
+    }
+  }
+  
+  // If still no image, use placeholder
+  if (!imageUrl) {
+    imageUrl = `https://placehold.co/600x400.png`;
+    imageAltText = `${displayName} placeholder image`;
+  }
+
 
   const displayProperties = model.properties
-    .filter(p => p.name !== imageProp?.name && model.displayPropertyNames?.includes(p.name) === false) // Exclude image and already displayed names
+    .filter(p => p.name !== imageProp?.name && model.displayPropertyNames?.includes(p.name) === false) 
     .sort((a,b) => a.orderIndex - b.orderIndex)
-    .slice(0, 2); // Show up to 2 additional properties
+    .slice(0, 2); 
 
   const displayPropertyValue = (property: Property, value: any) => {
      if (value === null || typeof value === 'undefined' || (Array.isArray(value) && value.length === 0) || String(value).trim() === '') {
@@ -82,10 +104,12 @@ export default function GalleryCard({
         return <span className="text-xs">{`${parsedValue.toFixed(precision)}${unitText ? ` ${unitText}` : ''}`}</span>;
       case 'markdown':
         return <Badge variant="outline" className="text-xs">Markdown Content</Badge>;
+      case 'image':
+        return <Badge variant="outline" className="text-xs">Image</Badge>;
       case 'rating':
         return <StarDisplay rating={value as number} size="sm"/>;
       case 'relationship':
-        return <Badge variant="outline" className="text-xs">Relationship</Badge>; // Simplified for card
+        return <Badge variant="outline" className="text-xs">Relationship</Badge>; 
       default:
         const strValue = String(value);
         return <span className="text-xs truncate" title={strValue}>{strValue.length > 30 ? strValue.substring(0, 27) + '...' : strValue}</span>;
@@ -100,10 +124,10 @@ export default function GalleryCard({
             src={imageUrl}
             alt={imageAltText}
             layout="fill"
-            objectFit="cover"
+            objectFit="cover" 
             data-ai-hint={model.name.toLowerCase()}
             onError={(e) => {
-              (e.target as HTMLImageElement).src = `https://placehold.co/600x400.png`; // Fallback placeholder
+              (e.target as HTMLImageElement).src = `https://placehold.co/600x400.png`; 
               (e.target as HTMLImageElement).dataset.aiHint = 'placeholder image';
             }}
           />

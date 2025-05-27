@@ -145,7 +145,9 @@ const PropertyAccordionContent = ({ form, index, currentPropertyType, modelsForR
                   <SelectContent>
                     {propertyTypes.map((type) => (
                       <SelectItem key={type} value={type}>
-                        {type === 'rating' ? 'Rating (1-5 Stars)' : type.charAt(0).toUpperCase() + type.slice(1)}
+                        {type === 'rating' ? 'Rating (1-5 Stars)' :
+                         type === 'image' ? 'Image URL' :
+                         type.charAt(0).toUpperCase() + type.slice(1)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -317,8 +319,8 @@ const PropertyAccordionContent = ({ form, index, currentPropertyType, modelsForR
                 )}
               />
           )}
-          { /* Fields not applicable to 'rating' or 'markdown' are hidden by conditional rendering based on currentPropertyType */ }
-          { currentPropertyType !== 'rating' && currentPropertyType !== 'markdown' && (
+          { /* Fields not applicable to 'rating', 'markdown', or 'image' are hidden by conditional rendering based on currentPropertyType */ }
+          { !['rating', 'markdown', 'image'].includes(currentPropertyType) && (
             <FormField
               control={form.control}
               name={`properties.${index}.required`}
@@ -340,7 +342,7 @@ const PropertyAccordionContent = ({ form, index, currentPropertyType, modelsForR
               )}
             />
           )}
-          { (currentPropertyType === 'rating' || currentPropertyType === 'markdown') && (
+          { ['rating', 'markdown', 'image'].includes(currentPropertyType) && (
              <FormField
                 control={form.control}
                 name={`properties.${index}.required`}
@@ -443,6 +445,8 @@ function PropertyFieldsWithDnd({
     const isString = propertyType === 'string';
     const isMarkdown = propertyType === 'markdown';
     const isRating = propertyType === 'rating';
+    const isImage = propertyType === 'image';
+
 
     form.setValue(`properties.${index}.relationshipType`, isRelationship ? (form.getValues(`properties.${index}.relationshipType`) || 'one') : undefined);
     form.setValue(`properties.${index}.relatedModelId`, isRelationship ? form.getValues(`properties.${index}.relatedModelId`) : undefined);
@@ -455,8 +459,8 @@ function PropertyFieldsWithDnd({
     
     form.setValue(`properties.${index}.isUnique`, isString ? form.getValues(`properties.${index}.isUnique`) : false);
 
-    // Reset fields not applicable to markdown or rating
-    if (isMarkdown || isRating) {
+    // Reset fields not applicable to markdown, rating, or image
+    if (isMarkdown || isRating || isImage) {
       form.setValue(`properties.${index}.unit`, undefined);
       form.setValue(`properties.${index}.precision`, undefined);
       form.setValue(`properties.${index}.relatedModelId`, undefined);
@@ -483,7 +487,7 @@ function PropertyFieldsWithDnd({
 
             return (
               <SortablePropertyItem key={fieldItem.id} id={fieldItem.id} className="bg-card rounded-md border">
-                 {(dndProps) => ( // Render prop pattern for SortablePropertyItem
+                 {(dndProps) => ( 
                     <AccordionItem value={fieldItem.id} className="border-0"> 
                         <AccordionTrigger className="p-4 hover:no-underline data-[state=open]:border-b">
                             <div className="flex justify-between items-center w-full">
@@ -492,6 +496,7 @@ function PropertyFieldsWithDnd({
                                 <GripVertical className="h-5 w-5" />
                                 </span>
                                 <span className="text-lg font-medium text-foreground truncate mr-2">{headerTitle}</span>
+                                {currentPropertyType && <span className="text-xs text-muted-foreground">({currentPropertyType})</span>}
                             </div>
                             <Button
                                 asChild
@@ -550,7 +555,7 @@ function PropertyFieldsWithDnd({
             autoSetOnCreate: false,
             autoSetOnUpdate: false,
             isUnique: false,
-            orderIndex: fields.length, // Will be updated on save
+            orderIndex: fields.length, 
         } as PropertyFormValues, {shouldFocus: false})}
         className="mt-4 w-full border-dashed hover:border-solid"
       >
@@ -592,7 +597,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
 
   const displayPropertyOptions: MultiSelectOption[] = useMemo(() => {
     return (currentProperties || [])
-      .filter(p => p.name && (p.type === 'string' || p.type === 'number' || p.type === 'date')) // Only string, number, date for display
+      .filter(p => p.name && (p.type === 'string' || p.type === 'number' || p.type === 'date')) 
       .map(p => ({ value: p.name!, label: p.name! })); 
   }, [currentProperties]);
 
@@ -607,15 +612,12 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
       name === INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE || displayPropertyOptions.some(opt => opt.value === name)
     );
 
-    // If only default is "selected" but it wasn't explicitly chosen, and no other actual properties are selected
     if (validSelectedValues.length === 0 && (currentDisplayNames.includes(INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE) || !currentDisplayNames.length )) {
         return [INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE];
     }
-    // If default is selected but actual properties are also selected, remove default
     if (validSelectedValues.length > 1 && validSelectedValues.includes(INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE)) {
         return validSelectedValues.filter(v => v !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
     }
-
 
     return validSelectedValues.length > 0 ? validSelectedValues : [INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE];
 
@@ -627,10 +629,9 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     
     if (processedValues.displayPropertyNames && processedValues.displayPropertyNames.includes(INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE)) {
         const filtered = processedValues.displayPropertyNames.filter(dpName => dpName !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
-        // Set to undefined if only default was selected or if it was empty
         processedValues.displayPropertyNames = filtered.length > 0 ? filtered : undefined;
     } else if (processedValues.displayPropertyNames && processedValues.displayPropertyNames.length === 0) {
-        processedValues.displayPropertyNames = undefined; // Explicitly undefined for empty array
+        processedValues.displayPropertyNames = undefined; 
     }
 
     if (!processedValues.namespace || processedValues.namespace.trim() === '' || processedValues.namespace === INTERNAL_DEFAULT_NAMESPACE_VALUE) {
@@ -641,24 +642,25 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
       const finalProp: PropertyFormValues = { ...prop };
       finalProp.orderIndex = index;
 
-      if (prop.type !== 'number') {
-        finalProp.unit = undefined;
-        finalProp.precision = undefined;
-      } else {
-        finalProp.precision = (prop.precision === undefined || prop.precision === null || isNaN(Number(prop.precision))) ? 2 : Number(prop.precision);
-      }
-      if (prop.type !== 'date') {
-        finalProp.autoSetOnCreate = false;
-        finalProp.autoSetOnUpdate = false;
-      }
-      if (prop.type !== 'string') {
-        finalProp.isUnique = false;
-      }
-       if (prop.type !== 'relationship') {
-        finalProp.relatedModelId = undefined;
-        finalProp.relationshipType = undefined;
-      }
-      if (prop.type === 'rating' || prop.type === 'markdown' || prop.type === 'boolean') { // Reset fields not applicable to rating, markdown, boolean
+      const isNumber = prop.type === 'number';
+      const isDate = prop.type === 'date';
+      const isString = prop.type === 'string';
+      const isRelationship = prop.type === 'relationship';
+      const isSpecialType = ['rating', 'markdown', 'image'].includes(prop.type);
+
+
+      finalProp.unit = isNumber ? prop.unit : undefined;
+      finalProp.precision = isNumber ? (prop.precision === undefined || prop.precision === null || isNaN(Number(prop.precision)) ? 2 : Number(prop.precision)) : undefined;
+      
+      finalProp.autoSetOnCreate = isDate ? !!prop.autoSetOnCreate : false;
+      finalProp.autoSetOnUpdate = isDate ? !!prop.autoSetOnUpdate : false;
+      
+      finalProp.isUnique = isString ? !!prop.isUnique : false;
+      
+      finalProp.relatedModelId = isRelationship ? prop.relatedModelId : undefined;
+      finalProp.relationshipType = isRelationship ? prop.relationshipType : undefined;
+      
+      if (isSpecialType) {
         finalProp.unit = undefined;
         finalProp.precision = undefined;
         finalProp.relatedModelId = undefined;
@@ -693,7 +695,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
           </CardHeader>
           <Accordion type="single" collapsible defaultValue="model-details-content" className="w-full">
             <AccordionItem value="model-details-content" className="border-0">
-              <UiCardContent className="p-6 pt-0 space-y-4"> {/* Use UiCardContent to avoid name clash */}
+              <UiCardContent className="p-6 pt-0 space-y-4"> 
                 <FormField
                   control={form.control}
                   name="name"
@@ -705,6 +707,15 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                       </FormControl>
                       <FormDescription>A unique name for your data model.</FormDescription>
                       <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                 <FormField
+                  control={form.control}
+                  name="properties" 
+                  render={() => ( 
+                    <FormItem>
+                      <FormMessage className="text-destructive mt-2" />
                     </FormItem>
                   )}
                 />
@@ -778,16 +789,6 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                         <FormMessage />
                         </FormItem>
                     )}
-                />
-                 {/* This FormField is for displaying array-level errors (e.g., "At least one property is required") */}
-                <FormField
-                  control={form.control}
-                  name="properties" 
-                  render={() => ( 
-                    <FormItem>
-                      <FormMessage className="text-destructive mt-2" />
-                    </FormItem>
-                  )}
                 />
               </UiCardContent>
             </AccordionItem>
