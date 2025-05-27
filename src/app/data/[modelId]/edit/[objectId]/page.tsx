@@ -49,7 +49,10 @@ export default function EditObjectPage() {
           foundModel.properties.forEach(prop => {
             formValues[prop.name] = objectToEdit[prop.name] ??
                                     (prop.relationshipType === 'many' ? [] :
-                                    prop.type === 'boolean' ? false : undefined);
+                                    prop.type === 'boolean' ? false :
+                                    prop.type === 'image' ? null : // For existing images, value is URL (string) or null
+                                    prop.type === 'rating' ? 0 :
+                                    undefined);
           });
           form.reset(formValues);
         } else {
@@ -70,13 +73,44 @@ export default function EditObjectPage() {
     const processedValues = { ...values };
     const currentDateISO = new Date().toISOString();
 
-    currentModel.properties.forEach(prop => {
-      if (prop.type === 'date' && prop.autoSetOnUpdate) {
-        processedValues[prop.name] = currentDateISO;
-      }
-    });
-
     try {
+      // Handle image uploads
+      for (const prop of currentModel.properties) {
+        if (prop.type === 'image' && processedValues[prop.name] instanceof File) {
+          const file = processedValues[prop.name] as File;
+          const formData = new FormData();
+          formData.append('file', file);
+
+          const uploadResponse = await fetch('/api/codex-structure/upload-image', {
+            method: 'POST',
+            body: formData,
+          });
+
+          if (!uploadResponse.ok) {
+            const errorData = await uploadResponse.json();
+            throw new Error(errorData.error || `Failed to upload image ${file.name}`);
+          }
+          const uploadResult = await uploadResponse.json();
+          processedValues[prop.name] = uploadResult.url; // Store the returned URL
+        } else if (prop.type === 'date' && prop.autoSetOnUpdate) {
+          processedValues[prop.name] = currentDateISO;
+        }
+      }
+
+      // Handle required validation for image fields (if it's not caught by Zod earlier)
+      for (const prop of currentModel.properties) {
+         if (prop.type === 'image' && prop.required && !processedValues[prop.name]) {
+             // Check if it's an existing object and had an image previously
+            const hadExistingImage = typeof editingObject[prop.name] === 'string' && editingObject[prop.name];
+            if (!hadExistingImage) { // Only enforce if there wasn't an image and new one is not provided
+                 form.setError(prop.name, { type: 'manual', message: `${prop.name} is required. Please select an image.` });
+                 toast({ variant: "destructive", title: "Validation Error", description: `${prop.name} is required.` });
+                 return; // Stop submission
+            }
+         }
+      }
+
+
       await updateObject(currentModel.id, editingObject.id, processedValues);
       toast({ title: `${currentModel.name} Updated`, description: `The ${currentModel.name.toLowerCase()} has been updated.` });
       router.push(`/data/${currentModel.id}`);

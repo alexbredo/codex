@@ -45,6 +45,8 @@ export default function CreateObjectPage() {
             defaultValues[prop.name] = prop.type === 'boolean' ? false :
                                      prop.type === 'date' ? null :
                                      prop.relationshipType === 'many' ? [] :
+                                     prop.type === 'image' ? null : // Default for image (File or URL)
+                                     prop.type === 'rating' ? 0 :
                                      undefined;
           }
         });
@@ -63,13 +65,40 @@ export default function CreateObjectPage() {
     const processedValues = { ...values };
     const currentDateISO = new Date().toISOString();
 
-    currentModel.properties.forEach(prop => {
-      if (prop.type === 'date' && prop.autoSetOnCreate) {
-        processedValues[prop.name] = currentDateISO; 
-      }
-    });
-
     try {
+      // Handle image uploads
+      for (const prop of currentModel.properties) {
+        if (prop.type === 'image' && processedValues[prop.name] instanceof File) {
+          const file = processedValues[prop.name] as File;
+          const formData = new FormData();
+          formData.append('file', file);
+
+          const uploadResponse = await fetch('/api/codex-structure/upload-image', {
+            method: 'POST',
+            body: formData,
+          });
+
+          if (!uploadResponse.ok) {
+            const errorData = await uploadResponse.json();
+            throw new Error(errorData.error || `Failed to upload image ${file.name}`);
+          }
+          const uploadResult = await uploadResponse.json();
+          processedValues[prop.name] = uploadResult.url; // Store the returned URL
+        } else if (prop.type === 'date' && prop.autoSetOnCreate) {
+          processedValues[prop.name] = currentDateISO;
+        }
+      }
+
+      // Handle required validation for image fields (if it's not caught by Zod earlier)
+      for (const prop of currentModel.properties) {
+        if (prop.type === 'image' && prop.required && !processedValues[prop.name]) {
+           form.setError(prop.name, { type: 'manual', message: `${prop.name} is required. Please select an image.` });
+           toast({ variant: "destructive", title: "Validation Error", description: `${prop.name} is required.` });
+           return; // Stop submission
+        }
+      }
+
+
       await addObject(currentModel.id, processedValues);
       toast({ title: `${currentModel.name} Created`, description: `A new ${currentModel.name.toLowerCase()} has been created.` });
       router.push(`/data/${currentModel.id}`);

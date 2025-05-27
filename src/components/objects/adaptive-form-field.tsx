@@ -30,8 +30,8 @@ import { Calendar } from '@/components/ui/calendar';
 import { cn, getObjectDisplayValue } from '@/lib/utils';
 import { format } from 'date-fns';
 import { MultiSelectAutocomplete, type MultiSelectOption } from '@/components/ui/multi-select-autocomplete';
-import { useMemo } from 'react';
-import { StarRatingInput } from '@/components/ui/star-rating-input'; 
+import { useMemo, useState } from 'react';
+import { StarRatingInput } from '@/components/ui/star-rating-input';
 
 interface AdaptiveFormFieldProps<TFieldValues extends FieldValues = FieldValues> {
   control: Control<TFieldValues>;
@@ -48,6 +48,8 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
 }: AdaptiveFormFieldProps<TFieldValues>) {
   const { models: allModels, getModelById, getObjectsByModelId, getAllObjects } = useData();
   const fieldName = property.name as FieldPath<TFieldValues>;
+  const [currentImagePreview, setCurrentImagePreview] = useState<string | null>(null);
+
 
   const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects, property.type, property.relatedModelId]);
 
@@ -62,7 +64,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
     if (relatedModel && property.relatedModelId) {
       const objects = getObjectsByModelId(property.relatedModelId);
       return objects.reduce((acc, obj) => {
-        const relatedM = allModels.find(m => m.id === property.relatedModelId); 
+        const relatedM = allModels.find(m => m.id === property.relatedModelId);
         const namespace = relatedM?.namespace || 'Default';
         if (!acc[namespace]) {
           acc[namespace] = [];
@@ -79,16 +81,23 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
 
 
   if (formContext === 'create' && property.type === 'date' && property.autoSetOnCreate) {
-    return null; 
+    return null;
   }
 
   const renderField = (controllerField: ControllerRenderProps<TFieldValues, FieldPath<TFieldValues>>) => {
     let fieldIsDisabled = false;
-    if (property.type === 'date' && formContext === 'edit' && (property.autoSetOnCreate || property.autoSetOnUpdate)) {
-      fieldIsDisabled = true;
+    if (property.type === 'date') {
+        if (formContext === 'edit' && (property.autoSetOnCreate || property.autoSetOnUpdate)) {
+            fieldIsDisabled = true;
+        }
+        if (formContext === 'create' && property.autoSetOnCreate){
+            fieldIsDisabled = true;
+        }
     }
-     if (property.type === 'date' && formContext === 'create' && property.autoSetOnCreate){
-        fieldIsDisabled = true; 
+
+    // Initialize preview for existing image URL on edit
+    if (property.type === 'image' && typeof controllerField.value === 'string' && controllerField.value && !currentImagePreview) {
+        setCurrentImagePreview(controllerField.value);
     }
 
 
@@ -101,22 +110,36 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
       case 'markdown':
         return <Textarea placeholder={`Enter ${property.name} (Markdown supported)`} {...controllerField} value={controllerField.value ?? ''} rows={10} />;
       case 'image':
-        // Store the original onChange to use for other props if needed
-        const { onChange: onFileChange, ...restFileField } = controllerField;
         return (
-          <Input
-            type="file"
-            accept="image/*"
-            onChange={(e) => {
-              if (e.target.files && e.target.files.length > 0) {
-                onFileChange(e.target.files[0].name); // Store filename
-              } else {
-                onFileChange(''); // Clear if no file selected
-              }
-            }}
-            {...restFileField} // Spread other props like name, ref, onBlur
-            // value will be managed by react-hook-form based on the filename string
-          />
+          <div className="space-y-2">
+            <Input
+              type="file"
+              accept="image/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                controllerField.onChange(file || null); // Pass File object or null
+                if (file) {
+                  const reader = new FileReader();
+                  reader.onloadend = () => {
+                    setCurrentImagePreview(reader.result as string);
+                  };
+                  reader.readAsDataURL(file);
+                } else {
+                  setCurrentImagePreview(null);
+                }
+              }}
+              // For file inputs, 'value' prop is not used to control them directly in React.
+              // We manage the selected file via react-hook-form's state.
+            />
+            {currentImagePreview && (
+              <div className="mt-2 relative w-32 h-32 border rounded overflow-hidden">
+                <img src={currentImagePreview} alt="Preview" className="object-cover w-full h-full" />
+              </div>
+            )}
+            {typeof controllerField.value === 'string' && controllerField.value && !currentImagePreview && (
+                 <div className="mt-2 text-xs text-muted-foreground">Current image URL: {controllerField.value}</div>
+            )}
+          </div>
         );
       case 'number':
         return <Input type="number" placeholder={`Enter ${property.name}`} {...controllerField}  value={controllerField.value ?? ''} onChange={e => controllerField.onChange(parseFloat(e.target.value) || null)} />;
@@ -128,12 +151,12 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
           try {
             dateButtonText = format(new Date(controllerField.value), "PPP");
           } catch (e) {
-            dateButtonText = "Invalid Date"; 
+            dateButtonText = "Invalid Date";
           }
         } else {
-          if (fieldIsDisabled) { 
+          if (fieldIsDisabled) {
             dateButtonText = "Auto-set by system";
-          } else { 
+          } else {
             dateButtonText = <span>Pick a date</span>;
           }
         }
@@ -177,14 +200,14 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
         if (property.relationshipType === 'many') {
           return (
             <MultiSelectAutocomplete
-              options={flatOptions} 
+              options={flatOptions}
               selected={controllerField.value || []}
               onChange={controllerField.onChange}
               placeholder={`Select ${relatedModel.name}(s)...`}
               emptyIndicator={`No ${relatedModel.name.toLowerCase()}s found.`}
             />
           );
-        } else { 
+        } else {
           const currentSelectValue = controllerField.value === "" || controllerField.value === null || typeof controllerField.value === 'undefined'
                                      ? INTERNAL_NONE_SELECT_VALUE
                                      : controllerField.value;
@@ -219,7 +242,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
           <StarRatingInput
             value={controllerField.value ?? 0}
             onChange={controllerField.onChange}
-            disabled={fieldIsDisabled} 
+            disabled={fieldIsDisabled}
           />
         );
       default:
@@ -239,11 +262,13 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
       defaultValue = null;
       break;
     case 'rating':
-      defaultValue = 0; 
+      defaultValue = 0;
       break;
-    case 'image': 
+    case 'image':
+      defaultValue = null; // For File objects or string URLs
+      break;
     default:
-      defaultValue = ''; // For image (filename) and string types
+      defaultValue = '';
   }
 
 

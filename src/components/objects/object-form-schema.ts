@@ -18,7 +18,7 @@ export function createObjectFormSchema(model: Model | undefined) {
         if (prop.required) {
           fieldSchema = fieldSchema.min(1, `${prop.name} is required.`);
         } else {
-          fieldSchema = fieldSchema.optional().or(z.literal('')); 
+          fieldSchema = fieldSchema.optional().or(z.literal(''));
         }
         break;
       case 'markdown':
@@ -30,22 +30,25 @@ export function createObjectFormSchema(model: Model | undefined) {
         }
         break;
       case 'image':
-        fieldSchema = z.string(); // Base type
-        if (prop.required) {
-          fieldSchema = fieldSchema.min(1, `${prop.name} is required.`).url(`${prop.name} must be a valid URL.`);
-        } else {
-          // Optional and can be an empty string, or if not empty, must be a URL
-          fieldSchema = fieldSchema.optional().refine(val => val === '' || val === undefined || z.string().url().safeParse(val).success, {
-            message: `${prop.name} must be a valid URL or empty.`,
-          }).or(z.literal(''));
-        }
+        // Allows a File object for new uploads, a string (URL) for existing images,
+        // or null/undefined if not set.
+        fieldSchema = z.any()
+          .refine(value => {
+            if (prop.required) {
+              // For required fields, it must be a File or a non-empty string (URL).
+              return value instanceof File || (typeof value === 'string' && value.trim() !== '');
+            }
+            return true; // Optional fields can be null, undefined, File, or string.
+          }, { message: `${prop.name} is required. Please select an image or provide a URL.` })
+          .optional()
+          .nullable();
         break;
       case 'number':
         fieldSchema = z.coerce.number();
         if (prop.required) {
           // For required numbers, we expect a number. Zod's coerce will handle parsing.
         } else {
-          fieldSchema = fieldSchema.optional().nullable(); 
+          fieldSchema = fieldSchema.optional().nullable();
         }
         break;
       case 'boolean':
@@ -72,7 +75,7 @@ export function createObjectFormSchema(model: Model | undefined) {
           } else {
             fieldSchema = baseArraySchema.default([]);
           }
-        } else { 
+        } else {
           fieldSchema = z.string();
           if (prop.required) {
             fieldSchema = fieldSchema.min(1, `Related ${prop.name} is required.`);
