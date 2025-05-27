@@ -33,7 +33,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
 import Link from 'next/link';
 import { getObjectDisplayValue } from '@/lib/utils';
-import { z } from 'zod';
+import { StarDisplay } from '@/components/ui/star-display'; // Import StarDisplay
 
 const ITEMS_PER_PAGE = 10;
 
@@ -174,6 +174,7 @@ export default function DataObjectsPage() {
                   return displayVal.toLowerCase().includes(searchTerm.toLowerCase());
               }
           }
+          // Rating type not directly searchable by text, could be extended if needed
           return false;
         })
       );
@@ -205,6 +206,7 @@ export default function DataObjectsPage() {
             bValue = String(bValue ?? '').toLowerCase();
             break;
           case 'number':
+          case 'rating': // Sort rating as a number
             aValue = Number(aValue ?? Number.NEGATIVE_INFINITY);
             bValue = Number(bValue ?? Number.NEGATIVE_INFINITY);
             break;
@@ -273,7 +275,7 @@ export default function DataObjectsPage() {
       if (property.type === 'number' && property.unit) {
         return <span className="text-muted-foreground">N/A ({property.unit})</span>;
       }
-      if (property.type === 'markdown') {
+      if (property.type === 'markdown' || property.type === 'rating') {
         return <span className="text-muted-foreground">N/A</span>;
       }
       return <span className="text-muted-foreground">N/A</span>;
@@ -301,6 +303,8 @@ export default function DataObjectsPage() {
         return `${parsedValue.toFixed(precision)}${unitText ? ` ${unitText}` : ''}`;
       case 'markdown':
         return <Badge variant="outline">Markdown</Badge>;
+      case 'rating':
+        return <StarDisplay rating={value as number} />;
       case 'relationship':
         if (!property.relatedModelId) return <span className="text-destructive">Config Err</span>;
         const relatedModel = getModelById(property.relatedModelId);
@@ -391,8 +395,11 @@ export default function DataObjectsPage() {
               const parsedNum = parseFloat(value);
               cellValue = isNaN(parsedNum) ? String(value) : parsedNum.toFixed(precision);
               break;
-            case 'markdown': // For CSV, export the raw markdown string
-              cellValue = String(value);
+            case 'markdown': 
+              cellValue = String(value); // Export raw markdown for CSV
+              break;
+            case 'rating':
+              cellValue = (value && Number(value) > 0) ? `${Number(value)}/5` : '';
               break;
             case 'relationship':
               const relatedModel = getModelById(prop.relatedModelId!);

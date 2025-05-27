@@ -35,7 +35,7 @@ import type { Model, ModelGroup } from '@/lib/types';
 import { useData } from '@/contexts/data-context';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { MultiSelectAutocomplete, type MultiSelectOption } from '@/components/ui/multi-select-autocomplete';
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import {
   Accordion,
   AccordionContent,
@@ -92,7 +92,7 @@ function SortablePropertyItem({ id, children, className }: SortablePropertyItemP
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
-    zIndex: isDragging ? 10 : undefined,
+    zIndex: isDragging ? 10 : undefined, // Ensure dragging item is on top
   };
 
   return (
@@ -145,7 +145,7 @@ const PropertyAccordionContent = ({ form, index, currentPropertyType, modelsForR
                   <SelectContent>
                     {propertyTypes.map((type) => (
                       <SelectItem key={type} value={type}>
-                        {type.charAt(0).toUpperCase() + type.slice(1)}
+                        {type === 'rating' ? 'Rating (1-5 Stars)' : type.charAt(0).toUpperCase() + type.slice(1)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -317,26 +317,51 @@ const PropertyAccordionContent = ({ form, index, currentPropertyType, modelsForR
                 )}
               />
           )}
-          <FormField
-            control={form.control}
-            name={`properties.${index}.required`}
-            render={({ field }) => (
-              <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 md:col-span-2">
-                <FormControl>
-                  <Checkbox
-                    checked={field.value}
-                    onCheckedChange={field.onChange}
-                  />
-                </FormControl>
-                <div className="space-y-1 leading-none">
-                  <FormLabel>Required</FormLabel>
-                  <FormDescription>
-                    Is this property mandatory for new objects?
-                  </FormDescription>
-                </div>
-              </FormItem>
-            )}
-          />
+          { /* Fields not applicable to 'rating' or 'markdown' are hidden by conditional rendering based on currentPropertyType */ }
+          { currentPropertyType !== 'rating' && currentPropertyType !== 'markdown' && (
+            <FormField
+              control={form.control}
+              name={`properties.${index}.required`}
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 md:col-span-2">
+                  <FormControl>
+                    <Checkbox
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                  <div className="space-y-1 leading-none">
+                    <FormLabel>Required</FormLabel>
+                    <FormDescription>
+                      Is this property mandatory for new objects?
+                    </FormDescription>
+                  </div>
+                </FormItem>
+              )}
+            />
+          )}
+          { (currentPropertyType === 'rating' || currentPropertyType === 'markdown') && (
+             <FormField
+                control={form.control}
+                name={`properties.${index}.required`}
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 md:col-span-2">
+                    <FormControl>
+                      <Checkbox
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                    <div className="space-y-1 leading-none">
+                      <FormLabel>Required</FormLabel>
+                       <FormDescription>
+                        Is this {currentPropertyType} field mandatory?
+                       </FormDescription>
+                    </div>
+                  </FormItem>
+                )}
+              />
+          )}
         </div>
       </AccordionContent>
   );
@@ -355,7 +380,7 @@ function PropertyFieldsWithDnd({
   const { fields, append, remove, move } = fieldArray;
   const control = form.control;
 
-  const [openAccordionItems, setOpenAccordionItems] = React.useState<string[]>([]);
+  const [openAccordionItems, setOpenAccordionItems] = useState<string[]>([]);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -371,6 +396,7 @@ function PropertyFieldsWithDnd({
       const newIndex = fields.findIndex((field) => field.id === over.id);
       if (oldIndex !== -1 && newIndex !== -1) {
         move(oldIndex, newIndex);
+        // Update orderIndex in form values after move
         const newOrderedProperties = arrayMove(form.getValues('properties'), oldIndex, newIndex);
         newOrderedProperties.forEach((prop, idx) => {
           form.setValue(`properties.${idx}.orderIndex`, idx, { shouldValidate: false, shouldDirty: true, shouldTouch: true });
@@ -379,7 +405,7 @@ function PropertyFieldsWithDnd({
     }
   }
   
-  React.useEffect(() => {
+  useEffect(() => {
     const itemsToOpen = new Set<string>();
     const propertiesErrors = form.formState.errors.properties;
 
@@ -415,6 +441,8 @@ function PropertyFieldsWithDnd({
     const isNumber = propertyType === 'number';
     const isDate = propertyType === 'date';
     const isString = propertyType === 'string';
+    const isMarkdown = propertyType === 'markdown';
+    const isRating = propertyType === 'rating';
 
     form.setValue(`properties.${index}.relationshipType`, isRelationship ? (form.getValues(`properties.${index}.relationshipType`) || 'one') : undefined);
     form.setValue(`properties.${index}.relatedModelId`, isRelationship ? form.getValues(`properties.${index}.relatedModelId`) : undefined);
@@ -426,6 +454,17 @@ function PropertyFieldsWithDnd({
     form.setValue(`properties.${index}.autoSetOnUpdate`, isDate ? form.getValues(`properties.${index}.autoSetOnUpdate`) : false);
     
     form.setValue(`properties.${index}.isUnique`, isString ? form.getValues(`properties.${index}.isUnique`) : false);
+
+    // Reset fields not applicable to markdown or rating
+    if (isMarkdown || isRating) {
+      form.setValue(`properties.${index}.unit`, undefined);
+      form.setValue(`properties.${index}.precision`, undefined);
+      form.setValue(`properties.${index}.relatedModelId`, undefined);
+      form.setValue(`properties.${index}.relationshipType`, undefined);
+      form.setValue(`properties.${index}.autoSetOnCreate`, false);
+      form.setValue(`properties.${index}.autoSetOnUpdate`, false);
+      form.setValue(`properties.${index}.isUnique`, false);
+    }
   };
 
   return (
@@ -444,7 +483,7 @@ function PropertyFieldsWithDnd({
 
             return (
               <SortablePropertyItem key={fieldItem.id} id={fieldItem.id} className="bg-card rounded-md border">
-                 {(dndProps) => (
+                 {(dndProps) => ( // Render prop pattern for SortablePropertyItem
                     <AccordionItem value={fieldItem.id} className="border-0"> 
                         <AccordionTrigger className="p-4 hover:no-underline data-[state=open]:border-b">
                             <div className="flex justify-between items-center w-full">
@@ -511,7 +550,7 @@ function PropertyFieldsWithDnd({
             autoSetOnCreate: false,
             autoSetOnUpdate: false,
             isUnique: false,
-            orderIndex: fields.length,
+            orderIndex: fields.length, // Will be updated on save
         } as PropertyFormValues, {shouldFocus: false})}
         className="mt-4 w-full border-dashed hover:border-solid"
       >
@@ -553,7 +592,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
 
   const displayPropertyOptions: MultiSelectOption[] = useMemo(() => {
     return (currentProperties || [])
-      .filter(p => p.name && (p.type === 'string' || p.type === 'number' || p.type === 'date')) 
+      .filter(p => p.name && (p.type === 'string' || p.type === 'number' || p.type === 'date')) // Only string, number, date for display
       .map(p => ({ value: p.name!, label: p.name! })); 
   }, [currentProperties]);
 
@@ -568,12 +607,15 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
       name === INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE || displayPropertyOptions.some(opt => opt.value === name)
     );
 
+    // If only default is "selected" but it wasn't explicitly chosen, and no other actual properties are selected
     if (validSelectedValues.length === 0 && (currentDisplayNames.includes(INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE) || !currentDisplayNames.length )) {
         return [INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE];
     }
-    if (validSelectedValues.length === 1 && validSelectedValues[0] === INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE && currentDisplayNames.length > 1) {
-      return currentDisplayNames.filter(name => name !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
+    // If default is selected but actual properties are also selected, remove default
+    if (validSelectedValues.length > 1 && validSelectedValues.includes(INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE)) {
+        return validSelectedValues.filter(v => v !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
     }
+
 
     return validSelectedValues.length > 0 ? validSelectedValues : [INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE];
 
@@ -585,9 +627,10 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     
     if (processedValues.displayPropertyNames && processedValues.displayPropertyNames.includes(INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE)) {
         const filtered = processedValues.displayPropertyNames.filter(dpName => dpName !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
+        // Set to undefined if only default was selected or if it was empty
         processedValues.displayPropertyNames = filtered.length > 0 ? filtered : undefined;
     } else if (processedValues.displayPropertyNames && processedValues.displayPropertyNames.length === 0) {
-        processedValues.displayPropertyNames = undefined;
+        processedValues.displayPropertyNames = undefined; // Explicitly undefined for empty array
     }
 
     if (!processedValues.namespace || processedValues.namespace.trim() === '' || processedValues.namespace === INTERNAL_DEFAULT_NAMESPACE_VALUE) {
@@ -597,6 +640,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     processedValues.properties = processedValues.properties.map((prop, index) => {
       const finalProp: PropertyFormValues = { ...prop };
       finalProp.orderIndex = index;
+
       if (prop.type !== 'number') {
         finalProp.unit = undefined;
         finalProp.precision = undefined;
@@ -613,6 +657,15 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
        if (prop.type !== 'relationship') {
         finalProp.relatedModelId = undefined;
         finalProp.relationshipType = undefined;
+      }
+      if (prop.type === 'rating' || prop.type === 'markdown' || prop.type === 'boolean') { // Reset fields not applicable to rating, markdown, boolean
+        finalProp.unit = undefined;
+        finalProp.precision = undefined;
+        finalProp.relatedModelId = undefined;
+        finalProp.relationshipType = undefined;
+        finalProp.autoSetOnCreate = false;
+        finalProp.autoSetOnUpdate = false;
+        finalProp.isUnique = false;
       }
       return finalProp;
     });
@@ -717,7 +770,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                             }
                             }}
                             placeholder="Select properties..."
-                            emptyIndicator={displayPropertyOptions.length === 0 ? "No string/number/date properties available." : "No matching properties."}
+                            emptyIndicator={displayPropertyOptions.length === 0 ? "No string/number/date properties available to choose from current model properties." : "No matching properties."}
                         />
                         <FormDescription>
                             Choose string, number, or date properties to represent this model's objects. If empty, a default (Name/Title/ID) will be used.

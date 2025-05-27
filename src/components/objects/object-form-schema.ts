@@ -21,7 +21,7 @@ export function createObjectFormSchema(model: Model | undefined) {
           fieldSchema = fieldSchema.optional().or(z.literal('')); 
         }
         break;
-      case 'markdown': // Added markdown type
+      case 'markdown':
         fieldSchema = z.string();
         if (prop.required) {
           fieldSchema = fieldSchema.min(1, `${prop.name} is required.`);
@@ -32,9 +32,11 @@ export function createObjectFormSchema(model: Model | undefined) {
       case 'number':
         fieldSchema = z.coerce.number();
         if (prop.required) {
-          // For required numbers, we expect a number.
+          // For required numbers, we expect a number. Zod's coerce will handle parsing.
+          // We don't explicitly add .min(1) or similar unless a business rule needs it.
         } else {
-          fieldSchema = fieldSchema.optional().or(z.nan()); 
+          // Allow NaN for optional numbers that are not filled or invalid, or make it nullable
+          fieldSchema = fieldSchema.optional().nullable(); 
         }
         break;
       case 'boolean':
@@ -44,12 +46,13 @@ export function createObjectFormSchema(model: Model | undefined) {
         let baseDateSchema = z.union([z.string().datetime({ offset: true }), z.date()]).nullable();
 
         if (prop.autoSetOnCreate || prop.autoSetOnUpdate) {
-          fieldSchema = baseDateSchema.optional();
+           // If auto-set, it can be optional from the form's perspective, as the system will fill it.
+          fieldSchema = baseDateSchema.optional().nullable();
         } else {
           if (prop.required) {
             fieldSchema = baseDateSchema.refine(val => val !== null, { message: `${prop.name} is required.` });
           } else {
-            fieldSchema = baseDateSchema.optional();
+            fieldSchema = baseDateSchema.optional().nullable();
           }
         }
         break;
@@ -68,6 +71,14 @@ export function createObjectFormSchema(model: Model | undefined) {
           } else {
             fieldSchema = fieldSchema.optional().or(z.literal(''));
           }
+        }
+        break;
+      case 'rating':
+        if (prop.required) {
+          fieldSchema = z.number().int().min(1, `${prop.name} requires a rating of at least 1.`).max(5);
+        } else {
+          // Allow 0 (not rated) or null/undefined for optional ratings
+          fieldSchema = z.number().int().min(0).max(5).nullable().optional().default(0);
         }
         break;
       default:

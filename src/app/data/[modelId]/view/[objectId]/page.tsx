@@ -13,6 +13,7 @@ import Link from 'next/link';
 import { getObjectDisplayValue } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import ReactMarkdown from 'react-markdown';
+import { StarDisplay } from '@/components/ui/star-display'; // Import StarDisplay
 
 export default function ViewObjectPage() {
   const router = useRouter();
@@ -50,6 +51,9 @@ export default function ViewObjectPage() {
 
   const displayFieldValue = (property: Property, value: any) => {
     if (value === null || typeof value === 'undefined' || (Array.isArray(value) && value.length === 0)) {
+      if (property.type === 'rating') {
+        return <StarDisplay rating={0} size="md"/>; // Show "Not rated"
+      }
       return <span className="text-muted-foreground italic">Not set</span>;
     }
 
@@ -75,6 +79,8 @@ export default function ViewObjectPage() {
             <ReactMarkdown>{String(value)}</ReactMarkdown>
           </div>
         );
+      case 'rating':
+        return <StarDisplay rating={value as number} size="md"/>;
       case 'relationship':
         if (!property.relatedModelId) return <span className="text-destructive">Config Err</span>;
         const relatedModel = getModelById(property.relatedModelId);
@@ -116,7 +122,8 @@ export default function ViewObjectPage() {
         }
       default:
         const strValue = String(value);
-        return strValue.length > 300 ? <pre className="whitespace-pre-wrap text-sm">{strValue.substring(0, 297) + '...'}</pre> : <pre className="whitespace-pre-wrap text-sm">{strValue}</pre>;
+        // For general string fields, allow pre-wrap for better readability if it's long
+        return <pre className="whitespace-pre-wrap text-sm">{strValue}</pre>;
     }
   };
 

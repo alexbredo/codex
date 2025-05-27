@@ -21,7 +21,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import type { Property, DataObject, Model } from '@/lib/types';
+import type { Property } from '@/lib/types';
 import { useData } from '@/contexts/data-context';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
@@ -31,6 +31,7 @@ import { cn, getObjectDisplayValue } from '@/lib/utils';
 import { format } from 'date-fns';
 import { MultiSelectAutocomplete, type MultiSelectOption } from '@/components/ui/multi-select-autocomplete';
 import { useMemo } from 'react';
+import { StarRatingInput } from '@/components/ui/star-rating-input'; // Import StarRatingInput
 
 interface AdaptiveFormFieldProps<TFieldValues extends FieldValues = FieldValues> {
   control: Control<TFieldValues>;
@@ -87,7 +88,8 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
       fieldIsDisabled = true;
     }
      if (property.type === 'date' && formContext === 'create' && property.autoSetOnCreate){
-        fieldIsDisabled = true;
+        // This field is hidden by the check above, but if it were to render, it would be disabled.
+        fieldIsDisabled = true; 
     }
 
 
@@ -195,16 +197,43 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
             </Select>
           );
         }
+      case 'rating':
+        return (
+          <StarRatingInput
+            value={controllerField.value ?? 0}
+            onChange={controllerField.onChange}
+            disabled={fieldIsDisabled} // Though rating fields typically aren't auto-set
+          />
+        );
       default:
         return <Input placeholder={`Unsupported type: ${property.type}`} {...controllerField} disabled />;
     }
   };
 
+  let defaultValue: any;
+  switch(property.type) {
+    case 'relationship':
+      defaultValue = property.relationshipType === 'many' ? [] : '';
+      break;
+    case 'boolean':
+      defaultValue = false;
+      break;
+    case 'date':
+      defaultValue = null;
+      break;
+    case 'rating':
+      defaultValue = 0; // 0 for not rated
+      break;
+    default:
+      defaultValue = '';
+  }
+
+
   return (
     <Controller
       name={fieldName}
       control={control}
-      defaultValue={property.relationshipType === 'many' ? [] : property.type === 'boolean' ? false : property.type === 'date' ? null : '' as any}
+      defaultValue={defaultValue}
       render={({ field, fieldState: { error } }) => (
         <FormItem>
           <FormLabel>{property.name}{property.required && <span className="text-destructive">*</span>}</FormLabel>

@@ -1,7 +1,7 @@
 
 import { z } from 'zod';
 
-export const propertyTypes = ['string', 'number', 'boolean', 'date', 'relationship', 'markdown'] as const;
+export const propertyTypes = ['string', 'number', 'boolean', 'date', 'relationship', 'markdown', 'rating'] as const;
 export const relationshipTypes = ['one', 'many'] as const;
 
 export const propertyFormSchema = z.object({
@@ -65,7 +65,33 @@ export const propertyFormSchema = z.object({
 }, {
   message: "Unique constraint can only be set for string type properties.",
   path: ["isUnique"],
+})
+// Refinements for 'rating' type - cannot have unit, precision, relatedModelId, relationshipType, autoSet, isUnique
+.refine(data => data.type === 'rating' ? (data.unit === undefined || data.unit === '') : true, {
+    message: "Unit cannot be set for rating type properties.",
+    path: ["unit"],
+})
+.refine(data => data.type === 'rating' ? data.precision === undefined : true, {
+    message: "Precision cannot be set for rating type properties.",
+    path: ["precision"],
+})
+.refine(data => data.type === 'rating' ? data.relatedModelId === undefined : true, {
+    message: "Related Model ID cannot be set for rating type properties.",
+    path: ["relatedModelId"],
+})
+.refine(data => data.type === 'rating' ? data.relationshipType === undefined || data.relationshipType === 'one' : true, { // 'one' is default, should be cleared
+    message: "Relationship Type cannot be set for rating type properties.",
+    path: ["relationshipType"],
+})
+.refine(data => data.type === 'rating' ? (!data.autoSetOnCreate && !data.autoSetOnUpdate) : true, {
+    message: "Auto-set options are not available for rating type properties.",
+    path: ["autoSetOnCreate"], // Could target 'type' as well.
+})
+.refine(data => data.type === 'rating' ? !data.isUnique : true, {
+    message: "Unique constraint cannot be set for rating type properties.",
+    path: ["isUnique"],
 });
+
 
 export const modelFormSchema = z.object({
   name: z.string().min(1, "Model name is required."),
