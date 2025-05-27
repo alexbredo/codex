@@ -76,11 +76,11 @@ export const propertyFormSchema = z.object({
 .refine(data => ['rating', 'markdown', 'image'].includes(data.type) ? data.relatedModelId === undefined : true, {
     message: "Related Model ID cannot be set for this property type.", path: ["relatedModelId"],
 })
-.refine(data => ['rating', 'markdown', 'image'].includes(data.type) ? data.relationshipType === undefined || data.relationshipType === 'one' : true, {
+.refine(data => ['rating', 'markdown', 'image'].includes(data.type) ? (data.relationshipType === undefined || data.relationshipType === 'one') : true, { // Allow default 'one' to not trigger error if relationship fields are hidden but still in form state
     message: "Relationship Type cannot be set for this property type.", path: ["relationshipType"],
 })
 .refine(data => ['rating', 'markdown', 'image'].includes(data.type) ? (!data.autoSetOnCreate && !data.autoSetOnUpdate) : true, {
-    message: "Auto-set options are not available for this property type.", path: ["autoSetOnCreate"],
+    message: "Auto-set options are not available for this property type.", path: ["autoSetOnCreate"], // Path can be any of the two, or 'type'
 })
 .refine(data => ['rating', 'markdown', 'image'].includes(data.type) ? !data.isUnique : true, {
     message: "Unique constraint cannot be set for this property type.", path: ["isUnique"],

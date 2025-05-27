@@ -74,7 +74,7 @@ const INTERNAL_DEFAULT_NAMESPACE_VALUE = "__DEFAULT_NAMESPACE_VALUE__";
 
 
 interface SortablePropertyItemProps {
-  id: string; 
+  id: string;
   children: (props: { dragHandleListeners?: any }) => React.ReactNode;
   className?: string;
 }
@@ -146,7 +146,8 @@ const PropertyAccordionContent = ({ form, index, currentPropertyType, modelsForR
                     {propertyTypes.map((type) => (
                       <SelectItem key={type} value={type}>
                         {type === 'rating' ? 'Rating (1-5 Stars)' :
-                         type === 'image' ? 'Image URL' :
+                         type === 'image' ? 'Image' : // Changed "Image URL" to "Image"
+                         type === 'markdown' ? 'Markdown Text' :
                          type.charAt(0).toUpperCase() + type.slice(1)}
                       </SelectItem>
                     ))}
@@ -675,7 +676,9 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
   };
   
   const handleFormInvalid = (/* errors: FieldErrors<ModelFormValues> */) => {
+    // Log the form values to help identify the exact data causing validation failure
     console.log("Form validation failed. Current form values:", JSON.stringify(form.getValues(), null, 2)); // DEBUG
+    // Log the authoritative errors object from formState
     // console.error("Client-side form validation. Current form.formState.errors:", form.formState.errors); // DEBUG
     
     toast({
