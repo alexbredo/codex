@@ -50,7 +50,7 @@ export default function EditObjectPage() {
             formValues[prop.name] = objectToEdit[prop.name] ??
                                     (prop.relationshipType === 'many' ? [] :
                                     prop.type === 'boolean' ? false :
-                                    prop.type === 'image' ? null : // For existing images, value is URL (string) or null
+                                    prop.type === 'image' ? null : 
                                     prop.type === 'rating' ? 0 :
                                     undefined);
           });
@@ -80,6 +80,9 @@ export default function EditObjectPage() {
           const file = processedValues[prop.name] as File;
           const formData = new FormData();
           formData.append('file', file);
+          formData.append('modelId', currentModel.id);
+          formData.append('objectId', editingObject.id);
+          formData.append('propertyName', prop.name);
 
           const uploadResponse = await fetch('/api/codex-structure/upload-image', {
             method: 'POST',
@@ -91,21 +94,19 @@ export default function EditObjectPage() {
             throw new Error(errorData.error || `Failed to upload image ${file.name}`);
           }
           const uploadResult = await uploadResponse.json();
-          processedValues[prop.name] = uploadResult.url; // Store the returned URL
+          processedValues[prop.name] = uploadResult.url; 
         } else if (prop.type === 'date' && prop.autoSetOnUpdate) {
           processedValues[prop.name] = currentDateISO;
         }
       }
 
-      // Handle required validation for image fields (if it's not caught by Zod earlier)
       for (const prop of currentModel.properties) {
          if (prop.type === 'image' && prop.required && !processedValues[prop.name]) {
-             // Check if it's an existing object and had an image previously
             const hadExistingImage = typeof editingObject[prop.name] === 'string' && editingObject[prop.name];
-            if (!hadExistingImage) { // Only enforce if there wasn't an image and new one is not provided
+            if (!hadExistingImage) { 
                  form.setError(prop.name, { type: 'manual', message: `${prop.name} is required. Please select an image.` });
                  toast({ variant: "destructive", title: "Validation Error", description: `${prop.name} is required.` });
-                 return; // Stop submission
+                 return;
             }
          }
       }
@@ -156,6 +157,7 @@ export default function EditObjectPage() {
             onCancel={() => router.push(`/data/${modelId}`)}
             existingObject={editingObject}
             isLoading={form.formState.isSubmitting}
+            formObjectId={objectId}
           />
         </CardContent>
       </Card>

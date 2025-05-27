@@ -20,6 +20,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  FormDescription
 } from '@/components/ui/form';
 import type { Property } from '@/lib/types';
 import { useData } from '@/contexts/data-context';
@@ -30,13 +31,16 @@ import { Calendar } from '@/components/ui/calendar';
 import { cn, getObjectDisplayValue } from '@/lib/utils';
 import { format } from 'date-fns';
 import { MultiSelectAutocomplete, type MultiSelectOption } from '@/components/ui/multi-select-autocomplete';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { StarRatingInput } from '@/components/ui/star-rating-input';
+import Image from 'next/image'; // For image preview
 
 interface AdaptiveFormFieldProps<TFieldValues extends FieldValues = FieldValues> {
   control: Control<TFieldValues>;
   property: Property;
   formContext: 'create' | 'edit';
+  modelId: string; 
+  objectId?: string | null; 
 }
 
 const INTERNAL_NONE_SELECT_VALUE = "__EMPTY_SELECTION_VALUE__";
@@ -45,11 +49,12 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
   control,
   property,
   formContext,
+  modelId, 
+  objectId, 
 }: AdaptiveFormFieldProps<TFieldValues>) {
   const { models: allModels, getModelById, getObjectsByModelId, getAllObjects } = useData();
   const fieldName = property.name as FieldPath<TFieldValues>;
-  const [currentImagePreview, setCurrentImagePreview] = useState<string | null>(null);
-
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
 
   const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects, property.type, property.relatedModelId]);
 
@@ -79,9 +84,21 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
     return {};
   }, [relatedModel, property.relatedModelId, getObjectsByModelId, allModels, allDbObjects]);
 
+  // Effect to set initial image preview if editing and value is a URL string
+  useEffect(() => {
+    const fieldValue = control.getValues(fieldName);
+    if (formContext === 'edit' && property.type === 'image' && typeof fieldValue === 'string' && fieldValue) {
+      // Check if it's a local upload path or an external URL
+      if (fieldValue.startsWith('/uploads/') || fieldValue.startsWith('http')) {
+        setImagePreviewUrl(fieldValue);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formContext, property.type, fieldName, control.getValues(fieldName)]);
+
 
   if (formContext === 'create' && property.type === 'date' && property.autoSetOnCreate) {
-    return null;
+    return null; // Hide field if auto-set on create
   }
 
   const renderField = (controllerField: ControllerRenderProps<TFieldValues, FieldPath<TFieldValues>>) => {
@@ -90,17 +107,11 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
         if (formContext === 'edit' && (property.autoSetOnCreate || property.autoSetOnUpdate)) {
             fieldIsDisabled = true;
         }
-        if (formContext === 'create' && property.autoSetOnCreate){
+        if (formContext === 'create' && property.autoSetOnCreate){ 
             fieldIsDisabled = true;
         }
     }
-
-    // Initialize preview for existing image URL on edit
-    if (property.type === 'image' && typeof controllerField.value === 'string' && controllerField.value && !currentImagePreview) {
-        setCurrentImagePreview(controllerField.value);
-    }
-
-
+    
     switch (property.type) {
       case 'string':
         if (property.name.toLowerCase().includes('description') || property.name.toLowerCase().includes('notes')) {
@@ -117,27 +128,30 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
               accept="image/*"
               onChange={(e) => {
                 const file = e.target.files?.[0];
-                controllerField.onChange(file || null); // Pass File object or null
+                controllerField.onChange(file || null); 
                 if (file) {
                   const reader = new FileReader();
                   reader.onloadend = () => {
-                    setCurrentImagePreview(reader.result as string);
+                    setImagePreviewUrl(reader.result as string);
                   };
                   reader.readAsDataURL(file);
                 } else {
-                  setCurrentImagePreview(null);
+                  setImagePreviewUrl(null); 
                 }
               }}
-              // For file inputs, 'value' prop is not used to control them directly in React.
-              // We manage the selected file via react-hook-form's state.
+              ref={(instance) => {
+                if (instance && controllerField.value === null) {
+                  instance.value = ""; 
+                }
+              }}
             />
-            {currentImagePreview && (
+            {imagePreviewUrl && (
               <div className="mt-2 relative w-32 h-32 border rounded overflow-hidden">
-                <img src={currentImagePreview} alt="Preview" className="object-cover w-full h-full" />
+                <Image src={imagePreviewUrl} alt="Preview" layout="fill" objectFit="contain" />
               </div>
             )}
-            {typeof controllerField.value === 'string' && controllerField.value && !currentImagePreview && (
-                 <div className="mt-2 text-xs text-muted-foreground">Current image URL: {controllerField.value}</div>
+            {formContext === 'edit' && typeof controllerField.value === 'string' && controllerField.value && !imagePreviewUrl && (
+              <FormDescription>Current image: <a href={controllerField.value} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{controllerField.value}</a></FormDescription>
             )}
           </div>
         );
@@ -265,7 +279,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
       defaultValue = 0;
       break;
     case 'image':
-      defaultValue = null; // For File objects or string URLs
+      defaultValue = null; 
       break;
     default:
       defaultValue = '';

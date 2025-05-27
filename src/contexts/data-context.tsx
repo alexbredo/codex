@@ -14,7 +14,7 @@ interface DataContextType {
   deleteModel: (modelId: string) => Promise<void>;
   getModelById: (modelId: string) => Model | undefined;
   getModelByName: (name: string) => Model | undefined;
-  addObject: (modelId: string, objectData: Omit<DataObject, 'id'>) => Promise<DataObject>;
+  addObject: (modelId: string, objectData: Omit<DataObject, 'id'>, objectId?: string) => Promise<DataObject>; // Added objectId
   updateObject: (modelId: string, objectId: string, updates: Partial<Omit<DataObject, 'id'>>) => Promise<DataObject | undefined>;
   deleteObject: (modelId: string, objectId: string) => Promise<void>;
   getObjectsByModelId: (modelId: string) => DataObject[];
@@ -77,8 +77,10 @@ const formatApiError = async (response: Response, defaultMessage: string): Promi
       const errorData = await response.json();
       if (errorData && errorData.error) {
         errorMessage = errorData.error;
-        if (errorData.details) {
+        if (errorData.details && typeof errorData.details === 'string') {
           errorMessage += ` Details: ${errorData.details}`;
+        } else if (errorData.details && typeof errorData.details === 'object') {
+           errorMessage += ` Details: ${JSON.stringify(errorData.details)}`;
         }
       } else if(response.statusText) {
         errorMessage = `${defaultMessage}. Status: ${response.status} - Server: ${response.statusText}`;
@@ -86,7 +88,6 @@ const formatApiError = async (response: Response, defaultMessage: string): Promi
          errorMessage = `${defaultMessage}. Status: ${response.status} - Server did not provide detailed error.`;
       }
     } catch (e) {
-      // Non-JSON response or other parsing error
       errorMessage = `${defaultMessage}. Status: ${response.status} - ${response.statusText || 'Server did not provide detailed error.'}`;
     }
     return errorMessage;
@@ -102,7 +103,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const fetchData = useCallback(async () => {
     setIsReady(false);
     try {
-      // Fetch Model Groups first
       const groupsResponse = await fetch('/api/codex-structure/model-groups');
       if (!groupsResponse.ok) {
         const errorMessage = await formatApiError(groupsResponse, 'Failed to fetch model groups');
@@ -111,16 +111,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const groupsData: ModelGroup[] = await groupsResponse.json();
       setModelGroups(groupsData.sort((a, b) => a.name.localeCompare(b.name)));
 
-      // Fetch Models
       const modelsResponse = await fetch('/api/codex-structure/models');
       if (!modelsResponse.ok) {
         const errorMessage = await formatApiError(modelsResponse, 'Failed to fetch models');
+        console.error("Full error details from models fetch:", await modelsResponse.text());
         throw new Error(errorMessage);
       }
       const modelsDataFromApi: Model[] = await modelsResponse.json();
       setModels(modelsDataFromApi.map(mapDbModelToClientModel));
 
-      // Fetch All Objects
       const allObjectsResponse = await fetch('/api/codex-structure/objects/all');
       if (!allObjectsResponse.ok) {
         const errorMessage = await formatApiError(allObjectsResponse, 'Failed to fetch all objects');
@@ -130,7 +129,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setObjects(allObjectsData);
 
     } catch (error: any) {
-      console.error("Failed to load data from API:", error.message);
+      console.error("Failed to load data from API:", error.message, error);
       setModels([]);
       setObjects({});
       setModelGroups([]);
@@ -162,8 +161,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ ...modelData, id: modelId, namespace: finalNamespace, properties: propertiesWithIdsAndOrder }),
     });
     if (!response.ok) {
-      const errorMessage = await formatApiError(response, 'Failed to add model');
-      throw new Error(errorMessage);
+       const errorMessage = await formatApiError(response, 'Failed to add model');
+       console.error("API Error in addModel:", errorMessage, await response.text().catch(()=>""));
+       throw new Error(errorMessage);
     }
     const newModel: Model = await response.json();
     const clientModel = mapDbModelToClientModel(newModel);
@@ -250,12 +250,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [models]);
 
   // Data Object CRUD
-  const addObject = useCallback(async (modelId: string, objectData: Omit<DataObject, 'id'>): Promise<DataObject> => {
-    const objectId = crypto.randomUUID();
+  const addObject = useCallback(async (modelId: string, objectData: Omit<DataObject, 'id'>, objectId?: string): Promise<DataObject> => {
+    const finalObjectId = objectId || crypto.randomUUID();
     const response = await fetch(`/api/codex-structure/models/${modelId}/objects`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...objectData, id: objectId }),
+      body: JSON.stringify({ ...objectData, id: finalObjectId }),
     });
     if (!response.ok) {
       const errorMessage = await formatApiError(response, `Failed to add object to model ${modelId}`);

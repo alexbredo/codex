@@ -83,12 +83,25 @@ export default function ViewObjectPage() {
       case 'image':
         const imageUrl = String(value);
         if (!imageUrl) return <span className="text-muted-foreground italic">No image URL</span>;
+        
+        const isExternalUrl = imageUrl.startsWith('http');
+        const placeholderImage = `https://placehold.co/600x400.png`;
+        const finalImageUrl = (isExternalUrl || imageUrl.startsWith('/uploads')) ? imageUrl : placeholderImage;
+
         return (
           <div className="relative w-full max-w-md aspect-video rounded-md overflow-hidden border">
-            <Image src={imageUrl} alt={`${property.name} for ${getObjectDisplayValue(viewingObject, currentModel, allModels, allDbObjects)}`} layout="fill" objectFit="contain" />
-             <a href={imageUrl} target="_blank" rel="noopener noreferrer" className="absolute bottom-2 right-2 bg-background/70 p-1 rounded-sm hover:bg-background">
-              <ExternalLink className="h-4 w-4 text-muted-foreground" />
-            </a>
+            <Image 
+              src={finalImageUrl} 
+              alt={`${property.name} for ${getObjectDisplayValue(viewingObject, currentModel, allModels, allDbObjects)}`} 
+              layout="fill" 
+              objectFit="contain" 
+              onError={(e) => { (e.target as HTMLImageElement).src = placeholderImage; }}
+            />
+            {finalImageUrl !== placeholderImage && (
+                 <a href={finalImageUrl} target="_blank" rel="noopener noreferrer" className="absolute bottom-2 right-2 bg-background/70 p-1 rounded-sm hover:bg-background">
+                    <ExternalLink className="h-4 w-4 text-muted-foreground" />
+                </a>
+            )}
           </div>
         );
       case 'rating':

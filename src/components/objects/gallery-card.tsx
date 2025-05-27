@@ -43,12 +43,10 @@ export default function GalleryCard({
 }: GalleryCardProps) {
   const displayName = getObjectDisplayValue(obj, model, allModels, allObjects);
 
-  // Find the first 'image' type property with a value
   let imageProp = model.properties.find(p => p.type === 'image' && obj[p.name]);
-  let imageUrl = imageProp && obj[imageProp.name] ? String(obj[imageProp.name]) : null;
+  let imageUrl = imageProp && obj[p.name] ? String(obj[p.name]) : null;
   let imageAltText = imageProp ? `${displayName} ${imageProp.name}` : `${displayName} gallery image`;
-
-  // Fallback: find string properties with names like 'image', 'picture', 'photo', 'url'
+  
   if (!imageUrl) {
     const fallbackImageProp = model.properties.find(
       (p) => (p.name.toLowerCase().includes('image') ||
@@ -61,14 +59,14 @@ export default function GalleryCard({
     if (fallbackImageProp && obj[fallbackImageProp.name]) {
       imageUrl = String(obj[fallbackImageProp.name]);
       imageAltText = `${displayName} ${fallbackImageProp.name}`;
-      imageProp = fallbackImageProp; // For excluding from displayProperties
+      imageProp = fallbackImageProp; 
     }
   }
 
-  // If still no image, use placeholder
-  if (!imageUrl) {
-    imageUrl = `https://placehold.co/600x400.png`;
-    imageAltText = `${displayName} placeholder image`;
+  const placeholderImage = `https://placehold.co/600x400.png`;
+  if (!imageUrl || typeof imageUrl !== 'string' || (!imageUrl.startsWith('http') && !imageUrl.startsWith('/uploads'))) {
+     imageUrl = placeholderImage;
+     imageAltText = `${displayName} placeholder image`;
   }
 
 
@@ -126,8 +124,8 @@ export default function GalleryCard({
             layout="fill"
             objectFit="cover"
             data-ai-hint={model.name.toLowerCase()}
-            onError={(e) => {
-              (e.target as HTMLImageElement).src = `https://placehold.co/600x400.png`;
+             onError={(e) => {
+              (e.target as HTMLImageElement).src = placeholderImage;
               (e.target as HTMLImageElement).dataset.aiHint = 'placeholder image';
             }}
           />

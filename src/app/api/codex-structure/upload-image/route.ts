@@ -1,6 +1,21 @@
 
 import { NextResponse } from 'next/server';
-import { getCurrentUserFromCookie } from '@/lib/auth';
+import { getCurrentUserFromCookie, DEBUG_MODE } from '@/lib/auth';
+import fs from 'fs/promises';
+import path from 'path';
+
+const UPLOADS_DIR = path.join(process.cwd(), 'data', 'uploads');
+
+async function ensureDirExists(dirPath: string) {
+  try {
+    await fs.mkdir(dirPath, { recursive: true });
+  } catch (error: any) {
+    if (error.code !== 'EEXIST') { // Ignore error if directory already exists
+      console.error(`Failed to create directory ${dirPath}:`, error);
+      throw error; // Rethrow if it's a different error
+    }
+  }
+}
 
 export async function POST(request: Request) {
   const currentUser = await getCurrentUserFromCookie();
@@ -11,20 +26,48 @@ export async function POST(request: Request) {
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
+    const modelId = formData.get('modelId') as string | null;
+    const objectId = formData.get('objectId') as string | null;
+    const propertyName = formData.get('propertyName') as string | null;
 
     if (!file) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
-    // In a real application, you would upload the file to a storage service (e.g., S3, Firebase Storage)
-    // and get a persistent URL. Here, we are just simulating it.
-    console.log(`Received file: ${file.name}, type: ${file.type}, size: ${file.size} bytes`);
+    if (DEBUG_MODE) {
+      console.log(`DEBUG_MODE: Simulating image upload for ${file.name}.`);
+      const placeholderUrl = `https://placehold.co/600x400.png?text=DEBUG+${encodeURIComponent(file.name)}`;
+      return NextResponse.json({ success: true, url: placeholderUrl });
+    }
 
-    // For demonstration, return a placeholder URL from placehold.co
-    // In a real app, this would be the URL of the uploaded file in your storage.
-    const placeholderUrl = `https://placehold.co/600x400.png?text=Uploaded+${encodeURIComponent(file.name)}`;
+    // Non-Debug mode: Actual file saving
+    if (!modelId || !objectId || !propertyName) {
+      return NextResponse.json({ error: 'Missing modelId, objectId, or propertyName for file storage path.' }, { status: 400 });
+    }
 
-    return NextResponse.json({ success: true, url: placeholderUrl });
+    // Sanitize inputs for path construction (basic example)
+    const safeModelId = modelId.replace(/[^a-z0-9_-]/gi, '');
+    const safeObjectId = objectId.replace(/[^a-z0-9_-]/gi, '');
+    const safePropertyName = propertyName.replace(/[^a-z0-9_-]/gi, '');
+    const safeFileName = file.name.replace(/[^a-z0-9_.-]/gi, ''); // Allow dots and hyphens in filename
+
+    if (!safeModelId || !safeObjectId || !safePropertyName || !safeFileName) {
+        return NextResponse.json({ error: 'Invalid characters in path components or filename.' }, { status: 400 });
+    }
+    
+    const propertyUploadPath = path.join(UPLOADS_DIR, safeModelId, safeObjectId, safePropertyName);
+    await ensureDirExists(propertyUploadPath);
+
+    const filePath = path.join(propertyUploadPath, safeFileName);
+    const bytes = await file.arrayBuffer();
+    const buffer = Buffer.from(bytes);
+
+    await fs.writeFile(filePath, buffer);
+    console.log(`File saved to: ${filePath}`);
+
+    const publicUrl = `/uploads/${safeModelId}/${safeObjectId}/${safePropertyName}/${safeFileName}`;
+
+    return NextResponse.json({ success: true, url: publicUrl });
 
   } catch (error: any) {
     console.error('Image Upload Error:', error);

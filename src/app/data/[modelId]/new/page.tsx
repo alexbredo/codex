@@ -23,6 +23,7 @@ export default function CreateObjectPage() {
   const { toast } = useToast();
   const [currentModel, setCurrentModel] = useState<Model | null>(null);
   const [isLoadingModel, setIsLoadingModel] = useState(true);
+  const [formObjectId, setFormObjectId] = useState<string | null>(null); // For image uploads
 
   const dynamicSchema = useMemo(() => currentModel ? createObjectFormSchema(currentModel) : z.object({}), [currentModel]);
 
@@ -36,6 +37,9 @@ export default function CreateObjectPage() {
       const foundModel = getModelById(modelId);
       if (foundModel) {
         setCurrentModel(foundModel);
+        const newObjectId = crypto.randomUUID(); // Generate UUID for potential image uploads
+        setFormObjectId(newObjectId);
+
         const defaultValues: Record<string, any> = {};
         const currentDateISO = new Date().toISOString();
         foundModel.properties.forEach(prop => {
@@ -45,7 +49,7 @@ export default function CreateObjectPage() {
             defaultValues[prop.name] = prop.type === 'boolean' ? false :
                                      prop.type === 'date' ? null :
                                      prop.relationshipType === 'many' ? [] :
-                                     prop.type === 'image' ? null : // Default for image (File or URL)
+                                     prop.type === 'image' ? null :
                                      prop.type === 'rating' ? 0 :
                                      undefined;
           }
@@ -60,7 +64,7 @@ export default function CreateObjectPage() {
   }, [modelId, getModelById, isReady, form, router, toast]);
 
   const onSubmit = async (values: Record<string, any>) => {
-    if (!currentModel) return;
+    if (!currentModel || !formObjectId) return;
 
     const processedValues = { ...values };
     const currentDateISO = new Date().toISOString();
@@ -72,6 +76,10 @@ export default function CreateObjectPage() {
           const file = processedValues[prop.name] as File;
           const formData = new FormData();
           formData.append('file', file);
+          formData.append('modelId', currentModel.id);
+          formData.append('objectId', formObjectId); // Use pre-generated objectId
+          formData.append('propertyName', prop.name);
+
 
           const uploadResponse = await fetch('/api/codex-structure/upload-image', {
             method: 'POST',
@@ -83,23 +91,21 @@ export default function CreateObjectPage() {
             throw new Error(errorData.error || `Failed to upload image ${file.name}`);
           }
           const uploadResult = await uploadResponse.json();
-          processedValues[prop.name] = uploadResult.url; // Store the returned URL
+          processedValues[prop.name] = uploadResult.url; 
         } else if (prop.type === 'date' && prop.autoSetOnCreate) {
           processedValues[prop.name] = currentDateISO;
         }
       }
-
-      // Handle required validation for image fields (if it's not caught by Zod earlier)
+      
       for (const prop of currentModel.properties) {
         if (prop.type === 'image' && prop.required && !processedValues[prop.name]) {
            form.setError(prop.name, { type: 'manual', message: `${prop.name} is required. Please select an image.` });
            toast({ variant: "destructive", title: "Validation Error", description: `${prop.name} is required.` });
-           return; // Stop submission
+           return; 
         }
       }
 
-
-      await addObject(currentModel.id, processedValues);
+      await addObject(currentModel.id, processedValues, formObjectId); // Pass formObjectId to addObject
       toast({ title: `${currentModel.name} Created`, description: `A new ${currentModel.name.toLowerCase()} has been created.` });
       router.push(`/data/${currentModel.id}`);
     } catch (error: any) {
@@ -143,6 +149,7 @@ export default function CreateObjectPage() {
             onSubmit={onSubmit}
             onCancel={() => router.push(`/data/${modelId}`)}
             isLoading={form.formState.isSubmitting}
+            formObjectId={formObjectId}
           />
         </CardContent>
       </Card>

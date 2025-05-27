@@ -15,6 +15,7 @@ interface ObjectFormProps {
   onCancel: () => void;
   isLoading?: boolean;
   existingObject?: DataObject;
+  formObjectId?: string | null; // Used to pass objectId for image uploads
 }
 
 export default function ObjectForm({
@@ -24,6 +25,7 @@ export default function ObjectForm({
   onCancel,
   isLoading,
   existingObject,
+  formObjectId,
 }: ObjectFormProps) {
   const formContext = existingObject ? 'edit' : 'create';
 
@@ -38,6 +40,8 @@ export default function ObjectForm({
                     control={form.control}
                     property={property}
                     formContext={formContext}
+                    modelId={model.id}
+                    objectId={formObjectId || existingObject?.id}
                 />
                 ))}
             </div>
