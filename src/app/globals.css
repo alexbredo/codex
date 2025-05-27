@@ -2,9 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
 body {
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: Arial, Helvetica, sans-serif; // REMOVED - Let next/font handle this
 }
+*/
 
 @layer base {
   :root {
@@ -107,5 +109,6 @@ body {
   }
   body {
     @apply bg-background text-foreground;
+    /* Font family will be applied by next/font classes */
   }
 }

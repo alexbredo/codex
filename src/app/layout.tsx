@@ -1,17 +1,17 @@
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
-import AppProviders from '@/components/layout/app-providers'; // Import the new provider component
+import AppProviders from '@/components/layout/app-providers';
 import { Toaster } from "@/components/ui/toaster";
 
 const geistSans = Geist({
-  variable: '--font-geist-sans',
   subsets: ['latin'],
+  variable: '--font-geist-sans', // Make variable available
 });
 
 const geistMono = Geist_Mono({
-  variable: '--font-geist-mono',
   subsets: ['latin'],
+  variable: '--font-geist-mono', // Make variable available
 });
 
 export const metadata: Metadata = {
@@ -25,8 +25,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+    // Apply font variables to HTML for global CSS access
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
+      {/* Apply the primary font class directly to body */}
+      <body className={`${geistSans.className} antialiased`}>
         <AppProviders>
           {children}
         </AppProviders>
