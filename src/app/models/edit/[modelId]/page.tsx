@@ -59,6 +59,7 @@ export default function EditModelPage() {
               autoSetOnCreate: isDate ? !!p.autoSetOnCreate : false,
               autoSetOnUpdate: isDate ? !!p.autoSetOnUpdate : false,
               isUnique: isString ? !!p.isUnique : false, 
+              defaultValue: p.defaultValue || undefined,
               orderIndex: p.orderIndex,
             } as PropertyFormValues;
           }),
@@ -69,7 +70,7 @@ export default function EditModelPage() {
       }
       setIsLoadingModel(false);
     }
-  }, [modelId, getModelById, isReady, form, router, toast]);
+  }, [modelId, getModelById, isReady, form, router, toast, setCurrentModel]); // Added setCurrentModel to dependency array
 
   const onSubmit = async (values: ModelFormValues) => {
     if (!currentModel) return;
@@ -97,6 +98,7 @@ export default function EditModelPage() {
         autoSetOnCreate: p.autoSetOnCreate,
         autoSetOnUpdate: p.autoSetOnUpdate,
         isUnique: p.isUnique, 
+        defaultValue: p.defaultValue,
         orderIndex: index,
       } as Property)),
     };

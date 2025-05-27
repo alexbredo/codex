@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import type { Model, Property } from '@/lib/types';
+import { getCurrentUserFromCookie } from '@/lib/auth'; // Auth helper
 
 interface Params {
   params: { modelId: string };
@@ -26,9 +27,8 @@ export async function GET(request: Request, { params }: Params) {
             if (Array.isArray(tempParsed)) {
                 parsedDisplayPropertyNames = tempParsed.filter(name => typeof name === 'string');
             }
-        } catch (parseError) {
-            console.warn(`API: Could not parse displayPropertyNames for model ${modelRow.id}: '${modelRow.displayPropertyNames}'`, parseError);
-            // Keep parsedDisplayPropertyNames as []
+        } catch (parseError: any) {
+            console.warn(`API (GET /models/[modelId]): Could not parse displayPropertyNames for model ${modelRow.id}: '${modelRow.displayPropertyNames}'. Error: ${parseError.message}`);
         }
     }
     
@@ -40,7 +40,7 @@ export async function GET(request: Request, { params }: Params) {
       displayPropertyNames: parsedDisplayPropertyNames,
       properties: properties.map(p_row => { 
         if (!p_row || typeof p_row.type === 'undefined') {
-            console.warn(`API: Malformed property data for model ${modelRow.id}, property id ${p_row?.id}:`, p_row);
+            console.warn(`API (GET /models/[modelId]): Malformed property data for model ${modelRow.id}, property id ${p_row?.id}:`, p_row);
             return {
                 id: p_row?.id || `unknown_prop_${Date.now()}`,
                 model_id: modelRow.id,
@@ -55,6 +55,7 @@ export async function GET(request: Request, { params }: Params) {
                 autoSetOnUpdate: p_row?.autoSetOnUpdate === 1,
                 isUnique: p_row?.isUnique === 1,
                 orderIndex: p_row?.orderIndex ?? 0,
+                defaultValue: p_row?.defaultValue,
             } as Property;
         }
         return {
@@ -71,6 +72,7 @@ export async function GET(request: Request, { params }: Params) {
             autoSetOnUpdate: p_row.autoSetOnUpdate === 1,
             isUnique: p_row.isUnique === 1,
             orderIndex: p_row.orderIndex,
+            defaultValue: p_row.defaultValue,
         } as Property;
       }),
     };
@@ -78,13 +80,18 @@ export async function GET(request: Request, { params }: Params) {
   } catch (error: any) {
     const errorMessage = error.message || `An unknown server error occurred while fetching model ${params.modelId}.`;
     const errorStack = error.stack || 'No stack trace available.';
-    console.error(`API Error - Failed to fetch model ${params.modelId}. Message: ${errorMessage}, Stack: ${errorStack}`, error);
+    console.error(`API Error (GET /models/[modelId]) - Failed to fetch model ${params.modelId}. Message: ${errorMessage}, Stack: ${errorStack}`, error);
     return NextResponse.json({ error: 'Failed to fetch model', details: errorMessage }, { status: 500 });
   }
 }
 
 // PUT (update) a model
 export async function PUT(request: Request, { params }: Params) {
+  const currentUser = await getCurrentUserFromCookie();
+  if (!currentUser || currentUser.role !== 'administrator') {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+  }
+
   try {
     const { name, description, namespace, displayPropertyNames, properties: updatedProperties }: Partial<Omit<Model, 'id'>> & { properties?: Property[] } = await request.json();
     const db = await getDb();
@@ -117,7 +124,7 @@ export async function PUT(request: Request, { params }: Params) {
       await db.run('DELETE FROM properties WHERE model_id = ?', params.modelId);
       for (const prop of updatedProperties) {
         await db.run(
-          'INSERT INTO properties (id, model_id, name, type, relatedModelId, required, relationshipType, unit, precision, autoSetOnCreate, autoSetOnUpdate, isUnique, orderIndex) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          'INSERT INTO properties (id, model_id, name, type, relatedModelId, required, relationshipType, unit, precision, autoSetOnCreate, autoSetOnUpdate, isUnique, orderIndex, defaultValue) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
           prop.id || crypto.randomUUID(),
           params.modelId,
           prop.name,
@@ -130,7 +137,8 @@ export async function PUT(request: Request, { params }: Params) {
           prop.autoSetOnCreate ? 1 : 0,
           prop.autoSetOnUpdate ? 1 : 0,
           prop.isUnique ? 1 : 0,
-          prop.orderIndex
+          prop.orderIndex,
+          prop.defaultValue
         );
       }
     }
@@ -147,8 +155,8 @@ export async function PUT(request: Request, { params }: Params) {
             if (Array.isArray(temp)) {
                 refreshedParsedDpn = temp.filter(name => typeof name === 'string');
             }
-        } catch (e) {
-            console.warn(`Invalid JSON for displayPropertyNames for model ${refreshedModelRow.id} after update: ${refreshedModelRow.displayPropertyNames}`);
+        } catch (e: any) {
+            console.warn(`Invalid JSON for displayPropertyNames for model ${refreshedModelRow.id} after update: ${refreshedModelRow.displayPropertyNames}. Error: ${e.message}`);
         }
     }
 
@@ -164,6 +172,7 @@ export async function PUT(request: Request, { params }: Params) {
         autoSetOnCreate: p.autoSetOnCreate === 1,
         autoSetOnUpdate: p.autoSetOnUpdate === 1,
         isUnique: p.isUnique === 1,
+        defaultValue: p.defaultValue,
       })),
     };
 
@@ -173,7 +182,7 @@ export async function PUT(request: Request, { params }: Params) {
     await db.run('ROLLBACK');
     const errorMessage = error.message || `An unknown server error occurred while updating model ${params.modelId}.`;
     const errorStack = error.stack || 'No stack trace available.';
-    console.error(`API Error - Failed to update model ${params.modelId}. Message: ${errorMessage}, Stack: ${errorStack}`, error);
+    console.error(`API Error (PUT /models/[modelId]) - Failed to update model ${params.modelId}. Message: ${errorMessage}, Stack: ${errorStack}`, error);
     if (error.message && error.message.includes('UNIQUE constraint failed: models.name')) {
       return NextResponse.json({ error: 'A model with this name already exists.', details: errorMessage }, { status: 409 });
     }
@@ -183,6 +192,10 @@ export async function PUT(request: Request, { params }: Params) {
 
 // DELETE a model
 export async function DELETE(request: Request, { params }: Params) {
+  const currentUser = await getCurrentUserFromCookie();
+  if (!currentUser || currentUser.role !== 'administrator') {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+  }
   try {
     const db = await getDb();
     
@@ -202,7 +215,7 @@ export async function DELETE(request: Request, { params }: Params) {
     await db.run('ROLLBACK');
     const errorMessage = error.message || `An unknown server error occurred while deleting model ${params.modelId}.`;
     const errorStack = error.stack || 'No stack trace available.';
-    console.error(`API Error - Failed to delete model ${params.modelId}. Message: ${errorMessage}, Stack: ${errorStack}`, error);
+    console.error(`API Error (DELETE /models/[modelId]) - Failed to delete model ${params.modelId}. Message: ${errorMessage}, Stack: ${errorStack}`, error);
     return NextResponse.json({ error: 'Failed to delete model', details: errorMessage }, { status: 500 });
   }
 }

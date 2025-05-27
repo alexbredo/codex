@@ -17,6 +17,7 @@ export const propertyFormSchema = z.object({
   autoSetOnUpdate: z.boolean().optional().default(false),
   isUnique: z.boolean().optional().default(false),
   orderIndex: z.number().optional(), // Will be set programmatically
+  defaultValue: z.string().optional(), // Stored as string, parsed based on 'type' when used
 }).refine(data => {
   if (data.type === 'relationship' && !data.relatedModelId) {
     return false;

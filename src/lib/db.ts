@@ -75,6 +75,7 @@ async function initializeDb(): Promise<Database> {
       autoSetOnUpdate INTEGER DEFAULT 0,
       isUnique INTEGER DEFAULT 0, -- 0 for false, 1 for true (only for string type)
       orderIndex INTEGER NOT NULL DEFAULT 0, -- For property display order
+      defaultValue TEXT, -- Store default value as string
       FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE,
       UNIQUE (model_id, name)
     );
@@ -93,6 +94,14 @@ async function initializeDb(): Promise<Database> {
   } catch (e: any) {
      if (!(e.message && (e.message.toLowerCase().includes('duplicate column name') || e.message.toLowerCase().includes('already has a column named isunique')))) {
         console.error("Migration: Error trying to add 'isUnique' column to 'properties' table (this might be an issue if it doesn't exist):", e.message);
+    }
+  }
+
+  try {
+    await db.run('ALTER TABLE properties ADD COLUMN defaultValue TEXT');
+  } catch (e: any) {
+     if (!(e.message && (e.message.toLowerCase().includes('duplicate column name') || e.message.toLowerCase().includes('already has a column named defaultvalue')))) {
+        console.error("Migration: Error trying to add 'defaultValue' column to 'properties' table (this might be an issue if it doesn't exist):", e.message);
     }
   }
 

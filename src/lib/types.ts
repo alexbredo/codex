@@ -14,6 +14,7 @@ export interface Property {
   autoSetOnUpdate?: boolean; // For date type: set to current date on object update
   isUnique?: boolean; // For string type: enforce unique value across objects of this model
   orderIndex: number; // For property display order
+  defaultValue?: string; // Stored as string, parsed based on 'type' when used
 }
 
 export interface Model {
@@ -47,6 +48,7 @@ export type PropertyFormData = Omit<Property, 'id' | 'orderIndex'> & {
   autoSetOnCreate?: boolean,
   autoSetOnUpdate?: boolean,
   isUnique?: boolean,
+  defaultValue?: string;
 };
 export type ObjectFormData = Omit<DataObject, 'id'>;
 

@@ -37,6 +37,7 @@ export default function CreateModelPage() {
         autoSetOnCreate: false,
         autoSetOnUpdate: false,
         isUnique: false,
+        defaultValue: undefined,
         orderIndex: 0, 
       } as PropertyFormValues],
     },
@@ -66,6 +67,7 @@ export default function CreateModelPage() {
         autoSetOnCreate: p.autoSetOnCreate,
         autoSetOnUpdate: p.autoSetOnUpdate,
         isUnique: p.isUnique, 
+        defaultValue: p.defaultValue,
         orderIndex: index,
       } as Property)),
     };

@@ -2,9 +2,10 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import type { Model, Property } from '@/lib/types';
+import { getCurrentUserFromCookie } from '@/lib/auth'; // Auth helper
 
 // GET all models
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const db = await getDb();
     const rows = await db.all('SELECT * FROM models ORDER BY namespace ASC, name ASC');
@@ -21,14 +22,14 @@ export async function GET() {
                 if (Array.isArray(tempParsed)) {
                     parsedDisplayPropertyNames = tempParsed.filter(name => typeof name === 'string');
                 }
-            } catch (parseError) {
-                console.warn(`API: Could not parse displayPropertyNames for model ${modelRow.id}: '${modelRow.displayPropertyNames}'`, parseError);
+            } catch (parseError: any) {
+                console.warn(`API (GET /models): Could not parse displayPropertyNames for model ${modelRow.id}: '${modelRow.displayPropertyNames}'. Error: ${parseError.message}`);
             }
         }
 
         const mappedProperties = properties.map(p_row => {
             if (!p_row || typeof p_row.type === 'undefined') {
-              console.warn(`API: Malformed property data for model ${modelRow.id}, property id ${p_row?.id}:`, p_row);
+              console.warn(`API (GET /models): Malformed property data for model ${modelRow.id}, property id ${p_row?.id}:`, p_row);
               return {
                   id: p_row?.id || `unknown_prop_${Date.now()}`,
                   model_id: modelRow.id,
@@ -43,6 +44,7 @@ export async function GET() {
                   autoSetOnUpdate: p_row?.autoSetOnUpdate === 1,
                   isUnique: p_row?.isUnique === 1,
                   orderIndex: p_row?.orderIndex ?? 0,
+                  defaultValue: p_row?.defaultValue,
               } as Property;
             }
             return {
@@ -59,6 +61,7 @@ export async function GET() {
               autoSetOnUpdate: p_row.autoSetOnUpdate === 1,
               isUnique: p_row.isUnique === 1,
               orderIndex: p_row.orderIndex,
+              defaultValue: p_row.defaultValue,
             } as Property;
           });
 
@@ -71,11 +74,13 @@ export async function GET() {
           properties: mappedProperties,
         });
       } catch (modelProcessingError: any) {
-          console.error(`API Error - Error processing model ${modelRow?.id} (${modelRow?.name}):`, {
+          console.error(`API Error (GET /models) - Error processing model ${modelRow?.id} (${modelRow?.name}):`, {
               message: modelProcessingError.message,
               stack: modelProcessingError.stack,
               modelData: modelRow 
           });
+          // Instead of throwing, which stops the whole process, we could skip this model or return partial data.
+          // For now, rethrow to align with previous behavior, but this is a point for refinement.
           throw new Error(`Processing failed for model ${modelRow?.name || modelRow?.id}. Original error: ${modelProcessingError.message}`);
       }
     }
@@ -83,13 +88,18 @@ export async function GET() {
   } catch (error: any) {
     const errorMessage = error.message || 'An unknown server error occurred while fetching models.';
     const errorStack = error.stack || 'No stack trace available.';
-    console.error(`API Error - Failed to fetch models. Message: ${errorMessage}, Stack: ${errorStack}`, error);
+    console.error(`API Error (GET /models) - Failed to fetch models. Message: ${errorMessage}, Stack: ${errorStack}`, error);
     return NextResponse.json({ error: 'Failed to fetch models', details: errorMessage }, { status: 500 });
   }
 }
 
 // POST a new model
 export async function POST(request: Request) {
+  const currentUser = await getCurrentUserFromCookie();
+  if (!currentUser || currentUser.role !== 'administrator') {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+  }
+
   try {
     const { id: modelId, name, description, namespace, displayPropertyNames, properties: newProperties }: Omit<Model, 'id'> & {id: string} = await request.json();
     const db = await getDb();
@@ -109,7 +119,7 @@ export async function POST(request: Request) {
 
     for (const prop of newProperties) {
       await db.run(
-        'INSERT INTO properties (id, model_id, name, type, relatedModelId, required, relationshipType, unit, precision, autoSetOnCreate, autoSetOnUpdate, isUnique, orderIndex) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO properties (id, model_id, name, type, relatedModelId, required, relationshipType, unit, precision, autoSetOnCreate, autoSetOnUpdate, isUnique, orderIndex, defaultValue) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         prop.id || crypto.randomUUID(),
         modelId,
         prop.name,
@@ -122,7 +132,8 @@ export async function POST(request: Request) {
         prop.autoSetOnCreate ? 1 : 0,
         prop.autoSetOnUpdate ? 1 : 0,
         prop.isUnique ? 1 : 0,
-        prop.orderIndex 
+        prop.orderIndex,
+        prop.defaultValue 
       );
     }
 
@@ -140,6 +151,7 @@ export async function POST(request: Request) {
             autoSetOnCreate: !!p.autoSetOnCreate,
             autoSetOnUpdate: !!p.autoSetOnUpdate,
             isUnique: !!p.isUnique,
+            defaultValue: p.defaultValue,
         })),
     };
 
@@ -149,7 +161,7 @@ export async function POST(request: Request) {
     await db.run('ROLLBACK');
     const errorMessage = error.message || 'An unknown server error occurred while creating the model.';
     const errorStack = error.stack || 'No stack trace available.';
-    console.error(`API Error - Failed to create model. Message: ${errorMessage}, Stack: ${errorStack}`, error);
+    console.error(`API Error (POST /models) - Failed to create model. Message: ${errorMessage}, Stack: ${errorStack}`, error);
     if (error.message && error.message.includes('UNIQUE constraint failed: models.name')) {
       return NextResponse.json({ error: 'A model with this name already exists.', details: errorMessage }, { status: 409 });
     }

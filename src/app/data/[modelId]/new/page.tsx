@@ -11,9 +11,54 @@ import { useData } from '@/contexts/data-context';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import type { Model } from '@/lib/types';
+import type { Model, Property } from '@/lib/types';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { z } from 'zod';
+
+function parseDefaultValue(value: string | undefined, type: Property['type'], relationshipType?: Property['relationshipType']): any {
+  if (value === undefined || value === null || value.trim() === '') {
+    return undefined;
+  }
+
+  switch (type) {
+    case 'string':
+    case 'markdown':
+    case 'image':
+      return value;
+    case 'number':
+    case 'rating':
+      const num = parseFloat(value);
+      return isNaN(num) ? undefined : num;
+    case 'boolean':
+      return value.toLowerCase() === 'true';
+    case 'date':
+      try {
+        const date = new Date(value);
+        return isNaN(date.getTime()) ? null : date.toISOString();
+      } catch {
+        return null;
+      }
+    case 'relationship':
+      if (relationshipType === 'many') {
+        try {
+          // Try parsing as JSON array first
+          const parsedArray = JSON.parse(value);
+          if (Array.isArray(parsedArray) && parsedArray.every(item => typeof item === 'string')) {
+            return parsedArray;
+          }
+        } catch (e) {
+          // If JSON.parse fails, try splitting by comma
+          const ids = value.split(',').map(id => id.trim()).filter(id => id !== '');
+          if (ids.length > 0) return ids;
+        }
+        return []; // Default to empty array if parsing fails or empty
+      }
+      return value.trim(); // Single ID
+    default:
+      return undefined;
+  }
+}
+
 
 export default function CreateObjectPage() {
   const router = useRouter();
@@ -37,22 +82,31 @@ export default function CreateObjectPage() {
       const foundModel = getModelById(modelId);
       if (foundModel) {
         setCurrentModel(foundModel);
-        const newObjectId = crypto.randomUUID(); // Generate UUID for potential image uploads
+        const newObjectId = crypto.randomUUID(); 
         setFormObjectId(newObjectId);
 
         const defaultValues: Record<string, any> = {};
         const currentDateISO = new Date().toISOString();
+        
         foundModel.properties.forEach(prop => {
+          let valueToSet: any;
           if (prop.type === 'date' && prop.autoSetOnCreate) {
-            defaultValues[prop.name] = currentDateISO;
-          } else {
-            defaultValues[prop.name] = prop.type === 'boolean' ? false :
-                                     prop.type === 'date' ? null :
-                                     prop.relationshipType === 'many' ? [] :
-                                     prop.type === 'image' ? null :
-                                     prop.type === 'rating' ? 0 :
-                                     undefined;
+            valueToSet = currentDateISO;
+          } else if (prop.defaultValue !== undefined && prop.defaultValue !== null) {
+             valueToSet = parseDefaultValue(prop.defaultValue, prop.type, prop.relationshipType);
           }
+          
+          if (valueToSet === undefined) { // If still undefined, apply generic defaults
+             switch (prop.type) {
+                case 'boolean': valueToSet = false; break;
+                case 'date': valueToSet = null; break;
+                case 'relationship': valueToSet = prop.relationshipType === 'many' ? [] : ''; break;
+                case 'rating': valueToSet = 0; break;
+                case 'image': valueToSet = null; break;
+                default: valueToSet = undefined; // Let Zod handle or remain undefined
+            }
+          }
+          defaultValues[prop.name] = valueToSet;
         });
         form.reset(defaultValues);
       } else {
@@ -70,16 +124,14 @@ export default function CreateObjectPage() {
     const currentDateISO = new Date().toISOString();
 
     try {
-      // Handle image uploads
       for (const prop of currentModel.properties) {
         if (prop.type === 'image' && processedValues[prop.name] instanceof File) {
           const file = processedValues[prop.name] as File;
           const formData = new FormData();
           formData.append('file', file);
           formData.append('modelId', currentModel.id);
-          formData.append('objectId', formObjectId); // Use pre-generated objectId
+          formData.append('objectId', formObjectId); 
           formData.append('propertyName', prop.name);
-
 
           const uploadResponse = await fetch('/api/codex-structure/upload-image', {
             method: 'POST',
@@ -105,12 +157,16 @@ export default function CreateObjectPage() {
         }
       }
 
-      await addObject(currentModel.id, processedValues, formObjectId); // Pass formObjectId to addObject
+      await addObject(currentModel.id, processedValues, formObjectId); 
       toast({ title: `${currentModel.name} Created`, description: `A new ${currentModel.name.toLowerCase()} has been created.` });
       router.push(`/data/${currentModel.id}`);
     } catch (error: any) {
       console.error(`Error creating ${currentModel.name}:`, error);
-      toast({ variant: "destructive", title: "Error Creating Object", description: error.message || `Failed to create ${currentModel.name.toLowerCase()}.` });
+      let errorMessage = error.message || `Failed to create ${currentModel.name.toLowerCase()}.`;
+      if (error.field && typeof error.field === 'string') {
+        form.setError(error.field, { type: 'manual', message: error.message });
+      }
+      toast({ variant: "destructive", title: "Error Creating Object", description: errorMessage });
     }
   };
 

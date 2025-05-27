@@ -111,6 +111,28 @@ const PropertyAccordionContent = ({ form, index, currentPropertyType, modelsForR
   control: Control<ModelFormValues>,
   handleTypeChange: (value: string, index: number) => void
 }) => {
+  
+  const getDefaultValuePlaceholder = (type: PropertyFormValues['type'], relationshipType?: 'one' | 'many') => {
+    switch (type) {
+      case 'string':
+      case 'markdown':
+      case 'image':
+        return "Enter default text or URL";
+      case 'number':
+        return "Enter default number (e.g., 0)";
+      case 'rating':
+        return "Enter default rating (0-5)";
+      case 'boolean':
+        return "Enter 'true' or 'false'";
+      case 'date':
+        return "Enter date (YYYY-MM-DD)";
+      case 'relationship':
+        return relationshipType === 'many' ? "Enter comma-separated IDs or JSON array" : "Enter single ID";
+      default:
+        return "Enter default value";
+    }
+  };
+  
   return (
      <AccordionContent className="p-4 pt-0">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -146,7 +168,7 @@ const PropertyAccordionContent = ({ form, index, currentPropertyType, modelsForR
                     {propertyTypes.map((type) => (
                       <SelectItem key={type} value={type}>
                         {type === 'rating' ? 'Rating (1-5 Stars)' :
-                         type === 'image' ? 'Image' : // Changed "Image URL" to "Image"
+                         type === 'image' ? 'Image' : 
                          type === 'markdown' ? 'Markdown Text' :
                          type.charAt(0).toUpperCase() + type.slice(1)}
                       </SelectItem>
@@ -305,7 +327,7 @@ const PropertyAccordionContent = ({ form, index, currentPropertyType, modelsForR
                 control={form.control}
                 name={`properties.${index}.isUnique`}
                 render={({ field }) => (
-                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3 md:col-span-2">
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3 md:col-span-1"> {/* Adjusted span */}
                     <FormControl>
                       <Checkbox
                         checked={field.value}
@@ -314,7 +336,7 @@ const PropertyAccordionContent = ({ form, index, currentPropertyType, modelsForR
                     </FormControl>
                     <div className="space-y-0.5 leading-none">
                       <FormLabel className="text-sm">Enforce Unique Value</FormLabel>
-                      <FormDescription className="text-xs">Ensure this property's value is unique across all objects of this model.</FormDescription>
+                      <FormDescription className="text-xs">Ensure this property's value is unique.</FormDescription>
                     </div>
                   </FormItem>
                 )}
@@ -326,7 +348,7 @@ const PropertyAccordionContent = ({ form, index, currentPropertyType, modelsForR
               control={form.control}
               name={`properties.${index}.required`}
               render={({ field }) => (
-                <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 md:col-span-2">
+                <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 md:col-span-1"> {/* Adjusted span */}
                   <FormControl>
                     <Checkbox
                       checked={field.value}
@@ -335,8 +357,8 @@ const PropertyAccordionContent = ({ form, index, currentPropertyType, modelsForR
                   </FormControl>
                   <div className="space-y-1 leading-none">
                     <FormLabel>Required</FormLabel>
-                    <FormDescription>
-                      Is this property mandatory for new objects?
+                    <FormDescription className="text-xs">
+                      Is this property mandatory?
                     </FormDescription>
                   </div>
                 </FormItem>
@@ -348,7 +370,7 @@ const PropertyAccordionContent = ({ form, index, currentPropertyType, modelsForR
                 control={form.control}
                 name={`properties.${index}.required`}
                 render={({ field }) => (
-                  <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 md:col-span-2">
+                  <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 md:col-span-1"> {/* Adjusted span */}
                     <FormControl>
                       <Checkbox
                         checked={field.value}
@@ -357,7 +379,7 @@ const PropertyAccordionContent = ({ form, index, currentPropertyType, modelsForR
                     </FormControl>
                     <div className="space-y-1 leading-none">
                       <FormLabel>Required</FormLabel>
-                       <FormDescription>
+                       <FormDescription className="text-xs">
                         Is this {currentPropertyType} field mandatory?
                        </FormDescription>
                     </div>
@@ -365,6 +387,31 @@ const PropertyAccordionContent = ({ form, index, currentPropertyType, modelsForR
                 )}
               />
           )}
+        </div>
+        <div className="mt-4"> {/* Default Value field section */}
+          <FormField
+            control={control}
+            name={`properties.${index}.defaultValue`}
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Default Value (Optional)</FormLabel>
+                <FormControl>
+                  <Input 
+                    placeholder={getDefaultValuePlaceholder(currentPropertyType, form.getValues(`properties.${index}.relationshipType`))} 
+                    {...field} 
+                    value={field.value ?? ''}
+                  />
+                </FormControl>
+                <FormDescription className="text-xs">
+                  {currentPropertyType === 'boolean' && "Enter 'true' or 'false'."}
+                  {currentPropertyType === 'date' && "Enter date as YYYY-MM-DD or full ISO string."}
+                  {currentPropertyType === 'relationship' && form.getValues(`properties.${index}.relationshipType`) === 'many' && "Enter comma-separated IDs or a JSON array of IDs."}
+                  {currentPropertyType === 'relationship' && form.getValues(`properties.${index}.relationshipType`) !== 'many' && "Enter a single ID."}
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
         </div>
       </AccordionContent>
   );
@@ -415,7 +462,7 @@ function PropertyFieldsWithDnd({
     if (Array.isArray(propertiesErrors)) {
         fields.forEach((fieldItem, idx) => {
             const propertyErrorAtIndex = propertiesErrors[idx] as FieldErrors<PropertyFormValues> | undefined;
-             if (propertyErrorAtIndex && typeof propertyErrorAtIndex === 'object' && Object.keys(propertyErrorAtIndex).length > 0) {
+            if (propertyErrorAtIndex && typeof propertyErrorAtIndex === 'object' && Object.keys(propertyErrorAtIndex).length > 0) {
                  const hasFieldError = Object.values(propertyErrorAtIndex).some(
                     (errorField: any) => errorField && typeof errorField.message === 'string'
                 );
@@ -470,6 +517,7 @@ function PropertyFieldsWithDnd({
       form.setValue(`properties.${index}.autoSetOnUpdate`, false);
       form.setValue(`properties.${index}.isUnique`, false);
     }
+    form.setValue(`properties.${index}.defaultValue`, undefined); // Reset default value on type change
   };
 
   return (
@@ -556,6 +604,7 @@ function PropertyFieldsWithDnd({
             autoSetOnCreate: false,
             autoSetOnUpdate: false,
             isUnique: false,
+            defaultValue: undefined,
             orderIndex: fields.length, 
         } as PropertyFormValues, {shouldFocus: false})}
         className="mt-4 w-full border-dashed hover:border-solid"
@@ -670,6 +719,8 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
         finalProp.autoSetOnUpdate = false;
         finalProp.isUnique = false;
       }
+      // Pass defaultValue as is, API will store it as string
+      finalProp.defaultValue = prop.defaultValue;
       return finalProp;
     });
     onSubmit(processedValues);

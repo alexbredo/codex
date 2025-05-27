@@ -67,6 +67,7 @@ const mapDbModelToClientModel = (dbModel: any): Model => {
       autoSetOnUpdate: p.type === 'date' ? (p.autoSetOnUpdate === 1 || p.autoSetOnUpdate === true) : false,
       isUnique: p.type === 'string' ? (p.isUnique === 1 || p.isUnique === true) : false,
       orderIndex: p.orderIndex ?? 0,
+      defaultValue: p.defaultValue, // Pass as string
     })).sort((a, b) => a.orderIndex - b.orderIndex),
   };
 };
@@ -82,13 +83,13 @@ const formatApiError = async (response: Response, defaultMessage: string): Promi
         } else if (errorData.details && typeof errorData.details === 'object') {
            errorMessage += ` Details: ${JSON.stringify(errorData.details)}`;
         }
-      } else if(response.statusText) {
+      } else if(response.statusText && response.statusText.trim() !== '') {
         errorMessage = `${defaultMessage}. Status: ${response.status} - Server: ${response.statusText}`;
       } else {
          errorMessage = `${defaultMessage}. Status: ${response.status} - Server did not provide detailed error.`;
       }
     } catch (e) {
-      errorMessage = `${defaultMessage}. Status: ${response.status} - ${response.statusText || 'Server did not provide detailed error.'}`;
+      errorMessage = `${defaultMessage}. Status: ${response.status} - ${response.statusText || 'Server did not provide detailed error or a non-JSON response.'}`;
     }
     return errorMessage;
   };
@@ -114,7 +115,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const modelsResponse = await fetch('/api/codex-structure/models');
       if (!modelsResponse.ok) {
         const errorMessage = await formatApiError(modelsResponse, 'Failed to fetch models');
-        console.error("Full error details from models fetch:", await modelsResponse.text());
+        console.error("Full error details from models fetch:", await modelsResponse.text().catch(()=>"Could not read response body"));
         throw new Error(errorMessage);
       }
       const modelsDataFromApi: Model[] = await modelsResponse.json();
@@ -151,6 +152,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       autoSetOnCreate: !!p.autoSetOnCreate,
       autoSetOnUpdate: !!p.autoSetOnUpdate,
       isUnique: !!p.isUnique,
+      defaultValue: p.defaultValue,
       orderIndex: index 
     }));
     const finalNamespace = (modelData.namespace && modelData.namespace.trim() !== '') ? modelData.namespace.trim() : 'Default';
@@ -162,7 +164,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     });
     if (!response.ok) {
        const errorMessage = await formatApiError(response, 'Failed to add model');
-       console.error("API Error in addModel:", errorMessage, await response.text().catch(()=>""));
+       console.error("API Error in addModel:", errorMessage, await response.text().catch(()=>"Could not read response body"));
        throw new Error(errorMessage);
     }
     const newModel: Model = await response.json();
@@ -184,6 +186,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       autoSetOnCreate: !!p.autoSetOnCreate,
       autoSetOnUpdate: !!p.autoSetOnUpdate,
       isUnique: !!p.isUnique,
+      defaultValue: p.defaultValue,
       orderIndex: index
     }));
 
