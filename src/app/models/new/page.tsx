@@ -67,7 +67,7 @@ export default function CreateModelPage() {
         autoSetOnCreate: p.autoSetOnCreate,
         autoSetOnUpdate: p.autoSetOnUpdate,
         isUnique: p.isUnique, 
-        defaultValue: p.defaultValue,
+        defaultValue: p.defaultValue, // Ensuring this line is correct
         orderIndex: index,
       } as Property)),
     };

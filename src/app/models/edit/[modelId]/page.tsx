@@ -46,6 +46,10 @@ export default function EditModelPage() {
             const isDate = p.type === 'date';
             const isNumber = p.type === 'number';
             const isString = p.type === 'string';
+            const isMarkdown = p.type === 'markdown';
+            const isRating = p.type === 'rating';
+            const isImage = p.type === 'image';
+
 
             return {
               id: p.id || crypto.randomUUID(),
@@ -70,7 +74,7 @@ export default function EditModelPage() {
       }
       setIsLoadingModel(false);
     }
-  }, [modelId, getModelById, isReady, form, router, toast, setCurrentModel]); // Added setCurrentModel to dependency array
+  }, [modelId, getModelById, isReady, form, router, toast, setCurrentModel]);
 
   const onSubmit = async (values: ModelFormValues) => {
     if (!currentModel) return;
@@ -98,7 +102,7 @@ export default function EditModelPage() {
         autoSetOnCreate: p.autoSetOnCreate,
         autoSetOnUpdate: p.autoSetOnUpdate,
         isUnique: p.isUnique, 
-        defaultValue: p.defaultValue,
+        defaultValue: p.defaultValue, // Ensuring this line is correct
         orderIndex: index,
       } as Property)),
     };
