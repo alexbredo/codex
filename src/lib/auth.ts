@@ -3,7 +3,7 @@ import { cookies } from 'next/headers';
 import { getDb } from '@/lib/db';
 
 // DEBUG MODE FLAG - Should match the one in auth-context.tsx for consistency during dev
-export const DEBUG_MODE = false; // <<< SET TO true TO BYPASS API AUTH FOR DEVELOPMENT
+export const DEBUG_MODE = true; // <<< ENSURE THIS IS TRUE FOR DEBUGGING
 
 interface UserSession {
   id: string;
@@ -19,7 +19,7 @@ const MOCK_API_ADMIN_USER: UserSession = {
 
 export async function getCurrentUserFromCookie(): Promise<UserSession | null> {
   if (DEBUG_MODE) {
-    console.warn("DEBUG_MODE (API): getCurrentUserFromCookie returning mock admin.");
+    // console.warn("DEBUG_MODE (API): getCurrentUserFromCookie returning mock admin."); // Keep console.warn for debugging
     return MOCK_API_ADMIN_USER;
   }
 
