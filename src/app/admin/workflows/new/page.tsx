@@ -69,16 +69,16 @@ function CreateWorkflowPageInternal() {
   }
 
   return (
-    <div className="container mx-auto py-8">
-      <Button variant="outline" onClick={() => router.push('/admin/workflows')} className="mb-6">
+    <div className="container mx-auto py-8 flex flex-col h-full">
+      <Button variant="outline" onClick={() => router.push('/admin/workflows')} className="mb-6 flex-shrink-0">
         <ArrowLeft className="mr-2 h-4 w-4" /> Back to Workflow Admin
       </Button>
-      <Card className="max-w-4xl mx-auto">
-        <CardHeader>
+      <Card className="max-w-4xl mx-auto flex-grow min-h-0 flex flex-col w-full">
+        <CardHeader className="flex-shrink-0">
           <CardTitle className="text-2xl">Create New Workflow</CardTitle>
           <CardDescription>Define states and transitions for your new workflow.</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex-grow min-h-0">
           <WorkflowForm
             form={form}
             onSubmit={onSubmit}

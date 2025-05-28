@@ -18,7 +18,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Trash2, PlusCircle, GripVertical, Workflow as WorkflowIcon, Network } from 'lucide-react';
+import { Trash2, PlusCircle, GripVertical, Network } from 'lucide-react';
 import type { WorkflowFormValues, WorkflowStateFormValues } from './workflow-form-schema';
 import type { WorkflowWithDetails } from '@/lib/types';
 import { MultiSelectAutocomplete, type MultiSelectOption } from '@/components/ui/multi-select-autocomplete';
@@ -254,8 +254,8 @@ export default function WorkflowForm({ form, onSubmit, onCancel, isLoading, exis
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-8">
-        <ScrollArea className="max-h-[70vh] pr-3">
+      <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-8 h-full flex flex-col">
+        <ScrollArea className="flex-grow min-h-0 pr-3">
           <div className="space-y-6 p-1">
             <Card>
               <CardHeader><CardTitle className="text-xl">Workflow Details</CardTitle></CardHeader>
@@ -298,7 +298,7 @@ export default function WorkflowForm({ form, onSubmit, onCancel, isLoading, exis
           </div>
         </ScrollArea>
 
-        <div className="flex justify-end space-x-2 pt-4 border-t">
+        <div className="flex-shrink-0 flex justify-end space-x-2 pt-4 border-t">
           <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>Cancel</Button>
           <Button type="submit" disabled={isLoading || form.formState.isSubmitting} className="bg-primary hover:bg-primary/90">
             {isLoading || form.formState.isSubmitting ? 'Saving...' : (existingWorkflow ? 'Update Workflow' : 'Create Workflow')}
@@ -308,3 +308,4 @@ export default function WorkflowForm({ form, onSubmit, onCancel, isLoading, exis
     </Form>
   );
 }
+

@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter, useParams } from 'next/navigation';
@@ -124,16 +124,16 @@ function EditWorkflowPageInternal() {
   }
 
   return (
-    <div className="container mx-auto py-8">
-      <Button variant="outline" onClick={() => router.push('/admin/workflows')} className="mb-6">
+    <div className="container mx-auto py-8 flex flex-col h-full">
+      <Button variant="outline" onClick={() => router.push('/admin/workflows')} className="mb-6 flex-shrink-0">
         <ArrowLeft className="mr-2 h-4 w-4" /> Back to Workflow Admin
       </Button>
-      <Card className="max-w-4xl mx-auto">
-        <CardHeader>
+      <Card className="max-w-4xl mx-auto flex-grow min-h-0 flex flex-col w-full">
+        <CardHeader className="flex-shrink-0">
           <CardTitle className="text-2xl">Edit Workflow: {currentWorkflow.name}</CardTitle>
           <CardDescription>Update details for the "{currentWorkflow.name}" workflow.</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex-grow min-h-0">
           <WorkflowForm
             form={form}
             onSubmit={onSubmit}
