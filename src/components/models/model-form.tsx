@@ -12,7 +12,7 @@ import {
   SelectContent,
   SelectGroup,
   SelectItem,
-  SelectLabel as UiSelectLabel, 
+  SelectLabel as UiSelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -35,7 +35,7 @@ import type { Model, ModelGroup } from '@/lib/types';
 import { useData } from '@/contexts/data-context';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { MultiSelectAutocomplete, type MultiSelectOption } from '@/components/ui/multi-select-autocomplete';
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import {
   Accordion,
   AccordionContent,
@@ -103,15 +103,58 @@ function SortablePropertyItem({ id, children, className }: SortablePropertyItemP
 }
 
 
-const PropertyAccordionContent = ({ form, index, currentPropertyType, modelsForRelationsGrouped, control, handleTypeChange }: {
+const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, control }: {
   form: UseFormReturn<ModelFormValues>,
   index: number,
-  currentPropertyType: PropertyFormValues['type'],
   modelsForRelationsGrouped: Record<string, Model[]>,
   control: Control<ModelFormValues>,
-  handleTypeChange: (value: string, index: number) => void
 }) => {
-  
+
+  const propertyTypePath = `properties.${index}.type` as const;
+  const currentPropertyType = useWatch({ control: form.control, name: propertyTypePath });
+  const previousPropertyTypeRef = useRef<PropertyFormValues['type'] | undefined>(currentPropertyType);
+
+  useEffect(() => {
+    if (previousPropertyTypeRef.current !== undefined && currentPropertyType !== previousPropertyTypeRef.current) {
+      // Type has actually changed by user interaction or programmatically other than initial load
+      // Reset conditional fields based on the new currentPropertyType
+      const isRelationship = currentPropertyType === 'relationship';
+      const isNumber = currentPropertyType === 'number';
+      const isDate = currentPropertyType === 'date';
+      const isString = currentPropertyType === 'string';
+      const isMarkdown = currentPropertyType === 'markdown';
+      const isRating = currentPropertyType === 'rating';
+      const isImage = currentPropertyType === 'image';
+
+      form.setValue(`properties.${index}.relationshipType`, isRelationship ? (form.getValues(`properties.${index}.relationshipType`) || 'one') : undefined, { shouldValidate: true });
+      form.setValue(`properties.${index}.relatedModelId`, isRelationship ? form.getValues(`properties.${index}.relatedModelId`) : undefined, { shouldValidate: true });
+
+      form.setValue(`properties.${index}.unit`, isNumber ? form.getValues(`properties.${index}.unit`) : undefined, { shouldValidate: true });
+      form.setValue(`properties.${index}.precision`, isNumber ? (form.getValues(`properties.${index}.precision`) ?? 2) : undefined, { shouldValidate: true });
+
+      form.setValue(`properties.${index}.autoSetOnCreate`, isDate ? !!form.getValues(`properties.${index}.autoSetOnCreate`) : false, { shouldValidate: true });
+      form.setValue(`properties.${index}.autoSetOnUpdate`, isDate ? !!form.getValues(`properties.${index}.autoSetOnUpdate`) : false, { shouldValidate: true });
+
+      form.setValue(`properties.${index}.isUnique`, isString ? !!form.getValues(`properties.${index}.isUnique`) : false, { shouldValidate: true });
+      
+      // Reset defaultValue when type changes, as the old default might be invalid for the new type
+      form.setValue(`properties.${index}.defaultValue`, undefined, { shouldValidate: true });
+
+      // Reset fields not applicable to markdown, rating, or image
+      if (isMarkdown || isRating || isImage) {
+        form.setValue(`properties.${index}.unit`, undefined, { shouldValidate: true });
+        form.setValue(`properties.${index}.precision`, undefined, { shouldValidate: true });
+        form.setValue(`properties.${index}.relatedModelId`, undefined, { shouldValidate: true });
+        form.setValue(`properties.${index}.relationshipType`, undefined, { shouldValidate: true });
+        form.setValue(`properties.${index}.autoSetOnCreate`, false, { shouldValidate: true });
+        form.setValue(`properties.${index}.autoSetOnUpdate`, false, { shouldValidate: true });
+        form.setValue(`properties.${index}.isUnique`, false, { shouldValidate: true });
+      }
+    }
+    previousPropertyTypeRef.current = currentPropertyType;
+  }, [currentPropertyType, index, form]);
+
+
   const getDefaultValuePlaceholder = (type: PropertyFormValues['type'], relationshipType?: 'one' | 'many') => {
     switch (type) {
       case 'string':
@@ -125,14 +168,14 @@ const PropertyAccordionContent = ({ form, index, currentPropertyType, modelsForR
       case 'boolean':
         return "Enter 'true' or 'false'";
       case 'date':
-        return "Enter date (YYYY-MM-DD)";
+        return "Enter date (YYYY-MM-DD or ISO)";
       case 'relationship':
         return relationshipType === 'many' ? "Enter comma-separated IDs or JSON array" : "Enter single ID";
       default:
         return "Enter default value";
     }
   };
-  
+
   return (
      <AccordionContent className="p-4 pt-0">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -151,13 +194,15 @@ const PropertyAccordionContent = ({ form, index, currentPropertyType, modelsForR
           />
           <FormField
             control={control}
-            name={`properties.${index}.type`}
+            name={propertyTypePath}
             render={({ field: typeField }) => (
               <FormItem>
                 <FormLabel>Type</FormLabel>
                 <Select
-                  onValueChange={(value) => handleTypeChange(value, index)}
-                  defaultValue={typeField.value}
+                  onValueChange={(value) => {
+                    form.setValue(propertyTypePath, value as PropertyFormValues['type'], { shouldValidate: true, shouldDirty: true });
+                  }}
+                  value={typeField.value} // Controlled component
                 >
                   <FormControl>
                     <SelectTrigger>
@@ -168,7 +213,7 @@ const PropertyAccordionContent = ({ form, index, currentPropertyType, modelsForR
                     {propertyTypes.map((type) => (
                       <SelectItem key={type} value={type}>
                         {type === 'rating' ? 'Rating (1-5 Stars)' :
-                         type === 'image' ? 'Image' : 
+                         type === 'image' ? 'Image' :
                          type === 'markdown' ? 'Markdown Text' :
                          type.charAt(0).toUpperCase() + type.slice(1)}
                       </SelectItem>
@@ -187,7 +232,7 @@ const PropertyAccordionContent = ({ form, index, currentPropertyType, modelsForR
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Related Model</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value || undefined}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select related model" />
@@ -216,7 +261,7 @@ const PropertyAccordionContent = ({ form, index, currentPropertyType, modelsForR
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Relationship Type</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value || 'one'}>
+                    <Select onValueChange={field.onChange} value={field.value || 'one'}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select relationship type" />
@@ -264,11 +309,11 @@ const PropertyAccordionContent = ({ form, index, currentPropertyType, modelsForR
                         max="10"
                         placeholder="e.g., 2"
                         {...field}
-                        value={field.value ?? ''} 
+                        value={field.value ?? ''}
                         onChange={e => {
                           const valStr = e.target.value;
                           if (valStr === "") {
-                            field.onChange(undefined); 
+                            field.onChange(undefined);
                           } else {
                             const num = parseInt(valStr, 10);
                             field.onChange(isNaN(num) ? undefined : num);
@@ -327,7 +372,7 @@ const PropertyAccordionContent = ({ form, index, currentPropertyType, modelsForR
                 control={form.control}
                 name={`properties.${index}.isUnique`}
                 render={({ field }) => (
-                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3 md:col-span-1"> {/* Adjusted span */}
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3 md:col-span-1">
                     <FormControl>
                       <Checkbox
                         checked={field.value}
@@ -342,13 +387,12 @@ const PropertyAccordionContent = ({ form, index, currentPropertyType, modelsForR
                 )}
               />
           )}
-          { /* Fields not applicable to 'rating', 'markdown', or 'image' are hidden by conditional rendering based on currentPropertyType */ }
           { !['rating', 'markdown', 'image'].includes(currentPropertyType) && (
             <FormField
               control={form.control}
               name={`properties.${index}.required`}
               render={({ field }) => (
-                <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 md:col-span-1"> {/* Adjusted span */}
+                <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 md:col-span-1">
                   <FormControl>
                     <Checkbox
                       checked={field.value}
@@ -370,7 +414,7 @@ const PropertyAccordionContent = ({ form, index, currentPropertyType, modelsForR
                 control={form.control}
                 name={`properties.${index}.required`}
                 render={({ field }) => (
-                  <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 md:col-span-1"> {/* Adjusted span */}
+                  <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 md:col-span-1">
                     <FormControl>
                       <Checkbox
                         checked={field.value}
@@ -388,7 +432,7 @@ const PropertyAccordionContent = ({ form, index, currentPropertyType, modelsForR
               />
           )}
         </div>
-        <div className="mt-4"> {/* Default Value field section */}
+        <div className="mt-4">
           <FormField
             control={control}
             name={`properties.${index}.defaultValue`}
@@ -396,9 +440,9 @@ const PropertyAccordionContent = ({ form, index, currentPropertyType, modelsForR
               <FormItem>
                 <FormLabel>Default Value (Optional)</FormLabel>
                 <FormControl>
-                  <Input 
-                    placeholder={getDefaultValuePlaceholder(currentPropertyType, form.getValues(`properties.${index}.relationshipType`))} 
-                    {...field} 
+                  <Input
+                    placeholder={getDefaultValuePlaceholder(currentPropertyType, form.getValues(`properties.${index}.relationshipType`))}
+                    {...field}
                     value={field.value ?? ''}
                   />
                 </FormControl>
@@ -446,7 +490,6 @@ function PropertyFieldsWithDnd({
       const newIndex = fields.findIndex((field) => field.id === over.id);
       if (oldIndex !== -1 && newIndex !== -1) {
         move(oldIndex, newIndex);
-        // Update orderIndex in form values after move
         const newOrderedProperties = arrayMove(form.getValues('properties'), oldIndex, newIndex);
         newOrderedProperties.forEach((prop, idx) => {
           form.setValue(`properties.${idx}.orderIndex`, idx, { shouldValidate: false, shouldDirty: true, shouldTouch: true });
@@ -454,7 +497,7 @@ function PropertyFieldsWithDnd({
       }
     }
   }
-  
+
   useEffect(() => {
     const itemsToOpen = new Set<string>();
     const propertiesErrors = form.formState.errors.properties;
@@ -466,13 +509,13 @@ function PropertyFieldsWithDnd({
                  const hasFieldError = Object.values(propertyErrorAtIndex).some(
                     (errorField: any) => errorField && typeof errorField.message === 'string'
                 );
-                if (hasFieldError && fieldItem.id) { 
+                if (hasFieldError && fieldItem.id) {
                     itemsToOpen.add(fieldItem.id);
                 }
             }
         });
     }
-    
+
     if (itemsToOpen.size > 0) {
       setOpenAccordionItems(prevOpen => {
         const newOpenState = new Set(prevOpen);
@@ -480,45 +523,10 @@ function PropertyFieldsWithDnd({
         return Array.from(newOpenState);
       });
     }
-  }, [form.formState.errors.properties, fields]);
+  // Only run when errors change, not on every fields change
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.formState.errors.properties]);
 
-
-  const handleTypeChange = (value: string, index: number) => {
-    const propertyType = value as PropertyFormValues['type'];
-    form.setValue(`properties.${index}.type`, propertyType);
-
-    const isRelationship = propertyType === 'relationship';
-    const isNumber = propertyType === 'number';
-    const isDate = propertyType === 'date';
-    const isString = propertyType === 'string';
-    const isMarkdown = propertyType === 'markdown';
-    const isRating = propertyType === 'rating';
-    const isImage = propertyType === 'image';
-
-
-    form.setValue(`properties.${index}.relationshipType`, isRelationship ? (form.getValues(`properties.${index}.relationshipType`) || 'one') : undefined);
-    form.setValue(`properties.${index}.relatedModelId`, isRelationship ? form.getValues(`properties.${index}.relatedModelId`) : undefined);
-    
-    form.setValue(`properties.${index}.unit`, isNumber ? form.getValues(`properties.${index}.unit`) : undefined);
-    form.setValue(`properties.${index}.precision`, isNumber ? (form.getValues(`properties.${index}.precision`) ?? 2) : undefined);
-    
-    form.setValue(`properties.${index}.autoSetOnCreate`, isDate ? form.getValues(`properties.${index}.autoSetOnCreate`) : false);
-    form.setValue(`properties.${index}.autoSetOnUpdate`, isDate ? form.getValues(`properties.${index}.autoSetOnUpdate`) : false);
-    
-    form.setValue(`properties.${index}.isUnique`, isString ? form.getValues(`properties.${index}.isUnique`) : false);
-
-    // Reset fields not applicable to markdown, rating, or image
-    if (isMarkdown || isRating || isImage) {
-      form.setValue(`properties.${index}.unit`, undefined);
-      form.setValue(`properties.${index}.precision`, undefined);
-      form.setValue(`properties.${index}.relatedModelId`, undefined);
-      form.setValue(`properties.${index}.relationshipType`, undefined);
-      form.setValue(`properties.${index}.autoSetOnCreate`, false);
-      form.setValue(`properties.${index}.autoSetOnUpdate`, false);
-      form.setValue(`properties.${index}.isUnique`, false);
-    }
-    form.setValue(`properties.${index}.defaultValue`, undefined); // Reset default value on type change
-  };
 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -526,18 +534,18 @@ function PropertyFieldsWithDnd({
         <Accordion
           type="multiple"
           className="w-full space-y-2"
-          value={openAccordionItems} 
-          onValueChange={setOpenAccordionItems} 
+          value={openAccordionItems}
+          onValueChange={setOpenAccordionItems}
         >
           {fields.map((fieldItem, index) => {
-            const currentPropertyType = form.watch(`properties.${index}.type`);
             const propertyName = form.watch(`properties.${index}.name`);
+            const propertyType = form.watch(`properties.${index}.type`);
             const headerTitle = propertyName || `Property #${index + 1}`;
 
             return (
               <SortablePropertyItem key={fieldItem.id} id={fieldItem.id} className="bg-card rounded-md border">
-                 {(dndProps) => ( 
-                    <AccordionItem value={fieldItem.id} className="border-0"> 
+                 {(dndProps) => (
+                    <AccordionItem value={fieldItem.id} className="border-0">
                         <AccordionTrigger className="p-4 hover:no-underline data-[state=open]:border-b">
                             <div className="flex justify-between items-center w-full">
                             <div className="flex items-center gap-2">
@@ -545,14 +553,14 @@ function PropertyFieldsWithDnd({
                                 <GripVertical className="h-5 w-5" />
                                 </span>
                                 <span className="text-lg font-medium text-foreground truncate mr-2">{headerTitle}</span>
-                                {currentPropertyType && <span className="text-xs text-muted-foreground">({currentPropertyType})</span>}
+                                {propertyType && <span className="text-xs text-muted-foreground">({propertyType})</span>}
                             </div>
                             <Button
                                 asChild
                                 variant="ghost"
                                 size="icon"
                                 onClick={(e) => {
-                                  e.stopPropagation(); 
+                                  e.stopPropagation();
                                   remove(index);
                                 }}
                                 className="text-destructive hover:bg-destructive/10 flex-shrink-0"
@@ -577,10 +585,8 @@ function PropertyFieldsWithDnd({
                         <PropertyAccordionContent
                             form={form}
                             index={index}
-                            currentPropertyType={currentPropertyType}
                             modelsForRelationsGrouped={modelsForRelationsGrouped}
                             control={control}
-                            handleTypeChange={handleTypeChange}
                         />
                     </AccordionItem>
                  )}
@@ -600,12 +606,12 @@ function PropertyFieldsWithDnd({
             required: false,
             relationshipType: 'one',
             unit: undefined,
-            precision: undefined, 
+            precision: undefined,
             autoSetOnCreate: false,
             autoSetOnUpdate: false,
             isUnique: false,
             defaultValue: undefined,
-            orderIndex: fields.length, 
+            orderIndex: fields.length,
         } as PropertyFormValues, {shouldFocus: false})}
         className="mt-4 w-full border-dashed hover:border-solid"
       >
@@ -618,11 +624,11 @@ function PropertyFieldsWithDnd({
 
 export default function ModelForm({ form, onSubmit, onCancel, isLoading, existingModel }: ModelFormProps) {
   const { models, modelGroups, isReady: dataReady } = useData();
-  const { toast } = useToast(); 
+  const { toast } = useToast();
   const fieldArray = useFieldArray({
     control: form.control,
     name: 'properties',
-    keyName: "id" 
+    keyName: "id"
   });
 
   const modelsForRelations = useMemo(() => {
@@ -647,18 +653,18 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
 
   const displayPropertyOptions: MultiSelectOption[] = useMemo(() => {
     return (currentProperties || [])
-      .filter(p => p.name && (p.type === 'string' || p.type === 'number' || p.type === 'date')) 
-      .map(p => ({ value: p.name!, label: p.name! })); 
+      .filter(p => p.name && (p.type === 'string' || p.type === 'number' || p.type === 'date'))
+      .map(p => ({ value: p.name!, label: p.name! }));
   }, [currentProperties]);
 
   const selectedValuesForAutocomplete = useMemo(() => {
     const currentDisplayNames = Array.isArray(watchedDisplayPropertyNames) ? watchedDisplayPropertyNames : [];
-    
+
     if (!currentDisplayNames.length && !existingModel?.displayPropertyNames?.length) {
         return [INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE];
     }
-    
-    const validSelectedValues = currentDisplayNames.filter(name => 
+
+    const validSelectedValues = currentDisplayNames.filter(name =>
       name === INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE || displayPropertyOptions.some(opt => opt.value === name)
     );
 
@@ -676,12 +682,12 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
 
   const handleFormSubmit = (values: ModelFormValues) => {
     const processedValues = { ...values };
-    
+
     if (processedValues.displayPropertyNames && processedValues.displayPropertyNames.includes(INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE)) {
         const filtered = processedValues.displayPropertyNames.filter(dpName => dpName !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
         processedValues.displayPropertyNames = filtered.length > 0 ? filtered : undefined;
     } else if (processedValues.displayPropertyNames && processedValues.displayPropertyNames.length === 0) {
-        processedValues.displayPropertyNames = undefined; 
+        processedValues.displayPropertyNames = undefined;
     }
 
     if (!processedValues.namespace || processedValues.namespace.trim() === '' || processedValues.namespace === INTERNAL_DEFAULT_NAMESPACE_VALUE) {
@@ -701,15 +707,15 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
 
       finalProp.unit = isNumber ? prop.unit : undefined;
       finalProp.precision = isNumber ? (prop.precision === undefined || prop.precision === null || isNaN(Number(prop.precision)) ? 2 : Number(prop.precision)) : undefined;
-      
+
       finalProp.autoSetOnCreate = isDate ? !!prop.autoSetOnCreate : false;
       finalProp.autoSetOnUpdate = isDate ? !!prop.autoSetOnUpdate : false;
-      
+
       finalProp.isUnique = isString ? !!prop.isUnique : false;
-      
+
       finalProp.relatedModelId = isRelationship ? prop.relatedModelId : undefined;
       finalProp.relationshipType = isRelationship ? prop.relationshipType : undefined;
-      
+
       if (isSpecialType) {
         finalProp.unit = undefined;
         finalProp.precision = undefined;
@@ -719,19 +725,18 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
         finalProp.autoSetOnUpdate = false;
         finalProp.isUnique = false;
       }
-      // Pass defaultValue as is, API will store it as string
       finalProp.defaultValue = prop.defaultValue;
       return finalProp;
     });
     onSubmit(processedValues);
   };
-  
+
   const handleFormInvalid = (/* errors: FieldErrors<ModelFormValues> */) => {
     // Log the form values to help identify the exact data causing validation failure
     console.log("Form validation failed. Current form values:", JSON.stringify(form.getValues(), null, 2)); // DEBUG
     // Log the authoritative errors object from formState
     // console.error("Client-side form validation. Current form.formState.errors:", form.formState.errors); // DEBUG
-    
+
     toast({
       title: "Validation Error",
       description: "Please correct the errors highlighted in the form. Some errors might be in collapsed sections.",
@@ -749,7 +754,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
           </CardHeader>
           <Accordion type="single" collapsible defaultValue="model-details-content" className="w-full">
             <AccordionItem value="model-details-content" className="border-0">
-              <UiCardContent className="p-6 pt-0 space-y-4"> 
+               <UiCardContent className="p-6 pt-0 space-y-4">
                 <FormField
                   control={form.control}
                   name="name"
@@ -766,8 +771,8 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                 />
                  <FormField
                   control={form.control}
-                  name="properties" 
-                  render={() => ( 
+                  name="properties" // Top-level properties array
+                  render={() => ( // No specific field needed here, just for top-level message
                     <FormItem>
                       <FormMessage className="text-destructive mt-2" />
                     </FormItem>
@@ -781,7 +786,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                         <FormLabel>Namespace</FormLabel>
                         <Select
                             onValueChange={(value) => field.onChange(value === INTERNAL_DEFAULT_NAMESPACE_VALUE ? 'Default' : value)}
-                            defaultValue={field.value === 'Default' || !field.value ? INTERNAL_DEFAULT_NAMESPACE_VALUE : field.value}
+                            value={field.value === 'Default' || !field.value ? INTERNAL_DEFAULT_NAMESPACE_VALUE : field.value}
                         >
                             <FormControl>
                             <SelectTrigger>
@@ -829,7 +834,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                             const actualPropertiesSelected = selectedOptsFromAutocomplete.filter(v => v !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
 
                             if (isDefaultSelected && actualPropertiesSelected.length === 0) {
-                                field.onChange([]); 
+                                field.onChange([]);
                             } else {
                                 field.onChange(actualPropertiesSelected);
                             }
