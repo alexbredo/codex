@@ -64,6 +64,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
+import { StarRatingInput } from '@/components/ui/star-rating-input';
 
 
 interface ModelFormProps {
@@ -122,6 +123,7 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped }: {
 
   useEffect(() => {
     if (previousPropertyTypeRef.current !== undefined && currentPropertyType !== previousPropertyTypeRef.current) {
+      // Only run if type actually changed, and it's not the initial effect run where previous is still undefined
       const isRelationship = currentPropertyType === 'relationship';
       const isNumber = currentPropertyType === 'number';
       const isDate = currentPropertyType === 'date';
@@ -142,13 +144,13 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped }: {
 
       form.setValue(`properties.${index}.isUnique`, isString ? !!form.getValues(`properties.${index}.isUnique`) : false, { shouldValidate: true });
       
-      // Only reset defaultValue if the type changes significantly
-      // For default value, we don't reset it on type change as its interpretation is deferred.
-      // User can manually adjust it if needed.
+      // Reset defaultValue as its interpretation/validity changes with type
+      form.setValue(`properties.${index}.defaultValue`, undefined, { shouldValidate: true });
+
 
       // Further ensure incompatible fields are cleared if current type is special
       if (isMarkdown || isRating || isImage || ['boolean'].includes(currentPropertyType)) {
-        if (!isNumber) {
+        if (!isNumber) { // This condition seems off if we are in Markdown/Rating/Image/Boolean block
             form.setValue(`properties.${index}.unit`, undefined, { shouldValidate: true });
             form.setValue(`properties.${index}.precision`, undefined, { shouldValidate: true });
         }
@@ -160,22 +162,19 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped }: {
             form.setValue(`properties.${index}.autoSetOnCreate`, false, { shouldValidate: true });
             form.setValue(`properties.${index}.autoSetOnUpdate`, false, { shouldValidate: true });
         }
-        if (!isString) {
+        if (!isString) { // This condition seems off if we are in Markdown/Rating/Image/Boolean block
              form.setValue(`properties.${index}.isUnique`, false, { shouldValidate: true });
         }
       }
     }
     // Update previous type ref *after* all logic for current render/effect
-    if (previousPropertyTypeRef.current === undefined && currentPropertyType !== undefined) {
-      // This handles the very first load/initialization, setting previous to current
-      // so the next actual change can be detected.
-      previousPropertyTypeRef.current = currentPropertyType;
+     if (previousPropertyTypeRef.current === undefined && currentPropertyType !== undefined) {
+        previousPropertyTypeRef.current = currentPropertyType;
     } else if (currentPropertyType !== previousPropertyTypeRef.current) {
-      // This handles subsequent changes
-      previousPropertyTypeRef.current = currentPropertyType;
+        previousPropertyTypeRef.current = currentPropertyType;
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPropertyType, index, form.setValue, form.getValues]);
+  }, [currentPropertyType, index]);
 
 
   const getDefaultValuePlaceholder = (type: PropertyFormValues['type'], relationshipType?: 'one' | 'many') => {
@@ -186,8 +185,8 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped }: {
         return "Enter default text or URL";
       case 'number':
         return "Enter default number (e.g., 0)";
-      case 'rating':
-        return "Enter default rating (0-5)";
+      // case 'rating': // Handled by StarRatingInput
+      //   return "Enter default rating (0-5)";
       case 'relationship':
         return relationshipType === 'many' ? "Enter comma-separated IDs or JSON array" : "Enter single ID";
       default:
@@ -478,11 +477,14 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped }: {
                     {currentPropertyType === 'date' && (() => {
                         let displayDate: Date | undefined = undefined;
                         let buttonText: React.ReactNode = <span>Pick a date</span>;
+                        // Ensure field.value is a string and try to parse it
                         if (field.value && typeof field.value === 'string') {
                             const parsedDate = new Date(field.value);
-                            if (isDateValid(parsedDate)) {
+                            if (isDateValid(parsedDate)) { // Check if the date is valid
                                 displayDate = parsedDate;
                                 buttonText = formatDateFns(parsedDate, "PPP");
+                            } else {
+                                buttonText = <span>Invalid date string</span>; // Or "Pick a date"
                             }
                         }
                         return (
@@ -510,23 +512,29 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped }: {
                             </Popover>
                         );
                     })()}
-                    {(currentPropertyType === 'number' || currentPropertyType === 'rating') && (
-                      <Input
-                        type="number"
-                        placeholder={getDefaultValuePlaceholder(currentPropertyType)}
-                        {...field}
-                        value={field.value ?? ''}
-                        onChange={e => {
-                            const val = e.target.value;
-                            field.onChange(val === '' ? '' : parseFloat(val)); 
-                        }}
+                    {currentPropertyType === 'rating' && (
+                      <StarRatingInput
+                        value={field.value && !isNaN(parseInt(field.value, 10)) ? parseInt(field.value, 10) : 0}
+                        onChange={(newRating) => field.onChange(newRating === 0 ? '' : String(newRating))}
                       />
                     )}
-                    {(!['boolean', 'date', 'number', 'rating'].includes(currentPropertyType)) && (
+                    {(!['boolean', 'date', 'rating'].includes(currentPropertyType)) && ( // All other types use text input
                       <Input
+                        type={currentPropertyType === 'number' ? 'number' : 'text'}
                         placeholder={getDefaultValuePlaceholder(currentPropertyType, form.getValues(`properties.${index}.relationshipType`))}
                         {...field}
                         value={field.value ?? ''}
+                        // For number type, ensure we pass a number or empty string to RHF
+                        onChange={e => {
+                          if (currentPropertyType === 'number') {
+                            const val = e.target.value;
+                            // RHF expects number for number fields.
+                            // Zod coerce.number will handle parsing 'string' to 'number' if it's not empty
+                            field.onChange(val === '' ? '' : Number(val)); 
+                          } else {
+                            field.onChange(e.target.value);
+                          }
+                        }}
                       />
                     )}
                   </div>
@@ -534,9 +542,10 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped }: {
                 <FormDescription className="text-xs">
                   {currentPropertyType === 'boolean' && "Default state for new records."}
                   {currentPropertyType === 'date' && "Default date (YYYY-MM-DD) for new records."}
+                  {currentPropertyType === 'rating' && "Default star rating (0 for none)."}
                   {currentPropertyType === 'relationship' && form.getValues(`properties.${index}.relationshipType`) === 'many' && "Comma-separated IDs or JSON array of IDs."}
                   {currentPropertyType === 'relationship' && form.getValues(`properties.${index}.relationshipType`) !== 'many' && "Enter a single ID."}
-                  {currentPropertyType === 'rating' && "Enter a number from 0 to 5 (0 for none)."}
+                  {currentPropertyType === 'number' && "Default numeric value."}
                 </FormDescription>
                 <FormMessage />
               </FormItem>
@@ -816,15 +825,15 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
       }
       // The defaultValue from the form is already a string (or empty string)
       // so it's passed directly. The API will store it as is, or as NULL if it's empty/undefined.
-      finalProp.defaultValue = prop.defaultValue; 
+      // No change needed for defaultValue here, it's taken as is from `prop.defaultValue`
       return finalProp;
     });
     onSubmit(processedValues);
   };
 
   const handleFormInvalid = (/* errors: FieldErrors<ModelFormValues> */) => {
+    // Log the form values to see what's being submitted when validation fails.
     console.log("Form validation failed. Current form values:", JSON.stringify(form.getValues(), null, 2)); // DEBUG
-    // console.error("Client-side form validation. Current form.formState.errors:", form.formState.errors); // DEBUG
     
     toast({
       title: "Validation Error",
@@ -863,7 +872,6 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                   name="properties" 
                   render={() => ( 
                     <FormItem>
-                      {/* This FormMessage is for array-level errors like "min 1 property" */}
                       <FormMessage className="text-destructive mt-2" />
                     </FormItem>
                   )}
@@ -963,3 +971,4 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     </Form>
   );
 }
+
