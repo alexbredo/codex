@@ -7,7 +7,7 @@ import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-quer
 import { useRouter } from 'next/navigation';
 
 // DEBUG MODE FLAG
-const DEBUG_MODE = true; // <<< SET TO true TO BYPASS LOGIN FOR DEVELOPMENT
+const DEBUG_MODE = false; // <<< SET TO true TO BYPASS LOGIN FOR DEVELOPMENT
 const MOCK_ADMIN_USER: User = {
   id: 'debug-admin-user',
   username: 'DebugAdmin',
@@ -53,15 +53,15 @@ const formatApiError = async (response: Response, defaultMessage: string): Promi
         if (errorData.details && typeof errorData.details === 'string') {
           errorMessage += ` Details: ${errorData.details}`;
         } else if (errorData.details && typeof errorData.details === 'object') {
-          errorMessage += ` Details: ${JSON.stringify(errorData.details)}`;
+           errorMessage += ` Details: ${JSON.stringify(errorData.details)}`;
         }
-      } else if(response.statusText) {
+      } else if(response.statusText && response.statusText.trim() !== '') {
         errorMessage = `${defaultMessage}. Status: ${response.status} - Server: ${response.statusText}`;
       } else {
          errorMessage = `${defaultMessage}. Status: ${response.status} - Server did not provide detailed error.`;
       }
     } catch (e) {
-      errorMessage = `${defaultMessage}. Status: ${response.status} - ${response.statusText || 'Server did not provide detailed error.'}`;
+      errorMessage = `${defaultMessage}. Status: ${response.status} - ${response.statusText || 'Server did not provide detailed error or a non-JSON response.'}`;
     }
     return errorMessage;
   };
@@ -75,8 +75,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryKey: ['currentUser'],
     queryFn: fetchCurrentUser,
     staleTime: DEBUG_MODE ? Infinity : 5 * 60 * 1000,
-    retry: DEBUG_MODE ? false : undefined,
-    enabled: !DEBUG_MODE, // Only run query if not in debug mode initially
+    retry: DEBUG_MODE ? false : 3, // Allow retries if not in debug mode
+    enabled: true, // Always try to fetch, debug mode handles the return value
     initialData: DEBUG_MODE ? MOCK_ADMIN_USER : undefined,
   });
   
@@ -88,7 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (DEBUG_MODE) {
       console.warn("DEBUG_MODE: Login skipped.");
       queryClient.setQueryData(['currentUser'], MOCK_ADMIN_USER);
-      refetch();
+      await refetch();
       return MOCK_ADMIN_USER;
     }
     try {
@@ -114,8 +114,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(async () => {
     if (DEBUG_MODE) {
       console.warn("DEBUG_MODE: Logout skipped, user remains mock admin.");
-      // In a real debug logout, you might want to set user to null
-      // but for this request, bypassing login means always being admin.
+      queryClient.setQueryData(['currentUser'], MOCK_ADMIN_USER); // Keep mock admin
+      await refetch(); // Refetch will re-apply mock admin if enabled
       return;
     }
     try {
@@ -124,8 +124,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.error("Logout error in context:", error);
     } finally {
         await queryClient.setQueryData(['currentUser'], null);
-        await queryClient.invalidateQueries({ queryKey: ['currentUser'] });
-        await refetch();
+        // await queryClient.invalidateQueries({ queryKey: ['currentUser'] }); // Not strictly needed if setting to null
+        await refetch(); // This will try to fetch /me again, resulting in null if logout was successful
         router.push('/login');
     }
   }, [queryClient, router, refetch]);
@@ -192,7 +192,7 @@ export function withAuth<P extends object>(
       if (!isLoading && !user) {
         router.replace('/login');
       } else if (!isLoading && user && allowedRoles && !allowedRoles.includes(user.role)) {
-        router.replace('/');
+        router.replace('/'); // Redirect to home if role not allowed
       }
     }, [user, isLoading, router, allowedRoles]);
 
@@ -200,7 +200,8 @@ export function withAuth<P extends object>(
       return <WrappedComponent {...props} />;
     }
 
-    if (isLoading || (!user && (!allowedRoles || allowedRoles.length > 0)) || (user && allowedRoles && !allowedRoles.includes(user.role))) {
+    // If loading, or if no user and page requires auth, or user role not allowed
+    if (isLoading || (!user && allowedRoles && allowedRoles.length > 0) || (user && allowedRoles && !allowedRoles.includes(user.role))) {
       return (
         <div className="flex justify-center items-center h-screen">
           <p>Loading or checking authorization...</p>

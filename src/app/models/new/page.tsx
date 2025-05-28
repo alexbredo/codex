@@ -26,6 +26,7 @@ export default function CreateModelPage() {
       description: '',
       namespace: 'Default',
       displayPropertyNames: [],
+      workflowId: null, // Default to no workflow
       properties: [{ 
         id: crypto.randomUUID(), 
         name: '', 
@@ -55,6 +56,7 @@ export default function CreateModelPage() {
       description: values.description,
       namespace: (values.namespace && values.namespace.trim() !== '') ? values.namespace.trim() : 'Default',
       displayPropertyNames: values.displayPropertyNames && values.displayPropertyNames.length > 0 ? values.displayPropertyNames : undefined,
+      workflowId: values.workflowId || null,
       properties: values.properties.map((p, index) => ({
         id: p.id || crypto.randomUUID(),
         name: p.name,

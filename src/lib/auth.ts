@@ -3,7 +3,7 @@ import { cookies } from 'next/headers';
 import { getDb } from '@/lib/db';
 
 // DEBUG MODE FLAG - Should match the one in auth-context.tsx for consistency during dev
-const DEBUG_MODE = true; // <<< SET TO true TO BYPASS API AUTH FOR DEVELOPMENT
+export const DEBUG_MODE = false; // <<< SET TO true TO BYPASS API AUTH FOR DEVELOPMENT
 
 interface UserSession {
   id: string;
@@ -39,7 +39,7 @@ export async function getCurrentUserFromCookie(): Promise<UserSession | null> {
     }
     if (user.role !== 'user' && user.role !== 'administrator') {
         console.warn(`User ${user.id} has an invalid role: ${user.role}. Defaulting to 'user'.`);
-        user.role = 'user';
+        user.role = 'user'; // Or handle as unauthorized appropriately
     }
 
     return user as UserSession;
