@@ -67,8 +67,8 @@ const mapDbModelToClientModel = (dbModel: any): Model => {
       autoSetOnUpdate: p.type === 'date' ? (p.autoSetOnUpdate === 1 || p.autoSetOnUpdate === true) : false,
       isUnique: p.type === 'string' ? (p.isUnique === 1 || p.isUnique === true) : false,
       orderIndex: p.orderIndex ?? 0,
-      defaultValue: p.defaultValue, // Pass as string
-    })).sort((a, b) => a.orderIndex - b.orderIndex),
+      defaultValue: p.defaultValue, 
+    })).sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0)),
   };
 };
 
@@ -164,7 +164,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     });
     if (!response.ok) {
        const errorMessage = await formatApiError(response, 'Failed to add model');
-       console.error("API Error in addModel:", errorMessage, await response.text().catch(()=>"Could not read response body"));
+       console.error("API Error in addModel:", errorMessage);
        throw new Error(errorMessage);
     }
     const newModel: Model = await response.json();
@@ -208,24 +208,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
       throw new Error(errorMessage);
     }
     const updatedModelFromApi: Model = await response.json();
-    const clientModel = mapDbModelToClientModel(updatedModelFromApi);
-    
-    let returnedModel: Model | undefined;
-    setModels((prevModels) =>
-      prevModels.map((model) => {
-        if (model.id === modelId) {
-          returnedModel = clientModel;
-          return clientModel;
-        }
-        return model;
-      }).sort((a, b) => {
-        if (a.namespace.toLowerCase() < b.namespace.toLowerCase()) return -1;
-        if (a.namespace.toLowerCase() > b.namespace.toLowerCase()) return 1;
-        return a.name.localeCompare(b.name);
-      })
-    );
-    return returnedModel;
-  }, []);
+    // After a model update, existing objects might have been updated with new default values.
+    // It's safest to refresh all data from the server.
+    await fetchData(); 
+    // Find and return the updated model from the newly fetched state (optional, but good for consistency)
+    const clientModel = models.find(m => m.id === updatedModelFromApi.id) || mapDbModelToClientModel(updatedModelFromApi);
+    return clientModel;
+  }, [fetchData, models]); // Added models to dependency array for clientModel lookup
 
   const deleteModel = useCallback(async (modelId: string) => {
     const response = await fetch(`/api/codex-structure/models/${modelId}`, {
@@ -261,7 +250,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ ...objectData, id: finalObjectId }),
     });
     if (!response.ok) {
-      const errorMessage = await formatApiError(response, `Failed to add object to model ${modelId}`);
+      const errorData = await response.json().catch(() => ({ error: `Failed to add object to model ${modelId}. Status: ${response.status}` }));
+      let errorMessage = errorData.error || `Failed to add object to model ${modelId}`;
+      if (errorData.field) {
+        throw { message: errorMessage, field: errorData.field }; // Throw object with field for form setError
+      }
       throw new Error(errorMessage);
     }
     const newObject: DataObject = await response.json();
@@ -280,7 +273,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify(updates),
     });
     if (!response.ok) {
-      const errorMessage = await formatApiError(response, `Failed to update object ${objectId} in model ${modelId}`);
+      const errorData = await response.json().catch(() => ({ error: `Failed to update object ${objectId}. Status: ${response.status}` }));
+      let errorMessage = errorData.error || `Failed to update object ${objectId} in model ${modelId}`;
+       if (errorData.field) {
+        throw { message: errorMessage, field: errorData.field };
+      }
       throw new Error(errorMessage);
     }
     const updatedObjectFromApi: DataObject = await response.json();
