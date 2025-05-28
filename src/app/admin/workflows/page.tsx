@@ -2,8 +2,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+import { useRouter } from 'next/navigation'; // Changed from useForm
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import {
@@ -15,64 +14,20 @@ import {
 } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { useData } from '@/contexts/data-context';
-import { useAuth, withAuth } from '@/contexts/auth-context';
+import { withAuth } from '@/contexts/auth-context';
 import type { WorkflowWithDetails } from '@/lib/types';
-import type { WorkflowFormValues, WorkflowStateFormValues } from '@/components/workflows/workflow-form-schema';
-import { workflowFormSchema } from '@/components/workflows/workflow-form-schema';
-import WorkflowForm from '@/components/workflows/workflow-form';
 import { PlusCircle, Edit, Trash2, Search, Workflow as WorkflowIconLucide, Loader2, Network } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription
-} from "@/components/ui/dialog";
 import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
 
-function mapWorkflowToFormValues(workflow?: WorkflowWithDetails): WorkflowFormValues {
-  if (!workflow) {
-    return {
-      name: '',
-      description: '',
-      states: [{ id: crypto.randomUUID(), name: 'New', description: 'Initial state', isInitial: true, successorStateNames: [] }],
-    };
-  }
-  return {
-    name: workflow.name,
-    description: workflow.description || '',
-    states: workflow.states.map(state => {
-      const successorNames = state.successorStateIds
-        .map(id => workflow.states.find(s => s.id === id)?.name)
-        .filter(name => !!name) as string[];
-      return {
-        id: state.id,
-        name: state.name,
-        description: state.description || '',
-        isInitial: !!state.isInitial,
-        successorStateNames: successorNames,
-      };
-    }),
-  };
-}
-
+// mapWorkflowToFormValues is no longer needed here, will be in edit page.
 
 function WorkflowsAdminPageInternal() {
-  const { workflows, addWorkflow, updateWorkflow, deleteWorkflow, isReady: dataIsReady, fetchData } = useData();
+  const { workflows, deleteWorkflow, isReady: dataIsReady, fetchData } = useData();
   const { toast } = useToast();
+  const router = useRouter();
   
   const [searchTerm, setSearchTerm] = useState('');
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingWorkflow, setEditingWorkflow] = useState<WorkflowWithDetails | null>(null);
-
-  const form = useForm<WorkflowFormValues>({
-    resolver: zodResolver(workflowFormSchema),
-    defaultValues: mapWorkflowToFormValues(),
-  });
-
-  useEffect(() => {
-    if (isFormOpen) {
-      form.reset(mapWorkflowToFormValues(editingWorkflow ?? undefined));
-    }
-  }, [editingWorkflow, form, isFormOpen]);
 
   const filteredWorkflows = useMemo(() => {
     return workflows.filter(wf =>
@@ -82,13 +37,11 @@ function WorkflowsAdminPageInternal() {
   }, [workflows, searchTerm]);
 
   const handleCreateNew = () => {
-    setEditingWorkflow(null);
-    setIsFormOpen(true);
+    router.push('/admin/workflows/new');
   };
 
-  const handleEdit = (workflow: WorkflowWithDetails) => {
-    setEditingWorkflow(workflow);
-    setIsFormOpen(true);
+  const handleEdit = (workflowId: string) => {
+    router.push(`/admin/workflows/edit/${workflowId}`);
   };
 
   const handleDelete = async (workflowId: string, workflowName: string) => {
@@ -97,43 +50,6 @@ function WorkflowsAdminPageInternal() {
       toast({ title: "Workflow Deleted", description: `Workflow "${workflowName}" has been successfully deleted.` });
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error Deleting Workflow", description: error.message });
-    }
-  };
-
-  const onSubmit = async (values: WorkflowFormValues) => {
-    const payloadStates = values.states.map(s => ({
-        id: s.id?.startsWith('temp-') ? undefined : s.id, // Clear temporary client-side IDs for new states
-        name: s.name,
-        description: s.description,
-        isInitial: s.isInitial,
-        successorStateNames: s.successorStateNames || [],
-    }));
-    
-    const payload = {
-        name: values.name,
-        description: values.description,
-        states: payloadStates,
-    };
-
-    try {
-      if (editingWorkflow) {
-        await updateWorkflow(editingWorkflow.id, payload);
-        toast({ title: "Workflow Updated", description: `Workflow "${values.name}" has been updated.` });
-      } else {
-        await addWorkflow(payload);
-        toast({ title: "Workflow Created", description: `Workflow "${values.name}" has been created.` });
-      }
-      setIsFormOpen(false);
-      setEditingWorkflow(null);
-      await fetchData(); // Re-fetch all data including workflows to get latest state
-    } catch (error: any)      {
-      let errorMessage = "Failed to save workflow.";
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      } else if (typeof error === 'string') {
-        errorMessage = error;
-      }
-      toast({ variant: "destructive", title: "Error Saving Workflow", description: errorMessage });
     }
   };
   
@@ -172,31 +88,6 @@ function WorkflowsAdminPageInternal() {
         </div>
       </header>
 
-      <Dialog open={isFormOpen} onOpenChange={(open) => {
-          setIsFormOpen(open);
-          if (!open) setEditingWorkflow(null);
-      }}>
-        <DialogContent className="sm:max-w-2xl md:max-w-3xl lg:max-w-4xl max-h-[90vh] flex flex-col">
-          <DialogHeader className="flex-shrink-0">
-            <DialogTitle className="text-2xl">
-              {editingWorkflow ? 'Edit Workflow' : 'Create New Workflow'}
-            </DialogTitle>
-            <DialogDescription>
-              {editingWorkflow ? `Update details for "${editingWorkflow.name}".` : 'Define states and transitions for your new workflow.'}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex-grow overflow-hidden"> {/* This div will handle the scrolling of the form */}
-             <WorkflowForm
-                form={form}
-                onSubmit={onSubmit}
-                onCancel={() => { setIsFormOpen(false); setEditingWorkflow(null); }}
-                existingWorkflow={editingWorkflow || undefined}
-                isLoading={form.formState.isSubmitting}
-              />
-          </div>
-        </DialogContent>
-      </Dialog>
-
       {filteredWorkflows.length === 0 ? (
         <Card className="text-center py-12">
           <CardContent>
@@ -232,7 +123,7 @@ function WorkflowsAdminPageInternal() {
                     <Badge variant="secondary">{wf.states.length}</Badge>
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button variant="ghost" size="icon" onClick={() => handleEdit(wf)} className="mr-2 hover:text-primary">
+                    <Button variant="ghost" size="icon" onClick={() => handleEdit(wf.id)} className="mr-2 hover:text-primary">
                       <Edit className="h-4 w-4" />
                     </Button>
                     <AlertDialog>
