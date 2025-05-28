@@ -7,7 +7,7 @@ import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-quer
 import { useRouter } from 'next/navigation';
 
 // DEBUG MODE FLAG
-const DEBUG_MODE = false; // <<< SET TO true TO BYPASS LOGIN FOR DEVELOPMENT
+const DEBUG_MODE = true; // <<< SET TO true TO BYPASS LOGIN FOR DEVELOPMENT
 const MOCK_ADMIN_USER: User = {
   id: 'debug-admin-user',
   username: 'DebugAdmin',
@@ -31,13 +31,12 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-async function fetchCurrentUser(): Promise<User | null> {
-  if (DEBUG_MODE) {
-    return Promise.resolve(MOCK_ADMIN_USER);
-  }
+// This function will only be called when not in DEBUG_MODE due to useQuery's enabled flag
+async function fetchCurrentUserActual(): Promise<User | null> {
   const response = await fetch('/api/auth/me');
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) return null;
+    // Consider using formatApiError here if more detail is needed from this specific fetch
     throw new Error('Failed to fetch current user');
   }
   const data = await response.json();
@@ -71,24 +70,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const router = useRouter();
 
-  const { data: user, isLoading, refetch } = useQuery<User | null>({
+  const { data: realUser, isLoading: realIsLoading, refetch: realRefetch } = useQuery<User | null>({
     queryKey: ['currentUser'],
-    queryFn: fetchCurrentUser,
-    staleTime: DEBUG_MODE ? Infinity : 5 * 60 * 1000,
-    retry: DEBUG_MODE ? false : 3, // Allow retries if not in debug mode
-    enabled: true, // Always try to fetch, debug mode handles the return value
-    initialData: DEBUG_MODE ? MOCK_ADMIN_USER : undefined,
+    queryFn: fetchCurrentUserActual,
+    staleTime: 5 * 60 * 1000, // Standard stale time for non-debug mode
+    retry: 3,
+    enabled: !DEBUG_MODE, // Query is disabled if in DEBUG_MODE
   });
-  
-  const finalUser = DEBUG_MODE ? MOCK_ADMIN_USER : user;
-  const finalIsLoading = DEBUG_MODE ? false : isLoading;
-
 
   const login = useCallback(async (credentials: Record<string, string>) => {
     if (DEBUG_MODE) {
       console.warn("DEBUG_MODE: Login skipped.");
-      queryClient.setQueryData(['currentUser'], MOCK_ADMIN_USER);
-      await refetch();
       return MOCK_ADMIN_USER;
     }
     try {
@@ -102,20 +94,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error(errorMessage);
       }
       const loggedInUser = await response.json();
-      await queryClient.invalidateQueries({ queryKey: ['currentUser'] });
-      await refetch();
+      queryClient.invalidateQueries({ queryKey: ['currentUser'] });
+      await realRefetch(); // This will now run as DEBUG_MODE is false and query is enabled
       return loggedInUser as User;
     } catch (error) {
       console.error("Login error in context:", error);
       throw error;
     }
-  }, [queryClient, refetch]);
+  }, [queryClient, realRefetch]);
 
   const logout = useCallback(async () => {
     if (DEBUG_MODE) {
       console.warn("DEBUG_MODE: Logout skipped, user remains mock admin.");
-      queryClient.setQueryData(['currentUser'], MOCK_ADMIN_USER); // Keep mock admin
-      await refetch(); // Refetch will re-apply mock admin if enabled
       return;
     }
     try {
@@ -124,16 +114,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.error("Logout error in context:", error);
     } finally {
         await queryClient.setQueryData(['currentUser'], null);
-        // await queryClient.invalidateQueries({ queryKey: ['currentUser'] }); // Not strictly needed if setting to null
-        await refetch(); // This will try to fetch /me again, resulting in null if logout was successful
+        // Await refetch to ensure the hook updates if it's still listening.
+        // It will fetch /me which should return null after successful server logout.
+        await realRefetch();
         router.push('/login');
     }
-  }, [queryClient, router, refetch]);
+  }, [queryClient, router, realRefetch]);
 
   const register = useCallback(async (credentials: Record<string, string>) => {
      if (DEBUG_MODE) {
       console.warn("DEBUG_MODE: Registration skipped.");
-      return MOCK_ADMIN_USER; // Or null, depending on desired debug behavior
+      return MOCK_ADMIN_USER;
     }
     try {
       const response = await fetch('/api/auth/register', {
@@ -155,15 +146,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refetchUser = useCallback(() => {
     if (DEBUG_MODE) {
-      console.warn("DEBUG_MODE: refetchUser called, providing mock admin.");
-      queryClient.setQueryData(['currentUser'], MOCK_ADMIN_USER);
+      console.warn("DEBUG_MODE: refetchUser called, no actual fetch needed as user is mocked.");
       return;
     }
-    refetch();
-  }, [refetch, queryClient]);
+    realRefetch();
+  }, [realRefetch]);
+
+  let contextValue: AuthContextType;
+
+  if (DEBUG_MODE) {
+    contextValue = {
+      user: MOCK_ADMIN_USER,
+      isLoading: false,
+      login,
+      logout,
+      register,
+      refetchUser,
+    };
+  } else {
+    contextValue = {
+      user: realUser || null,
+      isLoading: realIsLoading,
+      login,
+      logout,
+      register,
+      refetchUser,
+    };
+  }
 
   return (
-    <AuthContext.Provider value={{ user: finalUser || null, isLoading: finalIsLoading, login, logout, register, refetchUser }}>
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );
