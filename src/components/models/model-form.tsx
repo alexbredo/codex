@@ -119,8 +119,8 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped }: {
   const currentPropertyType = useWatch({ control, name: propertyTypePath });
   const previousPropertyTypeRef = useRef<PropertyFormValues['type']>();
 
+
   useEffect(() => {
-    // Only run if the type actually changed and it's not the initial render
     if (previousPropertyTypeRef.current !== undefined && currentPropertyType !== previousPropertyTypeRef.current) {
       const isRelationship = currentPropertyType === 'relationship';
       const isNumber = currentPropertyType === 'number';
@@ -130,7 +130,6 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped }: {
       const isRating = currentPropertyType === 'rating';
       const isImage = currentPropertyType === 'image';
 
-      // Reset fields that are not applicable to the new type
       form.setValue(`properties.${index}.relationshipType`, isRelationship ? (form.getValues(`properties.${index}.relationshipType`) || 'one') : undefined, { shouldValidate: true });
       form.setValue(`properties.${index}.relatedModelId`, isRelationship ? form.getValues(`properties.${index}.relatedModelId`) : undefined, { shouldValidate: true });
 
@@ -142,12 +141,13 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped }: {
 
       form.setValue(`properties.${index}.isUnique`, isString ? !!form.getValues(`properties.${index}.isUnique`) : false, { shouldValidate: true });
       
-      // Reset defaultValue when type changes, so the new adaptive input can start fresh
+      // Only reset defaultValue if the type changes and it is not the initial render
+      // This was the main change from the previous version to avoid overwriting default values during edits.
       form.setValue(`properties.${index}.defaultValue`, undefined, { shouldValidate: true });
 
 
-      if (isMarkdown || isRating || isImage || ['boolean', 'date'].includes(currentPropertyType)) { // Also include new adaptive types here if they have many restrictions
-        if (!isNumber) { // Keep unit/precision if it's a number type
+      if (isMarkdown || isRating || isImage || ['boolean'].includes(currentPropertyType)) { 
+        if (!isNumber) {
             form.setValue(`properties.${index}.unit`, undefined, { shouldValidate: true });
             form.setValue(`properties.${index}.precision`, undefined, { shouldValidate: true });
         }
@@ -164,9 +164,9 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped }: {
         }
       }
     }
-    // Store the current type for the next effect run comparison
     previousPropertyTypeRef.current = currentPropertyType;
-  }, [currentPropertyType, index, form]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPropertyType, index, form]); // form.getValues is not stable, use form if needed or specific values
 
 
   const getDefaultValuePlaceholder = (type: PropertyFormValues['type'], relationshipType?: 'one' | 'many') => {
@@ -179,7 +179,6 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped }: {
         return "Enter default number (e.g., 0)";
       case 'rating':
         return "Enter default rating (0-5)";
-      // Boolean and Date will have their own input types, no placeholder needed for text input.
       case 'relationship':
         return relationshipType === 'many' ? "Enter comma-separated IDs or JSON array" : "Enter single ID";
       default:
@@ -451,13 +450,13 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped }: {
               <FormItem>
                 <FormLabel>Default Value (Optional)</FormLabel>
                 <FormControl>
-                  <>
+                  <div> {/* This div wrapper solves the React.Fragment id prop error */}
                     {currentPropertyType === 'boolean' && (
                       <Select
                         onValueChange={(value) => field.onChange(value === INTERNAL_BOOLEAN_NOT_SET_VALUE ? '' : value)}
                         value={field.value === '' || field.value === undefined ? INTERNAL_BOOLEAN_NOT_SET_VALUE : field.value}
                       >
-                        <SelectTrigger>
+                         <SelectTrigger>
                           <SelectValue placeholder="Select default boolean value" />
                         </SelectTrigger>
                         <SelectContent>
@@ -485,7 +484,7 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped }: {
                           <Calendar
                             mode="single"
                             selected={field.value ? new Date(field.value) : undefined}
-                            onSelect={(date) => field.onChange(date ? date.toISOString().split('T')[0] : '')} // Store as YYYY-MM-DD string
+                            onSelect={(date) => field.onChange(date ? date.toISOString().split('T')[0] : '')}
                             initialFocus
                           />
                         </PopoverContent>
@@ -499,19 +498,18 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped }: {
                         value={field.value ?? ''}
                         onChange={e => {
                             const val = e.target.value;
-                            // Allow empty string to clear, otherwise parse
                             field.onChange(val === '' ? '' : parseFloat(val)); 
                         }}
                       />
                     )}
-                    {(!['boolean', 'date', 'number', 'rating'].includes(currentPropertyType)) && ( // Default text input
+                    {(!['boolean', 'date', 'number', 'rating'].includes(currentPropertyType)) && (
                       <Input
                         placeholder={getDefaultValuePlaceholder(currentPropertyType, form.getValues(`properties.${index}.relationshipType`))}
                         {...field}
                         value={field.value ?? ''}
                       />
                     )}
-                  </>
+                  </div>
                 </FormControl>
                 <FormDescription className="text-xs">
                   {currentPropertyType === 'boolean' && "Default state for new records."}
@@ -540,8 +538,6 @@ function PropertyFieldsWithDnd({
   modelsForRelationsGrouped: Record<string, Model[]>
 }) {
   const { fields, append, remove, move } = fieldArray;
-  const control = form.control;
-
   const [openAccordionItems, setOpenAccordionItems] = useState<string[]>([]);
 
   const sensors = useSensors(
@@ -574,7 +570,7 @@ function PropertyFieldsWithDnd({
         fields.forEach((fieldItem, idx) => {
             const propertyErrorAtIndex = propertiesErrors[idx] as FieldErrors<PropertyFormValues> | undefined;
             if (propertyErrorAtIndex && typeof propertyErrorAtIndex === 'object' && Object.keys(propertyErrorAtIndex).length > 0) {
-                const hasFieldError = Object.values(propertyErrorAtIndex).some(
+                 const hasFieldError = Object.values(propertyErrorAtIndex).some(
                     (errorField: any) => errorField && typeof errorField.message === 'string'
                 );
                 if (hasFieldError && fieldItem.id) { 
@@ -845,6 +841,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                   name="properties" 
                   render={() => ( 
                     <FormItem>
+                      {/* This FormMessage is for array-level errors like "min 1 property" */}
                       <FormMessage className="text-destructive mt-2" />
                     </FormItem>
                   )}
@@ -944,4 +941,5 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     </Form>
   );
 }
+
 
