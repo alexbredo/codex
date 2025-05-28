@@ -92,17 +92,18 @@ export default function EditModelPage() {
       displayPropertyNames: values.displayPropertyNames && values.displayPropertyNames.length > 0 ? values.displayPropertyNames : undefined,
       properties: values.properties.map((p, index) => ({
         id: p.id || crypto.randomUUID(),
+        // model_id: currentModel.id, // Not needed by API for property update, it's implicit
         name: p.name,
         type: p.type,
         relatedModelId: p.type === 'relationship' ? p.relatedModelId : undefined,
-        required: p.required,
-        relationshipType: p.type === 'relationship' ? p.relationshipType : undefined,
+        required: !!p.required,
+        relationshipType: p.type === 'relationship' ? (p.relationshipType || 'one') : undefined,
         unit: p.unit,
         precision: p.precision,
-        autoSetOnCreate: p.autoSetOnCreate,
-        autoSetOnUpdate: p.autoSetOnUpdate,
-        isUnique: p.isUnique, 
-        defaultValue: p.defaultValue, // Ensuring this line is correct
+        autoSetOnCreate: !!p.autoSetOnCreate,
+        autoSetOnUpdate: !!p.autoSetOnUpdate,
+        isUnique: !!p.isUnique, 
+        defaultValue: p.defaultValue,
         orderIndex: index,
       } as Property)),
     };
