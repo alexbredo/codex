@@ -28,7 +28,7 @@ import {
 } from '@/components/ui/form';
 import { Card, CardHeader, CardTitle, CardContent as UiCardContent } from '@/components/ui/card'; // Renamed CardContent
 import { Separator } from '@/components/ui/separator';
-import { Trash2, PlusCircle, GripVertical, FolderOpen } from 'lucide-react';
+import { Trash2, PlusCircle, GripVertical, FolderOpen, CalendarIcon } from 'lucide-react';
 import type { ModelFormValues, PropertyFormValues } from './model-form-schema';
 import { propertyTypes, relationshipTypes } from './model-form-schema';
 import type { Model, ModelGroup } from '@/lib/types';
@@ -60,6 +60,11 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { cn } from '@/lib/utils';
+import { format as formatDateFns } from 'date-fns';
+
 
 interface ModelFormProps {
   form: UseFormReturn<ModelFormValues>;
@@ -71,6 +76,7 @@ interface ModelFormProps {
 
 const INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE = "__DEFAULT_DISPLAY_PROPERTY__";
 const INTERNAL_DEFAULT_NAMESPACE_VALUE = "__DEFAULT_NAMESPACE_VALUE__";
+const INTERNAL_BOOLEAN_NOT_SET_VALUE = "__BOOLEAN_NOT_SET__";
 
 
 interface SortablePropertyItemProps {
@@ -103,19 +109,18 @@ function SortablePropertyItem({ id, children, className }: SortablePropertyItemP
 }
 
 
-const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, control }: {
+const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped }: {
   form: UseFormReturn<ModelFormValues>,
   index: number,
   modelsForRelationsGrouped: Record<string, Model[]>,
-  control: Control<ModelFormValues>,
 }) => {
-
+  const control = form.control;
   const propertyTypePath = `properties.${index}.type` as const;
-  const currentPropertyType = useWatch({ control: form.control, name: propertyTypePath });
+  const currentPropertyType = useWatch({ control, name: propertyTypePath });
   const previousPropertyTypeRef = useRef<PropertyFormValues['type']>();
 
-
   useEffect(() => {
+    // Only run if the type actually changed and it's not the initial render
     if (previousPropertyTypeRef.current !== undefined && currentPropertyType !== previousPropertyTypeRef.current) {
       const isRelationship = currentPropertyType === 'relationship';
       const isNumber = currentPropertyType === 'number';
@@ -125,6 +130,7 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, cont
       const isRating = currentPropertyType === 'rating';
       const isImage = currentPropertyType === 'image';
 
+      // Reset fields that are not applicable to the new type
       form.setValue(`properties.${index}.relationshipType`, isRelationship ? (form.getValues(`properties.${index}.relationshipType`) || 'one') : undefined, { shouldValidate: true });
       form.setValue(`properties.${index}.relatedModelId`, isRelationship ? form.getValues(`properties.${index}.relatedModelId`) : undefined, { shouldValidate: true });
 
@@ -136,20 +142,29 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, cont
 
       form.setValue(`properties.${index}.isUnique`, isString ? !!form.getValues(`properties.${index}.isUnique`) : false, { shouldValidate: true });
       
-      // DO NOT reset defaultValue here, as its string representation might still be relevant or manually adjusted by the user.
-      // form.setValue(`properties.${index}.defaultValue`, undefined, { shouldValidate: true });
+      // Reset defaultValue when type changes, so the new adaptive input can start fresh
+      form.setValue(`properties.${index}.defaultValue`, undefined, { shouldValidate: true });
 
 
-      if (isMarkdown || isRating || isImage) {
-        form.setValue(`properties.${index}.unit`, undefined, { shouldValidate: true });
-        form.setValue(`properties.${index}.precision`, undefined, { shouldValidate: true });
-        form.setValue(`properties.${index}.relatedModelId`, undefined, { shouldValidate: true });
-        form.setValue(`properties.${index}.relationshipType`, undefined, { shouldValidate: true });
-        form.setValue(`properties.${index}.autoSetOnCreate`, false, { shouldValidate: true });
-        form.setValue(`properties.${index}.autoSetOnUpdate`, false, { shouldValidate: true });
-        form.setValue(`properties.${index}.isUnique`, false, { shouldValidate: true });
+      if (isMarkdown || isRating || isImage || ['boolean', 'date'].includes(currentPropertyType)) { // Also include new adaptive types here if they have many restrictions
+        if (!isNumber) { // Keep unit/precision if it's a number type
+            form.setValue(`properties.${index}.unit`, undefined, { shouldValidate: true });
+            form.setValue(`properties.${index}.precision`, undefined, { shouldValidate: true });
+        }
+        if (!isRelationship) {
+            form.setValue(`properties.${index}.relatedModelId`, undefined, { shouldValidate: true });
+            form.setValue(`properties.${index}.relationshipType`, undefined, { shouldValidate: true });
+        }
+        if (!isDate) {
+            form.setValue(`properties.${index}.autoSetOnCreate`, false, { shouldValidate: true });
+            form.setValue(`properties.${index}.autoSetOnUpdate`, false, { shouldValidate: true });
+        }
+        if (!isString) {
+             form.setValue(`properties.${index}.isUnique`, false, { shouldValidate: true });
+        }
       }
     }
+    // Store the current type for the next effect run comparison
     previousPropertyTypeRef.current = currentPropertyType;
   }, [currentPropertyType, index, form]);
 
@@ -164,10 +179,7 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, cont
         return "Enter default number (e.g., 0)";
       case 'rating':
         return "Enter default rating (0-5)";
-      case 'boolean':
-        return "Enter 'true' or 'false'";
-      case 'date':
-        return "Enter date (YYYY-MM-DD or ISO)";
+      // Boolean and Date will have their own input types, no placeholder needed for text input.
       case 'relationship':
         return relationshipType === 'many' ? "Enter comma-separated IDs or JSON array" : "Enter single ID";
       default:
@@ -432,23 +444,79 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, cont
           )}
         </div>
         <div className="mt-4">
-          <FormField
+           <FormField
             control={control}
             name={`properties.${index}.defaultValue`}
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Default Value (Optional)</FormLabel>
                 <FormControl>
-                  <Input
-                    placeholder={getDefaultValuePlaceholder(currentPropertyType, form.getValues(`properties.${index}.relationshipType`))}
-                    {...field}
-                    value={field.value ?? ''}
-                  />
+                  <>
+                    {currentPropertyType === 'boolean' && (
+                      <Select
+                        onValueChange={(value) => field.onChange(value === INTERNAL_BOOLEAN_NOT_SET_VALUE ? '' : value)}
+                        value={field.value === '' || field.value === undefined ? INTERNAL_BOOLEAN_NOT_SET_VALUE : field.value}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select default boolean value" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={INTERNAL_BOOLEAN_NOT_SET_VALUE}>-- Not Set --</SelectItem>
+                          <SelectItem value="true">True</SelectItem>
+                          <SelectItem value="false">False</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                    {currentPropertyType === 'date' && (
+                       <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant={"outline"}
+                            className={cn(
+                              "w-full justify-start text-left font-normal",
+                              !field.value && "text-muted-foreground"
+                            )}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {field.value ? formatDateFns(new Date(field.value), "PPP") : <span>Pick a date</span>}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0">
+                          <Calendar
+                            mode="single"
+                            selected={field.value ? new Date(field.value) : undefined}
+                            onSelect={(date) => field.onChange(date ? date.toISOString().split('T')[0] : '')} // Store as YYYY-MM-DD string
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    )}
+                    {(currentPropertyType === 'number' || currentPropertyType === 'rating') && (
+                      <Input
+                        type="number"
+                        placeholder={getDefaultValuePlaceholder(currentPropertyType)}
+                        {...field}
+                        value={field.value ?? ''}
+                        onChange={e => {
+                            const val = e.target.value;
+                            // Allow empty string to clear, otherwise parse
+                            field.onChange(val === '' ? '' : parseFloat(val)); 
+                        }}
+                      />
+                    )}
+                    {(!['boolean', 'date', 'number', 'rating'].includes(currentPropertyType)) && ( // Default text input
+                      <Input
+                        placeholder={getDefaultValuePlaceholder(currentPropertyType, form.getValues(`properties.${index}.relationshipType`))}
+                        {...field}
+                        value={field.value ?? ''}
+                      />
+                    )}
+                  </>
                 </FormControl>
                 <FormDescription className="text-xs">
-                  {currentPropertyType === 'boolean' && "Enter 'true' or 'false'."}
-                  {currentPropertyType === 'date' && "Enter date as YYYY-MM-DD or full ISO string."}
-                  {currentPropertyType === 'relationship' && form.getValues(`properties.${index}.relationshipType`) === 'many' && "Enter comma-separated IDs or a JSON array of IDs."}
+                  {currentPropertyType === 'boolean' && "Default state for new records."}
+                  {currentPropertyType === 'date' && "Default date (YYYY-MM-DD) for new records."}
+                  {currentPropertyType === 'relationship' && form.getValues(`properties.${index}.relationshipType`) === 'many' && "Comma-separated IDs or JSON array of IDs."}
                   {currentPropertyType === 'relationship' && form.getValues(`properties.${index}.relationshipType`) !== 'many' && "Enter a single ID."}
                   {currentPropertyType === 'rating' && "Enter a number from 0 to 5 (0 for none)."}
                 </FormDescription>
@@ -506,11 +574,10 @@ function PropertyFieldsWithDnd({
         fields.forEach((fieldItem, idx) => {
             const propertyErrorAtIndex = propertiesErrors[idx] as FieldErrors<PropertyFormValues> | undefined;
             if (propertyErrorAtIndex && typeof propertyErrorAtIndex === 'object' && Object.keys(propertyErrorAtIndex).length > 0) {
-                // Check if any of the fields within this specific property object has an error message
                 const hasFieldError = Object.values(propertyErrorAtIndex).some(
                     (errorField: any) => errorField && typeof errorField.message === 'string'
                 );
-                if (hasFieldError && fieldItem.id) { // Ensure fieldItem.id is valid
+                if (hasFieldError && fieldItem.id) { 
                     itemsToOpen.add(fieldItem.id);
                 }
             }
@@ -559,7 +626,7 @@ function PropertyFieldsWithDnd({
                                 variant="ghost"
                                 size="icon"
                                 onClick={(e) => {
-                                  e.stopPropagation(); // Prevent accordion from toggling
+                                  e.stopPropagation(); 
                                   remove(index);
                                 }}
                                 className="text-destructive hover:bg-destructive/10 flex-shrink-0"
@@ -585,7 +652,6 @@ function PropertyFieldsWithDnd({
                             form={form}
                             index={index}
                             modelsForRelationsGrouped={modelsForRelationsGrouped}
-                            control={control}
                         />
                     </AccordionItem>
                  )}
@@ -603,7 +669,7 @@ function PropertyFieldsWithDnd({
             name: '',
             type: 'string',
             required: false,
-            relationshipType: 'one', // default, will be overridden if type is not relationship
+            relationshipType: 'one',
             unit: undefined,
             precision: undefined, 
             autoSetOnCreate: false,
@@ -627,7 +693,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
   const fieldArray = useFieldArray({
     control: form.control,
     name: 'properties',
-    keyName: "id" // Important for DND kit to have stable keys
+    keyName: "id" 
   });
 
   const modelsForRelations = useMemo(() => {
@@ -646,15 +712,15 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
   }, [modelsForRelations]);
 
 
-  const currentProperties = useWatch({ control: form.control, name: "properties" });
+  const watchedProperties = useWatch({ control: form.control, name: "properties" });
   const watchedDisplayPropertyNames = useWatch({ control: form.control, name: "displayPropertyNames" });
 
 
   const displayPropertyOptions: MultiSelectOption[] = useMemo(() => {
-    return (currentProperties || [])
+    return (watchedProperties || [])
       .filter(p => p.name && (p.type === 'string' || p.type === 'number' || p.type === 'date'))
       .map(p => ({ value: p.name!, label: p.name! }));
-  }, [currentProperties]);
+  }, [watchedProperties]);
 
   const selectedValuesForAutocomplete = useMemo(() => {
     const currentDisplayNames = Array.isArray(watchedDisplayPropertyNames) ? watchedDisplayPropertyNames : [];
@@ -701,7 +767,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
       const isDate = prop.type === 'date';
       const isString = prop.type === 'string';
       const isRelationship = prop.type === 'relationship';
-      const isSpecialType = ['rating', 'markdown', 'image'].includes(prop.type);
+      const isSpecialType = ['rating', 'markdown', 'image', 'boolean'].includes(prop.type);
 
 
       finalProp.unit = isNumber ? prop.unit : undefined;
@@ -716,15 +782,22 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
       finalProp.relationshipType = isRelationship ? prop.relationshipType : undefined;
 
       if (isSpecialType) {
-        finalProp.unit = undefined;
-        finalProp.precision = undefined;
-        finalProp.relatedModelId = undefined;
-        finalProp.relationshipType = undefined;
-        finalProp.autoSetOnCreate = false;
-        finalProp.autoSetOnUpdate = false;
-        finalProp.isUnique = false;
+        if (!isNumber) {
+          finalProp.unit = undefined;
+          finalProp.precision = undefined;
+        }
+        if(!isRelationship){
+          finalProp.relatedModelId = undefined;
+          finalProp.relationshipType = undefined;
+        }
+        if(!isDate){
+          finalProp.autoSetOnCreate = false;
+          finalProp.autoSetOnUpdate = false;
+        }
+        if(!isString){
+          finalProp.isUnique = false;
+        }
       }
-      // defaultValue is already correctly in prop.defaultValue from the form state
       finalProp.defaultValue = prop.defaultValue;
       return finalProp;
     });
@@ -732,9 +805,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
   };
 
   const handleFormInvalid = (/* errors: FieldErrors<ModelFormValues> */) => {
-    // Log the form values to help debug what might be causing validation to fail
     console.log("Form validation failed. Current form values:", JSON.stringify(form.getValues(), null, 2)); // DEBUG
-    // Log the authoritative errors object from formState
     // console.error("Client-side form validation. Current form.formState.errors:", form.formState.errors); // DEBUG
     
     toast({
@@ -834,8 +905,6 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                             const actualPropertiesSelected = selectedOptsFromAutocomplete.filter(v => v !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
 
                             if (isDefaultSelected && actualPropertiesSelected.length === 0) {
-                                // If only "-- Default --" is selected, or if all actual properties are deselected
-                                // leaving only "-- Default --", treat it as an empty array for form state.
                                 field.onChange([]); 
                             } else {
                                 field.onChange(actualPropertiesSelected);
