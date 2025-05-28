@@ -46,9 +46,9 @@ export default function EditModelPage() {
             const isDate = p.type === 'date';
             const isNumber = p.type === 'number';
             const isString = p.type === 'string';
-            const isMarkdown = p.type === 'markdown';
-            const isRating = p.type === 'rating';
-            const isImage = p.type === 'image';
+            // const isMarkdown = p.type === 'markdown'; // Not directly used for conditional defaults here
+            // const isRating = p.type === 'rating'; // Not directly used for conditional defaults here
+            // const isImage = p.type === 'image'; // Not directly used for conditional defaults here
 
 
             return {
@@ -63,7 +63,7 @@ export default function EditModelPage() {
               autoSetOnCreate: isDate ? !!p.autoSetOnCreate : false,
               autoSetOnUpdate: isDate ? !!p.autoSetOnUpdate : false,
               isUnique: isString ? !!p.isUnique : false, 
-              defaultValue: p.defaultValue || undefined,
+              defaultValue: p.defaultValue ?? '', // Ensures empty string if null/undefined, preserves existing string
               orderIndex: p.orderIndex,
             } as PropertyFormValues;
           }),
@@ -92,7 +92,6 @@ export default function EditModelPage() {
       displayPropertyNames: values.displayPropertyNames && values.displayPropertyNames.length > 0 ? values.displayPropertyNames : undefined,
       properties: values.properties.map((p, index) => ({
         id: p.id || crypto.randomUUID(),
-        // model_id: currentModel.id, // Not needed by API for property update, it's implicit
         name: p.name,
         type: p.type,
         relatedModelId: p.type === 'relationship' ? p.relatedModelId : undefined,
