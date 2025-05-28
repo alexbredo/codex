@@ -112,12 +112,13 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, cont
 
   const propertyTypePath = `properties.${index}.type` as const;
   const currentPropertyType = useWatch({ control: form.control, name: propertyTypePath });
-  const previousPropertyTypeRef = useRef<PropertyFormValues['type'] | undefined>(currentPropertyType);
+  const previousPropertyTypeRef = useRef<PropertyFormValues['type']>();
+
 
   useEffect(() => {
+    // Only run if previousPropertyTypeRef.current has been initialized (i.e., not the very first effect run)
+    // AND the type has actually changed.
     if (previousPropertyTypeRef.current !== undefined && currentPropertyType !== previousPropertyTypeRef.current) {
-      // Type has actually changed by user interaction or programmatically other than initial load
-      // Reset conditional fields based on the new currentPropertyType
       const isRelationship = currentPropertyType === 'relationship';
       const isNumber = currentPropertyType === 'number';
       const isDate = currentPropertyType === 'date';
@@ -137,10 +138,8 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, cont
 
       form.setValue(`properties.${index}.isUnique`, isString ? !!form.getValues(`properties.${index}.isUnique`) : false, { shouldValidate: true });
       
-      // Reset defaultValue when type changes, as the old default might be invalid for the new type
       form.setValue(`properties.${index}.defaultValue`, undefined, { shouldValidate: true });
 
-      // Reset fields not applicable to markdown, rating, or image
       if (isMarkdown || isRating || isImage) {
         form.setValue(`properties.${index}.unit`, undefined, { shouldValidate: true });
         form.setValue(`properties.${index}.precision`, undefined, { shouldValidate: true });
@@ -202,7 +201,7 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, cont
                   onValueChange={(value) => {
                     form.setValue(propertyTypePath, value as PropertyFormValues['type'], { shouldValidate: true, shouldDirty: true });
                   }}
-                  value={typeField.value} // Controlled component
+                  value={typeField.value} 
                 >
                   <FormControl>
                     <SelectTrigger>
@@ -523,9 +522,7 @@ function PropertyFieldsWithDnd({
         return Array.from(newOpenState);
       });
     }
-  // Only run when errors change, not on every fields change
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.formState.errors.properties]);
+  }, [form.formState.errors.properties, fields]);
 
 
   return (
@@ -606,7 +603,7 @@ function PropertyFieldsWithDnd({
             required: false,
             relationshipType: 'one',
             unit: undefined,
-            precision: undefined,
+            precision: undefined, 
             autoSetOnCreate: false,
             autoSetOnUpdate: false,
             isUnique: false,
@@ -732,11 +729,10 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
   };
 
   const handleFormInvalid = (/* errors: FieldErrors<ModelFormValues> */) => {
-    // Log the form values to help identify the exact data causing validation failure
     console.log("Form validation failed. Current form values:", JSON.stringify(form.getValues(), null, 2)); // DEBUG
     // Log the authoritative errors object from formState
     // console.error("Client-side form validation. Current form.formState.errors:", form.formState.errors); // DEBUG
-
+    
     toast({
       title: "Validation Error",
       description: "Please correct the errors highlighted in the form. Some errors might be in collapsed sections.",
@@ -771,9 +767,10 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                 />
                  <FormField
                   control={form.control}
-                  name="properties" // Top-level properties array
-                  render={() => ( // No specific field needed here, just for top-level message
+                  name="properties" 
+                  render={() => ( 
                     <FormItem>
+                       {/* This FormMessage is for array-level errors like "At least one property is required" */}
                       <FormMessage className="text-destructive mt-2" />
                     </FormItem>
                   )}
@@ -873,3 +870,4 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     </Form>
   );
 }
+
