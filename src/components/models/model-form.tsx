@@ -1,4 +1,3 @@
-
 'use client';
 
 import type { Control, UseFormReturn, UseFieldArrayReturn, FieldErrors } from 'react-hook-form';
@@ -26,9 +25,9 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { Card, CardHeader, CardTitle, CardContent as UiCardContent } from '@/components/ui/card'; 
+import { Card, CardHeader, CardTitle, CardContent as UiCardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { Trash2, PlusCircle, GripVertical, FolderOpen, CalendarIcon, Workflow as WorkflowIcon } from 'lucide-react';
+import { Trash2, PlusCircle, GripVertical, FolderOpen, CalendarIcon as CalendarIconLucide, Network } from 'lucide-react'; // Renamed CalendarIcon
 import type { ModelFormValues, PropertyFormValues } from './model-form-schema';
 import { propertyTypes, relationshipTypes } from './model-form-schema';
 import type { Model, ModelGroup, WorkflowWithDetails } from '@/lib/types';
@@ -78,7 +77,7 @@ interface ModelFormProps {
 const INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE = "__DEFAULT_DISPLAY_PROPERTY__";
 const INTERNAL_DEFAULT_NAMESPACE_VALUE = "__DEFAULT_NAMESPACE_VALUE__";
 const INTERNAL_BOOLEAN_NOT_SET_VALUE = "__BOOLEAN_NOT_SET__";
-const INTERNAL_RELATIONSHIP_NOT_SET_VALUE = "__RELATIONSHIP_DEFAULT_NOT_SET__";
+const INTERNAL_RELATIONSHIP_DEFAULT_NOT_SET_VALUE = "__RELATIONSHIP_DEFAULT_NOT_SET__";
 const INTERNAL_NO_WORKFLOW_VALUE = "__NO_WORKFLOW_SELECTED__";
 
 
@@ -101,7 +100,7 @@ function SortablePropertyItem({ id, children, className }: SortablePropertyItemP
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
-    zIndex: isDragging ? 10 : undefined, 
+    zIndex: isDragging ? 10 : undefined,
   };
 
   return (
@@ -127,29 +126,37 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped }: {
   const currentPropertyType = useWatch({ control, name: propertyTypePath });
   const currentRelatedModelId = useWatch({ control, name: relatedModelIdPath });
   const currentRelationshipType = useWatch({ control, name: relationshipTypePath });
-  
+
   const previousPropertyTypeRef = useRef<PropertyFormValues['type']>();
   const previousRelatedModelIdRef = useRef<string | undefined>();
   const previousRelationshipTypeRef = useRef<PropertyFormValues['relationshipType']>();
 
 
-  useEffect(() => {
-    let changed = false;
-    if (previousPropertyTypeRef.current !== undefined && currentPropertyType !== previousPropertyTypeRef.current) {
-      changed = true;
-    }
-    if (currentPropertyType === 'relationship' && previousRelatedModelIdRef.current !== undefined && currentRelatedModelId !== previousRelatedModelIdRef.current) {
-      changed = true;
-    }
-    if (currentPropertyType === 'relationship' && previousRelationshipTypeRef.current !== undefined && currentRelationshipType !== previousRelationshipTypeRef.current) {
-      changed = true;
+ useEffect(() => {
+    if (previousPropertyTypeRef.current === undefined && previousRelatedModelIdRef.current === undefined && previousRelationshipTypeRef.current === undefined) {
+      // Initial mount or form reset, store current values to avoid immediate reset
+      previousPropertyTypeRef.current = currentPropertyType;
+      previousRelatedModelIdRef.current = currentRelatedModelId;
+      previousRelationshipTypeRef.current = currentRelationshipType;
+      return;
     }
 
-    if (changed) {
+    let typeChanged = currentPropertyType !== previousPropertyTypeRef.current;
+    let relatedModelChanged = currentPropertyType === 'relationship' && currentRelatedModelId !== previousRelatedModelIdRef.current;
+    let relationshipTypeChanged = currentPropertyType === 'relationship' && currentRelationshipType !== previousRelationshipTypeRef.current;
+
+    if (typeChanged || relatedModelChanged || relationshipTypeChanged) {
+      // console.log(`[ModelForm Property ${index}] Change detected. Type: ${typeChanged}, RelatedModel: ${relatedModelChanged}, RelType: ${relationshipTypeChanged}`);
+      // console.log(`[ModelForm Property ${index}] Resetting defaultValue and conditional fields for new type: ${currentPropertyType}`);
+
+      form.setValue(`properties.${index}.defaultValue`, undefined, { shouldValidate: true });
+
       const isRelationship = currentPropertyType === 'relationship';
       const isNumber = currentPropertyType === 'number';
       const isDate = currentPropertyType === 'date';
       const isString = currentPropertyType === 'string';
+      const isRatingOrMarkdownOrImage = ['rating', 'markdown', 'image'].includes(currentPropertyType);
+
 
       form.setValue(`properties.${index}.relationshipType`, isRelationship ? (form.getValues(relationshipTypePath) || 'one') : undefined, { shouldValidate: true });
       form.setValue(`properties.${index}.relatedModelId`, isRelationship ? form.getValues(relatedModelIdPath) : undefined, { shouldValidate: true });
@@ -158,15 +165,23 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped }: {
       form.setValue(`properties.${index}.autoSetOnCreate`, isDate ? !!form.getValues(`properties.${index}.autoSetOnCreate`) : false, { shouldValidate: true });
       form.setValue(`properties.${index}.autoSetOnUpdate`, isDate ? !!form.getValues(`properties.${index}.autoSetOnUpdate`) : false, { shouldValidate: true });
       form.setValue(`properties.${index}.isUnique`, isString ? !!form.getValues(`properties.${index}.isUnique`) : false, { shouldValidate: true });
-      // Do NOT reset defaultValue here: form.setValue(`properties.${index}.defaultValue`, undefined, { shouldValidate: true });
+
+      if (isRatingOrMarkdownOrImage) {
+        form.setValue(`properties.${index}.unit`, undefined, { shouldValidate: true });
+        form.setValue(`properties.${index}.precision`, undefined, { shouldValidate: true });
+        form.setValue(`properties.${index}.relatedModelId`, undefined, { shouldValidate: true });
+        form.setValue(`properties.${index}.relationshipType`, undefined, { shouldValidate: true });
+        form.setValue(`properties.${index}.autoSetOnCreate`, false, { shouldValidate: true });
+        form.setValue(`properties.${index}.autoSetOnUpdate`, false, { shouldValidate: true });
+        form.setValue(`properties.${index}.isUnique`, false, { shouldValidate: true });
+      }
     }
-    
+
     previousPropertyTypeRef.current = currentPropertyType;
     previousRelatedModelIdRef.current = currentRelatedModelId;
     previousRelationshipTypeRef.current = currentRelationshipType;
-
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPropertyType, currentRelatedModelId, currentRelationshipType, index]);
+  }, [currentPropertyType, currentRelatedModelId, currentRelationshipType, index, form]);
 
 
   const getDefaultValuePlaceholder = (type: PropertyFormValues['type']) => {
@@ -230,7 +245,7 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped }: {
                   onValueChange={(value) => {
                     typeField.onChange(value as PropertyFormValues['type']);
                   }}
-                  value={typeField.value} 
+                  value={typeField.value}
                 >
                   <FormControl>
                     <SelectTrigger>
@@ -468,7 +483,7 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped }: {
               <FormItem>
                 <FormLabel>Default Value (Optional)</FormLabel>
                 <FormControl>
-                  <div > 
+                  <div /* Wrapper for FormControl to handle id prop */>
                     {currentPropertyType === 'boolean' && (
                       <Select
                         onValueChange={(value) => field.onChange(value === INTERNAL_BOOLEAN_NOT_SET_VALUE ? '' : value)}
@@ -492,7 +507,7 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped }: {
                             if (isDateValid(parsedDate)) {
                                 displayDate = parsedDate;
                                 buttonText = formatDateFns(parsedDate, "PPP");
-                            } else if (field.value) { 
+                            } else if (field.value) {
                                 buttonText = <span>Invalid date string</span>;
                             }
                         }
@@ -506,7 +521,7 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped }: {
                                     !displayDate && "text-muted-foreground"
                                     )}
                                 >
-                                    <CalendarIcon className="mr-2 h-4 w-4" />
+                                    <CalendarIconLucide className="mr-2 h-4 w-4" />
                                     {buttonText}
                                 </Button>
                                 </PopoverTrigger>
@@ -535,26 +550,26 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped }: {
                             selected={(() => {
                               try {
                                 if (field.value && typeof field.value === 'string') {
-                                  const parsed = JSON.parse(field.value);
+                                  const parsed = JSON.parse(field.value); // Expects '["id1", "id2"]'
                                   return Array.isArray(parsed) ? parsed.filter(id => typeof id === 'string') : [];
                                 }
                               } catch (e) { /* ignore parse error, return empty */ }
                               return [];
                             })()}
-                            onChange={(selectedIds) => field.onChange(JSON.stringify(selectedIds))}
+                            onChange={(selectedIds) => field.onChange(JSON.stringify(selectedIds))} // Stores '["id1", "id2"]'
                             placeholder={`Select default ${relatedModelForDefault?.name || 'items'}...`}
                             emptyIndicator={`No ${relatedModelForDefault?.name?.toLowerCase() || 'items'} found.`}
                           />
-                        ) : ( 
+                        ) : (
                           <Select
-                            onValueChange={(value) => field.onChange(value === INTERNAL_RELATIONSHIP_NOT_SET_VALUE ? '' : value)}
-                            value={field.value || INTERNAL_RELATIONSHIP_NOT_SET_VALUE}
+                            onValueChange={(value) => field.onChange(value === INTERNAL_RELATIONSHIP_DEFAULT_NOT_SET_VALUE ? '' : value)}
+                            value={field.value || INTERNAL_RELATIONSHIP_DEFAULT_NOT_SET_VALUE}
                           >
                             <SelectTrigger>
                               <SelectValue placeholder={`Select default ${relatedModelForDefault?.name || 'item'}`} />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value={INTERNAL_RELATIONSHIP_NOT_SET_VALUE}>-- Not Set --</SelectItem>
+                              <SelectItem value={INTERNAL_RELATIONSHIP_DEFAULT_NOT_SET_VALUE}>-- Not Set --</SelectItem>
                               {relatedObjectsForDefaultOptions.map(option => (
                                 <SelectItem key={option.value} value={option.value}>
                                   {option.label}
@@ -565,19 +580,14 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped }: {
                         )}
                       </>
                     )}
-                    {(!['boolean', 'date', 'rating', 'relationship'].includes(currentPropertyType)) && ( 
-                      <Input
+                    {(!['boolean', 'date', 'rating', 'relationship'].includes(currentPropertyType)) && (
+                       <Input
                         type={currentPropertyType === 'number' ? 'number' : 'text'}
                         placeholder={getDefaultValuePlaceholder(currentPropertyType)}
                         {...field}
                         value={field.value ?? ''}
                         onChange={e => {
-                          if (currentPropertyType === 'number') {
-                            const val = e.target.value;
-                            field.onChange(val); 
-                          } else {
                             field.onChange(e.target.value);
-                          }
                         }}
                       />
                     )}
@@ -615,6 +625,7 @@ function PropertyFieldsWithDnd({
 }) {
   const { fields, append, remove, move } = fieldArray;
   const [openAccordionItems, setOpenAccordionItems] = useState<string[]>([]);
+  const { toast } = useToast();
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -638,7 +649,7 @@ function PropertyFieldsWithDnd({
     }
   }
 
-  React.useEffect(() => {
+  useEffect(() => {
     const itemsToOpen = new Set<string>();
     const propertiesErrors = form.formState.errors.properties;
 
@@ -649,7 +660,7 @@ function PropertyFieldsWithDnd({
                  const hasFieldError = Object.values(propertyErrorAtIndex).some(
                     (errorField: any) => errorField && typeof errorField.message === 'string'
                 );
-                if (hasFieldError && fieldItem.id) { 
+                if (hasFieldError && fieldItem.id) {
                     itemsToOpen.add(fieldItem.id);
                 }
             }
@@ -698,7 +709,7 @@ function PropertyFieldsWithDnd({
                                 variant="ghost"
                                 size="icon"
                                 onClick={(e) => {
-                                  e.stopPropagation(); 
+                                  e.stopPropagation();
                                   remove(index);
                                 }}
                                 className="text-destructive hover:bg-destructive/10 flex-shrink-0"
@@ -743,13 +754,12 @@ function PropertyFieldsWithDnd({
             required: false,
             relationshipType: 'one',
             unit: undefined,
-            precision: undefined, 
+            precision: undefined,
             autoSetOnCreate: false,
             autoSetOnUpdate: false,
             isUnique: false,
             defaultValue: undefined,
             orderIndex: fields.length,
-            workflowId: null,
         } as PropertyFormValues, {shouldFocus: false})}
         className="mt-4 w-full border-dashed hover:border-solid"
       >
@@ -766,7 +776,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
   const fieldArray = useFieldArray({
     control: form.control,
     name: 'properties',
-    keyName: "id" 
+    keyName: "id"
   });
 
   const modelsForRelations = useMemo(() => {
@@ -819,6 +829,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
 
 
   const handleFormSubmit = (values: ModelFormValues) => {
+    // console.log("[ModelForm handleFormSubmit] Raw values from RHF:", JSON.stringify(values, null, 2)); // DEBUG
     const processedValues = { ...values };
 
     if (processedValues.displayPropertyNames && processedValues.displayPropertyNames.includes(INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE)) {
@@ -831,21 +842,29 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     if (!processedValues.namespace || processedValues.namespace.trim() === '' || processedValues.namespace === INTERNAL_DEFAULT_NAMESPACE_VALUE) {
       processedValues.namespace = 'Default';
     }
-    
-    if (processedValues.workflowId === INTERNAL_NO_WORKFLOW_VALUE) {
+
+    // This is the crucial part for workflowId
+    if (values.workflowId === INTERNAL_NO_WORKFLOW_VALUE || !values.workflowId) {
       processedValues.workflowId = null;
+    } else {
+      processedValues.workflowId = values.workflowId;
     }
+    // console.log("[ModelForm handleFormSubmit] Processed workflowId:", processedValues.workflowId);
 
 
     processedValues.properties = processedValues.properties.map((prop, index) => {
-      const finalProp: PropertyFormValues = { ...prop };
+      const { workflowId: _removed, ...restOfProp } = prop as any; // Defensively remove if it ever creeps in
+      const finalProp: PropertyFormValues = { ...restOfProp } as PropertyFormValues;
+
       finalProp.orderIndex = index;
 
       const isNumber = prop.type === 'number';
       const isDate = prop.type === 'date';
       const isString = prop.type === 'string';
       const isRelationship = prop.type === 'relationship';
-      
+      const isRatingOrMarkdownOrImage = ['rating', 'markdown', 'image'].includes(prop.type);
+
+
       finalProp.unit = isNumber ? prop.unit : undefined;
       finalProp.precision = isNumber ? (prop.precision === undefined || prop.precision === null || isNaN(Number(prop.precision)) ? 2 : Number(prop.precision)) : undefined;
 
@@ -856,8 +875,16 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
 
       finalProp.relatedModelId = isRelationship ? prop.relatedModelId : undefined;
       finalProp.relationshipType = isRelationship ? prop.relationshipType : undefined;
-      
-      if (!isNumber) {
+
+      if (isRatingOrMarkdownOrImage) {
+        finalProp.unit = undefined;
+        finalProp.precision = undefined;
+        finalProp.relatedModelId = undefined;
+        finalProp.relationshipType = undefined;
+        finalProp.autoSetOnCreate = false;
+        finalProp.autoSetOnUpdate = false;
+        finalProp.isUnique = false;
+      } else if (!isNumber) {
         finalProp.unit = undefined;
         finalProp.precision = undefined;
       }
@@ -874,12 +901,13 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
       }
       return finalProp;
     });
+    // console.log("[ModelForm handleFormSubmit] Final processedValues to be submitted:", JSON.stringify(processedValues, null, 2)); // DEBUG
     onSubmit(processedValues);
   };
-  
+
   const handleFormInvalid = (/* errors: FieldErrors<ModelFormValues> */) => {
-    console.log("Form validation failed. Current form values:", JSON.stringify(form.getValues(), null, 2)); // DEBUG
-    // console.error("Client-side form validation. Current form.formState.errors:", form.formState.errors); // DEBUG (often empty here due to state update timing)
+    // console.log("Form validation failed. Current form values:", JSON.stringify(form.getValues(), null, 2)); // DEBUG
+    // console.error("Client-side form validation. Current form.formState.errors:", form.formState.errors); // DEBUG
     
     toast({
       title: "Validation Error",
@@ -915,9 +943,10 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                 />
                  <FormField
                   control={form.control}
-                  name="properties" 
-                  render={() => ( 
+                  name="properties"
+                  render={() => (
                     <FormItem>
+                      {/* This FormMessage is specifically for array-level errors like "min 1 property" */}
                       <FormMessage className="text-destructive mt-2" />
                     </FormItem>
                   )}
@@ -978,7 +1007,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                             const actualPropertiesSelected = selectedOptsFromAutocomplete.filter(v => v !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
 
                             if (isDefaultSelected && actualPropertiesSelected.length === 0) {
-                                field.onChange([]); 
+                                field.onChange([]);
                             } else {
                                 field.onChange(actualPropertiesSelected);
                             }
@@ -996,12 +1025,19 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                 <FormField
                   control={form.control}
                   name="workflowId"
-                  render={({ field }) => (
+                  render={({ field }) => {
+                    // console.log(`[ModelForm Render] workflowId field.value:`, field.value); // DEBUG
+                    return (
                     <FormItem>
                       <FormLabel>Workflow (Optional)</FormLabel>
                       <Select
-                        onValueChange={(value) => field.onChange(value === INTERNAL_NO_WORKFLOW_VALUE ? null : value)}
-                        value={field.value || INTERNAL_NO_WORKFLOW_VALUE}
+                        onValueChange={(selectedItemValue: string) => {
+                          // console.log(`[ModelForm Select onChange] selectedItemValue from UI:`, selectedItemValue); // DEBUG
+                          const valueToSetInRHF = selectedItemValue === INTERNAL_NO_WORKFLOW_VALUE ? null : selectedItemValue;
+                          // console.log(`[ModelForm Select onChange] Calling field.onChange with:`, valueToSetInRHF); // DEBUG
+                          field.onChange(valueToSetInRHF);
+                        }}
+                        value={field.value === null || field.value === undefined ? INTERNAL_NO_WORKFLOW_VALUE : field.value}
                       >
                         <FormControl>
                           <SelectTrigger>
@@ -1020,7 +1056,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                       <FormDescription>Assign an optional workflow to manage the lifecycle of this model's objects.</FormDescription>
                       <FormMessage />
                     </FormItem>
-                  )}
+                  )}}
                 />
               </UiCardContent>
             </AccordionItem>

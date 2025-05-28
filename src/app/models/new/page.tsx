@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useForm } from 'react-hook-form';
@@ -26,20 +25,20 @@ export default function CreateModelPage() {
       description: '',
       namespace: 'Default',
       displayPropertyNames: [],
-      workflowId: null, // Default to no workflow
-      properties: [{ 
-        id: crypto.randomUUID(), 
-        name: '', 
-        type: 'string', 
-        required: false, 
+      workflowId: null, // Ensure workflowId is initialized to null
+      properties: [{
+        id: crypto.randomUUID(),
+        name: '',
+        type: 'string',
+        required: false,
         relationshipType: 'one',
         unit: undefined,
-        precision: undefined, 
+        precision: undefined,
         autoSetOnCreate: false,
         autoSetOnUpdate: false,
         isUnique: false,
         defaultValue: undefined,
-        orderIndex: 0, 
+        orderIndex: 0,
       } as PropertyFormValues],
     },
   });
@@ -55,20 +54,20 @@ export default function CreateModelPage() {
       name: values.name,
       description: values.description,
       namespace: (values.namespace && values.namespace.trim() !== '') ? values.namespace.trim() : 'Default',
-      displayPropertyNames: values.displayPropertyNames && values.displayPropertyNames.length > 0 ? values.displayPropertyNames : undefined,
-      workflowId: values.workflowId || null,
+      displayPropertyNames: values.displayPropertyNames, // Will be handled by ModelForm to be undefined if empty
+      workflowId: values.workflowId, // Should be string ID or null from ModelForm
       properties: values.properties.map((p, index) => ({
         id: p.id || crypto.randomUUID(),
         name: p.name,
         type: p.type,
-        relatedModelId: p.type === 'relationship' ? p.relatedModelId : undefined,
-        required: !!p.required,
-        relationshipType: p.type === 'relationship' ? (p.relationshipType || 'one') : undefined,
+        relatedModelId: p.relatedModelId,
+        required: p.required,
+        relationshipType: p.relationshipType,
         unit: p.unit,
         precision: p.precision,
-        autoSetOnCreate: !!p.autoSetOnCreate,
-        autoSetOnUpdate: !!p.autoSetOnUpdate,
-        isUnique: !!p.isUnique, 
+        autoSetOnCreate: p.autoSetOnCreate,
+        autoSetOnUpdate: p.autoSetOnUpdate,
+        isUnique: p.isUnique,
         defaultValue: p.defaultValue,
         orderIndex: index,
       } as Property)),

@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -35,38 +34,28 @@ export default function EditModelPage() {
       if (foundModel) {
         setCurrentModel(foundModel);
         const sortedProperties = [...foundModel.properties].sort((a, b) => a.orderIndex - b.orderIndex);
-        
+
         form.reset({
           name: foundModel.name,
           description: foundModel.description || '',
           namespace: foundModel.namespace || 'Default',
           displayPropertyNames: foundModel.displayPropertyNames || [],
-          properties: sortedProperties.map(p => {
-            const isRelationship = p.type === 'relationship';
-            const isDate = p.type === 'date';
-            const isNumber = p.type === 'number';
-            const isString = p.type === 'string';
-            // const isMarkdown = p.type === 'markdown'; // Not directly used for conditional defaults here
-            // const isRating = p.type === 'rating'; // Not directly used for conditional defaults here
-            // const isImage = p.type === 'image'; // Not directly used for conditional defaults here
-
-
-            return {
+          workflowId: foundModel.workflowId || null, // Ensure null if undefined or empty
+          properties: sortedProperties.map(p => ({
               id: p.id || crypto.randomUUID(),
               name: p.name,
               type: p.type,
-              relatedModelId: isRelationship ? p.relatedModelId : undefined,
+              relatedModelId: p.type === 'relationship' ? p.relatedModelId : undefined,
               required: !!p.required,
-              relationshipType: isRelationship ? (p.relationshipType || 'one') : undefined,
-              unit: isNumber ? p.unit : undefined,
-              precision: isNumber ? (p.precision === undefined || p.precision === null ? 2 : p.precision) : undefined,
-              autoSetOnCreate: isDate ? !!p.autoSetOnCreate : false,
-              autoSetOnUpdate: isDate ? !!p.autoSetOnUpdate : false,
-              isUnique: isString ? !!p.isUnique : false, 
-              defaultValue: p.defaultValue ?? '', // Ensures empty string if null/undefined, preserves existing string
+              relationshipType: p.type === 'relationship' ? (p.relationshipType || 'one') : undefined,
+              unit: p.type === 'number' ? p.unit : undefined,
+              precision: p.type === 'number' ? (p.precision === undefined || p.precision === null ? 2 : p.precision) : undefined,
+              autoSetOnCreate: p.type === 'date' ? !!p.autoSetOnCreate : false,
+              autoSetOnUpdate: p.type === 'date' ? !!p.autoSetOnUpdate : false,
+              isUnique: p.type === 'string' ? !!p.isUnique : false,
+              defaultValue: p.defaultValue ?? '',
               orderIndex: p.orderIndex,
-            } as PropertyFormValues;
-          }),
+            } as PropertyFormValues)),
         });
       } else {
         toast({ variant: "destructive", title: "Error", description: "Model not found." });
@@ -89,19 +78,20 @@ export default function EditModelPage() {
       name: values.name,
       description: values.description,
       namespace: (values.namespace && values.namespace.trim() !== '') ? values.namespace.trim() : 'Default',
-      displayPropertyNames: values.displayPropertyNames && values.displayPropertyNames.length > 0 ? values.displayPropertyNames : undefined,
+      displayPropertyNames: values.displayPropertyNames, // Will be handled by ModelForm
+      workflowId: values.workflowId, // Should be string ID or null from ModelForm
       properties: values.properties.map((p, index) => ({
         id: p.id || crypto.randomUUID(),
         name: p.name,
         type: p.type,
-        relatedModelId: p.type === 'relationship' ? p.relatedModelId : undefined,
-        required: !!p.required,
-        relationshipType: p.type === 'relationship' ? (p.relationshipType || 'one') : undefined,
+        relatedModelId: p.relatedModelId,
+        required: p.required,
+        relationshipType: p.relationshipType,
         unit: p.unit,
         precision: p.precision,
-        autoSetOnCreate: !!p.autoSetOnCreate,
-        autoSetOnUpdate: !!p.autoSetOnUpdate,
-        isUnique: !!p.isUnique, 
+        autoSetOnCreate: p.autoSetOnCreate,
+        autoSetOnUpdate: p.autoSetOnUpdate,
+        isUnique: p.isUnique,
         defaultValue: p.defaultValue,
         orderIndex: index,
       } as Property)),
