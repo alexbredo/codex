@@ -63,7 +63,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
-import { format as formatDateFns } from 'date-fns';
+import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
 
 
 interface ModelFormProps {
@@ -130,6 +130,7 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped }: {
       const isRating = currentPropertyType === 'rating';
       const isImage = currentPropertyType === 'image';
 
+      // Reset conditional fields based on the new type
       form.setValue(`properties.${index}.relationshipType`, isRelationship ? (form.getValues(`properties.${index}.relationshipType`) || 'one') : undefined, { shouldValidate: true });
       form.setValue(`properties.${index}.relatedModelId`, isRelationship ? form.getValues(`properties.${index}.relatedModelId`) : undefined, { shouldValidate: true });
 
@@ -141,12 +142,12 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped }: {
 
       form.setValue(`properties.${index}.isUnique`, isString ? !!form.getValues(`properties.${index}.isUnique`) : false, { shouldValidate: true });
       
-      // Only reset defaultValue if the type changes and it is not the initial render
-      // This was the main change from the previous version to avoid overwriting default values during edits.
-      form.setValue(`properties.${index}.defaultValue`, undefined, { shouldValidate: true });
+      // Only reset defaultValue if the type changes significantly
+      // For default value, we don't reset it on type change as its interpretation is deferred.
+      // User can manually adjust it if needed.
 
-
-      if (isMarkdown || isRating || isImage || ['boolean'].includes(currentPropertyType)) { 
+      // Further ensure incompatible fields are cleared if current type is special
+      if (isMarkdown || isRating || isImage || ['boolean'].includes(currentPropertyType)) {
         if (!isNumber) {
             form.setValue(`properties.${index}.unit`, undefined, { shouldValidate: true });
             form.setValue(`properties.${index}.precision`, undefined, { shouldValidate: true });
@@ -164,9 +165,17 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped }: {
         }
       }
     }
-    previousPropertyTypeRef.current = currentPropertyType;
+    // Update previous type ref *after* all logic for current render/effect
+    if (previousPropertyTypeRef.current === undefined && currentPropertyType !== undefined) {
+      // This handles the very first load/initialization, setting previous to current
+      // so the next actual change can be detected.
+      previousPropertyTypeRef.current = currentPropertyType;
+    } else if (currentPropertyType !== previousPropertyTypeRef.current) {
+      // This handles subsequent changes
+      previousPropertyTypeRef.current = currentPropertyType;
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPropertyType, index, form]); // form.getValues is not stable, use form if needed or specific values
+  }, [currentPropertyType, index, form.setValue, form.getValues]);
 
 
   const getDefaultValuePlaceholder = (type: PropertyFormValues['type'], relationshipType?: 'one' | 'many') => {
@@ -450,11 +459,11 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped }: {
               <FormItem>
                 <FormLabel>Default Value (Optional)</FormLabel>
                 <FormControl>
-                  <div> {/* This div wrapper solves the React.Fragment id prop error */}
+                  <div > {/* Wrapper div to prevent id prop on React.Fragment */}
                     {currentPropertyType === 'boolean' && (
                       <Select
                         onValueChange={(value) => field.onChange(value === INTERNAL_BOOLEAN_NOT_SET_VALUE ? '' : value)}
-                        value={field.value === '' || field.value === undefined ? INTERNAL_BOOLEAN_NOT_SET_VALUE : field.value}
+                        value={field.value === '' || field.value === undefined || field.value === null ? INTERNAL_BOOLEAN_NOT_SET_VALUE : String(field.value)}
                       >
                          <SelectTrigger>
                           <SelectValue placeholder="Select default boolean value" />
@@ -466,30 +475,41 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped }: {
                         </SelectContent>
                       </Select>
                     )}
-                    {currentPropertyType === 'date' && (
-                       <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant={"outline"}
-                            className={cn(
-                              "w-full justify-start text-left font-normal",
-                              !field.value && "text-muted-foreground"
-                            )}
-                          >
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {field.value ? formatDateFns(new Date(field.value), "PPP") : <span>Pick a date</span>}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                          <Calendar
-                            mode="single"
-                            selected={field.value ? new Date(field.value) : undefined}
-                            onSelect={(date) => field.onChange(date ? date.toISOString().split('T')[0] : '')}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                    )}
+                    {currentPropertyType === 'date' && (() => {
+                        let displayDate: Date | undefined = undefined;
+                        let buttonText: React.ReactNode = <span>Pick a date</span>;
+                        if (field.value && typeof field.value === 'string') {
+                            const parsedDate = new Date(field.value);
+                            if (isDateValid(parsedDate)) {
+                                displayDate = parsedDate;
+                                buttonText = formatDateFns(parsedDate, "PPP");
+                            }
+                        }
+                        return (
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                <Button
+                                    variant={"outline"}
+                                    className={cn(
+                                    "w-full justify-start text-left font-normal",
+                                    !displayDate && "text-muted-foreground"
+                                    )}
+                                >
+                                    <CalendarIcon className="mr-2 h-4 w-4" />
+                                    {buttonText}
+                                </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-0">
+                                <Calendar
+                                    mode="single"
+                                    selected={displayDate}
+                                    onSelect={(date) => field.onChange(date ? date.toISOString().split('T')[0] : '')}
+                                    initialFocus
+                                />
+                                </PopoverContent>
+                            </Popover>
+                        );
+                    })()}
                     {(currentPropertyType === 'number' || currentPropertyType === 'rating') && (
                       <Input
                         type="number"
@@ -794,7 +814,9 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
           finalProp.isUnique = false;
         }
       }
-      finalProp.defaultValue = prop.defaultValue;
+      // The defaultValue from the form is already a string (or empty string)
+      // so it's passed directly. The API will store it as is, or as NULL if it's empty/undefined.
+      finalProp.defaultValue = prop.defaultValue; 
       return finalProp;
     });
     onSubmit(processedValues);
@@ -941,5 +963,3 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     </Form>
   );
 }
-
-
