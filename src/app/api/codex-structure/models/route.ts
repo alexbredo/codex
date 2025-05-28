@@ -24,8 +24,8 @@ export async function GET(request: Request) {
                 if (Array.isArray(tempParsed)) {
                     parsedDisplayPropertyNames = tempParsed.filter(name => typeof name === 'string');
                 }
-            } catch (parseError) {
-                console.warn(`API (GET /models): Could not parse displayPropertyNames for model ${modelRow.id}: '${modelRow.displayPropertyNames}'`, parseError);
+            } catch (parseError: any) {
+                console.warn(`API (GET /models): Could not parse displayPropertyNames for model ${modelRow.id}: '${modelRow.displayPropertyNames}'. Error: ${parseError.message}`);
             }
         }
 
@@ -46,6 +46,7 @@ export async function GET(request: Request) {
                   autoSetOnUpdate: p_row?.autoSetOnUpdate === 1,
                   isUnique: p_row?.isUnique === 1,
                   orderIndex: p_row?.orderIndex ?? 0,
+                  defaultValue: p_row?.defaultValue,
               } as Property;
             }
             return {
@@ -62,6 +63,7 @@ export async function GET(request: Request) {
               autoSetOnUpdate: p_row.autoSetOnUpdate === 1,
               isUnique: p_row.isUnique === 1,
               orderIndex: p_row.orderIndex,
+              defaultValue: p_row.defaultValue,
             } as Property;
           });
 
@@ -74,12 +76,15 @@ export async function GET(request: Request) {
           properties: mappedProperties,
         });
       } catch (modelProcessingError: any) {
+          const errorMessage = `Processing failed for model ${modelRow?.name || modelRow?.id}. Original error: ${modelProcessingError.message}`;
           console.error(`API Error (GET /models) - Error processing model ${modelRow?.id} (${modelRow?.name}):`, {
               message: modelProcessingError.message,
               stack: modelProcessingError.stack,
               modelData: modelRow 
           });
-          throw new Error(`Processing failed for model ${modelRow?.name || modelRow?.id}. Original error: ${modelProcessingError.message}`);
+          // Instead of throwing, which stops the whole process, we could skip this model or return partial data.
+          // For now, rethrow to align with previous behavior, but this is a point for refinement.
+          return NextResponse.json({ error: 'Failed to fetch models', details: errorMessage }, { status: 500 });
       }
     }
     return NextResponse.json(modelsWithProperties);
@@ -117,7 +122,7 @@ export async function POST(request: Request) {
 
     for (const prop of newProperties) {
       await db.run(
-        'INSERT INTO properties (id, model_id, name, type, relatedModelId, required, relationshipType, unit, precision, autoSetOnCreate, autoSetOnUpdate, isUnique, orderIndex) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO properties (id, model_id, name, type, relatedModelId, required, relationshipType, unit, precision, autoSetOnCreate, autoSetOnUpdate, isUnique, orderIndex, defaultValue) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         prop.id || crypto.randomUUID(),
         modelId,
         prop.name,
@@ -130,7 +135,8 @@ export async function POST(request: Request) {
         prop.autoSetOnCreate ? 1 : 0,
         prop.autoSetOnUpdate ? 1 : 0,
         prop.isUnique ? 1 : 0,
-        prop.orderIndex 
+        prop.orderIndex,
+        prop.defaultValue ?? null 
       );
     }
 
@@ -148,6 +154,7 @@ export async function POST(request: Request) {
             autoSetOnCreate: !!p.autoSetOnCreate,
             autoSetOnUpdate: !!p.autoSetOnUpdate,
             isUnique: !!p.isUnique,
+            defaultValue: p.defaultValue,
         })),
     };
 

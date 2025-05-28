@@ -28,8 +28,8 @@ export async function GET(request: Request, { params }: Params) {
             if (Array.isArray(tempParsed)) {
                 parsedDisplayPropertyNames = tempParsed.filter(name => typeof name === 'string');
             }
-        } catch (parseError) {
-            console.warn(`API (GET /models/[modelId]): Could not parse displayPropertyNames for model ${modelRow.id}: '${modelRow.displayPropertyNames}'`, parseError);
+        } catch (parseError: any) {
+            console.warn(`API (GET /models/[modelId]): Could not parse displayPropertyNames for model ${modelRow.id}: '${modelRow.displayPropertyNames}'. Error: ${parseError.message}`);
         }
     }
     
@@ -56,6 +56,7 @@ export async function GET(request: Request, { params }: Params) {
                 autoSetOnUpdate: p_row?.autoSetOnUpdate === 1,
                 isUnique: p_row?.isUnique === 1,
                 orderIndex: p_row?.orderIndex ?? 0,
+                defaultValue: p_row?.defaultValue,
             } as Property;
         }
         return {
@@ -72,6 +73,7 @@ export async function GET(request: Request, { params }: Params) {
             autoSetOnUpdate: p_row.autoSetOnUpdate === 1,
             isUnique: p_row.isUnique === 1,
             orderIndex: p_row.orderIndex,
+            defaultValue: p_row.defaultValue,
         } as Property;
       }),
     };
@@ -120,10 +122,11 @@ export async function PUT(request: Request, { params }: Params) {
     );
 
     if (updatedProperties) {
+      // console.log("API Received updatedProperties for PUT:", JSON.stringify(updatedProperties, null, 2)); // DEBUG
       await db.run('DELETE FROM properties WHERE model_id = ?', params.modelId);
       for (const prop of updatedProperties) {
         await db.run(
-          'INSERT INTO properties (id, model_id, name, type, relatedModelId, required, relationshipType, unit, precision, autoSetOnCreate, autoSetOnUpdate, isUnique, orderIndex) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          'INSERT INTO properties (id, model_id, name, type, relatedModelId, required, relationshipType, unit, precision, autoSetOnCreate, autoSetOnUpdate, isUnique, orderIndex, defaultValue) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
           prop.id || crypto.randomUUID(),
           params.modelId,
           prop.name,
@@ -136,7 +139,8 @@ export async function PUT(request: Request, { params }: Params) {
           prop.autoSetOnCreate ? 1 : 0,
           prop.autoSetOnUpdate ? 1 : 0,
           prop.isUnique ? 1 : 0,
-          prop.orderIndex
+          prop.orderIndex,
+          prop.defaultValue ?? null
         );
       }
     }
@@ -153,8 +157,8 @@ export async function PUT(request: Request, { params }: Params) {
             if (Array.isArray(temp)) {
                 refreshedParsedDpn = temp.filter(name => typeof name === 'string');
             }
-        } catch (e) {
-            console.warn(`Invalid JSON for displayPropertyNames for model ${refreshedModelRow.id} after update: ${refreshedModelRow.displayPropertyNames}`);
+        } catch (e: any) {
+            console.warn(`Invalid JSON for displayPropertyNames for model ${refreshedModelRow.id} after update: ${refreshedModelRow.displayPropertyNames}. Error: ${e.message}`);
         }
     }
 
@@ -170,6 +174,7 @@ export async function PUT(request: Request, { params }: Params) {
         autoSetOnCreate: p.autoSetOnCreate === 1,
         autoSetOnUpdate: p.autoSetOnUpdate === 1,
         isUnique: p.isUnique === 1,
+        defaultValue: p.defaultValue,
       })),
     };
 
