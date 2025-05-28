@@ -3,18 +3,21 @@
 
 import type { ReactNode } from 'react';
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import type { Model, DataObject, Property, ModelGroup } from '@/lib/types';
+import type { Model, DataObject, Property, ModelGroup, WorkflowWithDetails } from '@/lib/types';
 
 interface DataContextType {
   models: Model[];
   objects: Record<string, DataObject[]>;
   modelGroups: ModelGroup[];
-  addModel: (modelData: Omit<Model, 'id' | 'namespace'> & { namespace?: string }) => Promise<Model>;
-  updateModel: (modelId: string, updates: Partial<Omit<Model, 'id' | 'properties' | 'displayPropertyNames' | 'namespace'>> & { properties?: Property[], displayPropertyNames?: string[], namespace?: string }) => Promise<Model | undefined>;
+  workflows: WorkflowWithDetails[];
+
+  addModel: (modelData: Omit<Model, 'id' | 'namespace' | 'workflowId'> & { namespace?: string, workflowId?: string | null }) => Promise<Model>;
+  updateModel: (modelId: string, updates: Partial<Omit<Model, 'id' | 'properties' | 'displayPropertyNames' | 'namespace' | 'workflowId'>> & { properties?: Property[], displayPropertyNames?: string[], namespace?: string, workflowId?: string | null }) => Promise<Model | undefined>;
   deleteModel: (modelId: string) => Promise<void>;
   getModelById: (modelId: string) => Model | undefined;
   getModelByName: (name: string) => Model | undefined;
-  addObject: (modelId: string, objectData: Omit<DataObject, 'id'>, objectId?: string) => Promise<DataObject>; // Added objectId
+
+  addObject: (modelId: string, objectData: Omit<DataObject, 'id' | 'currentStateId'> & {currentStateId?: string | null}, objectId?: string) => Promise<DataObject>;
   updateObject: (modelId: string, objectId: string, updates: Partial<Omit<DataObject, 'id'>>) => Promise<DataObject | undefined>;
   deleteObject: (modelId: string, objectId: string) => Promise<void>;
   getObjectsByModelId: (modelId: string) => DataObject[];
@@ -26,6 +29,13 @@ interface DataContextType {
   getModelGroupById: (groupId: string) => ModelGroup | undefined;
   getModelGroupByName: (name: string) => ModelGroup | undefined;
   getAllModelGroups: () => ModelGroup[];
+
+  fetchWorkflows: () => Promise<void>;
+  addWorkflow: (workflowData: Omit<WorkflowWithDetails, 'id' | 'initialStateId' | 'states'> & { states: Array<Omit<WorkflowWithDetails['states'][0], 'id' | 'workflowId' | 'successorStateIds'> & {successorStateNames?: string[]}> }) => Promise<WorkflowWithDetails>;
+  updateWorkflow: (workflowId: string, workflowData: Omit<WorkflowWithDetails, 'id' | 'initialStateId' | 'states'> & { states: Array<Omit<WorkflowWithDetails['states'][0], 'id' | 'workflowId' | 'successorStateIds'> & {id?:string, successorStateNames?: string[]}> }) => Promise<WorkflowWithDetails | undefined>;
+  deleteWorkflow: (workflowId: string) => Promise<void>;
+  getWorkflowById: (workflowId: string) => WorkflowWithDetails | undefined;
+
 
   isReady: boolean;
   fetchData: () => Promise<void>; 
@@ -54,6 +64,7 @@ const mapDbModelToClientModel = (dbModel: any): Model => {
     description: dbModel.description,
     namespace: dbModel.namespace || 'Default',
     displayPropertyNames: parsedDisplayPropertyNames,
+    workflowId: dbModel.workflowId || null,
     properties: (dbModel.properties || []).map((p: any) => ({
       id: p.id || crypto.randomUUID(),
       name: p.name,
@@ -67,7 +78,7 @@ const mapDbModelToClientModel = (dbModel: any): Model => {
       autoSetOnUpdate: p.type === 'date' ? (p.autoSetOnUpdate === 1 || p.autoSetOnUpdate === true) : false,
       isUnique: p.type === 'string' ? (p.isUnique === 1 || p.isUnique === true) : false,
       orderIndex: p.orderIndex ?? 0,
-      defaultValue: p.defaultValue, 
+      defaultValue: p.defaultValue ?? null, 
     })).sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0)),
   };
 };
@@ -99,11 +110,34 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [models, setModels] = useState<Model[]>([]);
   const [objects, setObjects] = useState<Record<string, DataObject[]>>({});
   const [modelGroups, setModelGroups] = useState<ModelGroup[]>([]);
+  const [workflows, setWorkflows] = useState<WorkflowWithDetails[]>([]);
   const [isReady, setIsReady] = useState(false);
+
+  const fetchWorkflows = useCallback(async () => {
+    try {
+      const response = await fetch('/api/codex-structure/workflows');
+      if (!response.ok) {
+        const errorMessage = await formatApiError(response, 'Failed to fetch workflows');
+        throw new Error(errorMessage);
+      }
+      const workflowsData: WorkflowWithDetails[] = await response.json();
+      // Map isInitial from DB (0/1) to boolean for client
+      const clientWorkflows = workflowsData.map(wf => ({
+        ...wf,
+        states: wf.states.map(s => ({...s, isInitial: !!s.isInitial}))
+      }));
+      setWorkflows(clientWorkflows.sort((a, b) => a.name.localeCompare(b.name)));
+    } catch (error: any) {
+      console.error("Failed to load workflows from API:", error.message, error);
+      setWorkflows([]);
+    }
+  }, []);
+
 
   const fetchData = useCallback(async () => {
     setIsReady(false);
     try {
+      // Fetch groups first
       const groupsResponse = await fetch('/api/codex-structure/model-groups');
       if (!groupsResponse.ok) {
         const errorMessage = await formatApiError(groupsResponse, 'Failed to fetch model groups');
@@ -112,6 +146,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const groupsData: ModelGroup[] = await groupsResponse.json();
       setModelGroups(groupsData.sort((a, b) => a.name.localeCompare(b.name)));
 
+      // Then fetch models
       const modelsResponse = await fetch('/api/codex-structure/models');
       if (!modelsResponse.ok) {
         const errorMessage = await formatApiError(modelsResponse, 'Failed to fetch models');
@@ -121,6 +156,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const modelsDataFromApi: Model[] = await modelsResponse.json();
       setModels(modelsDataFromApi.map(mapDbModelToClientModel));
 
+      // Then fetch all objects
       const allObjectsResponse = await fetch('/api/codex-structure/objects/all');
       if (!allObjectsResponse.ok) {
         const errorMessage = await formatApiError(allObjectsResponse, 'Failed to fetch all objects');
@@ -129,21 +165,25 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const allObjectsData: Record<string, DataObject[]> = await allObjectsResponse.json();
       setObjects(allObjectsData);
 
+      // Then fetch workflows
+      await fetchWorkflows();
+
     } catch (error: any) {
       console.error("Failed to load data from API:", error.message, error);
       setModels([]);
       setObjects({});
       setModelGroups([]);
+      setWorkflows([]); // Ensure workflows are cleared on error too
     }
     setIsReady(true);
-  }, []);
+  }, [fetchWorkflows]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
   // Model CRUD
-  const addModel = useCallback(async (modelData: Omit<Model, 'id' | 'namespace'> & { namespace?: string }): Promise<Model> => {
+  const addModel = useCallback(async (modelData: Omit<Model, 'id' | 'namespace' | 'workflowId'> & { namespace?: string, workflowId?: string | null }): Promise<Model> => {
     const modelId = crypto.randomUUID();
     const propertiesWithIdsAndOrder = modelData.properties.map((p, index) => ({ 
       ...p, 
@@ -152,7 +192,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       autoSetOnCreate: !!p.autoSetOnCreate,
       autoSetOnUpdate: !!p.autoSetOnUpdate,
       isUnique: !!p.isUnique,
-      defaultValue: p.defaultValue,
+      defaultValue: p.defaultValue ?? null,
       orderIndex: index 
     }));
     const finalNamespace = (modelData.namespace && modelData.namespace.trim() !== '') ? modelData.namespace.trim() : 'Default';
@@ -160,7 +200,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const response = await fetch('/api/codex-structure/models', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...modelData, id: modelId, namespace: finalNamespace, properties: propertiesWithIdsAndOrder }),
+      body: JSON.stringify({ ...modelData, id: modelId, namespace: finalNamespace, workflowId: modelData.workflowId || null, properties: propertiesWithIdsAndOrder }),
     });
     if (!response.ok) {
        const errorMessage = await formatApiError(response, 'Failed to add model');
@@ -178,7 +218,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return clientModel;
   }, []);
 
-  const updateModel = useCallback(async (modelId: string, updates: Partial<Omit<Model, 'id' | 'properties' | 'displayPropertyNames' | 'namespace'>> & { properties?: Property[], displayPropertyNames?: string[], namespace?: string }): Promise<Model | undefined> => {
+  const updateModel = useCallback(async (modelId: string, updates: Partial<Omit<Model, 'id' | 'properties' | 'displayPropertyNames' | 'namespace' | 'workflowId'>> & { properties?: Property[], displayPropertyNames?: string[], namespace?: string, workflowId?: string | null }): Promise<Model | undefined> => {
     const propertiesWithEnsuredIdsAndOrder = updates.properties?.map((p, index) => ({
       ...p,
       id: p.id || crypto.randomUUID(),
@@ -186,7 +226,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       autoSetOnCreate: !!p.autoSetOnCreate,
       autoSetOnUpdate: !!p.autoSetOnUpdate,
       isUnique: !!p.isUnique,
-      defaultValue: p.defaultValue,
+      defaultValue: p.defaultValue ?? null,
       orderIndex: index
     }));
 
@@ -195,6 +235,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const payload = {
       ...updates,
       namespace: finalNamespace, 
+      workflowId: updates.workflowId === undefined ? null : updates.workflowId, // Ensure null if undefined
       properties: propertiesWithEnsuredIdsAndOrder,
     };
 
@@ -207,14 +248,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const errorMessage = await formatApiError(response, 'Failed to update model');
       throw new Error(errorMessage);
     }
-    const updatedModelFromApi: Model = await response.json();
-    // After a model update, existing objects might have been updated with new default values.
+    // After a model update, existing objects might have been updated with new default values, and workflows affect models.
     // It's safest to refresh all data from the server.
     await fetchData(); 
-    // Find and return the updated model from the newly fetched state (optional, but good for consistency)
+    const updatedModelFromApi: Model = await response.json();
     const clientModel = models.find(m => m.id === updatedModelFromApi.id) || mapDbModelToClientModel(updatedModelFromApi);
     return clientModel;
-  }, [fetchData, models]); // Added models to dependency array for clientModel lookup
+  }, [fetchData, models]);
 
   const deleteModel = useCallback(async (modelId: string) => {
     const response = await fetch(`/api/codex-structure/models/${modelId}`, {
@@ -242,12 +282,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [models]);
 
   // Data Object CRUD
-  const addObject = useCallback(async (modelId: string, objectData: Omit<DataObject, 'id'>, objectId?: string): Promise<DataObject> => {
+  const addObject = useCallback(async (modelId: string, objectData: Omit<DataObject, 'id' | 'currentStateId'> & {currentStateId?: string | null}, objectId?: string): Promise<DataObject> => {
     const finalObjectId = objectId || crypto.randomUUID();
     const response = await fetch(`/api/codex-structure/models/${modelId}/objects`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...objectData, id: finalObjectId }),
+      body: JSON.stringify({ ...objectData, id: finalObjectId, currentStateId: objectData.currentStateId || null }),
     });
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ error: `Failed to add object to model ${modelId}. Status: ${response.status}` }));
@@ -376,13 +416,64 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return modelGroups;
   }, [modelGroups]);
 
+  // Workflow CRUD
+  const addWorkflow = useCallback(async (workflowData: Omit<WorkflowWithDetails, 'id' | 'initialStateId' | 'states'> & { states: Array<Omit<WorkflowWithDetails['states'][0], 'id' | 'workflowId' | 'successorStateIds'> & {successorStateNames?: string[]}> }): Promise<WorkflowWithDetails> => {
+    const response = await fetch('/api/codex-structure/workflows', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(workflowData),
+    });
+    if (!response.ok) {
+        const errorMessage = await formatApiError(response, 'Failed to add workflow');
+        throw new Error(errorMessage);
+    }
+    const newWorkflow: WorkflowWithDetails = await response.json();
+    const clientWorkflow = {...newWorkflow, states: newWorkflow.states.map(s => ({...s, isInitial: !!s.isInitial}))};
+    setWorkflows((prev) => [...prev, clientWorkflow].sort((a, b) => a.name.localeCompare(b.name)));
+    return clientWorkflow;
+  }, []);
+
+  const updateWorkflow = useCallback(async (workflowId: string, workflowData: Omit<WorkflowWithDetails, 'id' | 'initialStateId' | 'states'> & { states: Array<Omit<WorkflowWithDetails['states'][0], 'id' | 'workflowId' | 'successorStateIds'> & {id?:string, successorStateNames?: string[]}> }): Promise<WorkflowWithDetails | undefined> => {
+    const response = await fetch(`/api/codex-structure/workflows/${workflowId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(workflowData),
+    });
+    if (!response.ok) {
+        const errorMessage = await formatApiError(response, 'Failed to update workflow');
+        throw new Error(errorMessage);
+    }
+    const updatedWorkflow: WorkflowWithDetails = await response.json();
+    const clientWorkflow = {...updatedWorkflow, states: updatedWorkflow.states.map(s => ({...s, isInitial: !!s.isInitial}))};
+    setWorkflows((prev) =>
+        prev.map((wf) => (wf.id === workflowId ? clientWorkflow : wf)).sort((a, b) => a.name.localeCompare(b.name))
+    );
+    return clientWorkflow;
+  }, []);
+
+  const deleteWorkflow = useCallback(async (workflowId: string) => {
+    const response = await fetch(`/api/codex-structure/workflows/${workflowId}`, {
+        method: 'DELETE',
+    });
+    if (!response.ok) {
+        const errorMessage = await formatApiError(response, 'Failed to delete workflow');
+        throw new Error(errorMessage);
+    }
+    setWorkflows((prev) => prev.filter((wf) => wf.id !== workflowId));
+  }, []);
+
+  const getWorkflowById = useCallback((workflowId: string) => {
+    return workflows.find((wf) => wf.id === workflowId);
+  }, [workflows]);
+
 
   return (
     <DataContext.Provider value={{ 
-        models, objects, modelGroups,
+        models, objects, modelGroups, workflows,
         addModel, updateModel, deleteModel, getModelById, getModelByName, 
         addObject, updateObject, deleteObject, getObjectsByModelId, getAllObjects, 
         addModelGroup, updateModelGroup, deleteModelGroup, getModelGroupById, getModelGroupByName, getAllModelGroups,
+        fetchWorkflows, addWorkflow, updateWorkflow, deleteWorkflow, getWorkflowById,
         isReady, fetchData 
     }}>
       {children}

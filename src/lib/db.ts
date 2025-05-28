@@ -47,7 +47,9 @@ async function initializeDb(): Promise<Database> {
       name TEXT NOT NULL UNIQUE,
       description TEXT,
       displayPropertyNames TEXT, -- Stores JSON string array: '["prop1", "prop2"]'
-      namespace TEXT NOT NULL DEFAULT 'Default' -- Refers to model_groups.name, or 'Default'
+      namespace TEXT NOT NULL DEFAULT 'Default', -- Refers to model_groups.name, or 'Default'
+      workflowId TEXT, -- FK to workflows table
+      FOREIGN KEY (workflowId) REFERENCES workflows(id) ON DELETE SET NULL
     );
   `);
 
@@ -58,6 +60,14 @@ async function initializeDb(): Promise<Database> {
       console.error("Migration: Error trying to add 'namespace' column to 'models' table (this might be an issue if it doesn't exist):", e.message);
     }
   }
+  try {
+    await db.run("ALTER TABLE models ADD COLUMN workflowId TEXT REFERENCES workflows(id) ON DELETE SET NULL");
+  } catch (e: any) {
+    if (!(e.message && (e.message.toLowerCase().includes('duplicate column name') || e.message.toLowerCase().includes('already has a column named workflowid')))) {
+      console.error("Migration: Error trying to add 'workflowId' column to 'models' table (this might be an issue if it doesn't exist):", e.message);
+    }
+  }
+
 
   // Properties Table
   await db.exec(`
@@ -112,9 +122,19 @@ async function initializeDb(): Promise<Database> {
       id TEXT PRIMARY KEY,
       model_id TEXT NOT NULL,
       data TEXT NOT NULL, -- Stores the object's key-value pairs as a JSON string
-      FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE
+      currentStateId TEXT, -- FK to workflow_states table
+      FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE,
+      FOREIGN KEY (currentStateId) REFERENCES workflow_states(id) ON DELETE SET NULL
     );
   `);
+   try {
+    await db.run("ALTER TABLE data_objects ADD COLUMN currentStateId TEXT REFERENCES workflow_states(id) ON DELETE SET NULL");
+  } catch (e: any) {
+    if (!(e.message && (e.message.toLowerCase().includes('duplicate column name') || e.message.toLowerCase().includes('already has a column named currentstateid')))) {
+      console.error("Migration: Error trying to add 'currentStateId' column to 'data_objects' table:", e.message);
+    }
+  }
+
 
   // Users Table (for placeholder authentication)
   await db.exec(`
@@ -126,6 +146,40 @@ async function initializeDb(): Promise<Database> {
     );
   `);
   console.log("Users table (for placeholder auth) ensured.");
+
+  // Workflow Tables
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS workflows (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      description TEXT
+    );
+  `);
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS workflow_states (
+      id TEXT PRIMARY KEY,
+      workflowId TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      isInitial INTEGER DEFAULT 0, -- 0 for false, 1 for true
+      FOREIGN KEY (workflowId) REFERENCES workflows(id) ON DELETE CASCADE,
+      UNIQUE (workflowId, name)
+    );
+  `);
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS workflow_state_transitions (
+      id TEXT PRIMARY KEY,
+      workflowId TEXT NOT NULL, -- For easier cascading deletes and querying
+      fromStateId TEXT NOT NULL,
+      toStateId TEXT NOT NULL,
+      FOREIGN KEY (workflowId) REFERENCES workflows(id) ON DELETE CASCADE,
+      FOREIGN KEY (fromStateId) REFERENCES workflow_states(id) ON DELETE CASCADE,
+      FOREIGN KEY (toStateId) REFERENCES workflow_states(id) ON DELETE CASCADE,
+      UNIQUE(workflowId, fromStateId, toStateId)
+    );
+  `);
 
 
   console.log(`Database initialized at ${dbPath}`);
