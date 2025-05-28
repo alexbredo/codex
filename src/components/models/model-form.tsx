@@ -116,8 +116,6 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, cont
 
 
   useEffect(() => {
-    // Only run if previousPropertyTypeRef.current has been initialized (i.e., not the very first effect run)
-    // AND the type has actually changed.
     if (previousPropertyTypeRef.current !== undefined && currentPropertyType !== previousPropertyTypeRef.current) {
       const isRelationship = currentPropertyType === 'relationship';
       const isNumber = currentPropertyType === 'number';
@@ -138,7 +136,9 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, cont
 
       form.setValue(`properties.${index}.isUnique`, isString ? !!form.getValues(`properties.${index}.isUnique`) : false, { shouldValidate: true });
       
-      form.setValue(`properties.${index}.defaultValue`, undefined, { shouldValidate: true });
+      // DO NOT reset defaultValue here, as its string representation might still be relevant or manually adjusted by the user.
+      // form.setValue(`properties.${index}.defaultValue`, undefined, { shouldValidate: true });
+
 
       if (isMarkdown || isRating || isImage) {
         form.setValue(`properties.${index}.unit`, undefined, { shouldValidate: true });
@@ -450,6 +450,7 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, cont
                   {currentPropertyType === 'date' && "Enter date as YYYY-MM-DD or full ISO string."}
                   {currentPropertyType === 'relationship' && form.getValues(`properties.${index}.relationshipType`) === 'many' && "Enter comma-separated IDs or a JSON array of IDs."}
                   {currentPropertyType === 'relationship' && form.getValues(`properties.${index}.relationshipType`) !== 'many' && "Enter a single ID."}
+                  {currentPropertyType === 'rating' && "Enter a number from 0 to 5 (0 for none)."}
                 </FormDescription>
                 <FormMessage />
               </FormItem>
@@ -505,10 +506,11 @@ function PropertyFieldsWithDnd({
         fields.forEach((fieldItem, idx) => {
             const propertyErrorAtIndex = propertiesErrors[idx] as FieldErrors<PropertyFormValues> | undefined;
             if (propertyErrorAtIndex && typeof propertyErrorAtIndex === 'object' && Object.keys(propertyErrorAtIndex).length > 0) {
-                 const hasFieldError = Object.values(propertyErrorAtIndex).some(
+                // Check if any of the fields within this specific property object has an error message
+                const hasFieldError = Object.values(propertyErrorAtIndex).some(
                     (errorField: any) => errorField && typeof errorField.message === 'string'
                 );
-                if (hasFieldError && fieldItem.id) {
+                if (hasFieldError && fieldItem.id) { // Ensure fieldItem.id is valid
                     itemsToOpen.add(fieldItem.id);
                 }
             }
@@ -557,7 +559,7 @@ function PropertyFieldsWithDnd({
                                 variant="ghost"
                                 size="icon"
                                 onClick={(e) => {
-                                  e.stopPropagation();
+                                  e.stopPropagation(); // Prevent accordion from toggling
                                   remove(index);
                                 }}
                                 className="text-destructive hover:bg-destructive/10 flex-shrink-0"
@@ -601,7 +603,7 @@ function PropertyFieldsWithDnd({
             name: '',
             type: 'string',
             required: false,
-            relationshipType: 'one',
+            relationshipType: 'one', // default, will be overridden if type is not relationship
             unit: undefined,
             precision: undefined, 
             autoSetOnCreate: false,
@@ -625,7 +627,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
   const fieldArray = useFieldArray({
     control: form.control,
     name: 'properties',
-    keyName: "id"
+    keyName: "id" // Important for DND kit to have stable keys
   });
 
   const modelsForRelations = useMemo(() => {
@@ -722,6 +724,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
         finalProp.autoSetOnUpdate = false;
         finalProp.isUnique = false;
       }
+      // defaultValue is already correctly in prop.defaultValue from the form state
       finalProp.defaultValue = prop.defaultValue;
       return finalProp;
     });
@@ -729,6 +732,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
   };
 
   const handleFormInvalid = (/* errors: FieldErrors<ModelFormValues> */) => {
+    // Log the form values to help debug what might be causing validation to fail
     console.log("Form validation failed. Current form values:", JSON.stringify(form.getValues(), null, 2)); // DEBUG
     // Log the authoritative errors object from formState
     // console.error("Client-side form validation. Current form.formState.errors:", form.formState.errors); // DEBUG
@@ -770,7 +774,6 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                   name="properties" 
                   render={() => ( 
                     <FormItem>
-                       {/* This FormMessage is for array-level errors like "At least one property is required" */}
                       <FormMessage className="text-destructive mt-2" />
                     </FormItem>
                   )}
@@ -831,7 +834,9 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                             const actualPropertiesSelected = selectedOptsFromAutocomplete.filter(v => v !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE);
 
                             if (isDefaultSelected && actualPropertiesSelected.length === 0) {
-                                field.onChange([]);
+                                // If only "-- Default --" is selected, or if all actual properties are deselected
+                                // leaving only "-- Default --", treat it as an empty array for form state.
+                                field.onChange([]); 
                             } else {
                                 field.onChange(actualPropertiesSelected);
                             }
