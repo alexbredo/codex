@@ -26,7 +26,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { useData } from '@/contexts/data-context';
 import type { Model, DataObject, Property, WorkflowWithDetails } from '@/lib/types';
-import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye, LayoutGrid, List as ListIcon, ExternalLink, Image as ImageIcon, CheckCircle2, FilterX } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye, LayoutGrid, List as ListIcon, ExternalLink, Image as ImageIcon, CheckCircle2, FilterX, X as XIcon } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -59,6 +59,7 @@ export default function DataObjectsPage() {
   const params = useParams();
   const modelId = params.modelId as string;
 
+  const dataContext = useData();
   const {
     models: allModels,
     getModelById,
@@ -67,7 +68,7 @@ export default function DataObjectsPage() {
     getAllObjects,
     getWorkflowById,
     isReady
-  } = useData();
+  } = dataContext;
   const { toast } = useToast();
 
   const [currentModel, setCurrentModel] = useState<Model | null>(null);
@@ -138,7 +139,7 @@ export default function DataObjectsPage() {
   const handleColumnFilterChange = useCallback((columnKey: string, filter: ColumnFilterValue | null) => {
     setColumnFilters(prev => {
       const newFilters = { ...prev };
-      if (filter === null) {
+      if (filter === null || filter.value === '' || filter.value === null || filter.value === undefined) { // Ensure empty/null also clears
         delete newFilters[columnKey];
       } else {
         newFilters[columnKey] = filter;
@@ -152,6 +153,70 @@ export default function DataObjectsPage() {
     setColumnFilters({});
     setCurrentPage(1);
   };
+
+  const getFilterDisplayDetails = useCallback((columnKey: string, filter: ColumnFilterValue): { columnName: string; displayValue: string; operator: string } | null => {
+    if (!currentModel) return null;
+
+    let columnName = '';
+    let displayValue = String(filter.value);
+    let operator = filter.operator || '='; // Default operator
+
+    if (columnKey === 'workflowState') {
+      columnName = 'State';
+      const state = currentWorkflow?.states.find(s => s.id === filter.value);
+      displayValue = state ? state.name : 'Unknown State';
+    } else {
+      const property = currentModel.properties.find(p => p.id === columnKey);
+      if (!property) return null;
+      columnName = property.name;
+
+      switch (property.type) {
+        case 'boolean':
+          displayValue = filter.value ? 'Yes' : 'No';
+          break;
+        case 'date':
+          try {
+            displayValue = formatDateFns(new Date(filter.value), 'PP');
+          } catch { displayValue = 'Invalid Date'; }
+          break;
+        case 'rating':
+          displayValue = `${filter.value} Star(s)`;
+          break;
+        case 'relationship':
+          if (property.relatedModelId) {
+            const relatedModel = getModelById(property.relatedModelId);
+            const relatedObj = (allDbObjects[property.relatedModelId] || []).find(o => o.id === filter.value);
+            displayValue = getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
+          } else {
+            displayValue = 'N/A (Config Error)';
+          }
+          operator = property.relationshipType === 'many' ? 'includes' : '=';
+          break;
+        case 'number':
+          // Operator is part of the filter for numbers
+          break;
+        default: // string, markdown, image
+          operator = 'contains';
+          break;
+      }
+    }
+    
+    // Map operator symbols for display
+    const operatorDisplayMap: Record<string, string> = {
+        'eq': '=',
+        'gt': '>',
+        'lt': '<',
+        'gte': '>=',
+        'lte': '<=',
+        'contains': 'contains',
+        'date_eq': '=',
+        'includes': 'includes',
+    };
+    operator = operatorDisplayMap[operator] || operator;
+
+
+    return { columnName, displayValue, operator };
+  }, [currentModel, currentWorkflow, getModelById, allDbObjects, allModels]);
 
 
   const handleCreateNew = () => {
@@ -251,7 +316,7 @@ export default function DataObjectsPage() {
           return obj.currentStateId === filter.value;
         }
 
-        if (!property) return true;
+        if (!property) return true; // Should not happen if columnKey is from a property
 
         const value = obj[property.name];
 
@@ -278,7 +343,7 @@ export default function DataObjectsPage() {
             if (!value || !filter.value) return false;
             try {
               const objDate = startOfDay(new Date(value));
-              const filterDate = startOfDay(new Date(filter.value));
+              const filterDate = startOfDay(new Date(filter.value)); // filter.value is already ISO string
               return isDateValid(objDate) && isDateValid(filterDate) && isEqualDate(objDate, filterDate);
             } catch {
               return false;
@@ -663,18 +728,40 @@ export default function DataObjectsPage() {
             </Button>
         </div>
       </header>
-        {hasActiveColumnFilters && (
-            <div className="mb-4 flex justify-end">
-            <Button
-                variant="outline"
-                size="sm"
-                onClick={handleClearAllColumnFilters}
-                className="text-destructive border-destructive/50 hover:bg-destructive/10 hover:text-destructive"
-            >
-                <FilterX className="mr-2 h-4 w-4" /> Clear All Column Filters
-            </Button>
-            </div>
-        )}
+      {hasActiveColumnFilters && (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleClearAllColumnFilters}
+            className="text-destructive border-destructive/50 hover:bg-destructive/10 hover:text-destructive"
+          >
+            <FilterX className="mr-2 h-4 w-4" /> Clear All Column Filters
+          </Button>
+          {Object.entries(columnFilters).map(([key, filter]) => {
+            if (!filter) return null;
+            const displayDetails = getFilterDisplayDetails(key, filter);
+            if (!displayDetails) return null;
+            
+            return (
+              <Badge variant="outline" key={key} className="py-1 px-2 group">
+                <span className="font-semibold">{displayDetails.columnName}</span>
+                <span className="mx-1 text-muted-foreground">{displayDetails.operator}</span>
+                <span className="text-primary truncate max-w-[100px]" title={displayDetails.displayValue}>{displayDetails.displayValue}</span>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  className="ml-1 p-0.5 h-auto opacity-50 group-hover:opacity-100 hover:bg-destructive/20"
+                  onClick={() => handleColumnFilterChange(key, null)}
+                  aria-label={`Remove filter for ${displayDetails.columnName}`}
+                >
+                  <XIcon className="h-3 w-3" />
+                </Button>
+              </Badge>
+            );
+          })}
+        </div>
+      )}
       {filteredObjects.length === 0 && !searchTerm && !hasActiveColumnFilters ? (
         <Card className="text-center py-12">
           <CardContent>
@@ -696,15 +783,7 @@ export default function DataObjectsPage() {
             <p className="text-muted-foreground mb-4">
               Your {searchTerm && hasActiveColumnFilters ? "search and column filters" : searchTerm ? "search" : "column filters"} did not match any {currentModel.name.toLowerCase()}s.
             </p>
-            {hasActiveColumnFilters && (
-              <Button
-                variant="link"
-                onClick={handleClearAllColumnFilters}
-                className="text-primary"
-              >
-                 Clear column filters to see all results.
-              </Button>
-            )}
+            {/* Removed the link here as the clear button and individual badges serve this purpose */}
           </CardContent>
         </Card>
       ) : viewMode === 'table' ? (
@@ -850,7 +929,7 @@ export default function DataObjectsPage() {
               getWorkflowStateName={getWorkflowStateName}
               onView={handleView}
               onEdit={handleEdit}
-              onDelete={handleDelete}
+              onDelete={onDelete}
             />
           ))}
         </div>
@@ -882,3 +961,4 @@ export default function DataObjectsPage() {
     </div>
   );
 }
+
