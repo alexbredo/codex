@@ -3,7 +3,9 @@ import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import type { Model, Property, DataObject, PropertyType, WorkflowWithDetails, WorkflowStateWithSuccessors } from '@/lib/types';
 import { getCurrentUserFromCookie } from '@/lib/auth';
-import { isDateValid } from 'date-fns';
+import { isValid as isDateValidFn } from 'date-fns'; // Corrected import
+
+const INTERNAL_WORKFLOW_STATE_UPDATE_KEY = "__workflowStateUpdate__";
 
 interface BatchUpdatePayload {
   objectIds: string[];
@@ -49,9 +51,9 @@ export async function POST(request: Request, { params }: Params) {
     }
 
     let updatedCount = 0;
-    const errors: string[] = [];
+    const errors: { objectId: string, message: string }[] = [];
 
-    if (propertyName === "__workflowStateUpdate__") {
+    if (propertyName === INTERNAL_WORKFLOW_STATE_UPDATE_KEY) {
       if (propertyType !== 'workflow_state') {
         await db.run('ROLLBACK');
         return NextResponse.json({ error: `Invalid propertyType "${propertyType}" for workflow state update.` }, { status: 400 });
@@ -84,28 +86,28 @@ export async function POST(request: Request, { params }: Params) {
         );
 
         if (!objToUpdate) {
-          errors.push(`Object ID ${objectId}: Not found.`);
+          errors.push({ objectId, message: `Object ID ${objectId}: Not found.`});
           continue;
         }
 
         const currentObjectStateDef = objToUpdate.currentStateId ? workflowStates.find(s => s.id === objToUpdate.currentStateId) : null;
         let isValidTransition = false;
 
-        if (!objToUpdate.currentStateId) { // Object is in no specific state
+        if (!objToUpdate.currentStateId) { 
           if (targetStateDef.isInitial) {
             isValidTransition = true;
           } else {
-            errors.push(`Object ID ${objectId}: Cannot move to non-initial state "${targetStateDef.name}" as object has no current state.`);
+            errors.push({ objectId, message: `Object ID ${objectId}: Cannot move to non-initial state "${targetStateDef.name}" as object has no current state.`});
           }
-        } else if (currentObjectStateDef) { // Object is in a defined state
+        } else if (currentObjectStateDef) { 
           const validSuccessors = currentObjectStateDef.successorStateIdsStr ? currentObjectStateDef.successorStateIdsStr.split(',') : [];
           if (validSuccessors.includes(targetStateId)) {
             isValidTransition = true;
           } else {
-            errors.push(`Object ID ${objectId}: Invalid transition from "${currentObjectStateDef.name}" to "${targetStateDef.name}".`);
+            errors.push({ objectId, message: `Object ID ${objectId}: Invalid transition from "${currentObjectStateDef.name}" to "${targetStateDef.name}".`});
           }
-        } else { // Object has a currentStateId, but it's not found in the workflow (orphaned state)
-            errors.push(`Object ID ${objectId}: Current state ID "${objToUpdate.currentStateId}" not found in workflow. Cannot validate transition.`);
+        } else { 
+            errors.push({ objectId, message: `Object ID ${objectId}: Current state ID "${objToUpdate.currentStateId}" not found in workflow. Cannot validate transition.`});
         }
         
         if (isValidTransition) {
@@ -113,7 +115,7 @@ export async function POST(request: Request, { params }: Params) {
             await db.run('UPDATE data_objects SET currentStateId = ? WHERE id = ? AND model_id = ?', targetStateId, objectId, modelId);
             updatedCount++;
           } catch (err: any) {
-            errors.push(`Object ID ${objectId}: DB error during state update - ${err.message}`);
+            errors.push({ objectId, message: `Object ID ${objectId}: DB error during state update - ${err.message}`});
           }
         }
       }
@@ -142,10 +144,10 @@ export async function POST(request: Request, { params }: Params) {
           case 'number': case 'rating':
             coercedNewValue = parseFloat(String(newValue));
             if (isNaN(coercedNewValue)) { 
-              errors.push(`Object ID ${objectId}: Invalid number value "${newValue}" for property "${propertyName}".`); 
+              errors.push({ objectId, message: `Object ID ${objectId}: Invalid number value "${newValue}" for property "${propertyName}".`}); 
               validationErrorForThisObjectLoop = true;
             } else if (propertyToUpdate.type === 'rating' && (coercedNewValue < 0 || coercedNewValue > 5 || !Number.isInteger(coercedNewValue))) {
-              errors.push(`Object ID ${objectId}: Rating for "${propertyName}" must be an integer between 0 and 5. Received "${newValue}".`);
+              errors.push({ objectId, message: `Object ID ${objectId}: Rating for "${propertyName}" must be an integer between 0 and 5. Received "${newValue}".`});
               validationErrorForThisObjectLoop = true;
             }
             break;
@@ -153,15 +155,15 @@ export async function POST(request: Request, { params }: Params) {
             coercedNewValue = Boolean(newValue); 
             break;
           case 'date':
-            if (!isDateValid(new Date(newValue))) {
-              errors.push(`Object ID ${objectId}: Invalid date value "${newValue}" for property "${propertyName}".`);
+            if (!isDateValidFn(new Date(String(newValue)))) { // Corrected usage and ensure newValue is string for Date constructor
+              errors.push({ objectId, message: `Object ID ${objectId}: Invalid date value "${newValue}" for property "${propertyName}".`});
               validationErrorForThisObjectLoop = true;
             } else {
-              coercedNewValue = new Date(newValue).toISOString();
+              coercedNewValue = new Date(String(newValue)).toISOString(); // Ensure newValue is string for Date constructor
             }
             break;
           default:
-            errors.push(`Object ID ${objectId}: Batch updates for property type "${propertyToUpdate.type}" on property "${propertyName}" are not currently supported.`);
+            errors.push({ objectId, message: `Object ID ${objectId}: Batch updates for property type "${propertyToUpdate.type}" on property "${propertyName}" are not currently supported.`});
             validationErrorForThisObjectLoop = true;
         }
 
@@ -171,7 +173,7 @@ export async function POST(request: Request, { params }: Params) {
         
         const existingObject: { data: string } | undefined = await db.get('SELECT data FROM data_objects WHERE id = ? AND model_id = ?', objectId, modelId);
         if (!existingObject) { 
-            errors.push(`Object with ID ${objectId} not found.`); 
+            errors.push({ objectId, message: `Object with ID ${objectId} not found.`}); 
             continue; 
         }
         
@@ -180,7 +182,7 @@ export async function POST(request: Request, { params }: Params) {
         if (propertyToUpdate.isUnique && propertyToUpdate.type === 'string' && String(coercedNewValue).trim() !== '') {
           const conflictingObject = await db.get( `SELECT id FROM data_objects WHERE model_id = ? AND id != ? AND json_extract(data, '$.${propertyName}') = ?`, modelId, objectId, coercedNewValue );
           if (conflictingObject) { 
-            errors.push(`Object ID ${objectId}: Value '${coercedNewValue}' for unique property '${propertyName}' already exists in another object (ID: ${conflictingObject.id}).`); 
+            errors.push({ objectId, message: `Object ID ${objectId}: Value '${coercedNewValue}' for unique property '${propertyName}' already exists in another object (ID: ${conflictingObject.id}).`}); 
             continue; 
           }
         }
@@ -189,12 +191,12 @@ export async function POST(request: Request, { params }: Params) {
            await db.run( 'UPDATE data_objects SET data = ? WHERE id = ? AND model_id = ?', JSON.stringify(newData), objectId, modelId );
           updatedCount++;
         } catch (err: any) { 
-            errors.push(`Object ID ${objectId}: Failed to update property - ${err.message}`); 
+            errors.push({ objectId, message: `Object ID ${objectId}: Failed to update property - ${err.message}`}); 
         }
       }
     }
 
-    if (errors.length > 0) {
+    if (errors.length > 0 && updatedCount < objectIds.length) { // If there were errors AND not all objects were updated
       await db.run('ROLLBACK');
       return NextResponse.json({
         message: `Batch update failed or partially failed. ${updatedCount} of ${objectIds.length} objects processed before critical errors. No changes were applied due to validation errors or database issues.`,
@@ -204,6 +206,9 @@ export async function POST(request: Request, { params }: Params) {
     }
     
     await db.run('COMMIT');
+    if (errors.length > 0) { // All objects were updated, but some non-critical info/warnings might be present
+        return NextResponse.json({ message: `Successfully updated ${updatedCount} objects. Some informational errors occurred.`, errors }, { status: 200 });
+    }
     return NextResponse.json({ message: `Successfully updated ${updatedCount} objects.` });
 
   } catch (error: any) {
@@ -239,5 +244,3 @@ export async function POST(request: Request, { params }: Params) {
     }, { status: 500 });
   }
 }
-
-    
