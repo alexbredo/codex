@@ -140,7 +140,9 @@ export async function PUT(request: Request, { params }: Params) {
   try {
     const body: Partial<Omit<Model, 'id'>> & { properties?: Property[] } = await request.json();
     const { name, description, namespace, displayPropertyNames, properties: updatedPropertiesInput, workflowId } = body;
-    console.log("[API PUT /models/:id] Received workflowId:", workflowId);
+    console.log("[API PUT /models/:id DEBUG] Received payload:", body);
+    console.log("[API PUT /models/:id DEBUG] Full received workflowId:", workflowId);
+
 
     const db = await getDb();
     const finalNamespace = (namespace && namespace.trim() !== '') ? namespace.trim() : 'Default';
@@ -164,13 +166,11 @@ export async function PUT(request: Request, { params }: Params) {
 
     await db.run('BEGIN TRANSACTION');
 
-    // Determine the workflowId to save
-    let finalWorkflowIdToSave = existingModel.workflowId; // Default to existing
+    let finalWorkflowIdToSave = existingModel.workflowId; 
     if (Object.prototype.hasOwnProperty.call(body, 'workflowId')) {
-      // workflowId is present in the request, use its value (which could be null)
       finalWorkflowIdToSave = workflowId === undefined ? null : workflowId;
     }
-    console.log("[API PUT /models/:id] finalWorkflowIdToSave to DB:", finalWorkflowIdToSave);
+    console.log(`[API PUT /models/:id DEBUG] Updating models table with workflowId: ${finalWorkflowIdToSave}`);
 
 
     await db.run(
@@ -227,6 +227,31 @@ export async function PUT(request: Request, { params }: Params) {
       }
     }
 
+    // Backfill initial state for objects if workflow was newly assigned
+    if (finalWorkflowIdToSave && finalWorkflowIdToSave !== existingModel.workflowId) {
+        console.log(`[API PUT /models/:id DEBUG] Workflow ID changed from ${existingModel.workflowId} to ${finalWorkflowIdToSave}. Attempting state backfill.`);
+        const workflowFromDb = await db.get('SELECT id FROM workflows WHERE id = ?', finalWorkflowIdToSave);
+        if (workflowFromDb) {
+            const statesFromDb = await db.all('SELECT id, isInitial FROM workflow_states WHERE workflowId = ?', finalWorkflowIdToSave);
+            const initialState = statesFromDb.find(s => s.isInitial === 1 || s.isInitial === true);
+            
+            if (initialState && initialState.id) {
+                console.log(`[API PUT /models/:id DEBUG] Found initial state ${initialState.id} for workflow ${finalWorkflowIdToSave}.`);
+                const result = await db.run(
+                    'UPDATE data_objects SET currentStateId = ? WHERE model_id = ? AND currentStateId IS NULL',
+                    initialState.id,
+                    params.modelId
+                );
+                console.log(`[API PUT /models/:id DEBUG] Backfilled currentStateId to ${initialState.id} for ${result.changes} objects in model ${params.modelId} that had no state.`);
+            } else {
+                console.warn(`[API PUT /models/:id DEBUG] No initial state found for workflow ${finalWorkflowIdToSave}. Cannot backfill states.`);
+            }
+        } else {
+            console.warn(`[API PUT /models/:id DEBUG] Workflow ${finalWorkflowIdToSave} not found in DB. Cannot backfill states.`);
+        }
+    }
+
+
     await db.run('COMMIT');
 
     const refreshedModelRow = await db.get('SELECT * FROM models WHERE id = ?', params.modelId);
@@ -260,7 +285,7 @@ export async function PUT(request: Request, { params }: Params) {
       }) as Property),
       workflowId: refreshedModelRow.workflowId === undefined ? null : refreshedModelRow.workflowId,
     };
-
+    console.log("[API PUT /models/:id DEBUG] Returning updatedModel:", JSON.stringify(returnedModel, null, 2));
     return NextResponse.json(returnedModel);
   } catch (error: any) {
     const db = await getDb();
@@ -303,3 +328,4 @@ export async function DELETE(request: Request, { params }: Params) {
     return NextResponse.json({ error: 'Failed to delete model', details: errorMessage }, { status: 500 });
   }
 }
+
