@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
@@ -26,22 +25,23 @@ import {
 import { Input } from '@/components/ui/input';
 import { useData } from '@/contexts/data-context';
 import type { Model, DataObject, Property, WorkflowWithDetails } from '@/lib/types';
-import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye, LayoutGrid, List as ListIcon, ExternalLink, Image as ImageIcon, CheckCircle2 } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye, LayoutGrid, List as ListIcon, ExternalLink, Image as ImageIcon, CheckCircle2, FilterX } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
+import { format as formatDateFns, isValid as isDateValid, startOfDay, isEqual as isEqualDate } from 'date-fns';
 import Link from 'next/link';
 import { getObjectDisplayValue } from '@/lib/utils';
 import { StarDisplay } from '@/components/ui/star-display';
-import GalleryCard from '@/components/objects/gallery-card'; 
+import GalleryCard from '@/components/objects/gallery-card';
+import ColumnFilterPopover, { type ColumnFilterValue } from '@/components/objects/column-filter-popover';
 
 const ITEMS_PER_PAGE = 10;
 type ViewMode = 'table' | 'gallery';
 
 type SortDirection = 'asc' | 'desc';
 interface SortConfig {
-  key: string; // Can be property.id or a special key like 'workflowState'
+  key: string;
   direction: SortDirection;
 }
 
@@ -76,6 +76,7 @@ export default function DataObjectsPage() {
   const [sortConfig, setSortConfig] = useState<SortConfig | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [currentWorkflow, setCurrentWorkflow] = useState<WorkflowWithDetails | null>(null);
+  const [columnFilters, setColumnFilters] = useState<Record<string, ColumnFilterValue | null>>({});
 
 
   const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects, isReady]);
@@ -116,7 +117,7 @@ export default function DataObjectsPage() {
         if (savedViewMode && (savedViewMode === 'table' || savedViewMode === 'gallery')) {
           setViewMode(savedViewMode);
         } else {
-          setViewMode('table'); 
+          setViewMode('table');
         }
 
       } else {
@@ -131,6 +132,24 @@ export default function DataObjectsPage() {
     if (modelId) {
       sessionStorage.setItem(`codexStructure-viewMode-${modelId}`, newMode);
     }
+  };
+
+  const handleColumnFilterChange = useCallback((columnKey: string, filter: ColumnFilterValue | null) => {
+    setColumnFilters(prev => {
+      const newFilters = { ...prev };
+      if (filter === null) {
+        delete newFilters[columnKey];
+      } else {
+        newFilters[columnKey] = filter;
+      }
+      return newFilters;
+    });
+    setCurrentPage(1); // Reset to first page on filter change
+  }, []);
+
+  const handleClearAllColumnFilters = () => {
+    setColumnFilters({});
+    setCurrentPage(1);
   };
 
 
@@ -184,10 +203,12 @@ export default function DataObjectsPage() {
 
   const filteredObjects = useMemo(() => {
     if (!currentModel) return [];
-    let searchableObjects = objects;
+    let searchableObjects = [...objects]; // Create a copy to avoid mutating original
 
+    // Apply global search term first
     if (searchTerm) {
-      searchableObjects = objects.filter(obj => {
+      searchableObjects = searchableObjects.filter(obj => {
+        // ... (existing global search logic remains the same)
         const hasMatchingProperty = currentModel.properties.some(prop => {
           const value = obj[prop.name];
           if ((prop.type === 'string' || prop.type === 'number' || prop.type === 'markdown' || prop.type === 'image') && value !== null && value !== undefined) {
@@ -220,8 +241,62 @@ export default function DataObjectsPage() {
         return false;
       });
     }
+
+    // Apply column-specific filters
+    Object.entries(columnFilters).forEach(([columnKey, filter]) => {
+      if (!filter || filter.value === '' || filter.value === null || filter.value === undefined) return;
+
+      const property = currentModel.properties.find(p => p.id === columnKey);
+
+      searchableObjects = searchableObjects.filter(obj => {
+        if (columnKey === 'workflowState') {
+          return obj.currentStateId === filter.value;
+        }
+
+        if (!property) return true; // Should not happen if columnKey is a property.id
+
+        const value = obj[property.name];
+
+        switch (property.type) {
+          case 'string':
+          case 'markdown':
+          case 'image':
+            return value !== null && value !== undefined && String(value).toLowerCase().includes(String(filter.value).toLowerCase());
+          case 'number':
+            const numValue = parseFloat(String(value));
+            const filterNumValue = parseFloat(String(filter.value));
+            if (isNaN(numValue) || isNaN(filterNumValue)) return false;
+            switch (filter.operator) {
+              case 'eq': return numValue === filterNumValue;
+              case 'gt': return numValue > filterNumValue;
+              case 'lt': return numValue < filterNumValue;
+              case 'gte': return numValue >= filterNumValue;
+              case 'lte': return numValue <= filterNumValue;
+              default: return false;
+            }
+          case 'boolean':
+            // filter.value will be true or false here
+            return (value === true || value === 1) === filter.value;
+          case 'date':
+            if (!value || !filter.value) return false;
+            try {
+              // Compare only date parts, ignoring time
+              const objDate = startOfDay(new Date(value));
+              const filterDate = startOfDay(new Date(filter.value));
+              return isDateValid(objDate) && isDateValid(filterDate) && isEqualDate(objDate, filterDate);
+            } catch {
+              return false;
+            }
+          case 'rating':
+            return Number(value) === Number(filter.value);
+          // TODO: Relationship filtering later
+          default:
+            return true;
+        }
+      });
+    });
     return searchableObjects;
-  }, [objects, searchTerm, currentModel, getModelById, allDbObjects, allModels, currentWorkflow, getWorkflowStateName]);
+  }, [objects, searchTerm, currentModel, columnFilters, getModelById, allDbObjects, allModels, currentWorkflow, getWorkflowStateName]);
 
 
   const sortedObjects = useMemo(() => {
@@ -533,6 +608,7 @@ export default function DataObjectsPage() {
   }
 
   const directPropertiesToShowInTable = currentModel.properties.sort((a,b) => a.orderIndex - b.orderIndex);
+  const hasActiveColumnFilters = Object.keys(columnFilters).length > 0;
 
   return (
     <div className="container mx-auto py-8">
@@ -585,8 +661,19 @@ export default function DataObjectsPage() {
             </Button>
         </div>
       </header>
-
-      {filteredObjects.length === 0 && !searchTerm ? (
+        {hasActiveColumnFilters && (
+            <div className="mb-4 flex justify-end">
+            <Button
+                variant="outline"
+                size="sm"
+                onClick={handleClearAllColumnFilters}
+                className="text-destructive border-destructive/50 hover:bg-destructive/10 hover:text-destructive"
+            >
+                <FilterX className="mr-2 h-4 w-4" /> Clear All Column Filters
+            </Button>
+            </div>
+        )}
+      {filteredObjects.length === 0 && !searchTerm && !hasActiveColumnFilters ? (
         <Card className="text-center py-12">
           <CardContent>
             <ListChecks size={48} className="mx-auto text-muted-foreground mb-4" />
@@ -599,14 +686,23 @@ export default function DataObjectsPage() {
             </Button>
           </CardContent>
         </Card>
-      ) : sortedObjects.length === 0 && searchTerm ? (
+      ) : sortedObjects.length === 0 && (searchTerm || hasActiveColumnFilters) ? (
          <Card className="text-center py-12">
           <CardContent>
             <Search size={48} className="mx-auto text-muted-foreground mb-4" />
             <h3 className="text-xl font-semibold">No Results Found</h3>
             <p className="text-muted-foreground mb-4">
-              Your search for "{searchTerm}" did not match any {currentModel.name.toLowerCase()}s.
+              Your {searchTerm && hasActiveColumnFilters ? "search and column filters" : searchTerm ? "search" : "column filters"} did not match any {currentModel.name.toLowerCase()}s.
             </p>
+            {hasActiveColumnFilters && (
+              <Button
+                variant="link"
+                onClick={handleClearAllColumnFilters}
+                className="text-primary"
+              >
+                 Clear column filters to see all results.
+              </Button>
+            )}
           </CardContent>
         </Card>
       ) : viewMode === 'table' ? (
@@ -617,26 +713,45 @@ export default function DataObjectsPage() {
                 <TableHead className="w-[60px] text-center">View</TableHead>
                 {directPropertiesToShowInTable.map((prop) => (
                   <TableHead key={prop.id}>
-                    <Button variant="ghost" onClick={() => requestSort(prop.id)} className="px-1">
-                      {prop.name}
-                      {getSortIcon(prop.id)}
-                    </Button>
+                    <div className="flex items-center">
+                      <Button variant="ghost" onClick={() => requestSort(prop.id)} className="px-1 text-left justify-start flex-grow">
+                        {prop.name}
+                        {getSortIcon(prop.id)}
+                      </Button>
+                      <ColumnFilterPopover
+                        columnKey={prop.id}
+                        columnName={prop.name}
+                        property={prop}
+                        currentFilter={columnFilters[prop.id] || null}
+                        onFilterChange={handleColumnFilterChange}
+                      />
+                    </div>
                   </TableHead>
                 ))}
                 {currentWorkflow && (
                     <TableHead>
-                        <Button variant="ghost" onClick={() => requestSort('workflowState')} className="px-1">
+                      <div className="flex items-center">
+                        <Button variant="ghost" onClick={() => requestSort('workflowState')} className="px-1 text-left justify-start flex-grow">
                         State
                         {getSortIcon('workflowState')}
                         </Button>
+                        <ColumnFilterPopover
+                            columnKey="workflowState"
+                            columnName="State"
+                            currentWorkflow={currentWorkflow}
+                            currentFilter={columnFilters['workflowState'] || null}
+                            onFilterChange={handleColumnFilterChange}
+                        />
+                      </div>
                     </TableHead>
                 )}
                 {virtualIncomingRelationColumns.map((col) => (
                   <TableHead key={col.id} className="text-xs">
-                     <Button variant="ghost" onClick={() => requestSort(col.id)} className="px-1 text-xs">
+                     <Button variant="ghost" onClick={() => requestSort(col.id)} className="px-1 text-xs text-left justify-start flex-grow">
                       {col.headerLabel}
                       {getSortIcon(col.id)}
                     </Button>
+                    {/* Placeholder for virtual column filter if needed later */}
                   </TableHead>
                 ))}
                 <TableHead className="text-right w-[120px]">Actions</TableHead>
@@ -721,7 +836,7 @@ export default function DataObjectsPage() {
             </TableBody>
           </Table>
         </Card>
-      ) : ( 
+      ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
           {paginatedObjects.map((obj) => (
             <GalleryCard
