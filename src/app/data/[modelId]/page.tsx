@@ -576,10 +576,10 @@ export default function DataObjectsPage() {
           if (!Array.isArray(value) || value.length === 0) return <span className="text-muted-foreground">N/A</span>;
           const relatedItems = value.map(itemId => { const relatedObj = (allDbObjects[property.relatedModelId!] || []).find(o => o.id === itemId); return { id: itemId, name: getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects), obj: relatedObj }; });
           if (relatedItems.length > 2) return <Badge variant="outline" title={relatedItems.map(i=>i.name).join(', ')}>{relatedItems.length} {relatedModel.name}(s)</Badge>;
-          return relatedItems.map(item => item.obj ? ( <Link key={item.id} href={`/data/${relatedModel.id}/edit/${item.obj.id}`} passHref legacyBehavior> <a className="inline-block"><Badge variant="outline" className="mr-1 mb-1 hover:bg-secondary">{item.name}</Badge></a> </Link> ) : ( <Badge key={item.id} variant="outline" className="mr-1 mb-1">{item.name}</Badge> ));
+          return relatedItems.map(item => item.obj ? ( <Link key={item.id} href={`/data/${relatedModel.id}/edit/${item.obj.id}`} className="inline-block"> <Badge variant="outline" className="mr-1 mb-1 hover:bg-secondary">{item.name}</Badge> </Link> ) : ( <Badge key={item.id} variant="outline" className="mr-1 mb-1">{item.name}</Badge> ));
         } else {
           const relatedObj = (allDbObjects[property.relatedModelId] || []).find(o => o.id === value); const displayVal = getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
-          return relatedObj ? ( <Link href={`/data/${relatedModel.id}/edit/${relatedObj.id}`} passHref legacyBehavior> <a className="inline-block"><Badge variant="outline" className="hover:bg-secondary">{displayVal}</Badge></a> </Link> ) : <span className="text-xs font-mono" title={String(value)}>{displayVal}</span>;
+          return relatedObj ? ( <Link href={`/data/${relatedModel.id}/edit/${relatedObj.id}`} className="inline-block"> <Badge variant="outline" className="hover:bg-secondary">{displayVal}</Badge> </Link> ) : <span className="text-xs font-mono" title={String(value)}>{displayVal}</span>;
         }
       default: const strValue = String(value); return strValue.length > 50 ? <span title={strValue}>{strValue.substring(0, 47) + '...'}</span> : strValue;
     }
@@ -813,7 +813,21 @@ export default function DataObjectsPage() {
                     const referencingData = allDbObjects[colDef.referencingModel.id] || [];
                     const linkedItems = referencingData.filter(refObj => { const linkedValue = refObj[colDef.referencingProperty.name]; if (colDef.referencingProperty.relationshipType === 'many') return Array.isArray(linkedValue) && linkedValue.includes(obj.id); return linkedValue === obj.id; });
                     if (linkedItems.length === 0) return <TableCell key={colDef.id}><span className="text-muted-foreground">N/A</span></TableCell>;
-                    return ( <TableCell key={colDef.id} className="space-x-1 space-y-1"> {linkedItems.map(item => ( <Link key={item.id} href={`/data/${colDef.referencingModel.id}/edit/${item.id}`} passHref legacyBehavior> <a className="inline-block"> <Badge variant="secondary" className="hover:bg-muted cursor-pointer"> {getObjectDisplayValue(item, colDef.referencingModel, allModels, allDbObjects)} </Badge> </a> </Link> ))} </TableCell> );
+                    return (
+                      <TableCell key={colDef.id} className="space-x-1 space-y-1">
+                        {linkedItems.map(item => (
+                          <Link
+                            key={item.id}
+                            href={`/data/${colDef.referencingModel.id}/edit/${item.id}`}
+                            className="inline-block"
+                          >
+                            <Badge variant="secondary" className="hover:bg-muted cursor-pointer">
+                              {getObjectDisplayValue(item, colDef.referencingModel, allModels, allDbObjects)}
+                            </Badge>
+                          </Link>
+                        ))}
+                      </TableCell>
+                    );
                   })}
                   <TableCell className="text-right">
                     <Button variant="ghost" size="icon" onClick={() => handleEdit(obj)} className="mr-2 hover:text-primary"> <Edit className="h-4 w-4" /> </Button>
@@ -839,3 +853,4 @@ export default function DataObjectsPage() {
     </div>
   );
 }
+
