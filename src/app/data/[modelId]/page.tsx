@@ -53,6 +53,8 @@ interface IncomingRelationColumn {
   referencingProperty: Property;
 }
 
+const INTERNAL_NO_REFERENCES_VALUE = "__NO_REFERENCES__"; // Needs to be available here too for display logic
+
 
 export default function DataObjectsPage() {
   const router = useRouter();
@@ -91,7 +93,7 @@ export default function DataObjectsPage() {
       otherModel.properties.forEach(prop => {
         if (prop.type === 'relationship' && prop.relatedModelId === currentModel.id) {
           columns.push({
-            id: `${otherModel.id}-${prop.name}`,
+            id: `incoming-${otherModel.id}-${prop.name}`, // Ensure unique ID
             headerLabel: `Ref. by ${otherModel.name} (via ${prop.name})`,
             referencingModel: otherModel,
             referencingProperty: prop,
@@ -195,10 +197,21 @@ export default function DataObjectsPage() {
       }
     } else if (virtualCol) {
         columnName = virtualCol.headerLabel;
-        if (filter.value === true) displayValue = "Yes";
-        else if (filter.value === false) displayValue = "No";
-        else displayValue = "Any";
-        operator = "has"; // Custom operator display for this type
+        if (filter.operator === 'specific_incoming_reference') {
+            if (filter.value === INTERNAL_NO_REFERENCES_VALUE) {
+                displayValue = "No References";
+                operator = "has";
+            } else {
+                const referencingObject = (allDbObjects[virtualCol.referencingModel.id] || []).find(o => o.id === filter.value);
+                displayValue = getObjectDisplayValue(referencingObject, virtualCol.referencingModel, allModels, allDbObjects);
+                operator = "by";
+            }
+        } else { // Fallback for old incomingRelationshipCount or other potential types
+            if (filter.value === true) displayValue = "Yes";
+            else if (filter.value === false) displayValue = "No";
+            else displayValue = "Any";
+            operator = "has"; 
+        }
     } else {
       return null; // Unknown column key
     }
@@ -212,7 +225,9 @@ export default function DataObjectsPage() {
         'contains': 'contains',
         'date_eq': '=',
         'includes': 'includes',
-        'has': '', // For "Has references: Yes", operator is implicit
+        'has': '', 
+        'by': 'by',
+        'specific_incoming_reference': '', // Operator handled by value display
     };
     operator = operatorDisplayMap[operator] || operator;
 
@@ -359,15 +374,34 @@ export default function DataObjectsPage() {
             case 'relationship':
                 const filterRelId = String(filter.value);
                 if (property.relationshipType === 'many') {
-                return Array.isArray(value) && value.includes(filterRelId);
+                  return Array.isArray(value) && value.includes(filterRelId);
                 } else {
-                return value === filterRelId;
+                  return value === filterRelId;
                 }
             default:
                 return true;
             }
-        } else if (virtualColumnDef) { // Handle virtual incoming relationship columns
+        } else if (virtualColumnDef && filter.operator === 'specific_incoming_reference') {
             const referencingData = allDbObjects[virtualColumnDef.referencingModel.id] || [];
+            if (filter.value === INTERNAL_NO_REFERENCES_VALUE) {
+                return !referencingData.some(refObj => {
+                    const linkedValue = refObj[virtualColumnDef.referencingProperty.name];
+                    return virtualColumnDef.referencingProperty.relationshipType === 'many'
+                        ? (Array.isArray(linkedValue) && linkedValue.includes(obj.id))
+                        : linkedValue === obj.id;
+                });
+            } else {
+                // Specific referencing object ID
+                const specificReferencingObject = referencingData.find(refObj => refObj.id === filter.value);
+                if (!specificReferencingObject) return false; 
+                
+                const linkedValueOnSpecific = specificReferencingObject[virtualColumnDef.referencingProperty.name];
+                return virtualColumnDef.referencingProperty.relationshipType === 'many'
+                    ? (Array.isArray(linkedValueOnSpecific) && linkedValueOnSpecific.includes(obj.id))
+                    : linkedValueOnSpecific === obj.id;
+            }
+        } else if (virtualColumnDef && filter.operator === 'eq') { // Old incomingRelationshipCount logic (Yes/No)
+             const referencingData = allDbObjects[virtualColumnDef.referencingModel.id] || [];
             const count = referencingData.filter(refObj => {
                 const linkedValue = refObj[virtualColumnDef.referencingProperty.name];
                 return virtualColumnDef.referencingProperty.relationshipType === 'many'
@@ -375,9 +409,9 @@ export default function DataObjectsPage() {
                     : linkedValue === obj.id;
             }).length;
 
-            if (filter.value === true) return count > 0; // "Has references"
-            if (filter.value === false) return count === 0; // "No references"
-            return true; // Should not happen if filter.value is strictly boolean for this type
+            if (filter.value === true) return count > 0; 
+            if (filter.value === false) return count === 0; 
+            return true; 
         }
         return true; 
       });
@@ -441,17 +475,15 @@ export default function DataObjectsPage() {
             bValue = String(bValue ?? '').toLowerCase();
         }
       } else if (virtualColumnToSort) {
-        const aReferencingData = allDbObjects[virtualColumnToSort.referencingModel.id] || [];
-        aValue = aReferencingData.filter(refObj => {
-          const linkedValue = refObj[virtualColumnToSort.referencingProperty.name];
-          return virtualColumnToSort.referencingProperty.relationshipType === 'many' ? (Array.isArray(linkedValue) && linkedValue.includes(a.id)) : linkedValue === a.id;
-        }).length;
-
-        const bReferencingData = allDbObjects[virtualColumnToSort.referencingModel.id] || [];
-        bValue = bReferencingData.filter(refObj => {
-          const linkedValue = refObj[virtualColumnToSort.referencingProperty.name];
-          return virtualColumnToSort.referencingProperty.relationshipType === 'many' ? (Array.isArray(linkedValue) && linkedValue.includes(b.id)) : linkedValue === b.id;
-        }).length;
+        const getRefCount = (objId: string) => {
+            const referencingData = allDbObjects[virtualColumnToSort.referencingModel.id] || [];
+            return referencingData.filter(refObj => {
+              const linkedValue = refObj[virtualColumnToSort.referencingProperty.name];
+              return virtualColumnToSort.referencingProperty.relationshipType === 'many' ? (Array.isArray(linkedValue) && linkedValue.includes(objId)) : linkedValue === objId;
+            }).length;
+        };
+        aValue = getRefCount(a.id);
+        bValue = getRefCount(b.id);
       } else if (isWorkflowStateSort && currentWorkflow) {
         aValue = getWorkflowStateName(a.currentStateId).toLowerCase();
         bValue = getWorkflowStateName(b.currentStateId).toLowerCase();
@@ -769,7 +801,7 @@ export default function DataObjectsPage() {
             return (
               <Badge variant="outline" key={key} className="py-1 px-2 group">
                 <span className="font-semibold">{displayDetails.columnName}</span>
-                <span className="mx-1 text-muted-foreground">{displayDetails.operator}</span>
+                {displayDetails.operator && <span className="mx-1 text-muted-foreground">{displayDetails.operator}</span>}
                 <span className="text-primary truncate max-w-[100px]" title={displayDetails.displayValue}>{displayDetails.displayValue}</span>
                 <Button
                   variant="ghost"
@@ -860,7 +892,9 @@ export default function DataObjectsPage() {
                             columnName={col.headerLabel}
                             currentFilter={columnFilters[col.id] || null}
                             onFilterChange={handleColumnFilterChange}
-                            filterTypeOverride="incomingRelationshipCount"
+                            filterTypeOverride="specificIncomingReference"
+                            referencingModel={col.referencingModel}
+                            referencingProperty={col.referencingProperty}
                         />
                      </div>
                   </TableHead>
@@ -992,4 +1026,3 @@ export default function DataObjectsPage() {
     </div>
   );
 }
-

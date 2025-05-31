@@ -17,7 +17,7 @@ import { useData } from '@/contexts/data-context';
 
 export interface ColumnFilterValue {
   value: any;
-  operator?: 'eq' | 'gt' | 'lt' | 'gte' | 'lte' | 'contains' | 'date_eq' | 'includes';
+  operator?: 'eq' | 'gt' | 'lt' | 'gte' | 'lte' | 'contains' | 'date_eq' | 'includes' | 'specific_incoming_reference';
 }
 
 interface ColumnFilterPopoverProps {
@@ -27,12 +27,15 @@ interface ColumnFilterPopoverProps {
   currentWorkflow?: WorkflowWithDetails | null;
   currentFilter?: ColumnFilterValue | null;
   onFilterChange: (columnKey: string, filter: ColumnFilterValue | null) => void;
-  filterTypeOverride?: 'incomingRelationshipCount';
+  filterTypeOverride?: 'incomingRelationshipCount' | 'specificIncomingReference'; // Updated
+  referencingModel?: Model; // New prop
+  referencingProperty?: Property; // New prop
 }
 
 const INTERNAL_ANY_BOOLEAN_VALUE = "__ANY_BOOLEAN__";
 const INTERNAL_ANY_WORKFLOW_STATE_VALUE = "__ANY_WORKFLOW_STATE__";
 const INTERNAL_ANY_RELATIONSHIP_VALUE = "__ANY_RELATIONSHIP__";
+const INTERNAL_NO_REFERENCES_VALUE = "__NO_REFERENCES__"; // New constant
 
 const NUMBER_OPERATORS = [
   { value: 'eq', label: 'Equals' },
@@ -51,6 +54,8 @@ export default function ColumnFilterPopover({
   currentFilter,
   onFilterChange,
   filterTypeOverride,
+  referencingModel, // New prop
+  referencingProperty, // New prop
 }: ColumnFilterPopoverProps) {
   const { getModelById, getObjectsByModelId, models: allModels, getAllObjects } = useData();
   const [isOpen, setIsOpen] = useState(false);
@@ -68,7 +73,7 @@ export default function ColumnFilterPopover({
       setNumberOperator((currentFilter?.operator as any) || 'eq');
     } else if (effectiveFilterType === 'date') {
       setFilterInput(currentFilter?.value ? new Date(currentFilter.value) : null);
-    } else if (effectiveFilterType === 'relationship') {
+    } else if (effectiveFilterType === 'relationship' || effectiveFilterType === 'specificIncomingReference') {
       setFilterInput(currentFilter?.value ?? INTERNAL_ANY_RELATIONSHIP_VALUE);
     } else if (effectiveFilterType === 'boolean' || effectiveFilterType === 'incomingRelationshipCount') {
       setFilterInput(currentFilter?.value === undefined || currentFilter?.value === null || currentFilter?.value === '' ? INTERNAL_ANY_BOOLEAN_VALUE : String(currentFilter.value));
@@ -87,7 +92,7 @@ export default function ColumnFilterPopover({
         onFilterChange(columnKey, null);
       } else if (effectiveFilterType === 'workflowState' && filterInput === INTERNAL_ANY_WORKFLOW_STATE_VALUE) {
         onFilterChange(columnKey, null);
-      } else if (effectiveFilterType === 'relationship' && filterInput === INTERNAL_ANY_RELATIONSHIP_VALUE) {
+      } else if ((effectiveFilterType === 'relationship' || effectiveFilterType === 'specificIncomingReference') && filterInput === INTERNAL_ANY_RELATIONSHIP_VALUE) {
         onFilterChange(columnKey, null);
       }
       else {
@@ -108,14 +113,14 @@ export default function ColumnFilterPopover({
             operatorForFilter = numberOperator;
             break;
         case 'boolean':
-        case 'incomingRelationshipCount': // Treat same as boolean for value storage
+        case 'incomingRelationshipCount': 
             if (filterInput === INTERNAL_ANY_BOOLEAN_VALUE) {
                 onFilterChange(columnKey, null);
                 setIsOpen(false);
                 return;
             }
             finalFilterValue = filterInput === 'true';
-            operatorForFilter = 'eq';
+            operatorForFilter = 'eq'; // Or a specific operator for this type if needed
             break;
         case 'date':
             if (filterInput instanceof Date && isDateValid(filterInput)) {
@@ -149,6 +154,16 @@ export default function ColumnFilterPopover({
             finalFilterValue = String(filterInput); 
             operatorForFilter = property?.relationshipType === 'many' ? 'includes' : 'eq';
             break;
+        case 'specificIncomingReference':
+            if (filterInput === INTERNAL_ANY_RELATIONSHIP_VALUE) {
+                onFilterChange(columnKey, null);
+            } else {
+                finalFilterValue = String(filterInput); // This will be an object ID or INTERNAL_NO_REFERENCES_VALUE
+                operatorForFilter = 'specific_incoming_reference';
+                onFilterChange(columnKey, { value: finalFilterValue, operator: operatorForFilter });
+            }
+            setIsOpen(false);
+            return; // Return early as onFilterChange is called within
         default: // string, markdown, image
             operatorForFilter = 'contains';
             break;
@@ -167,7 +182,7 @@ export default function ColumnFilterPopover({
       setFilterInput(null);
     } else if (effectiveFilterType === 'rating') {
       setFilterInput(0);
-    } else if (effectiveFilterType === 'relationship') {
+    } else if (effectiveFilterType === 'relationship' || effectiveFilterType === 'specificIncomingReference') {
       setFilterInput(INTERNAL_ANY_RELATIONSHIP_VALUE);
     }
      else {
@@ -216,34 +231,20 @@ export default function ColumnFilterPopover({
           </div>
         );
       case 'boolean':
+      // Fallthrough for incomingRelationshipCount as it uses the same Yes/No/Any logic initially
+      case 'incomingRelationshipCount':
         return (
           <Select
             value={filterInput === null || filterInput === undefined || filterInput === '' ? INTERNAL_ANY_BOOLEAN_VALUE : String(filterInput)}
             onValueChange={(val) => setFilterInput(val === INTERNAL_ANY_BOOLEAN_VALUE ? '' : val)}
           >
             <SelectTrigger>
-              <SelectValue placeholder="Select True/False/Any" />
+              <SelectValue placeholder={effectiveFilterType === 'boolean' ? "Select True/False/Any" : "Filter reference existence..."} />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={INTERNAL_ANY_BOOLEAN_VALUE}>Any</SelectItem>
-              <SelectItem value="true">Yes</SelectItem>
-              <SelectItem value="false">No</SelectItem>
-            </SelectContent>
-          </Select>
-        );
-       case 'incomingRelationshipCount':
-        return (
-          <Select
-            value={filterInput === null || filterInput === undefined || filterInput === '' ? INTERNAL_ANY_BOOLEAN_VALUE : String(filterInput)}
-            onValueChange={(val) => setFilterInput(val === INTERNAL_ANY_BOOLEAN_VALUE ? '' : val)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Filter reference existence..." />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={INTERNAL_ANY_BOOLEAN_VALUE}>Any</SelectItem>
-              <SelectItem value="true">Has references</SelectItem>
-              <SelectItem value="false">No references</SelectItem>
+              <SelectItem value="true">{effectiveFilterType === 'boolean' ? 'Yes' : 'Has references'}</SelectItem>
+              <SelectItem value="false">{effectiveFilterType === 'boolean' ? 'No' : 'No references'}</SelectItem>
             </SelectContent>
           </Select>
         );
@@ -306,16 +307,16 @@ export default function ColumnFilterPopover({
         );
       case 'relationship':
         if (!property?.relatedModelId) return <Input placeholder="Relationship misconfigured" disabled />;
-        const relatedModel = getModelById(property.relatedModelId);
-        if (!relatedModel) return <Input placeholder="Related model not found" disabled />;
+        const directRelatedModel = getModelById(property.relatedModelId);
+        if (!directRelatedModel) return <Input placeholder="Related model not found" disabled />;
         
-        const relatedModelObjects = getObjectsByModelId(property.relatedModelId);
-        const allDbObjects = getAllObjects();
+        const directRelatedObjects = getObjectsByModelId(property.relatedModelId);
+        const allDirectDbObjects = getAllObjects();
 
-        const options = relatedModelObjects
+        const directOptions = directRelatedObjects
           .map(obj => ({
             value: obj.id,
-            label: getObjectDisplayValue(obj, relatedModel, allModels, allDbObjects)
+            label: getObjectDisplayValue(obj, directRelatedModel, allModels, allDirectDbObjects)
           }))
           .sort((a,b) => a.label.localeCompare(b.label));
 
@@ -325,11 +326,42 @@ export default function ColumnFilterPopover({
              onValueChange={(val) => setFilterInput(val)}
           >
             <SelectTrigger>
-              <SelectValue placeholder={`Filter by ${relatedModel.name}...`} />
+              <SelectValue placeholder={`Filter by ${directRelatedModel.name}...`} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={INTERNAL_ANY_RELATIONSHIP_VALUE}>Any {relatedModel.name}</SelectItem>
-              {options.map(opt => (
+              <SelectItem value={INTERNAL_ANY_RELATIONSHIP_VALUE}>Any {directRelatedModel.name}</SelectItem>
+              {directOptions.map(opt => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        );
+      case 'specificIncomingReference':
+        if (!referencingModel || !referencingProperty) return <Input placeholder="Incoming relationship misconfigured" disabled />;
+        const referencingObjects = getObjectsByModelId(referencingModel.id);
+        const allIncomingDbObjects = getAllObjects();
+        
+        const incomingOptions = referencingObjects
+          .map(obj => ({
+            value: obj.id,
+            label: getObjectDisplayValue(obj, referencingModel, allModels, allIncomingDbObjects)
+          }))
+          .sort((a,b) => a.label.localeCompare(b.label));
+        
+        return (
+          <Select
+            value={String(filterInput ?? INTERNAL_ANY_RELATIONSHIP_VALUE)}
+            onValueChange={(val) => setFilterInput(val)}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder={`Filter by ${referencingModel.name}...`} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={INTERNAL_ANY_RELATIONSHIP_VALUE}>Any {referencingModel.name}</SelectItem>
+              <SelectItem value={INTERNAL_NO_REFERENCES_VALUE}>No References</SelectItem>
+              {incomingOptions.map(opt => (
                 <SelectItem key={opt.value} value={opt.value}>
                   {opt.label}
                 </SelectItem>
@@ -372,4 +404,3 @@ export default function ColumnFilterPopover({
     </Popover>
   );
 }
-
