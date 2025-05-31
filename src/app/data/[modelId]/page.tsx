@@ -44,8 +44,8 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useData } from '@/contexts/data-context';
-import type { Model, DataObject, Property, WorkflowWithDetails } from '@/lib/types';
-import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye, LayoutGrid, List as ListIcon, ExternalLink, Image as ImageIcon, CheckCircle2, FilterX, X as XIcon, Settings as SettingsIcon, Edit3 } from 'lucide-react';
+import type { Model, DataObject, Property, WorkflowWithDetails, WorkflowStateWithSuccessors } from '@/lib/types';
+import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye, LayoutGrid, List as ListIcon, ExternalLink, Image as ImageIcon, CheckCircle2, FilterX, X as XIcon, Settings as SettingsIcon, Edit3, Workflow as WorkflowIconLucide } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -73,6 +73,7 @@ interface IncomingRelationColumn {
 }
 
 const INTERNAL_NO_REFERENCES_VALUE = "__NO_REFERENCES__";
+const INTERNAL_WORKFLOW_STATE_UPDATE_KEY = "__workflowStateUpdate__";
 
 export default function DataObjectsPage() {
   const router = useRouter();
@@ -110,16 +111,25 @@ export default function DataObjectsPage() {
 
   const batchUpdatableProperties = useMemo(() => {
     if (!currentModel) return [];
-    return currentModel.properties.filter(
+    const props = currentModel.properties.filter(
       (p) => (p.type === 'boolean' || p.type === 'string' || p.type === 'number') &&
-             !p.name.toLowerCase().includes('markdown') && // Exclude markdown from generic string
-             !p.name.toLowerCase().includes('image') // Exclude image urls from generic string
+             !p.name.toLowerCase().includes('markdown') && 
+             !p.name.toLowerCase().includes('image') 
     );
-  }, [currentModel]);
+    const updatable = props.map(p => ({ name: p.name, type: p.type, id: p.id, label: `${p.name} (${p.type})` }));
+    
+    if (currentWorkflow && currentWorkflow.states.length > 0) {
+        updatable.unshift({ name: INTERNAL_WORKFLOW_STATE_UPDATE_KEY, type: 'workflow_state', id: INTERNAL_WORKFLOW_STATE_UPDATE_KEY, label: 'Workflow State' });
+    }
+    return updatable;
+  }, [currentModel, currentWorkflow]);
 
   const selectedBatchPropertyDetails = useMemo(() => {
-    return batchUpdatableProperties.find(p => p.name === batchUpdateProperty);
-  }, [batchUpdatableProperties, batchUpdateProperty]);
+    if (batchUpdateProperty === INTERNAL_WORKFLOW_STATE_UPDATE_KEY) {
+        return { name: INTERNAL_WORKFLOW_STATE_UPDATE_KEY, type: 'workflow_state', id: INTERNAL_WORKFLOW_STATE_UPDATE_KEY, label: 'Workflow State' };
+    }
+    return currentModel?.properties.find(p => p.name === batchUpdateProperty);
+  }, [currentModel, batchUpdateProperty]);
 
 
   const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects, isReady]);
@@ -245,7 +255,7 @@ export default function DataObjectsPage() {
                 displayValue = getObjectDisplayValue(referencingObject, virtualCol.referencingModel, allModels, allDbObjects);
                 operator = "by";
             }
-        } else { // Fallback for older "incomingRelationshipCount" if it's still somehow used, or default
+        } else { 
             if (filter.value === true) displayValue = "Yes";
             else if (filter.value === false) displayValue = "No";
             else displayValue = "Any";
@@ -409,7 +419,7 @@ export default function DataObjectsPage() {
                 return virtualColumnDef.referencingProperty.relationshipType === 'many'
                     ? (Array.isArray(linkedValueOnSpecific) && linkedValueOnSpecific.includes(obj.id)) : linkedValueOnSpecific === obj.id;
             }
-        } else if (virtualColumnDef && filter.operator === 'eq') { // Fallback for older 'incomingRelationshipCount' if still somehow present
+        } else if (virtualColumnDef && filter.operator === 'eq') { 
             const referencingData = allDbObjects[virtualColumnDef.referencingModel.id] || [];
             const count = referencingData.filter(refObj => {
                 const linkedValue = refObj[virtualColumnDef.referencingProperty.name];
@@ -504,7 +514,13 @@ export default function DataObjectsPage() {
     setIsBatchUpdating(true);
     try {
         let processedNewValue = batchUpdateValue;
-        if (selectedBatchPropertyDetails.type === 'boolean') {
+        let payloadPropertyName = selectedBatchPropertyDetails.name;
+        let payloadPropertyType = selectedBatchPropertyDetails.type;
+
+        if (selectedBatchPropertyDetails.name === INTERNAL_WORKFLOW_STATE_UPDATE_KEY) {
+            payloadPropertyType = 'workflow_state'; // Special type for API
+            processedNewValue = batchUpdateValue; // This is the target state ID
+        } else if (selectedBatchPropertyDetails.type === 'boolean') {
             processedNewValue = Boolean(batchUpdateValue);
         } else if (selectedBatchPropertyDetails.type === 'number') {
             processedNewValue = parseFloat(batchUpdateValue);
@@ -512,12 +528,11 @@ export default function DataObjectsPage() {
                 throw new Error("Invalid number provided for batch update.");
             }
         }
-        // String values are fine as is
-
+        
         const payload = {
             objectIds: Array.from(selectedObjectIds),
-            propertyName: selectedBatchPropertyDetails.name,
-            propertyType: selectedBatchPropertyDetails.type,
+            propertyName: payloadPropertyName,
+            propertyType: payloadPropertyType,
             newValue: processedNewValue,
         };
 
@@ -527,13 +542,23 @@ export default function DataObjectsPage() {
             body: JSON.stringify(payload),
         });
 
+        const responseData = await response.json();
+
         if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || "Batch update failed");
+            throw new Error(responseData.error || responseData.message || "Batch update failed at API level");
+        }
+        
+        if (responseData.errors && responseData.errors.length > 0) {
+            toast({ 
+                variant: "warning", 
+                title: "Batch Update Partially Successful", 
+                description: `${responseData.message}. Errors: ${responseData.errors.join(', ')}`
+            });
+        } else {
+            toast({ title: "Batch Update Successful", description: responseData.message || `${selectedObjectIds.size} records updated.` });
         }
 
         await fetchData(); // Re-fetch all data
-        toast({ title: "Batch Update Successful", description: `${selectedObjectIds.size} records updated for property "${selectedBatchPropertyDetails.name}".` });
         setIsBatchUpdateDialogOpen(false);
         setSelectedObjectIds(new Set()); // Clear selection
         setBatchUpdateProperty('');
@@ -677,7 +702,13 @@ export default function DataObjectsPage() {
       {selectedObjectIds.size > 0 && viewMode === 'table' && (
         <div className="mb-4 flex items-center gap-2 p-3 bg-secondary rounded-md shadow">
             <span className="text-sm font-medium text-secondary-foreground">{selectedObjectIds.size} item(s) selected</span>
-            <Dialog open={isBatchUpdateDialogOpen} onOpenChange={setIsBatchUpdateDialogOpen}>
+            <Dialog open={isBatchUpdateDialogOpen} onOpenChange={(open) => {
+                setIsBatchUpdateDialogOpen(open);
+                if (!open) { // Reset form on dialog close
+                    setBatchUpdateProperty('');
+                    setBatchUpdateValue('');
+                }
+            }}>
                 <DialogTrigger asChild>
                     <Button variant="default" size="sm" className="bg-primary hover:bg-primary/90">
                         <Edit3 className="mr-2 h-4 w-4" /> Batch Update
@@ -698,7 +729,7 @@ export default function DataObjectsPage() {
                                 <BatchSelectContent>
                                     {batchUpdatableProperties.map(prop => (
                                         <BatchSelectItem key={prop.id} value={prop.name}>
-                                            {prop.name} ({prop.type})
+                                            {prop.label}
                                         </BatchSelectItem>
                                     ))}
                                 </BatchSelectContent>
@@ -731,6 +762,20 @@ export default function DataObjectsPage() {
                                         onChange={(e) => setBatchUpdateValue(e.target.value)}
                                         className="col-span-3"
                                     />
+                                )}
+                                {selectedBatchPropertyDetails.type === 'workflow_state' && currentWorkflow && (
+                                     <BatchSelect value={batchUpdateValue} onValueChange={setBatchUpdateValue}>
+                                        <BatchSelectTrigger id="batch-workflow-state-value" className="col-span-3">
+                                            <BatchSelectValue placeholder="Select target state..." />
+                                        </BatchSelectTrigger>
+                                        <BatchSelectContent>
+                                            {currentWorkflow.states.map(state => (
+                                                <BatchSelectItem key={state.id} value={state.id}>
+                                                    {state.name}
+                                                </BatchSelectItem>
+                                            ))}
+                                        </BatchSelectContent>
+                                    </BatchSelect>
                                 )}
                             </div>
                         )}
@@ -869,5 +914,3 @@ export default function DataObjectsPage() {
     </div>
   );
 }
-
-
