@@ -47,7 +47,7 @@ import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useData } from '@/contexts/data-context';
 import type { Model, DataObject, Property, WorkflowWithDetails, WorkflowStateWithSuccessors } from '@/lib/types';
-import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye, LayoutGrid, List as ListIcon, ExternalLink, Image as ImageIcon, CheckCircle2, FilterX, X as XIcon, Settings as SettingsIcon, Edit3, Workflow as WorkflowIconLucide, CalendarIcon as CalendarIconLucide } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye, LayoutGrid, List as ListIcon, ExternalLink, Image as ImageIcon, CheckCircle2, FilterX, X as XIcon, Settings as SettingsIcon, Edit3, Workflow as WorkflowIconLucide, CalendarIcon as CalendarIconLucide, Star } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -55,6 +55,7 @@ import { format as formatDateFns, isValid as isDateValid, startOfDay, isEqual as
 import Link from 'next/link';
 import { getObjectDisplayValue, cn } from '@/lib/utils';
 import { StarDisplay } from '@/components/ui/star-display';
+import { StarRatingInput } from '@/components/ui/star-rating-input';
 import GalleryCard from '@/components/objects/gallery-card';
 import ColumnFilterPopover, { type ColumnFilterValue } from '@/components/objects/column-filter-popover';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
@@ -122,16 +123,19 @@ export default function DataObjectsPage() {
   const batchUpdatableProperties = useMemo(() => {
     if (!currentModel) return [];
     const props = currentModel.properties.filter(
-      (p) => (p.type === 'boolean' || p.type === 'string' || p.type === 'number' || p.type === 'date' || p.type === 'relationship') &&
+      (p) => (p.type === 'boolean' || p.type === 'string' || p.type === 'number' || p.type === 'date' || p.type === 'relationship' || p.type === 'rating') &&
              !p.name.toLowerCase().includes('markdown') && 
-             !p.name.toLowerCase().includes('image') &&
-             p.type !== 'rating' // Rating type doesn't have a simple batch input yet
+             !p.name.toLowerCase().includes('image')
     );
     const updatable = props.map(p => ({ 
         name: p.name, 
         type: p.type, 
         id: p.id, 
-        label: `${p.name} (${p.type === 'relationship' ? `Relationship to ${getModelById(p.relatedModelId!)?.name || 'Unknown'}` : p.type})`,
+        label: `${p.name} (${
+            p.type === 'relationship' ? `Relationship to ${getModelById(p.relatedModelId!)?.name || 'Unknown'}` 
+            : p.type === 'rating' ? 'Rating (0-5)'
+            : p.type
+        })`,
         relationshipType: p.relationshipType,
         relatedModelId: p.relatedModelId
     }));
@@ -241,10 +245,12 @@ export default function DataObjectsPage() {
       setBatchUpdateDate(undefined); 
     }
     if (selectedBatchPropertyDetails?.type !== 'relationship') {
-      // Reset batchUpdateValue for relationship if type changes
       if (Array.isArray(batchUpdateValue) || (typeof batchUpdateValue === 'string' && relatedObjectsForBatchUpdateOptions.some(opt => opt.value === batchUpdateValue))) {
         setBatchUpdateValue(''); 
       }
+    }
+    if (selectedBatchPropertyDetails?.type === 'rating') {
+        setBatchUpdateValue(0); // Default to 0 stars for rating
     }
   }, [selectedBatchPropertyDetails, batchUpdateValue, relatedObjectsForBatchUpdateOptions]);
 
@@ -590,10 +596,13 @@ export default function DataObjectsPage() {
             processedNewValue = batchUpdateValue; 
         } else if (selectedBatchPropertyDetails.type === 'boolean') {
             processedNewValue = Boolean(batchUpdateValue);
-        } else if (selectedBatchPropertyDetails.type === 'number') {
+        } else if (selectedBatchPropertyDetails.type === 'number' || selectedBatchPropertyDetails.type === 'rating') {
             processedNewValue = parseFloat(batchUpdateValue);
             if (isNaN(processedNewValue)) {
-                throw new Error("Invalid number provided for batch update.");
+                throw new Error(`Invalid number provided for batch update of ${selectedBatchPropertyDetails.type}.`);
+            }
+            if (selectedBatchPropertyDetails.type === 'rating' && (processedNewValue < 0 || processedNewValue > 5 || !Number.isInteger(processedNewValue))) {
+                throw new Error("Rating must be an integer between 0 and 5.");
             }
         } else if (selectedBatchPropertyDetails.type === 'date') {
             if (batchUpdateDate && isDateValid(batchUpdateDate)) {
@@ -605,7 +614,6 @@ export default function DataObjectsPage() {
             if (selectedBatchPropertyDetails.relationshipType === 'one') {
                 processedNewValue = batchUpdateValue === INTERNAL_CLEAR_RELATIONSHIP_VALUE ? null : batchUpdateValue;
             } else { // 'many'
-                 // batchUpdateValue is already expected to be an array of strings from MultiSelectAutocomplete
                 processedNewValue = Array.isArray(batchUpdateValue) ? batchUpdateValue : [];
             }
         }
@@ -806,9 +814,11 @@ export default function DataObjectsPage() {
                                 setBatchUpdateProperty(value);
                                 const propDetails = batchUpdatableProperties.find(p => p.name === value);
                                 if (propDetails?.type === 'relationship' && propDetails.relationshipType === 'many') {
-                                  setBatchUpdateValue([]); // Initialize as array for multi-select relationships
+                                  setBatchUpdateValue([]); 
+                                } else if (propDetails?.type === 'rating') {
+                                  setBatchUpdateValue(0); 
                                 } else {
-                                  setBatchUpdateValue(''); // Reset for other types
+                                  setBatchUpdateValue(''); 
                                 }
                                 setBatchUpdateDate(undefined);
                               }}
@@ -852,6 +862,14 @@ export default function DataObjectsPage() {
                                         onChange={(e) => setBatchUpdateValue(e.target.value)}
                                         className="col-span-3"
                                     />
+                                )}
+                                {selectedBatchPropertyDetails.type === 'rating' && (
+                                    <div className="col-span-3">
+                                        <StarRatingInput
+                                            value={Number(batchUpdateValue) || 0}
+                                            onChange={(newRating) => setBatchUpdateValue(newRating)}
+                                        />
+                                    </div>
                                 )}
                                 {selectedBatchPropertyDetails.type === 'date' && (
                                    <Popover>

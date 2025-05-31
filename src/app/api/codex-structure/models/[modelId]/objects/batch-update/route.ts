@@ -141,12 +141,16 @@ export async function POST(request: Request, { params }: Params) {
           case 'string': case 'markdown': case 'image': 
             coercedNewValue = String(newValue); 
             break;
-          case 'number': case 'rating':
+          case 'number':
             coercedNewValue = parseFloat(String(newValue));
             if (isNaN(coercedNewValue)) { 
               errors.push({ objectId, message: `Object ID ${objectId}: Invalid number value "${newValue}" for property "${propertyName}".`}); 
               validationErrorForThisObjectLoop = true;
-            } else if (propertyToUpdate.type === 'rating' && (coercedNewValue < 0 || coercedNewValue > 5 || !Number.isInteger(coercedNewValue))) {
+            }
+            break;
+          case 'rating':
+            coercedNewValue = parseInt(String(newValue), 10);
+            if (isNaN(coercedNewValue) || coercedNewValue < 0 || coercedNewValue > 5) {
               errors.push({ objectId, message: `Object ID ${objectId}: Rating for "${propertyName}" must be an integer between 0 and 5. Received "${newValue}".`});
               validationErrorForThisObjectLoop = true;
             }
