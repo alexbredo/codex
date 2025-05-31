@@ -47,11 +47,11 @@ import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useData } from '@/contexts/data-context';
 import type { Model, DataObject, Property, WorkflowWithDetails, WorkflowStateWithSuccessors } from '@/lib/types';
-import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye, LayoutGrid, List as ListIcon, ExternalLink, Image as ImageIcon, CheckCircle2, FilterX, X as XIcon, Settings as SettingsIcon, Edit3, Workflow as WorkflowIconLucide, CalendarIcon as CalendarIconLucide, Star } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye, LayoutGrid, List as ListIcon, ExternalLink, Image as ImageIcon, CheckCircle2, FilterX, X as XIcon, Settings as SettingsIcon, Edit3, Workflow as WorkflowIconLucide, CalendarIcon as CalendarIconLucideLucide, Star } from 'lucide-react'; // Renamed CalendarIcon
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { format as formatDateFns, isValid as isDateValid, startOfDay, isEqual as isEqualDate } from 'date-fns';
+import { format as formatDateFns, isValid as isDateValidFn, startOfDay, isEqual as isEqualDate } from 'date-fns';
 import Link from 'next/link';
 import { getObjectDisplayValue, cn } from '@/lib/utils';
 import { StarDisplay } from '@/components/ui/star-display';
@@ -241,18 +241,19 @@ export default function DataObjectsPage() {
   }, [modelId, getModelById, getObjectsByModelId, getWorkflowById, isReady, toast, router]);
 
   useEffect(() => {
-    if (selectedBatchPropertyDetails?.type !== 'date') {
-      setBatchUpdateDate(undefined); 
-    }
-    if (selectedBatchPropertyDetails?.type !== 'relationship') {
-      if (Array.isArray(batchUpdateValue) || (typeof batchUpdateValue === 'string' && relatedObjectsForBatchUpdateOptions.some(opt => opt.value === batchUpdateValue))) {
-        setBatchUpdateValue(''); 
-      }
-    }
+    // This effect should only run when selectedBatchPropertyDetails changes,
+    // to reset the input value for the new property type.
     if (selectedBatchPropertyDetails?.type === 'rating') {
-        setBatchUpdateValue(0); // Default to 0 stars for rating
+        setBatchUpdateValue(0); 
+    } else if (selectedBatchPropertyDetails?.type === 'date') {
+        setBatchUpdateDate(undefined);
+        setBatchUpdateValue(''); 
+    } else if (selectedBatchPropertyDetails?.type === 'relationship') {
+        setBatchUpdateValue(selectedBatchPropertyDetails.relationshipType === 'many' ? [] : '');
+    } else {
+        setBatchUpdateValue(''); 
     }
-  }, [selectedBatchPropertyDetails, batchUpdateValue, relatedObjectsForBatchUpdateOptions]);
+  }, [selectedBatchPropertyDetails]); // Corrected dependency array
 
 
   const handleViewModeChange = (newMode: ViewMode) => {
@@ -470,7 +471,7 @@ export default function DataObjectsPage() {
             case 'date':
                 if (!value || !filter.value) return false; try {
                 const objDate = startOfDay(new Date(value)); const filterDate = startOfDay(new Date(filter.value));
-                return isDateValid(objDate) && isDateValid(filterDate) && isEqualDate(objDate, filterDate);
+                return isDateValidFn(objDate) && isDateValidFn(filterDate) && isEqualDate(objDate, filterDate);
                 } catch { return false; }
             case 'rating': return Number(value) === Number(filter.value);
             case 'relationship':
@@ -596,18 +597,23 @@ export default function DataObjectsPage() {
             processedNewValue = batchUpdateValue; 
         } else if (selectedBatchPropertyDetails.type === 'boolean') {
             processedNewValue = Boolean(batchUpdateValue);
-        } else if (selectedBatchPropertyDetails.type === 'number' || selectedBatchPropertyDetails.type === 'rating') {
-            processedNewValue = parseFloat(batchUpdateValue);
+        } else if (selectedBatchPropertyDetails.type === 'number') {
+            processedNewValue = parseFloat(String(batchUpdateValue));
             if (isNaN(processedNewValue)) {
                 throw new Error(`Invalid number provided for batch update of ${selectedBatchPropertyDetails.type}.`);
             }
-            if (selectedBatchPropertyDetails.type === 'rating' && (processedNewValue < 0 || processedNewValue > 5 || !Number.isInteger(processedNewValue))) {
+        } else if (selectedBatchPropertyDetails.type === 'rating') {
+            processedNewValue = Number(batchUpdateValue); // Use Number() for ratings
+            if (isNaN(processedNewValue) || processedNewValue < 0 || processedNewValue > 5 || !Number.isInteger(processedNewValue)) {
                 throw new Error("Rating must be an integer between 0 and 5.");
             }
         } else if (selectedBatchPropertyDetails.type === 'date') {
-            if (batchUpdateDate && isDateValid(batchUpdateDate)) {
+            if (batchUpdateDate && isDateValidFn(batchUpdateDate)) {
                 processedNewValue = batchUpdateDate.toISOString();
-            } else {
+            } else if (!batchUpdateDate && batchUpdateValue === ''){ // Allow clearing date
+                processedNewValue = null;
+            }
+             else {
                 throw new Error("Invalid date provided for batch update.");
             }
         } else if (selectedBatchPropertyDetails.type === 'relationship') {
@@ -652,8 +658,7 @@ export default function DataObjectsPage() {
         setIsBatchUpdateDialogOpen(false);
         setSelectedObjectIds(new Set()); 
         setBatchUpdateProperty('');
-        setBatchUpdateValue('');
-        setBatchUpdateDate(undefined);
+        // Value reset is handled by useEffect on selectedBatchPropertyDetails
     } catch (error: any) {
         toast({ variant: "destructive", title: "Batch Update Failed", description: error.message });
     } finally {
@@ -673,7 +678,7 @@ export default function DataObjectsPage() {
     }
     switch (property.type) {
       case 'boolean': return value ? <Badge variant="default" className="bg-green-500 hover:bg-green-600">Yes</Badge> : <Badge variant="secondary">No</Badge>;
-      case 'date': try { const date = new Date(value); return isDateValid(date) ? formatDateFns(date, 'PP') : String(value); } catch { return String(value); }
+      case 'date': try { const date = new Date(value); return isDateValidFn(date) ? formatDateFns(date, 'PP') : String(value); } catch { return String(value); }
       case 'number':
         const precision = property.precision === undefined ? 2 : property.precision; const unitText = property.unit || ''; const parsedValue = parseFloat(String(value));
         if (isNaN(parsedValue)) { const displayUnit = unitText ? ` (${unitText})` : ''; return <span className="text-muted-foreground">N/A{displayUnit}</span>; }
@@ -725,7 +730,7 @@ export default function DataObjectsPage() {
         else {
           switch (prop.type) {
             case 'boolean': cellValue = value ? 'Yes' : 'No'; break;
-            case 'date': try { const date = new Date(value); cellValue = isDateValid(date) ? formatDateFns(date, 'yyyy-MM-dd') : String(value); } catch { cellValue = String(value); } break;
+            case 'date': try { const date = new Date(value); cellValue = isDateValidFn(date) ? formatDateFns(date, 'yyyy-MM-dd') : String(value); } catch { cellValue = String(value); } break;
             case 'number': const precision = prop.precision === undefined ? 2 : prop.precision; const parsedNum = parseFloat(String(value)); cellValue = isNaN(parsedNum) ? String(value) : parsedNum.toFixed(precision); break;
             case 'markdown': case 'image': cellValue = String(value); break;
             case 'rating': cellValue = (value && Number(value) > 0) ? `${Number(value)}/5` : ''; break;
@@ -793,8 +798,7 @@ export default function DataObjectsPage() {
                 setIsBatchUpdateDialogOpen(open);
                 if (!open) { 
                     setBatchUpdateProperty('');
-                    setBatchUpdateValue('');
-                    setBatchUpdateDate(undefined);
+                    // Value reset handled by useEffect on selectedBatchPropertyDetails
                 }
             }}>
                 <DialogTrigger asChild>
@@ -812,15 +816,7 @@ export default function DataObjectsPage() {
                             <Label htmlFor="batch-property" className="text-right">Property</Label>
                             <BatchSelect value={batchUpdateProperty} onValueChange={(value) => {
                                 setBatchUpdateProperty(value);
-                                const propDetails = batchUpdatableProperties.find(p => p.name === value);
-                                if (propDetails?.type === 'relationship' && propDetails.relationshipType === 'many') {
-                                  setBatchUpdateValue([]); 
-                                } else if (propDetails?.type === 'rating') {
-                                  setBatchUpdateValue(0); 
-                                } else {
-                                  setBatchUpdateValue(''); 
-                                }
-                                setBatchUpdateDate(undefined);
+                                // Initial value setting is handled by useEffect on selectedBatchPropertyDetails
                               }}
                             >
                                 <BatchSelectTrigger id="batch-property" className="col-span-3">
@@ -867,7 +863,9 @@ export default function DataObjectsPage() {
                                     <div className="col-span-3">
                                         <StarRatingInput
                                             value={Number(batchUpdateValue) || 0}
-                                            onChange={(newRating) => setBatchUpdateValue(newRating)}
+                                            onChange={(newRating) => {
+                                                setBatchUpdateValue(newRating);
+                                            }}
                                         />
                                     </div>
                                 )}
@@ -881,7 +879,7 @@ export default function DataObjectsPage() {
                                             !batchUpdateDate && "text-muted-foreground"
                                             )}
                                         >
-                                            <CalendarIconLucide className="mr-2 h-4 w-4" />
+                                            <CalendarIconLucideLucide className="mr-2 h-4 w-4" /> {/* Renamed icon */}
                                             {batchUpdateDate ? formatDateFns(batchUpdateDate, "PPP") : <span>Pick a date</span>}
                                         </Button>
                                         </PopoverTrigger>
@@ -891,6 +889,7 @@ export default function DataObjectsPage() {
                                             selected={batchUpdateDate}
                                             onSelect={(date) => {
                                                 setBatchUpdateDate(date);
+                                                setBatchUpdateValue(date ? date.toISOString() : ''); // Update raw value as well
                                             }}
                                             initialFocus
                                         />
@@ -923,8 +922,8 @@ export default function DataObjectsPage() {
                                       />
                                     ) : (
                                       <BatchSelect
-                                        value={batchUpdateValue || INTERNAL_CLEAR_RELATIONSHIP_VALUE}
-                                        onValueChange={setBatchUpdateValue}
+                                        value={String(batchUpdateValue) || INTERNAL_CLEAR_RELATIONSHIP_VALUE}
+                                        onValueChange={(val) => setBatchUpdateValue(val === INTERNAL_CLEAR_RELATIONSHIP_VALUE ? '' : val)}
                                       >
                                         <BatchSelectTrigger>
                                           <BatchSelectValue placeholder={`Select ${relatedModelForBatchUpdate.name}...`} />
@@ -1083,4 +1082,3 @@ export default function DataObjectsPage() {
     </div>
   );
 }
-
