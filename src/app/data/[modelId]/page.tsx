@@ -111,7 +111,7 @@ export default function DataObjectsPage() {
   const batchUpdatableProperties = useMemo(() => {
     if (!currentModel) return [];
     return currentModel.properties.filter(
-      (p) => (p.type === 'boolean' || p.type === 'string' || p.type === 'number') && 
+      (p) => (p.type === 'boolean' || p.type === 'string' || p.type === 'number') &&
              !p.name.toLowerCase().includes('markdown') && // Exclude markdown from generic string
              !p.name.toLowerCase().includes('image') // Exclude image urls from generic string
     );
@@ -245,7 +245,7 @@ export default function DataObjectsPage() {
                 displayValue = getObjectDisplayValue(referencingObject, virtualCol.referencingModel, allModels, allDbObjects);
                 operator = "by";
             }
-        } else {
+        } else { // Fallback for older "incomingRelationshipCount" if it's still somehow used, or default
             if (filter.value === true) displayValue = "Yes";
             else if (filter.value === false) displayValue = "No";
             else displayValue = "Any";
@@ -254,7 +254,7 @@ export default function DataObjectsPage() {
     } else {
       return null;
     }
-    
+
     const operatorDisplayMap: Record<string, string> = {
         'eq': '=', 'gt': '>', 'lt': '<', 'gte': '>=', 'lte': '<=',
         'contains': 'contains', 'date_eq': '=', 'includes': 'includes',
@@ -409,7 +409,7 @@ export default function DataObjectsPage() {
                 return virtualColumnDef.referencingProperty.relationshipType === 'many'
                     ? (Array.isArray(linkedValueOnSpecific) && linkedValueOnSpecific.includes(obj.id)) : linkedValueOnSpecific === obj.id;
             }
-        } else if (virtualColumnDef && filter.operator === 'eq') {
+        } else if (virtualColumnDef && filter.operator === 'eq') { // Fallback for older 'incomingRelationshipCount' if still somehow present
             const referencingData = allDbObjects[virtualColumnDef.referencingModel.id] || [];
             const count = referencingData.filter(refObj => {
                 const linkedValue = refObj[virtualColumnDef.referencingProperty.name];
@@ -673,7 +673,7 @@ export default function DataObjectsPage() {
             <Button onClick={handleCreateNew} className="bg-accent text-accent-foreground hover:bg-accent/90"><PlusCircle className="mr-2 h-4 w-4" /> Create New</Button>
         </div>
       </header>
-      
+
       {selectedObjectIds.size > 0 && viewMode === 'table' && (
         <div className="mb-4 flex items-center gap-2 p-3 bg-secondary rounded-md shadow">
             <span className="text-sm font-medium text-secondary-foreground">{selectedObjectIds.size} item(s) selected</span>
