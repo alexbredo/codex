@@ -1,13 +1,13 @@
 
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useData } from '@/contexts/data-context';
-import type { Model, DataObject, Property } from '@/lib/types';
+import type { Model, DataObject, Property, WorkflowWithDetails } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Edit, Loader2, ExternalLink, ImageIcon } from 'lucide-react';
+import { ArrowLeft, Edit, Loader2, ExternalLink, ImageIcon, CheckCircle2 } from 'lucide-react';
 import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
 import Link from 'next/link';
 import { getObjectDisplayValue } from '@/lib/utils';
@@ -22,19 +22,32 @@ export default function ViewObjectPage() {
   const modelId = params.modelId as string;
   const objectId = params.objectId as string;
 
-  const { getModelById, getObjectsByModelId, models: allModels, getAllObjects, isReady } = useData();
+  const { getModelById, getObjectsByModelId, models: allModels, getAllObjects, getWorkflowById, isReady } = useData();
 
   const [currentModel, setCurrentModel] = useState<Model | null>(null);
   const [viewingObject, setViewingObject] = useState<DataObject | null>(null);
+  const [currentWorkflow, setCurrentWorkflow] = useState<WorkflowWithDetails | null>(null);
   const [isLoadingData, setIsLoadingData] = useState(true);
 
   const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects, isReady]);
+
+  const getWorkflowStateName = useCallback((stateId: string | null | undefined): string => {
+    if (!stateId || !currentWorkflow) return 'N/A';
+    const state = currentWorkflow.states.find(s => s.id === stateId);
+    return state ? state.name : 'Unknown State';
+  }, [currentWorkflow]);
 
   useEffect(() => {
     if (isReady && modelId && objectId) {
       const foundModel = getModelById(modelId);
       if (foundModel) {
         setCurrentModel(foundModel);
+        if (foundModel.workflowId) {
+            setCurrentWorkflow(getWorkflowById(foundModel.workflowId) || null);
+        } else {
+            setCurrentWorkflow(null);
+        }
+
         const modelObjects = getObjectsByModelId(modelId);
         const objectToView = modelObjects.find(obj => obj.id === objectId);
 
@@ -48,7 +61,7 @@ export default function ViewObjectPage() {
       }
       setIsLoadingData(false);
     }
-  }, [modelId, objectId, getModelById, getObjectsByModelId, isReady, router]);
+  }, [modelId, objectId, getModelById, getObjectsByModelId, getWorkflowById, isReady, router]);
 
   const displayFieldValue = (property: Property, value: any) => {
     if (value === null || typeof value === 'undefined' || (Array.isArray(value) && value.length === 0)) {
@@ -170,6 +183,7 @@ export default function ViewObjectPage() {
   }
 
   const sortedProperties = [...currentModel.properties].sort((a,b) => a.orderIndex - b.orderIndex);
+  const objectStateName = getWorkflowStateName(viewingObject.currentStateId);
 
   return (
     <div className="container mx-auto py-8">
@@ -185,6 +199,14 @@ export default function ViewObjectPage() {
         <CardHeader>
           <CardTitle className="text-3xl text-primary">{getObjectDisplayValue(viewingObject, currentModel, allModels, allDbObjects)}</CardTitle>
           <CardDescription>Detailed view of this {currentModel.name.toLowerCase()} object.</CardDescription>
+           {currentWorkflow && (
+            <div className="mt-2">
+                <Badge variant={viewingObject.currentStateId ? "default" : "secondary"} className="text-sm">
+                    <CheckCircle2 className="mr-2 h-4 w-4" />
+                    State: {objectStateName}
+                </Badge>
+            </div>
+          )}
         </CardHeader>
         <CardContent className="space-y-6">
           <div>

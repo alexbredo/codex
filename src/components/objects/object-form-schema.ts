@@ -7,7 +7,10 @@ export function createObjectFormSchema(model: Model | undefined) {
     return z.object({});
   }
 
-  const shape: Record<string, z.ZodTypeAny> = {};
+  const shape: Record<string, z.ZodTypeAny> = {
+    // Add currentStateId here, it's common for all objects that might have a workflow
+    currentStateId: z.string().nullable().optional(),
+  };
 
   model.properties.forEach((prop: Property) => {
     let fieldSchema: z.ZodTypeAny;

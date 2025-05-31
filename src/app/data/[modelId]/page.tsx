@@ -25,8 +25,8 @@ import {
 } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { useData } from '@/contexts/data-context';
-import type { Model, DataObject, Property } from '@/lib/types';
-import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye, LayoutGrid, List as ListIcon, ExternalLink, Image as ImageIcon } from 'lucide-react';
+import type { Model, DataObject, Property, WorkflowWithDetails } from '@/lib/types';
+import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye, LayoutGrid, List as ListIcon, ExternalLink, Image as ImageIcon, CheckCircle2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -41,7 +41,7 @@ type ViewMode = 'table' | 'gallery';
 
 type SortDirection = 'asc' | 'desc';
 interface SortConfig {
-  key: string;
+  key: string; // Can be property.id or a special key like 'workflowState'
   direction: SortDirection;
 }
 
@@ -64,6 +64,7 @@ export default function DataObjectsPage() {
     getObjectsByModelId,
     deleteObject,
     getAllObjects,
+    getWorkflowById,
     isReady
   } = useData();
   const { toast } = useToast();
@@ -74,6 +75,8 @@ export default function DataObjectsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [sortConfig, setSortConfig] = useState<SortConfig | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('table');
+  const [currentWorkflow, setCurrentWorkflow] = useState<WorkflowWithDetails | null>(null);
+
 
   const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects, isReady]);
 
@@ -101,6 +104,11 @@ export default function DataObjectsPage() {
       const foundModel = getModelById(modelId);
       if (foundModel) {
         setCurrentModel(foundModel);
+        if (foundModel.workflowId) {
+          setCurrentWorkflow(getWorkflowById(foundModel.workflowId) || null);
+        } else {
+          setCurrentWorkflow(null);
+        }
         const modelObjects = getObjectsByModelId(modelId);
         setObjects(modelObjects);
 
@@ -116,7 +124,7 @@ export default function DataObjectsPage() {
         router.push('/models');
       }
     }
-  }, [modelId, getModelById, getObjectsByModelId, isReady, toast, router]);
+  }, [modelId, getModelById, getObjectsByModelId, getWorkflowById, isReady, toast, router]);
 
   const handleViewModeChange = (newMode: ViewMode) => {
     setViewMode(newMode);
@@ -168,13 +176,19 @@ export default function DataObjectsPage() {
     return sortConfig.direction === 'asc' ? <ArrowUp className="ml-2 h-4 w-4" /> : <ArrowDown className="ml-2 h-4 w-4" />;
   };
 
+  const getWorkflowStateName = useCallback((stateId: string | null | undefined): string => {
+    if (!stateId || !currentWorkflow) return 'N/A';
+    const state = currentWorkflow.states.find(s => s.id === stateId);
+    return state ? state.name : 'Unknown State';
+  }, [currentWorkflow]);
+
   const filteredObjects = useMemo(() => {
     if (!currentModel) return [];
     let searchableObjects = objects;
 
     if (searchTerm) {
-      searchableObjects = objects.filter(obj =>
-        currentModel.properties.some(prop => {
+      searchableObjects = objects.filter(obj => {
+        const hasMatchingProperty = currentModel.properties.some(prop => {
           const value = obj[prop.name];
           if ((prop.type === 'string' || prop.type === 'number' || prop.type === 'markdown' || prop.type === 'image') && value !== null && value !== undefined) {
             return String(value).toLowerCase().includes(searchTerm.toLowerCase());
@@ -194,11 +208,20 @@ export default function DataObjectsPage() {
               }
           }
           return false;
-        })
-      );
+        });
+        if (hasMatchingProperty) return true;
+
+        if (currentWorkflow && obj.currentStateId) {
+            const stateName = getWorkflowStateName(obj.currentStateId);
+            if (stateName.toLowerCase().includes(searchTerm.toLowerCase())) {
+                return true;
+            }
+        }
+        return false;
+      });
     }
     return searchableObjects;
-  }, [objects, searchTerm, currentModel, getModelById, allDbObjects, allModels]);
+  }, [objects, searchTerm, currentModel, getModelById, allDbObjects, allModels, currentWorkflow, getWorkflowStateName]);
 
 
   const sortedObjects = useMemo(() => {
@@ -212,6 +235,8 @@ export default function DataObjectsPage() {
 
       const directPropertyToSort = currentModel.properties.find(p => p.id === sortConfig.key);
       const virtualColumnToSort = virtualIncomingRelationColumns.find(vc => vc.id === sortConfig.key);
+      const isWorkflowStateSort = sortConfig.key === 'workflowState';
+
 
       if (directPropertyToSort) {
         aValue = a[directPropertyToSort.name];
@@ -254,7 +279,6 @@ export default function DataObjectsPage() {
             bValue = String(bValue ?? '').toLowerCase();
         }
       } else if (virtualColumnToSort) {
-
         const aReferencingData = allDbObjects[virtualColumnToSort.referencingModel.id] || [];
         aValue = aReferencingData.filter(refObj => {
           const linkedValue = refObj[virtualColumnToSort.referencingProperty.name];
@@ -266,6 +290,9 @@ export default function DataObjectsPage() {
           const linkedValue = refObj[virtualColumnToSort.referencingProperty.name];
           return virtualColumnToSort.referencingProperty.relationshipType === 'many' ? (Array.isArray(linkedValue) && linkedValue.includes(b.id)) : linkedValue === b.id;
         }).length;
+      } else if (isWorkflowStateSort && currentWorkflow) {
+        aValue = getWorkflowStateName(a.currentStateId).toLowerCase();
+        bValue = getWorkflowStateName(b.currentStateId).toLowerCase();
       } else {
         return 0;
       }
@@ -278,7 +305,7 @@ export default function DataObjectsPage() {
       }
       return 0;
     });
-  }, [filteredObjects, sortConfig, currentModel, getModelById, allDbObjects, allModels, virtualIncomingRelationColumns]);
+  }, [filteredObjects, sortConfig, currentModel, getModelById, allDbObjects, allModels, virtualIncomingRelationColumns, currentWorkflow, getWorkflowStateName]);
 
 
   const paginatedObjects = useMemo(() => {
@@ -396,6 +423,9 @@ export default function DataObjectsPage() {
 
     const headers: string[] = [];
     currentModel.properties.forEach(prop => headers.push(prop.name));
+    if (currentWorkflow) {
+      headers.push("Workflow State");
+    }
     virtualIncomingRelationColumns.forEach(col => headers.push(col.headerLabel));
 
     const csvRows: string[] = [headers.map(escapeCsvCell).join(',')];
@@ -452,6 +482,10 @@ export default function DataObjectsPage() {
         }
         row.push(escapeCsvCell(cellValue));
       });
+
+      if (currentWorkflow) {
+        row.push(escapeCsvCell(getWorkflowStateName(obj.currentStateId)));
+      }
 
       virtualIncomingRelationColumns.forEach(colDef => {
         const referencingData = allDbObjects[colDef.referencingModel.id] || [];
@@ -510,6 +544,7 @@ export default function DataObjectsPage() {
         <div className="text-center md:text-left">
           <h1 className="text-3xl font-bold text-primary">Data for: {currentModel.name}</h1>
           <p className="text-muted-foreground">{currentModel.description || 'Manage data entries for this model.'}</p>
+          {currentWorkflow && <Badge variant="secondary" className="mt-1">Workflow: {currentWorkflow.name}</Badge>}
         </div>
          <div className="flex gap-2 w-full md:w-auto">
             <div className="relative flex-grow md:flex-grow-0">
@@ -588,6 +623,14 @@ export default function DataObjectsPage() {
                     </Button>
                   </TableHead>
                 ))}
+                {currentWorkflow && (
+                    <TableHead>
+                        <Button variant="ghost" onClick={() => requestSort('workflowState')} className="px-1">
+                        State
+                        {getSortIcon('workflowState')}
+                        </Button>
+                    </TableHead>
+                )}
                 {virtualIncomingRelationColumns.map((col) => (
                   <TableHead key={col.id} className="text-xs">
                      <Button variant="ghost" onClick={() => requestSort(col.id)} className="px-1 text-xs">
@@ -612,6 +655,13 @@ export default function DataObjectsPage() {
                       {displayCellContent(obj, prop)}
                     </TableCell>
                   ))}
+                  {currentWorkflow && (
+                    <TableCell>
+                        <Badge variant={obj.currentStateId ? "outline" : "secondary"}>
+                            {getWorkflowStateName(obj.currentStateId)}
+                        </Badge>
+                    </TableCell>
+                  )}
                   {virtualIncomingRelationColumns.map((colDef) => {
                     const referencingData = allDbObjects[colDef.referencingModel.id] || [];
                     const linkedItems = referencingData.filter(refObj => {
@@ -680,6 +730,8 @@ export default function DataObjectsPage() {
               model={currentModel}
               allModels={allModels}
               allObjects={allDbObjects}
+              currentWorkflow={currentWorkflow}
+              getWorkflowStateName={getWorkflowStateName}
               onView={handleView}
               onEdit={handleEdit}
               onDelete={handleDelete}

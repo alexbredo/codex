@@ -1,10 +1,10 @@
 
 'use client';
 
-import type { DataObject, Model, Property } from '@/lib/types';
+import type { DataObject, Model, Property, WorkflowWithDetails } from '@/lib/types';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Eye, Edit, Trash2 } from 'lucide-react';
+import { Eye, Edit, Trash2, CheckCircle2 } from 'lucide-react';
 import { getObjectDisplayValue } from '@/lib/utils';
 import Image from 'next/image';
 import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
@@ -27,6 +27,8 @@ interface GalleryCardProps {
   model: Model;
   allModels: Model[];
   allObjects: Record<string, DataObject[]>;
+  currentWorkflow?: WorkflowWithDetails | null;
+  getWorkflowStateName: (stateId: string | null | undefined) => string;
   onView: (obj: DataObject) => void;
   onEdit: (obj: DataObject) => void;
   onDelete: (objId: string) => void;
@@ -37,11 +39,15 @@ export default function GalleryCard({
   model,
   allModels,
   allObjects,
+  currentWorkflow,
+  getWorkflowStateName,
   onView,
   onEdit,
   onDelete,
 }: GalleryCardProps) {
   const displayName = getObjectDisplayValue(obj, model, allModels, allObjects);
+  const stateName = currentWorkflow ? getWorkflowStateName(obj.currentStateId) : null;
+
 
   let imageProp = model.properties.find(p => p.type === 'image' && obj[p.name]);
   let imageUrl = imageProp && obj[p.name] ? String(obj[p.name]) : null;
@@ -133,6 +139,11 @@ export default function GalleryCard({
       </CardHeader>
       <CardContent className="p-4 flex-grow">
         <CardTitle className="text-lg mb-1 truncate" title={displayName}>{displayName}</CardTitle>
+        {stateName && stateName !== 'N/A' && (
+            <Badge variant={obj.currentStateId ? "outline" : "secondary"} className="text-xs mb-2">
+                 <CheckCircle2 className="mr-1 h-3 w-3" /> {stateName}
+            </Badge>
+        )}
         {displayProperties.map(prop => (
           <div key={prop.id} className="text-sm text-muted-foreground mt-1">
             <span className="font-medium text-foreground/80">{prop.name}: </span>

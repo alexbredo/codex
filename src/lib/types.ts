@@ -86,7 +86,7 @@ export type PropertyFormData = Omit<Property, 'id' | 'orderIndex'> & {
   isUnique?: boolean,
   defaultValue?: string;
 };
-export type ObjectFormData = Omit<DataObject, 'id' | 'currentStateId'> & {
+export type ObjectFormData = Omit<DataObject, 'id' | 'currentStateId'> & { // Allow currentStateId to be part of form data
   currentStateId?: string | null;
 };
 

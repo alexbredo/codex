@@ -1,7 +1,7 @@
 
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import type { DataObject, Model, Property } from '@/lib/types';
+import type { DataObject, Model, Property, WorkflowWithDetails, WorkflowStateWithSuccessors } from '@/lib/types';
 import { getCurrentUserFromCookie } from '@/lib/auth'; // Auth helper
 
 interface Params {
@@ -22,9 +22,10 @@ export async function GET(request: Request, { params }: Params) {
       return NextResponse.json({ error: 'Model not found' }, { status: 404 });
     }
 
-    const rows = await db.all('SELECT id, data FROM data_objects WHERE model_id = ?', params.modelId);
+    const rows = await db.all('SELECT id, data, currentStateId FROM data_objects WHERE model_id = ?', params.modelId);
     const objects: DataObject[] = rows.map(row => ({
       id: row.id,
+      currentStateId: row.currentStateId,
       ...JSON.parse(row.data),
     }));
     return NextResponse.json(objects);
@@ -41,10 +42,10 @@ export async function POST(request: Request, { params }: Params) {
     return NextResponse.json({ error: 'Unauthorized to create objects' }, { status: 403 });
   }
   try {
-    const { id: objectId, ...objectData }: Omit<DataObject, 'id'> & { id: string } = await request.json();
+    const { id: objectId, currentStateId: _clientSuppliedStateId, ...objectData }: Omit<DataObject, 'id'> & { id: string } = await request.json();
     const db = await getDb();
 
-    const modelRow = await db.get('SELECT id FROM models WHERE id = ?', params.modelId);
+    const modelRow: Model | undefined = await db.get('SELECT id, workflowId FROM models WHERE id = ?', params.modelId);
     if (!modelRow) {
       return NextResponse.json({ error: 'Model not found' }, { status: 404 });
     }
@@ -70,15 +71,35 @@ export async function POST(request: Request, { params }: Params) {
         }
       }
     }
+    
+    let finalCurrentStateId: string | null = null;
+    if (modelRow.workflowId) {
+        const workflow: WorkflowWithDetails | undefined = await db.get('SELECT * FROM workflows WHERE id = ?', modelRow.workflowId);
+        if (workflow) {
+            const statesFromDb: WorkflowStateWithSuccessors[] = await db.all(
+                'SELECT * FROM workflow_states WHERE workflowId = ?', workflow.id
+            );
+            const initialState = statesFromDb.find(s => s.isInitial);
+            if (initialState) {
+                finalCurrentStateId = initialState.id;
+            } else {
+                console.warn(`Workflow ${workflow.id} for model ${modelRow.id} has no initial state defined. Object will have no initial state.`);
+            }
+        } else {
+             console.warn(`Workflow ID ${modelRow.workflowId} defined on model ${modelRow.id} not found. Object will have no initial state.`);
+        }
+    }
+
 
     await db.run(
-      'INSERT INTO data_objects (id, model_id, data) VALUES (?, ?, ?)',
+      'INSERT INTO data_objects (id, model_id, data, currentStateId) VALUES (?, ?, ?, ?)',
       objectId,
       params.modelId,
-      JSON.stringify(objectData)
+      JSON.stringify(objectData),
+      finalCurrentStateId
     );
     
-    const createdObject: DataObject = { id: objectId, ...objectData };
+    const createdObject: DataObject = { id: objectId, currentStateId: finalCurrentStateId, ...objectData };
     return NextResponse.json(createdObject, { status: 201 });
   } catch (error: any) {
     console.error(`Failed to create object for model ${params.modelId}:`, error);

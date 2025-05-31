@@ -123,7 +123,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const workflowsData: WorkflowWithDetails[] = await response.json();
       const clientWorkflows = workflowsData.map(wf => ({
         ...wf,
-        states: wf.states.map(s => ({...s, isInitial: !!s.isInitial}))
+        states: wf.states.map(s => {
+          const successorStateIds = (s as any).successorStateIdsStr ? (s as any).successorStateIdsStr.split(',').filter(Boolean) : s.successorStateIds || [];
+          const { successorStateIdsStr, ...restOfState } = s as any;
+          return {...restOfState, isInitial: !!s.isInitial, successorStateIds };
+        })
       }));
       setWorkflows(clientWorkflows.sort((a, b) => a.name.localeCompare(b.name)));
     } catch (error: any) {
@@ -198,7 +202,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         workflowId: modelData.workflowId, // Will be string ID or null
         properties: propertiesWithIdsAndOrder 
     };
-    console.log("[DataContext] addModel - payload to API:", JSON.stringify(payload, null, 2));
+    console.log("[DataContext DEBUG] addModel - payload to API:", JSON.stringify(payload, null, 2));
 
     const response = await fetch('/api/codex-structure/models', {
       method: 'POST',
@@ -238,10 +242,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const payload = {
       ...updates,
       namespace: finalNamespace, 
-      workflowId: updates.workflowId, // Will be string ID or null
+      workflowId: Object.prototype.hasOwnProperty.call(updates, 'workflowId') ? updates.workflowId : undefined, // Send only if explicitly in updates
       properties: propertiesWithEnsuredIdsAndOrder,
     };
-    console.log("[DataContext] updateModel - payload to API:", JSON.stringify(payload, null, 2));
+    console.log("[DataContext DEBUG] updateModel - payload to API:", JSON.stringify(payload, null, 2));
 
     const response = await fetch(`/api/codex-structure/models/${modelId}`, {
       method: 'PUT',
@@ -285,10 +289,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const addObject = useCallback(async (modelId: string, objectData: Omit<DataObject, 'id' | 'currentStateId'> & {currentStateId?: string | null}, objectId?: string): Promise<DataObject> => {
     const finalObjectId = objectId || crypto.randomUUID();
+    // currentStateId will be set by the backend based on workflow's initial state
+    const payload = { ...objectData, id: finalObjectId }; 
     const response = await fetch(`/api/codex-structure/models/${modelId}/objects`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...objectData, id: finalObjectId, currentStateId: objectData.currentStateId || null }),
+      body: JSON.stringify(payload),
     });
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ error: `Failed to add object to model ${modelId}. Status: ${response.status}` }));
@@ -311,7 +317,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const response = await fetch(`/api/codex-structure/models/${modelId}/objects/${objectId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates),
+      body: JSON.stringify(updates), // `updates` can include `currentStateId`
     });
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ error: `Failed to update object ${objectId}. Status: ${response.status}` }));

@@ -11,7 +11,7 @@ import { useData } from '@/contexts/data-context';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import type { Model, DataObject } from '@/lib/types';
+import type { Model, DataObject, WorkflowWithDetails } from '@/lib/types';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { z } from 'zod';
 
@@ -21,11 +21,12 @@ export default function EditObjectPage() {
   const modelId = params.modelId as string;
   const objectId = params.objectId as string;
 
-  const { getModelById, getObjectsByModelId, updateObject, isReady } = useData();
+  const { getModelById, getObjectsByModelId, updateObject, getWorkflowById, isReady } = useData();
   const { toast } = useToast();
 
   const [currentModel, setCurrentModel] = useState<Model | null>(null);
   const [editingObject, setEditingObject] = useState<DataObject | null>(null);
+  const [currentWorkflow, setCurrentWorkflow] = useState<WorkflowWithDetails | null>(null);
   const [isLoadingData, setIsLoadingData] = useState(true);
 
   const dynamicSchema = useMemo(() => currentModel ? createObjectFormSchema(currentModel) : z.object({}), [currentModel]);
@@ -40,12 +41,21 @@ export default function EditObjectPage() {
       const foundModel = getModelById(modelId);
       if (foundModel) {
         setCurrentModel(foundModel);
+        if (foundModel.workflowId) {
+          const wf = getWorkflowById(foundModel.workflowId);
+          setCurrentWorkflow(wf || null);
+        } else {
+          setCurrentWorkflow(null);
+        }
+
         const modelObjects = getObjectsByModelId(modelId);
         const objectToEdit = modelObjects.find(obj => obj.id === objectId);
 
         if (objectToEdit) {
           setEditingObject(objectToEdit);
-          const formValues: Record<string, any> = {};
+          const formValues: Record<string, any> = {
+            currentStateId: objectToEdit.currentStateId || null,
+          };
           foundModel.properties.forEach(prop => {
             formValues[prop.name] = objectToEdit[prop.name] ??
                                     (prop.relationshipType === 'many' ? [] :
@@ -65,7 +75,7 @@ export default function EditObjectPage() {
       }
       setIsLoadingData(false);
     }
-  }, [modelId, objectId, getModelById, getObjectsByModelId, isReady, form, router, toast]);
+  }, [modelId, objectId, getModelById, getObjectsByModelId, getWorkflowById, isReady, form, router, toast]);
 
   const onSubmit = async (values: Record<string, any>) => {
     if (!currentModel || !editingObject) return;
@@ -73,46 +83,50 @@ export default function EditObjectPage() {
     const processedValues = { ...values };
     const currentDateISO = new Date().toISOString();
 
-    try {
-      // Handle image uploads
-      for (const prop of currentModel.properties) {
-        if (prop.type === 'image' && processedValues[prop.name] instanceof File) {
-          const file = processedValues[prop.name] as File;
-          const formData = new FormData();
-          formData.append('file', file);
-          formData.append('modelId', currentModel.id);
-          formData.append('objectId', editingObject.id);
-          formData.append('propertyName', prop.name);
+    // Handle image uploads and auto-set dates
+    for (const prop of currentModel.properties) {
+      if (prop.type === 'image' && processedValues[prop.name] instanceof File) {
+        const file = processedValues[prop.name] as File;
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('modelId', currentModel.id);
+        formData.append('objectId', editingObject.id);
+        formData.append('propertyName', prop.name);
 
-          const uploadResponse = await fetch('/api/codex-structure/upload-image', {
-            method: 'POST',
-            body: formData,
-          });
+        const uploadResponse = await fetch('/api/codex-structure/upload-image', {
+          method: 'POST',
+          body: formData,
+        });
 
-          if (!uploadResponse.ok) {
-            const errorData = await uploadResponse.json();
-            throw new Error(errorData.error || `Failed to upload image ${file.name}`);
-          }
-          const uploadResult = await uploadResponse.json();
-          processedValues[prop.name] = uploadResult.url; 
-        } else if (prop.type === 'date' && prop.autoSetOnUpdate) {
-          processedValues[prop.name] = currentDateISO;
+        if (!uploadResponse.ok) {
+          const errorData = await uploadResponse.json();
+          throw new Error(errorData.error || `Failed to upload image ${file.name}`);
         }
+        const uploadResult = await uploadResponse.json();
+        processedValues[prop.name] = uploadResult.url; 
+      } else if (prop.type === 'date' && prop.autoSetOnUpdate) {
+        processedValues[prop.name] = currentDateISO;
       }
+    }
 
-      for (const prop of currentModel.properties) {
-         if (prop.type === 'image' && prop.required && !processedValues[prop.name]) {
-            const hadExistingImage = typeof editingObject[prop.name] === 'string' && editingObject[prop.name];
-            if (!hadExistingImage) { 
-                 form.setError(prop.name, { type: 'manual', message: `${prop.name} is required. Please select an image.` });
-                 toast({ variant: "destructive", title: "Validation Error", description: `${prop.name} is required.` });
-                 return;
-            }
-         }
-      }
+    // Validate required images if a new file wasn't selected but one was required
+    for (const prop of currentModel.properties) {
+       if (prop.type === 'image' && prop.required && !processedValues[prop.name]) {
+          const hadExistingImage = typeof editingObject[prop.name] === 'string' && editingObject[prop.name];
+          if (!hadExistingImage) { 
+               form.setError(prop.name, { type: 'manual', message: `${prop.name} is required. Please select an image.` });
+               toast({ variant: "destructive", title: "Validation Error", description: `${prop.name} is required.` });
+               return;
+          }
+       }
+    }
 
+    // The `values` object from RHF already includes `currentStateId` if the field was rendered
+    // The API will handle validation of this state transition.
+    const updatePayload = { ...processedValues };
 
-      await updateObject(currentModel.id, editingObject.id, processedValues);
+    try {
+      await updateObject(currentModel.id, editingObject.id, updatePayload);
       toast({ title: `${currentModel.name} Updated`, description: `The ${currentModel.name.toLowerCase()} has been updated.` });
       router.push(`/data/${currentModel.id}`);
     } catch (error: any) {
@@ -158,6 +172,7 @@ export default function EditObjectPage() {
             existingObject={editingObject}
             isLoading={form.formState.isSubmitting}
             formObjectId={objectId}
+            currentWorkflow={currentWorkflow}
           />
         </CardContent>
       </Card>
