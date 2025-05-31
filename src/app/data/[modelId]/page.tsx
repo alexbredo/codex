@@ -26,7 +26,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { useData } from '@/contexts/data-context';
 import type { Model, DataObject, Property, WorkflowWithDetails } from '@/lib/types';
-import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye, LayoutGrid, List as ListIcon, ExternalLink, Image as ImageIcon, CheckCircle2, FilterX, X as XIcon } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye, LayoutGrid, List as ListIcon, ExternalLink, Image as ImageIcon, CheckCircle2, FilterX, X as XIcon, Settings as SettingsIcon } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -227,6 +227,11 @@ export default function DataObjectsPage() {
   const handleEdit = (obj: DataObject) => {
     if (!currentModel) return;
     router.push(`/data/${currentModel.id}/edit/${obj.id}`);
+  };
+
+  const handleEditModelStructure = () => {
+    if (!currentModel) return;
+    router.push(`/models/edit/${currentModel.id}`);
   };
 
   const handleView = (obj: DataObject) => {
@@ -689,7 +694,7 @@ export default function DataObjectsPage() {
           <p className="text-muted-foreground">{currentModel.description || 'Manage data entries for this model.'}</p>
           {currentWorkflow && <Badge variant="secondary" className="mt-1">Workflow: {currentWorkflow.name}</Badge>}
         </div>
-         <div className="flex gap-2 w-full md:w-auto">
+         <div className="flex flex-wrap gap-2 w-full md:w-auto justify-center md:justify-end">
             <div className="relative flex-grow md:flex-grow-0">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                 <Input
@@ -720,6 +725,9 @@ export default function DataObjectsPage() {
                 <LayoutGrid className="h-5 w-5" />
               </Button>
             </div>
+            <Button onClick={handleEditModelStructure} variant="outline">
+                <SettingsIcon className="mr-2 h-4 w-4" /> Edit Model
+            </Button>
             <Button onClick={handleExportCSV} variant="outline">
                 <Download className="mr-2 h-4 w-4" /> Export CSV
             </Button>
@@ -929,7 +937,7 @@ export default function DataObjectsPage() {
               getWorkflowStateName={getWorkflowStateName}
               onView={handleView}
               onEdit={handleEdit}
-              onDelete={onDelete}
+              onDelete={handleDelete} // Corrected prop name
             />
           ))}
         </div>
