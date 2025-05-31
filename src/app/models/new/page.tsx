@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useForm } from 'react-hook-form';
@@ -25,7 +26,7 @@ export default function CreateModelPage() {
       description: '',
       namespace: 'Default',
       displayPropertyNames: [],
-      workflowId: null, // Ensure workflowId is initialized to null
+      workflowId: null, 
       properties: [{
         id: crypto.randomUUID(),
         name: '',
@@ -44,6 +45,7 @@ export default function CreateModelPage() {
   });
 
   const onSubmit = async (values: ModelFormValues) => {
+    console.log("[CreateModelPage] onSubmit - received values from ModelForm:", JSON.stringify(values, null, 2));
     const existingByName = getModelByName(values.name);
     if (existingByName) {
         form.setError("name", { type: "manual", message: "A model with this name already exists." });
@@ -54,8 +56,8 @@ export default function CreateModelPage() {
       name: values.name,
       description: values.description,
       namespace: (values.namespace && values.namespace.trim() !== '') ? values.namespace.trim() : 'Default',
-      displayPropertyNames: values.displayPropertyNames, // Will be handled by ModelForm to be undefined if empty
-      workflowId: values.workflowId, // Should be string ID or null from ModelForm
+      displayPropertyNames: values.displayPropertyNames, 
+      workflowId: values.workflowId, // This should be string ID or null from ModelForm
       properties: values.properties.map((p, index) => ({
         id: p.id || crypto.randomUUID(),
         name: p.name,
@@ -72,6 +74,7 @@ export default function CreateModelPage() {
         orderIndex: index,
       } as Property)),
     };
+    console.log("[CreateModelPage] onSubmit - modelData to be sent to addModel:", JSON.stringify(modelData, null, 2));
 
     try {
       await addModel(modelData);

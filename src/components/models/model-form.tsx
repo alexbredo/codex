@@ -1,3 +1,4 @@
+
 'use client';
 
 import type { Control, UseFormReturn, UseFieldArrayReturn, FieldErrors } from 'react-hook-form';
@@ -27,7 +28,7 @@ import {
 } from '@/components/ui/form';
 import { Card, CardHeader, CardTitle, CardContent as UiCardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { Trash2, PlusCircle, GripVertical, FolderOpen, CalendarIcon as CalendarIconLucide, Network } from 'lucide-react'; // Renamed CalendarIcon
+import { Trash2, PlusCircle, GripVertical, FolderOpen, CalendarIcon as CalendarIconLucide, Network } from 'lucide-react';
 import type { ModelFormValues, PropertyFormValues } from './model-form-schema';
 import { propertyTypes, relationshipTypes } from './model-form-schema';
 import type { Model, ModelGroup, WorkflowWithDetails } from '@/lib/types';
@@ -134,7 +135,6 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped }: {
 
  useEffect(() => {
     if (previousPropertyTypeRef.current === undefined && previousRelatedModelIdRef.current === undefined && previousRelationshipTypeRef.current === undefined) {
-      // Initial mount or form reset, store current values to avoid immediate reset
       previousPropertyTypeRef.current = currentPropertyType;
       previousRelatedModelIdRef.current = currentRelatedModelId;
       previousRelationshipTypeRef.current = currentRelationshipType;
@@ -146,9 +146,6 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped }: {
     let relationshipTypeChanged = currentPropertyType === 'relationship' && currentRelationshipType !== previousRelationshipTypeRef.current;
 
     if (typeChanged || relatedModelChanged || relationshipTypeChanged) {
-      // console.log(`[ModelForm Property ${index}] Change detected. Type: ${typeChanged}, RelatedModel: ${relatedModelChanged}, RelType: ${relationshipTypeChanged}`);
-      // console.log(`[ModelForm Property ${index}] Resetting defaultValue and conditional fields for new type: ${currentPropertyType}`);
-
       form.setValue(`properties.${index}.defaultValue`, undefined, { shouldValidate: true });
 
       const isRelationship = currentPropertyType === 'relationship';
@@ -550,13 +547,13 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped }: {
                             selected={(() => {
                               try {
                                 if (field.value && typeof field.value === 'string') {
-                                  const parsed = JSON.parse(field.value); // Expects '["id1", "id2"]'
+                                  const parsed = JSON.parse(field.value); 
                                   return Array.isArray(parsed) ? parsed.filter(id => typeof id === 'string') : [];
                                 }
                               } catch (e) { /* ignore parse error, return empty */ }
                               return [];
                             })()}
-                            onChange={(selectedIds) => field.onChange(JSON.stringify(selectedIds))} // Stores '["id1", "id2"]'
+                            onChange={(selectedIds) => field.onChange(JSON.stringify(selectedIds))} 
                             placeholder={`Select default ${relatedModelForDefault?.name || 'items'}...`}
                             emptyIndicator={`No ${relatedModelForDefault?.name?.toLowerCase() || 'items'} found.`}
                           />
@@ -675,6 +672,16 @@ function PropertyFieldsWithDnd({
       });
     }
   }, [form.formState.errors.properties, fields]);
+
+  // Log to see if fields are empty
+  useEffect(() => {
+    if (fields.length === 0 && form.getValues('properties')?.length > 0) {
+      console.warn("[ModelForm PropertyFieldsWithDnd] RHF useFieldArray 'fields' is empty, but form.getValues('properties') has items. This indicates a potential issue with keyName or how useFieldArray is initialized/updated.");
+    } else {
+        // console.log("[ModelForm PropertyFieldsWithDnd] fields.length:", fields.length);
+        // if (fields.length > 0) console.log("[ModelForm PropertyFieldsWithDnd] First field data:", JSON.stringify(fields[0]));
+    }
+  }, [fields, form]);
 
 
   return (
@@ -829,7 +836,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
 
 
   const handleFormSubmit = (values: ModelFormValues) => {
-    // console.log("[ModelForm handleFormSubmit] Raw values from RHF:", JSON.stringify(values, null, 2)); // DEBUG
+    console.log("[ModelForm] handleFormSubmit - received values from RHF:", JSON.stringify(values, null, 2));
     const processedValues = { ...values };
 
     if (processedValues.displayPropertyNames && processedValues.displayPropertyNames.includes(INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE)) {
@@ -842,18 +849,15 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     if (!processedValues.namespace || processedValues.namespace.trim() === '' || processedValues.namespace === INTERNAL_DEFAULT_NAMESPACE_VALUE) {
       processedValues.namespace = 'Default';
     }
-
-    // This is the crucial part for workflowId
-    if (values.workflowId === INTERNAL_NO_WORKFLOW_VALUE || !values.workflowId) {
-      processedValues.workflowId = null;
-    } else {
-      processedValues.workflowId = values.workflowId;
-    }
-    // console.log("[ModelForm handleFormSubmit] Processed workflowId:", processedValues.workflowId);
+    
+    // Explicitly determine the workflowId to be passed on
+    // values.workflowId should be either the string ID or null due to the Select's onChange logic
+    processedValues.workflowId = values.workflowId; 
+    console.log("[ModelForm] handleFormSubmit - processedValues.workflowId before passing to page onSubmit:", processedValues.workflowId);
 
 
     processedValues.properties = processedValues.properties.map((prop, index) => {
-      const { workflowId: _removed, ...restOfProp } = prop as any; // Defensively remove if it ever creeps in
+      const { workflowId: _removed, ...restOfProp } = prop as any; 
       const finalProp: PropertyFormValues = { ...restOfProp } as PropertyFormValues;
 
       finalProp.orderIndex = index;
@@ -901,14 +905,12 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
       }
       return finalProp;
     });
-    // console.log("[ModelForm handleFormSubmit] Final processedValues to be submitted:", JSON.stringify(processedValues, null, 2)); // DEBUG
+    console.log("[ModelForm] handleFormSubmit - final processedValues passed to page onSubmit:", JSON.stringify(processedValues, null, 2));
     onSubmit(processedValues);
   };
 
-  const handleFormInvalid = (/* errors: FieldErrors<ModelFormValues> */) => {
-    // console.log("Form validation failed. Current form values:", JSON.stringify(form.getValues(), null, 2)); // DEBUG
-    // console.error("Client-side form validation. Current form.formState.errors:", form.formState.errors); // DEBUG
-    
+  const handleFormInvalid = (errors: FieldErrors<ModelFormValues>) => {
+    console.error("[ModelForm] Client-side form validation errors:", JSON.stringify(errors, null, 2));
     toast({
       title: "Validation Error",
       description: "Please correct the errors highlighted in the form. Errors might be in collapsed sections.",
@@ -946,7 +948,6 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                   name="properties"
                   render={() => (
                     <FormItem>
-                      {/* This FormMessage is specifically for array-level errors like "min 1 property" */}
                       <FormMessage className="text-destructive mt-2" />
                     </FormItem>
                   )}
@@ -1026,18 +1027,19 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                   control={form.control}
                   name="workflowId"
                   render={({ field }) => {
-                    // console.log(`[ModelForm Render] workflowId field.value:`, field.value); // DEBUG
+                    console.log(`[ModelForm Render] workflowId Select field.value from RHF:`, field.value);
+                    const selectValue = field.value === null || field.value === undefined ? INTERNAL_NO_WORKFLOW_VALUE : field.value;
                     return (
                     <FormItem>
                       <FormLabel>Workflow (Optional)</FormLabel>
                       <Select
-                        onValueChange={(selectedItemValue: string) => {
-                          // console.log(`[ModelForm Select onChange] selectedItemValue from UI:`, selectedItemValue); // DEBUG
-                          const valueToSetInRHF = selectedItemValue === INTERNAL_NO_WORKFLOW_VALUE ? null : selectedItemValue;
-                          // console.log(`[ModelForm Select onChange] Calling field.onChange with:`, valueToSetInRHF); // DEBUG
-                          field.onChange(valueToSetInRHF);
+                        onValueChange={(valueFromSelect: string) => {
+                          console.log(`[ModelForm] Workflow Select onValueChange - valueFromSelect:`, valueFromSelect);
+                          const newValueForRHF = valueFromSelect === INTERNAL_NO_WORKFLOW_VALUE ? null : valueFromSelect;
+                          console.log(`[ModelForm] Workflow Select onValueChange - newValueForRHF for field.onChange:`, newValueForRHF);
+                          field.onChange(newValueForRHF);
                         }}
-                        value={field.value === null || field.value === undefined ? INTERNAL_NO_WORKFLOW_VALUE : field.value}
+                        value={selectValue}
                       >
                         <FormControl>
                           <SelectTrigger>

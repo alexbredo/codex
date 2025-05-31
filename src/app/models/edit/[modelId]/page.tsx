@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -25,7 +26,6 @@ export default function EditModelPage() {
 
   const form = useForm<ModelFormValues>({
     resolver: zodResolver(modelFormSchema),
-    // Default values will be set by useEffect once model is loaded
   });
 
   useEffect(() => {
@@ -34,13 +34,13 @@ export default function EditModelPage() {
       if (foundModel) {
         setCurrentModel(foundModel);
         const sortedProperties = [...foundModel.properties].sort((a, b) => a.orderIndex - b.orderIndex);
-
+        console.log("[EditModelPage] Resetting form with foundModel.workflowId:", foundModel.workflowId);
         form.reset({
           name: foundModel.name,
           description: foundModel.description || '',
           namespace: foundModel.namespace || 'Default',
           displayPropertyNames: foundModel.displayPropertyNames || [],
-          workflowId: foundModel.workflowId || null, // Ensure null if undefined or empty
+          workflowId: foundModel.workflowId || null, 
           properties: sortedProperties.map(p => ({
               id: p.id || crypto.randomUUID(),
               name: p.name,
@@ -66,6 +66,7 @@ export default function EditModelPage() {
   }, [modelId, getModelById, isReady, form, router, toast, setCurrentModel]);
 
   const onSubmit = async (values: ModelFormValues) => {
+    console.log("[EditModelPage] onSubmit - received values from ModelForm:", JSON.stringify(values, null, 2));
     if (!currentModel) return;
 
     const existingByName = getModelByName(values.name);
@@ -78,8 +79,8 @@ export default function EditModelPage() {
       name: values.name,
       description: values.description,
       namespace: (values.namespace && values.namespace.trim() !== '') ? values.namespace.trim() : 'Default',
-      displayPropertyNames: values.displayPropertyNames, // Will be handled by ModelForm
-      workflowId: values.workflowId, // Should be string ID or null from ModelForm
+      displayPropertyNames: values.displayPropertyNames, 
+      workflowId: values.workflowId, // This should be string ID or null from ModelForm
       properties: values.properties.map((p, index) => ({
         id: p.id || crypto.randomUUID(),
         name: p.name,
@@ -96,6 +97,7 @@ export default function EditModelPage() {
         orderIndex: index,
       } as Property)),
     };
+    console.log("[EditModelPage] onSubmit - modelData to be sent to updateModel:", JSON.stringify(modelData, null, 2));
 
     try {
       await updateModel(currentModel.id, modelData);

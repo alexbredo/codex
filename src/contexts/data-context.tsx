@@ -64,7 +64,7 @@ const mapDbModelToClientModel = (dbModel: any): Model => {
     description: dbModel.description,
     namespace: dbModel.namespace || 'Default',
     displayPropertyNames: parsedDisplayPropertyNames,
-    workflowId: dbModel.workflowId || null,
+    workflowId: dbModel.workflowId === undefined ? null : dbModel.workflowId, // Ensure null if undefined
     properties: (dbModel.properties || []).map((p: any) => ({
       id: p.id || crypto.randomUUID(),
       name: p.name,
@@ -121,7 +121,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
         throw new Error(errorMessage);
       }
       const workflowsData: WorkflowWithDetails[] = await response.json();
-      // Map isInitial from DB (0/1) to boolean for client
       const clientWorkflows = workflowsData.map(wf => ({
         ...wf,
         states: wf.states.map(s => ({...s, isInitial: !!s.isInitial}))
@@ -137,7 +136,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const fetchData = useCallback(async () => {
     setIsReady(false);
     try {
-      // Fetch groups first
       const groupsResponse = await fetch('/api/codex-structure/model-groups');
       if (!groupsResponse.ok) {
         const errorMessage = await formatApiError(groupsResponse, 'Failed to fetch model groups');
@@ -146,7 +144,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const groupsData: ModelGroup[] = await groupsResponse.json();
       setModelGroups(groupsData.sort((a, b) => a.name.localeCompare(b.name)));
 
-      // Then fetch models
       const modelsResponse = await fetch('/api/codex-structure/models');
       if (!modelsResponse.ok) {
         const errorMessage = await formatApiError(modelsResponse, 'Failed to fetch models');
@@ -156,7 +153,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const modelsDataFromApi: Model[] = await modelsResponse.json();
       setModels(modelsDataFromApi.map(mapDbModelToClientModel));
 
-      // Then fetch all objects
       const allObjectsResponse = await fetch('/api/codex-structure/objects/all');
       if (!allObjectsResponse.ok) {
         const errorMessage = await formatApiError(allObjectsResponse, 'Failed to fetch all objects');
@@ -165,7 +161,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const allObjectsData: Record<string, DataObject[]> = await allObjectsResponse.json();
       setObjects(allObjectsData);
 
-      // Then fetch workflows
       await fetchWorkflows();
 
     } catch (error: any) {
@@ -173,7 +168,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setModels([]);
       setObjects({});
       setModelGroups([]);
-      setWorkflows([]); // Ensure workflows are cleared on error too
+      setWorkflows([]);
     }
     setIsReady(true);
   }, [fetchWorkflows]);
@@ -182,7 +177,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     fetchData();
   }, [fetchData]);
 
-  // Model CRUD
   const addModel = useCallback(async (modelData: Omit<Model, 'id' | 'namespace' | 'workflowId'> & { namespace?: string, workflowId?: string | null }): Promise<Model> => {
     const modelId = crypto.randomUUID();
     const propertiesWithIdsAndOrder = modelData.properties.map((p, index) => ({ 
@@ -197,10 +191,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }));
     const finalNamespace = (modelData.namespace && modelData.namespace.trim() !== '') ? modelData.namespace.trim() : 'Default';
     
+    const payload = { 
+        ...modelData, 
+        id: modelId, 
+        namespace: finalNamespace, 
+        workflowId: modelData.workflowId, // Will be string ID or null
+        properties: propertiesWithIdsAndOrder 
+    };
+    console.log("[DataContext] addModel - payload to API:", JSON.stringify(payload, null, 2));
+
     const response = await fetch('/api/codex-structure/models', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...modelData, id: modelId, namespace: finalNamespace, workflowId: modelData.workflowId || null, properties: propertiesWithIdsAndOrder }),
+      body: JSON.stringify(payload),
     });
     if (!response.ok) {
        const errorMessage = await formatApiError(response, 'Failed to add model');
@@ -235,9 +238,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const payload = {
       ...updates,
       namespace: finalNamespace, 
-      workflowId: updates.workflowId === undefined ? null : updates.workflowId, // Ensure null if undefined
+      workflowId: updates.workflowId, // Will be string ID or null
       properties: propertiesWithEnsuredIdsAndOrder,
     };
+    console.log("[DataContext] updateModel - payload to API:", JSON.stringify(payload, null, 2));
 
     const response = await fetch(`/api/codex-structure/models/${modelId}`, {
       method: 'PUT',
@@ -248,8 +252,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const errorMessage = await formatApiError(response, 'Failed to update model');
       throw new Error(errorMessage);
     }
-    // After a model update, existing objects might have been updated with new default values, and workflows affect models.
-    // It's safest to refresh all data from the server.
     await fetchData(); 
     const updatedModelFromApi: Model = await response.json();
     const clientModel = models.find(m => m.id === updatedModelFromApi.id) || mapDbModelToClientModel(updatedModelFromApi);
@@ -281,7 +283,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return models.find((model) => model.name.toLowerCase() === name.toLowerCase());
   }, [models]);
 
-  // Data Object CRUD
   const addObject = useCallback(async (modelId: string, objectData: Omit<DataObject, 'id' | 'currentStateId'> & {currentStateId?: string | null}, objectId?: string): Promise<DataObject> => {
     const finalObjectId = objectId || crypto.randomUUID();
     const response = await fetch(`/api/codex-structure/models/${modelId}/objects`, {
@@ -293,7 +294,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const errorData = await response.json().catch(() => ({ error: `Failed to add object to model ${modelId}. Status: ${response.status}` }));
       let errorMessage = errorData.error || `Failed to add object to model ${modelId}`;
       if (errorData.field) {
-        throw { message: errorMessage, field: errorData.field }; // Throw object with field for form setError
+        throw { message: errorMessage, field: errorData.field }; 
       }
       throw new Error(errorMessage);
     }
@@ -360,7 +361,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return objects;
   }, [objects]);
 
-  // Model Group CRUD
   const addModelGroup = useCallback(async (groupData: Omit<ModelGroup, 'id'>): Promise<ModelGroup> => {
     const response = await fetch('/api/codex-structure/model-groups', {
       method: 'POST',
@@ -416,7 +416,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return modelGroups;
   }, [modelGroups]);
 
-  // Workflow CRUD
   const addWorkflow = useCallback(async (workflowData: Omit<WorkflowWithDetails, 'id' | 'initialStateId' | 'states'> & { states: Array<Omit<WorkflowWithDetails['states'][0], 'id' | 'workflowId' | 'successorStateIds'> & {successorStateNames?: string[]}> }): Promise<WorkflowWithDetails> => {
     const response = await fetch('/api/codex-structure/workflows', {
         method: 'POST',
@@ -467,15 +466,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [workflows]);
 
 
+  const contextValue: DataContextType = {
+    models, objects, modelGroups, workflows,
+    addModel, updateModel, deleteModel, getModelById, getModelByName,
+    addObject, updateObject, deleteObject, getObjectsByModelId, getAllObjects,
+    addModelGroup, updateModelGroup, deleteModelGroup, getModelGroupById, getModelGroupByName, getAllModelGroups,
+    fetchWorkflows, addWorkflow, updateWorkflow, deleteWorkflow, getWorkflowById,
+    isReady, fetchData
+  };
+
   return (
-    <DataContext.Provider value={{ 
-        models, objects, modelGroups, workflows,
-        addModel, updateModel, deleteModel, getModelById, getModelByName, 
-        addObject, updateObject, deleteObject, getObjectsByModelId, getAllObjects, 
-        addModelGroup, updateModelGroup, deleteModelGroup, getModelGroupById, getModelGroupByName, getAllModelGroups,
-        fetchWorkflows, addWorkflow, updateWorkflow, deleteWorkflow, getWorkflowById,
-        isReady, fetchData 
-    }}>
+    <DataContext.Provider value={contextValue}>
       {children}
     </DataContext.Provider>
   );

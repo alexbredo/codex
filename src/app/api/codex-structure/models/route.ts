@@ -6,8 +6,6 @@ import { getCurrentUserFromCookie } from '@/lib/auth'; // Auth helper
 
 // GET all models
 export async function GET(request: Request) {
-  // No specific role check for listing models, as viewers might need this.
-  // Finer-grained control can be added if needed.
   try {
     const db = await getDb();
     const rows = await db.all('SELECT * FROM models ORDER BY namespace ASC, name ASC');
@@ -74,6 +72,7 @@ export async function GET(request: Request) {
           namespace: modelRow.namespace || 'Default',
           displayPropertyNames: parsedDisplayPropertyNames,
           properties: mappedProperties,
+          workflowId: modelRow.workflowId === undefined ? null : modelRow.workflowId,
         });
       } catch (modelProcessingError: any) {
           const errorMessage = `Processing failed for model ${modelRow?.name || modelRow?.id}. Original error: ${modelProcessingError.message}`;
@@ -82,8 +81,6 @@ export async function GET(request: Request) {
               stack: modelProcessingError.stack,
               modelData: modelRow 
           });
-          // Instead of throwing, which stops the whole process, we could skip this model or return partial data.
-          // For now, rethrow to align with previous behavior, but this is a point for refinement.
           return NextResponse.json({ error: 'Failed to fetch models', details: errorMessage }, { status: 500 });
       }
     }
@@ -104,20 +101,21 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { id: modelId, name, description, namespace, displayPropertyNames, properties: newProperties }: Omit<Model, 'id'> & {id: string} = await request.json();
+    const { id: modelId, name, description, namespace, displayPropertyNames, properties: newProperties, workflowId }: Omit<Model, 'id'> & {id: string} = await request.json();
+    console.log("[API POST /models] Received workflowId:", workflowId);
     const db = await getDb();
     const finalNamespace = (namespace && namespace.trim() !== '') ? namespace.trim() : 'Default';
-
 
     await db.run('BEGIN TRANSACTION');
 
     await db.run(
-      'INSERT INTO models (id, name, description, namespace, displayPropertyNames) VALUES (?, ?, ?, ?, ?)',
+      'INSERT INTO models (id, name, description, namespace, displayPropertyNames, workflowId) VALUES (?, ?, ?, ?, ?, ?)',
       modelId,
       name,
       description,
       finalNamespace,
-      JSON.stringify(displayPropertyNames || [])
+      JSON.stringify(displayPropertyNames || []),
+      workflowId === undefined ? null : workflowId // Ensure NULL if undefined
     );
 
     for (const prop of newProperties) {
@@ -156,6 +154,7 @@ export async function POST(request: Request) {
             isUnique: !!p.isUnique,
             defaultValue: p.defaultValue,
         })),
+        workflowId: workflowId === undefined ? null : workflowId,
     };
 
     return NextResponse.json(createdModel, { status: 201 });
