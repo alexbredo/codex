@@ -27,7 +27,9 @@ import {
 import {
   Select as BatchSelect, // Renamed to avoid conflict
   SelectContent as BatchSelectContent,
+  SelectGroup as BatchSelectGroup,
   SelectItem as BatchSelectItem,
+  SelectLabel as BatchSelectLabel,
   SelectTrigger as BatchSelectTrigger,
   SelectValue as BatchSelectValue,
 } from "@/components/ui/select";
@@ -57,6 +59,7 @@ import GalleryCard from '@/components/objects/gallery-card';
 import ColumnFilterPopover, { type ColumnFilterValue } from '@/components/objects/column-filter-popover';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
+import { MultiSelectAutocomplete, type MultiSelectOption } from '@/components/ui/multi-select-autocomplete';
 
 
 const ITEMS_PER_PAGE = 10;
@@ -77,6 +80,8 @@ interface IncomingRelationColumn {
 
 const INTERNAL_NO_REFERENCES_VALUE = "__NO_REFERENCES__";
 const INTERNAL_WORKFLOW_STATE_UPDATE_KEY = "__workflowStateUpdate__";
+const INTERNAL_CLEAR_RELATIONSHIP_VALUE = "__CLEAR_RELATIONSHIP__";
+
 
 export default function DataObjectsPage() {
   const router = useRouter();
@@ -92,7 +97,7 @@ export default function DataObjectsPage() {
     getAllObjects,
     getWorkflowById,
     isReady,
-    fetchData, // Added fetchData
+    fetchData, 
   } = dataContext;
   const { toast } = useToast();
 
@@ -117,24 +122,70 @@ export default function DataObjectsPage() {
   const batchUpdatableProperties = useMemo(() => {
     if (!currentModel) return [];
     const props = currentModel.properties.filter(
-      (p) => (p.type === 'boolean' || p.type === 'string' || p.type === 'number' || p.type === 'date') &&
+      (p) => (p.type === 'boolean' || p.type === 'string' || p.type === 'number' || p.type === 'date' || p.type === 'relationship') &&
              !p.name.toLowerCase().includes('markdown') && 
-             !p.name.toLowerCase().includes('image') 
+             !p.name.toLowerCase().includes('image') &&
+             p.type !== 'rating' // Rating type doesn't have a simple batch input yet
     );
-    const updatable = props.map(p => ({ name: p.name, type: p.type, id: p.id, label: `${p.name} (${p.type})` }));
+    const updatable = props.map(p => ({ 
+        name: p.name, 
+        type: p.type, 
+        id: p.id, 
+        label: `${p.name} (${p.type === 'relationship' ? `Relationship to ${getModelById(p.relatedModelId!)?.name || 'Unknown'}` : p.type})`,
+        relationshipType: p.relationshipType,
+        relatedModelId: p.relatedModelId
+    }));
     
     if (currentWorkflow && currentWorkflow.states.length > 0) {
-        updatable.unshift({ name: INTERNAL_WORKFLOW_STATE_UPDATE_KEY, type: 'workflow_state', id: INTERNAL_WORKFLOW_STATE_UPDATE_KEY, label: 'Workflow State' });
+        updatable.unshift({ name: INTERNAL_WORKFLOW_STATE_UPDATE_KEY, type: 'workflow_state', id: INTERNAL_WORKFLOW_STATE_UPDATE_KEY, label: 'Workflow State', relationshipType: undefined, relatedModelId: undefined });
     }
     return updatable;
-  }, [currentModel, currentWorkflow]);
+  }, [currentModel, currentWorkflow, getModelById]);
 
   const selectedBatchPropertyDetails = useMemo(() => {
     if (batchUpdateProperty === INTERNAL_WORKFLOW_STATE_UPDATE_KEY) {
-        return { name: INTERNAL_WORKFLOW_STATE_UPDATE_KEY, type: 'workflow_state' as Property['type'], id: INTERNAL_WORKFLOW_STATE_UPDATE_KEY, label: 'Workflow State' };
+        return { name: INTERNAL_WORKFLOW_STATE_UPDATE_KEY, type: 'workflow_state' as Property['type'], id: INTERNAL_WORKFLOW_STATE_UPDATE_KEY, label: 'Workflow State', relationshipType: undefined, relatedModelId: undefined };
     }
-    return currentModel?.properties.find(p => p.name === batchUpdateProperty);
-  }, [currentModel, batchUpdateProperty]);
+    return batchUpdatableProperties.find(p => p.name === batchUpdateProperty);
+  }, [batchUpdateProperty, batchUpdatableProperties]);
+
+  const relatedModelForBatchUpdate = useMemo(() => {
+    if (selectedBatchPropertyDetails?.type === 'relationship' && selectedBatchPropertyDetails.relatedModelId) {
+        return getModelById(selectedBatchPropertyDetails.relatedModelId);
+    }
+    return undefined;
+  }, [selectedBatchPropertyDetails, getModelById]);
+
+  const relatedObjectsForBatchUpdateOptions = useMemo(() => {
+    if (relatedModelForBatchUpdate && relatedModelForBatchUpdate.id) {
+        const relatedObjects = getObjectsByModelId(relatedModelForBatchUpdate.id);
+        const dbObjects = getAllObjects(); // Needed for getObjectDisplayValue context
+        return relatedObjects.map(obj => ({
+            value: obj.id,
+            label: getObjectDisplayValue(obj, relatedModelForBatchUpdate, allModels, dbObjects),
+        })).sort((a, b) => a.label.localeCompare(b.label));
+    }
+    return [];
+  }, [relatedModelForBatchUpdate, getObjectsByModelId, getAllObjects, allModels]);
+
+  const relatedObjectsForBatchUpdateGrouped = useMemo(() => {
+    if (relatedModelForBatchUpdate && relatedModelForBatchUpdate.id) {
+        const relatedObjects = getObjectsByModelId(relatedModelForBatchUpdate.id);
+        const dbObjects = getAllObjects();
+        return relatedObjects.reduce((acc, obj) => {
+            const namespace = allModels.find(m => m.id === relatedModelForBatchUpdate.id)?.namespace || 'Default';
+            if (!acc[namespace]) {
+                acc[namespace] = [];
+            }
+            acc[namespace].push({
+                value: obj.id,
+                label: getObjectDisplayValue(obj, relatedModelForBatchUpdate, allModels, dbObjects),
+            });
+            return acc;
+        }, {} as Record<string, MultiSelectOption[]>);
+    }
+    return {};
+  }, [relatedModelForBatchUpdate, getObjectsByModelId, getAllObjects, allModels]);
 
 
   const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects, isReady]);
@@ -187,9 +238,15 @@ export default function DataObjectsPage() {
 
   useEffect(() => {
     if (selectedBatchPropertyDetails?.type !== 'date') {
-      setBatchUpdateDate(undefined); // Reset date if property type changes
+      setBatchUpdateDate(undefined); 
     }
-  }, [selectedBatchPropertyDetails]);
+    if (selectedBatchPropertyDetails?.type !== 'relationship') {
+      // Reset batchUpdateValue for relationship if type changes
+      if (Array.isArray(batchUpdateValue) || (typeof batchUpdateValue === 'string' && relatedObjectsForBatchUpdateOptions.some(opt => opt.value === batchUpdateValue))) {
+        setBatchUpdateValue(''); 
+      }
+    }
+  }, [selectedBatchPropertyDetails, batchUpdateValue, relatedObjectsForBatchUpdateOptions]);
 
 
   const handleViewModeChange = (newMode: ViewMode) => {
@@ -529,8 +586,8 @@ export default function DataObjectsPage() {
         let payloadPropertyType = selectedBatchPropertyDetails.type;
 
         if (selectedBatchPropertyDetails.name === INTERNAL_WORKFLOW_STATE_UPDATE_KEY) {
-            payloadPropertyType = 'workflow_state'; // Special type for API
-            processedNewValue = batchUpdateValue; // This is the target state ID
+            payloadPropertyType = 'workflow_state'; 
+            processedNewValue = batchUpdateValue; 
         } else if (selectedBatchPropertyDetails.type === 'boolean') {
             processedNewValue = Boolean(batchUpdateValue);
         } else if (selectedBatchPropertyDetails.type === 'number') {
@@ -544,6 +601,13 @@ export default function DataObjectsPage() {
             } else {
                 throw new Error("Invalid date provided for batch update.");
             }
+        } else if (selectedBatchPropertyDetails.type === 'relationship') {
+            if (selectedBatchPropertyDetails.relationshipType === 'one') {
+                processedNewValue = batchUpdateValue === INTERNAL_CLEAR_RELATIONSHIP_VALUE ? null : batchUpdateValue;
+            } else { // 'many'
+                 // batchUpdateValue is already expected to be an array of strings from MultiSelectAutocomplete
+                processedNewValue = Array.isArray(batchUpdateValue) ? batchUpdateValue : [];
+            }
         }
         
         const payload = {
@@ -552,6 +616,7 @@ export default function DataObjectsPage() {
             propertyType: payloadPropertyType,
             newValue: processedNewValue,
         };
+        console.log("Batch update payload:", JSON.stringify(payload, null, 2));
 
         const response = await fetch(`/api/codex-structure/models/${modelId}/objects/batch-update`, {
             method: 'POST',
@@ -569,15 +634,15 @@ export default function DataObjectsPage() {
             toast({ 
                 variant: "warning", 
                 title: "Batch Update Partially Successful", 
-                description: `${responseData.message}. Errors: ${responseData.errors.join(', ')}`
+                description: `${responseData.message}. Errors: ${responseData.errors.map((e: any) => e.message || String(e)).join(', ')}`
             });
         } else {
             toast({ title: "Batch Update Successful", description: responseData.message || `${selectedObjectIds.size} records updated.` });
         }
 
-        await fetchData(); // Re-fetch all data
+        await fetchData(); 
         setIsBatchUpdateDialogOpen(false);
-        setSelectedObjectIds(new Set()); // Clear selection
+        setSelectedObjectIds(new Set()); 
         setBatchUpdateProperty('');
         setBatchUpdateValue('');
         setBatchUpdateDate(undefined);
@@ -718,7 +783,7 @@ export default function DataObjectsPage() {
             <span className="text-sm font-medium text-secondary-foreground">{selectedObjectIds.size} item(s) selected</span>
             <Dialog open={isBatchUpdateDialogOpen} onOpenChange={(open) => {
                 setIsBatchUpdateDialogOpen(open);
-                if (!open) { // Reset form on dialog close
+                if (!open) { 
                     setBatchUpdateProperty('');
                     setBatchUpdateValue('');
                     setBatchUpdateDate(undefined);
@@ -737,7 +802,17 @@ export default function DataObjectsPage() {
                     <div className="grid gap-4 py-4">
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="batch-property" className="text-right">Property</Label>
-                            <BatchSelect value={batchUpdateProperty} onValueChange={setBatchUpdateProperty}>
+                            <BatchSelect value={batchUpdateProperty} onValueChange={(value) => {
+                                setBatchUpdateProperty(value);
+                                const propDetails = batchUpdatableProperties.find(p => p.name === value);
+                                if (propDetails?.type === 'relationship' && propDetails.relationshipType === 'many') {
+                                  setBatchUpdateValue([]); // Initialize as array for multi-select relationships
+                                } else {
+                                  setBatchUpdateValue(''); // Reset for other types
+                                }
+                                setBatchUpdateDate(undefined);
+                              }}
+                            >
                                 <BatchSelectTrigger id="batch-property" className="col-span-3">
                                     <BatchSelectValue placeholder="Select property..." />
                                 </BatchSelectTrigger>
@@ -798,7 +873,6 @@ export default function DataObjectsPage() {
                                             selected={batchUpdateDate}
                                             onSelect={(date) => {
                                                 setBatchUpdateDate(date);
-                                                // We don't directly set batchUpdateValue here; API will use batchUpdateDate
                                             }}
                                             initialFocus
                                         />
@@ -818,6 +892,41 @@ export default function DataObjectsPage() {
                                             ))}
                                         </BatchSelectContent>
                                     </BatchSelect>
+                                )}
+                                {selectedBatchPropertyDetails.type === 'relationship' && relatedModelForBatchUpdate && (
+                                  <div className="col-span-3">
+                                    {selectedBatchPropertyDetails.relationshipType === 'many' ? (
+                                      <MultiSelectAutocomplete
+                                        options={relatedObjectsForBatchUpdateOptions}
+                                        selected={Array.isArray(batchUpdateValue) ? batchUpdateValue : []}
+                                        onChange={setBatchUpdateValue}
+                                        placeholder={`Select ${relatedModelForBatchUpdate.name}(s)...`}
+                                        emptyIndicator={`No ${relatedModelForBatchUpdate.name.toLowerCase()}s found.`}
+                                      />
+                                    ) : (
+                                      <BatchSelect
+                                        value={batchUpdateValue || INTERNAL_CLEAR_RELATIONSHIP_VALUE}
+                                        onValueChange={setBatchUpdateValue}
+                                      >
+                                        <BatchSelectTrigger>
+                                          <BatchSelectValue placeholder={`Select ${relatedModelForBatchUpdate.name}...`} />
+                                        </BatchSelectTrigger>
+                                        <BatchSelectContent>
+                                          <BatchSelectItem value={INTERNAL_CLEAR_RELATIONSHIP_VALUE}>-- Clear Relationship --</BatchSelectItem>
+                                          {Object.entries(relatedObjectsForBatchUpdateGrouped).map(([namespace, optionsInNamespace]) => (
+                                            <BatchSelectGroup key={namespace}>
+                                              <BatchSelectLabel>{namespace}</BatchSelectLabel>
+                                              {optionsInNamespace.map((option) => (
+                                                <BatchSelectItem key={option.value} value={option.value}>
+                                                  {option.label}
+                                                </BatchSelectItem>
+                                              ))}
+                                            </BatchSelectGroup>
+                                          ))}
+                                        </BatchSelectContent>
+                                      </BatchSelect>
+                                    )}
+                                  </div>
                                 )}
                             </div>
                         )}

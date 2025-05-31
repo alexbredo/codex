@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import type { Model, Property, DataObject, PropertyType, WorkflowWithDetails, WorkflowStateWithSuccessors } from '@/lib/types';
 import { getCurrentUserFromCookie } from '@/lib/auth';
-import { isValid as isDateValidFn } from 'date-fns'; // Corrected import
+import { isValid as isDateValidFn } from 'date-fns'; 
 
 const INTERNAL_WORKFLOW_STATE_UPDATE_KEY = "__workflowStateUpdate__";
 
@@ -155,11 +155,18 @@ export async function POST(request: Request, { params }: Params) {
             coercedNewValue = Boolean(newValue); 
             break;
           case 'date':
-            if (!isDateValidFn(new Date(String(newValue)))) { // Corrected usage and ensure newValue is string for Date constructor
+            if (!isDateValidFn(new Date(String(newValue)))) {
               errors.push({ objectId, message: `Object ID ${objectId}: Invalid date value "${newValue}" for property "${propertyName}".`});
               validationErrorForThisObjectLoop = true;
             } else {
-              coercedNewValue = new Date(String(newValue)).toISOString(); // Ensure newValue is string for Date constructor
+              coercedNewValue = new Date(String(newValue)).toISOString(); 
+            }
+            break;
+          case 'relationship':
+            if (propertyToUpdate.relationshipType === 'many') {
+                coercedNewValue = Array.isArray(newValue) ? newValue.map(String) : [];
+            } else { // 'one'
+                coercedNewValue = newValue === null || newValue === undefined || String(newValue).trim() === '' ? null : String(newValue);
             }
             break;
           default:
@@ -196,7 +203,7 @@ export async function POST(request: Request, { params }: Params) {
       }
     }
 
-    if (errors.length > 0 && updatedCount < objectIds.length) { // If there were errors AND not all objects were updated
+    if (errors.length > 0 && updatedCount < objectIds.length) { 
       await db.run('ROLLBACK');
       return NextResponse.json({
         message: `Batch update failed or partially failed. ${updatedCount} of ${objectIds.length} objects processed before critical errors. No changes were applied due to validation errors or database issues.`,
@@ -206,7 +213,7 @@ export async function POST(request: Request, { params }: Params) {
     }
     
     await db.run('COMMIT');
-    if (errors.length > 0) { // All objects were updated, but some non-critical info/warnings might be present
+    if (errors.length > 0) { 
         return NextResponse.json({ message: `Successfully updated ${updatedCount} objects. Some informational errors occurred.`, errors }, { status: 200 });
     }
     return NextResponse.json({ message: `Successfully updated ${updatedCount} objects.` });
@@ -244,3 +251,4 @@ export async function POST(request: Request, { params }: Params) {
     }, { status: 500 });
   }
 }
+
