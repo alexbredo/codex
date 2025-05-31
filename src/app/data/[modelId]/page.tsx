@@ -45,16 +45,19 @@ import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useData } from '@/contexts/data-context';
 import type { Model, DataObject, Property, WorkflowWithDetails, WorkflowStateWithSuccessors } from '@/lib/types';
-import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye, LayoutGrid, List as ListIcon, ExternalLink, Image as ImageIcon, CheckCircle2, FilterX, X as XIcon, Settings as SettingsIcon, Edit3, Workflow as WorkflowIconLucide } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye, LayoutGrid, List as ListIcon, ExternalLink, Image as ImageIcon, CheckCircle2, FilterX, X as XIcon, Settings as SettingsIcon, Edit3, Workflow as WorkflowIconLucide, CalendarIcon as CalendarIconLucide } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { format as formatDateFns, isValid as isDateValid, startOfDay, isEqual as isEqualDate } from 'date-fns';
 import Link from 'next/link';
-import { getObjectDisplayValue } from '@/lib/utils';
+import { getObjectDisplayValue, cn } from '@/lib/utils';
 import { StarDisplay } from '@/components/ui/star-display';
 import GalleryCard from '@/components/objects/gallery-card';
 import ColumnFilterPopover, { type ColumnFilterValue } from '@/components/objects/column-filter-popover';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+
 
 const ITEMS_PER_PAGE = 10;
 type ViewMode = 'table' | 'gallery';
@@ -108,11 +111,13 @@ export default function DataObjectsPage() {
   const [batchUpdateProperty, setBatchUpdateProperty] = useState<string>('');
   const [batchUpdateValue, setBatchUpdateValue] = useState<any>('');
   const [isBatchUpdating, setIsBatchUpdating] = useState(false);
+  const [batchUpdateDate, setBatchUpdateDate] = useState<Date | undefined>(undefined);
+
 
   const batchUpdatableProperties = useMemo(() => {
     if (!currentModel) return [];
     const props = currentModel.properties.filter(
-      (p) => (p.type === 'boolean' || p.type === 'string' || p.type === 'number') &&
+      (p) => (p.type === 'boolean' || p.type === 'string' || p.type === 'number' || p.type === 'date') &&
              !p.name.toLowerCase().includes('markdown') && 
              !p.name.toLowerCase().includes('image') 
     );
@@ -126,7 +131,7 @@ export default function DataObjectsPage() {
 
   const selectedBatchPropertyDetails = useMemo(() => {
     if (batchUpdateProperty === INTERNAL_WORKFLOW_STATE_UPDATE_KEY) {
-        return { name: INTERNAL_WORKFLOW_STATE_UPDATE_KEY, type: 'workflow_state', id: INTERNAL_WORKFLOW_STATE_UPDATE_KEY, label: 'Workflow State' };
+        return { name: INTERNAL_WORKFLOW_STATE_UPDATE_KEY, type: 'workflow_state' as Property['type'], id: INTERNAL_WORKFLOW_STATE_UPDATE_KEY, label: 'Workflow State' };
     }
     return currentModel?.properties.find(p => p.name === batchUpdateProperty);
   }, [currentModel, batchUpdateProperty]);
@@ -179,6 +184,13 @@ export default function DataObjectsPage() {
       }
     }
   }, [modelId, getModelById, getObjectsByModelId, getWorkflowById, isReady, toast, router]);
+
+  useEffect(() => {
+    if (selectedBatchPropertyDetails?.type !== 'date') {
+      setBatchUpdateDate(undefined); // Reset date if property type changes
+    }
+  }, [selectedBatchPropertyDetails]);
+
 
   const handleViewModeChange = (newMode: ViewMode) => {
     setViewMode(newMode);
@@ -255,7 +267,7 @@ export default function DataObjectsPage() {
                 displayValue = getObjectDisplayValue(referencingObject, virtualCol.referencingModel, allModels, allDbObjects);
                 operator = "by";
             }
-        } else { 
+        } else { // Legacy 'incomingRelationshipCount'
             if (filter.value === true) displayValue = "Yes";
             else if (filter.value === false) displayValue = "No";
             else displayValue = "Any";
@@ -419,7 +431,7 @@ export default function DataObjectsPage() {
                 return virtualColumnDef.referencingProperty.relationshipType === 'many'
                     ? (Array.isArray(linkedValueOnSpecific) && linkedValueOnSpecific.includes(obj.id)) : linkedValueOnSpecific === obj.id;
             }
-        } else if (virtualColumnDef && filter.operator === 'eq') { 
+        } else if (virtualColumnDef && filter.operator === 'eq') { // Legacy incomingRelationshipCount
             const referencingData = allDbObjects[virtualColumnDef.referencingModel.id] || [];
             const count = referencingData.filter(refObj => {
                 const linkedValue = refObj[virtualColumnDef.referencingProperty.name];
@@ -502,7 +514,6 @@ export default function DataObjectsPage() {
   };
 
   const isAllPaginatedSelected = paginatedObjects.length > 0 && paginatedObjects.every(obj => selectedObjectIds.has(obj.id));
-  const isSomePaginatedSelected = paginatedObjects.some(obj => selectedObjectIds.has(obj.id));
 
 
   const handleBatchUpdate = async () => {
@@ -526,6 +537,12 @@ export default function DataObjectsPage() {
             processedNewValue = parseFloat(batchUpdateValue);
             if (isNaN(processedNewValue)) {
                 throw new Error("Invalid number provided for batch update.");
+            }
+        } else if (selectedBatchPropertyDetails.type === 'date') {
+            if (batchUpdateDate && isDateValid(batchUpdateDate)) {
+                processedNewValue = batchUpdateDate.toISOString();
+            } else {
+                throw new Error("Invalid date provided for batch update.");
             }
         }
         
@@ -563,6 +580,7 @@ export default function DataObjectsPage() {
         setSelectedObjectIds(new Set()); // Clear selection
         setBatchUpdateProperty('');
         setBatchUpdateValue('');
+        setBatchUpdateDate(undefined);
     } catch (error: any) {
         toast({ variant: "destructive", title: "Batch Update Failed", description: error.message });
     } finally {
@@ -584,7 +602,7 @@ export default function DataObjectsPage() {
       case 'boolean': return value ? <Badge variant="default" className="bg-green-500 hover:bg-green-600">Yes</Badge> : <Badge variant="secondary">No</Badge>;
       case 'date': try { const date = new Date(value); return isDateValid(date) ? formatDateFns(date, 'PP') : String(value); } catch { return String(value); }
       case 'number':
-        const precision = property.precision === undefined ? 2 : property.precision; const unitText = property.unit || ''; const parsedValue = parseFloat(value);
+        const precision = property.precision === undefined ? 2 : property.precision; const unitText = property.unit || ''; const parsedValue = parseFloat(String(value));
         if (isNaN(parsedValue)) { const displayUnit = unitText ? ` (${unitText})` : ''; return <span className="text-muted-foreground">N/A{displayUnit}</span>; }
         return `${parsedValue.toFixed(precision)}${unitText ? ` ${unitText}` : ''}`;
       case 'markdown': return <Badge variant="outline">Markdown</Badge>;
@@ -635,7 +653,7 @@ export default function DataObjectsPage() {
           switch (prop.type) {
             case 'boolean': cellValue = value ? 'Yes' : 'No'; break;
             case 'date': try { const date = new Date(value); cellValue = isDateValid(date) ? formatDateFns(date, 'yyyy-MM-dd') : String(value); } catch { cellValue = String(value); } break;
-            case 'number': const precision = prop.precision === undefined ? 2 : prop.precision; const parsedNum = parseFloat(value); cellValue = isNaN(parsedNum) ? String(value) : parsedNum.toFixed(precision); break;
+            case 'number': const precision = prop.precision === undefined ? 2 : prop.precision; const parsedNum = parseFloat(String(value)); cellValue = isNaN(parsedNum) ? String(value) : parsedNum.toFixed(precision); break;
             case 'markdown': case 'image': cellValue = String(value); break;
             case 'rating': cellValue = (value && Number(value) > 0) ? `${Number(value)}/5` : ''; break;
             case 'relationship':
@@ -651,11 +669,7 @@ export default function DataObjectsPage() {
       if (currentWorkflow) row.push(escapeCsvCell(getWorkflowStateName(obj.currentStateId)));
       virtualIncomingRelationColumns.forEach(colDef => {
         const referencingData = allDbObjects[colDef.referencingModel.id] || [];
-        const linkedItems = referencingData.filter(refObj => {
-          const linkedValue = refObj[colDef.referencingProperty.name];
-          if (colDef.referencingProperty.relationshipType === 'many') return Array.isArray(linkedValue) && linkedValue.includes(obj.id);
-          return linkedValue === obj.id;
-        });
+        const linkedItems = referencingData.filter(refObj => { const linkedValue = refObj[colDef.referencingProperty.name]; if (colDef.referencingProperty.relationshipType === 'many') return Array.isArray(linkedValue) && linkedValue.includes(obj.id); return linkedValue === obj.id; });
         if (linkedItems.length > 0) row.push(escapeCsvCell(linkedItems.map(item => getObjectDisplayValue(item, colDef.referencingModel, allModels, allDbObjects)).join('; ')));
         else row.push('');
       });
@@ -707,6 +721,7 @@ export default function DataObjectsPage() {
                 if (!open) { // Reset form on dialog close
                     setBatchUpdateProperty('');
                     setBatchUpdateValue('');
+                    setBatchUpdateDate(undefined);
                 }
             }}>
                 <DialogTrigger asChild>
@@ -762,6 +777,33 @@ export default function DataObjectsPage() {
                                         onChange={(e) => setBatchUpdateValue(e.target.value)}
                                         className="col-span-3"
                                     />
+                                )}
+                                {selectedBatchPropertyDetails.type === 'date' && (
+                                   <Popover>
+                                        <PopoverTrigger asChild>
+                                        <Button
+                                            variant={"outline"}
+                                            className={cn(
+                                            "col-span-3 justify-start text-left font-normal",
+                                            !batchUpdateDate && "text-muted-foreground"
+                                            )}
+                                        >
+                                            <CalendarIconLucide className="mr-2 h-4 w-4" />
+                                            {batchUpdateDate ? formatDateFns(batchUpdateDate, "PPP") : <span>Pick a date</span>}
+                                        </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-auto p-0">
+                                        <Calendar
+                                            mode="single"
+                                            selected={batchUpdateDate}
+                                            onSelect={(date) => {
+                                                setBatchUpdateDate(date);
+                                                // We don't directly set batchUpdateValue here; API will use batchUpdateDate
+                                            }}
+                                            initialFocus
+                                        />
+                                        </PopoverContent>
+                                    </Popover>
                                 )}
                                 {selectedBatchPropertyDetails.type === 'workflow_state' && currentWorkflow && (
                                      <BatchSelect value={batchUpdateValue} onValueChange={setBatchUpdateValue}>
@@ -867,7 +909,7 @@ export default function DataObjectsPage() {
                     return (
                       <TableCell key={colDef.id} className="space-x-1 space-y-1">
                         {linkedItems.map(item => (
-                          <Link key={item.id} href={`/data/${colDef.referencingModel.id}/edit/${item.id}`} className="inline-block">
+                           <Link key={item.id} href={`/data/${colDef.referencingModel.id}/edit/${item.id}`} className="inline-block">
                             <Badge variant="secondary" className="hover:bg-muted cursor-pointer">
                               {getObjectDisplayValue(item, colDef.referencingModel, allModels, allDbObjects)}
                             </Badge>
@@ -914,3 +956,4 @@ export default function DataObjectsPage() {
     </div>
   );
 }
+
