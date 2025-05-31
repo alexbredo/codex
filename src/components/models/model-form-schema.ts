@@ -57,7 +57,7 @@ export const propertyFormSchema = z.object({
   return true;
 }, {
   message: "Auto-set options are only available for date type properties.",
-  path: ["type"], 
+  path: ["type"],
 }).refine(data => {
   if (data.type !== 'string' && data.isUnique) {
     return false;
@@ -94,6 +94,7 @@ export const modelFormSchema = z.object({
   namespace: z.string().optional(), // Will default to 'Default' if empty or special value
   displayPropertyNames: z.array(z.string()).optional(),
   properties: z.array(propertyFormSchema).min(1, "At least one property is required."),
+  workflowId: z.string().nullable().optional(), // Ensures workflowId is part of the form's shape
 });
 
 export type ModelFormValues = z.infer<typeof modelFormSchema>;
