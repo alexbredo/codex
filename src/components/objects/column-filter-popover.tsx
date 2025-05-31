@@ -5,31 +5,34 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel as UiSelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
 import { StarRatingInput } from '@/components/ui/star-rating-input';
 import { Filter, XCircle, CalendarIcon as CalendarIconLucide } from 'lucide-react';
-import type { Property, WorkflowWithDetails } from '@/lib/types';
-import { cn } from '@/lib/utils';
+import type { Property, WorkflowWithDetails, Model, DataObject } from '@/lib/types';
+import { cn, getObjectDisplayValue } from '@/lib/utils';
 import { format as formatDateFns, isValid as isDateValid, startOfDay } from 'date-fns';
+import { useData } from '@/contexts/data-context';
 
 
 export interface ColumnFilterValue {
   value: any;
-  operator?: 'eq' | 'gt' | 'lt' | 'gte' | 'lte' | 'contains' | 'date_eq'; // For numbers and dates
+  operator?: 'eq' | 'gt' | 'lt' | 'gte' | 'lte' | 'contains' | 'date_eq' | 'includes';
 }
 
 interface ColumnFilterPopoverProps {
-  columnKey: string; // property.id or 'workflowState'
+  columnKey: string;
   columnName: string;
-  property?: Property; // Undefined for special columns like workflow state
-  currentWorkflow?: WorkflowWithDetails | null; // For workflow state filtering
+  property?: Property;
+  currentWorkflow?: WorkflowWithDetails | null;
   currentFilter?: ColumnFilterValue | null;
   onFilterChange: (columnKey: string, filter: ColumnFilterValue | null) => void;
 }
 
 const INTERNAL_ANY_BOOLEAN_VALUE = "__ANY_BOOLEAN__";
-const INTERNAL_ANY_WORKFLOW_STATE_VALUE = "__ANY_WORKFLOW_STATE__"; // Added constant
+const INTERNAL_ANY_WORKFLOW_STATE_VALUE = "__ANY_WORKFLOW_STATE__";
+const INTERNAL_ANY_RELATIONSHIP_VALUE = "__ANY_RELATIONSHIP__";
+
 const NUMBER_OPERATORS = [
   { value: 'eq', label: 'Equals' },
   { value: 'gte', label: '>=' },
@@ -47,6 +50,7 @@ export default function ColumnFilterPopover({
   currentFilter,
   onFilterChange,
 }: ColumnFilterPopoverProps) {
+  const { getModelById, getObjectsByModelId, models: allModels, getAllObjects } = useData();
   const [isOpen, setIsOpen] = useState(false);
   const [filterInput, setFilterInput] = useState<string | number | boolean | Date | null | undefined>(currentFilter?.value ?? '');
   const [numberOperator, setNumberOperator] = useState<'eq' | 'gt' | 'lt' | 'gte' | 'lte'>(
@@ -61,6 +65,8 @@ export default function ColumnFilterPopover({
       setNumberOperator((currentFilter?.operator as any) || 'eq');
     } else if (filterType === 'date') {
       setFilterInput(currentFilter?.value ? new Date(currentFilter.value) : null);
+    } else if (filterType === 'relationship') {
+      setFilterInput(currentFilter?.value ?? INTERNAL_ANY_RELATIONSHIP_VALUE);
     }
     else {
       setFilterInput(currentFilter?.value ?? '');
@@ -73,9 +79,11 @@ export default function ColumnFilterPopover({
 
     if (filterInput === '' || filterInput === null || filterInput === undefined) {
       if (filterType === 'boolean' && filterInput === INTERNAL_ANY_BOOLEAN_VALUE) {
-        onFilterChange(columnKey, null); // Clear filter for "Any"
+        onFilterChange(columnKey, null);
       } else if (filterType === 'workflowState' && filterInput === INTERNAL_ANY_WORKFLOW_STATE_VALUE) {
-        onFilterChange(columnKey, null); // Clear filter for "Any State"
+        onFilterChange(columnKey, null);
+      } else if (filterType === 'relationship' && filterInput === INTERNAL_ANY_RELATIONSHIP_VALUE) {
+        onFilterChange(columnKey, null);
       }
       else {
         onFilterChange(columnKey, null);
@@ -88,7 +96,7 @@ export default function ColumnFilterPopover({
         case 'number':
             finalFilterValue = parseFloat(String(filterInput));
             if (isNaN(finalFilterValue)) {
-                onFilterChange(columnKey, null); // Invalid number, clear filter
+                onFilterChange(columnKey, null);
                 setIsOpen(false);
                 return;
             }
@@ -108,7 +116,7 @@ export default function ColumnFilterPopover({
               finalFilterValue = startOfDay(filterInput).toISOString();
               operatorForFilter = 'date_eq';
             } else {
-              onFilterChange(columnKey, null); // Invalid date, clear filter
+              onFilterChange(columnKey, null);
               setIsOpen(false);
               return;
             }
@@ -123,8 +131,17 @@ export default function ColumnFilterPopover({
                 setIsOpen(false);
                 return;
             }
-            finalFilterValue = String(filterInput); // State ID
-            operatorForFilter = 'eq'; // Assuming state ID matching is 'equals'
+            finalFilterValue = String(filterInput);
+            operatorForFilter = 'eq';
+            break;
+        case 'relationship':
+            if (filterInput === INTERNAL_ANY_RELATIONSHIP_VALUE) {
+                onFilterChange(columnKey, null);
+                setIsOpen(false);
+                return;
+            }
+            finalFilterValue = String(filterInput); // Selected related object ID
+            operatorForFilter = property?.relationshipType === 'many' ? 'includes' : 'eq';
             break;
         default: // string, markdown, image
             operatorForFilter = 'contains';
@@ -144,6 +161,8 @@ export default function ColumnFilterPopover({
       setFilterInput(null);
     } else if (filterType === 'rating') {
       setFilterInput(0);
+    } else if (filterType === 'relationship') {
+      setFilterInput(INTERNAL_ANY_RELATIONSHIP_VALUE);
     }
      else {
       setFilterInput('');
@@ -263,6 +282,39 @@ export default function ColumnFilterPopover({
             </SelectContent>
           </Select>
         );
+      case 'relationship':
+        if (!property?.relatedModelId) return <Input placeholder="Relationship misconfigured" disabled />;
+        const relatedModel = getModelById(property.relatedModelId);
+        if (!relatedModel) return <Input placeholder="Related model not found" disabled />;
+        
+        const relatedModelObjects = getObjectsByModelId(property.relatedModelId);
+        const allDbObjects = getAllObjects();
+
+        const options = relatedModelObjects
+          .map(obj => ({
+            value: obj.id,
+            label: getObjectDisplayValue(obj, relatedModel, allModels, allDbObjects)
+          }))
+          .sort((a,b) => a.label.localeCompare(b.label));
+
+        return (
+          <Select
+             value={String(filterInput ?? INTERNAL_ANY_RELATIONSHIP_VALUE)}
+             onValueChange={(val) => setFilterInput(val)}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder={`Filter by ${relatedModel.name}...`} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={INTERNAL_ANY_RELATIONSHIP_VALUE}>Any {relatedModel.name}</SelectItem>
+              {options.map(opt => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        );
       default:
         return <Input placeholder="Unsupported filter type" disabled />;
     }
@@ -298,4 +350,3 @@ export default function ColumnFilterPopover({
     </Popover>
   );
 }
-

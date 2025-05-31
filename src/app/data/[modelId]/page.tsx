@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
@@ -144,7 +145,7 @@ export default function DataObjectsPage() {
       }
       return newFilters;
     });
-    setCurrentPage(1); // Reset to first page on filter change
+    setCurrentPage(1);
   }, []);
 
   const handleClearAllColumnFilters = () => {
@@ -203,12 +204,10 @@ export default function DataObjectsPage() {
 
   const filteredObjects = useMemo(() => {
     if (!currentModel) return [];
-    let searchableObjects = [...objects]; // Create a copy to avoid mutating original
+    let searchableObjects = [...objects];
 
-    // Apply global search term first
     if (searchTerm) {
       searchableObjects = searchableObjects.filter(obj => {
-        // ... (existing global search logic remains the same)
         const hasMatchingProperty = currentModel.properties.some(prop => {
           const value = obj[prop.name];
           if ((prop.type === 'string' || prop.type === 'number' || prop.type === 'markdown' || prop.type === 'image') && value !== null && value !== undefined) {
@@ -242,7 +241,6 @@ export default function DataObjectsPage() {
       });
     }
 
-    // Apply column-specific filters
     Object.entries(columnFilters).forEach(([columnKey, filter]) => {
       if (!filter || filter.value === '' || filter.value === null || filter.value === undefined) return;
 
@@ -253,7 +251,7 @@ export default function DataObjectsPage() {
           return obj.currentStateId === filter.value;
         }
 
-        if (!property) return true; // Should not happen if columnKey is a property.id
+        if (!property) return true;
 
         const value = obj[property.name];
 
@@ -275,12 +273,10 @@ export default function DataObjectsPage() {
               default: return false;
             }
           case 'boolean':
-            // filter.value will be true or false here
             return (value === true || value === 1) === filter.value;
           case 'date':
             if (!value || !filter.value) return false;
             try {
-              // Compare only date parts, ignoring time
               const objDate = startOfDay(new Date(value));
               const filterDate = startOfDay(new Date(filter.value));
               return isDateValid(objDate) && isDateValid(filterDate) && isEqualDate(objDate, filterDate);
@@ -289,7 +285,13 @@ export default function DataObjectsPage() {
             }
           case 'rating':
             return Number(value) === Number(filter.value);
-          // TODO: Relationship filtering later
+          case 'relationship':
+            const filterRelId = String(filter.value);
+            if (property.relationshipType === 'many') {
+              return Array.isArray(value) && value.includes(filterRelId);
+            } else {
+              return value === filterRelId;
+            }
           default:
             return true;
         }
@@ -751,7 +753,6 @@ export default function DataObjectsPage() {
                       {col.headerLabel}
                       {getSortIcon(col.id)}
                     </Button>
-                    {/* Placeholder for virtual column filter if needed later */}
                   </TableHead>
                 ))}
                 <TableHead className="text-right w-[120px]">Actions</TableHead>
