@@ -36,7 +36,9 @@ export async function PUT(request: Request, { params }: Params) {
     return NextResponse.json({ error: 'Unauthorized to update object' }, { status: 403 });
   }
   try {
-    const { id: _id, model_id: _model_id, currentStateId: newCurrentStateIdFromRequest, ...updates }: Partial<DataObject> & {id?: string, model_id?:string} = await request.json();
+    const requestBody = await request.clone().json(); // Clone to re-read body for checks
+    const { id: _id, model_id: _model_id, currentStateId: newCurrentStateIdFromRequest, ...updates }: Partial<DataObject> & {id?: string, model_id?:string} = requestBody;
+
     const db = await getDb();
 
     const existingObjectRecord = await db.get('SELECT data, currentStateId, model_id FROM data_objects WHERE id = ? AND model_id = ?', params.objectId, params.modelId);
@@ -68,9 +70,9 @@ export async function PUT(request: Request, { params }: Params) {
       }
     }
     
-    let finalCurrentStateIdToSave: string | null = currentObjectStateId; // Default to existing state
+    let finalCurrentStateIdToSave: string | null = currentObjectStateId; 
 
-    if (Object.prototype.hasOwnProperty.call(updates, 'currentStateId') || Object.prototype.hasOwnProperty.call(await request.clone().json(), 'currentStateId')) { // Check if currentStateId was explicitly sent
+    if (Object.prototype.hasOwnProperty.call(requestBody, 'currentStateId')) { 
         const modelDetails: Model | undefined = await db.get('SELECT workflowId FROM models WHERE id = ?', params.modelId);
         if (modelDetails && modelDetails.workflowId) {
             const workflow: WorkflowWithDetails | undefined = await db.get('SELECT * FROM workflows WHERE id = ?', modelDetails.workflowId);
@@ -82,13 +84,12 @@ export async function PUT(request: Request, { params }: Params) {
                 const currentObjectState = workflowStates.find(s => s.id === currentObjectStateId);
                 const targetState = workflowStates.find(s => s.id === newCurrentStateIdFromRequest);
 
-                if (!targetState && newCurrentStateIdFromRequest !== null) { // Trying to move to a non-existent state
+                if (!targetState && newCurrentStateIdFromRequest !== null) { 
                      return NextResponse.json({ error: `Invalid target state ID: ${newCurrentStateIdFromRequest}. State does not exist in workflow.` }, { status: 400 });
                 }
 
-                if (newCurrentStateIdFromRequest !== currentObjectStateId && newCurrentStateIdFromRequest !== null) { // If it's a state change
-                    if (!currentObjectState) { // Current object doesn't have a state in this workflow (e.g. workflow newly assigned)
-                        // Allow moving to any state if current object has no state or an invalid one
+                if (newCurrentStateIdFromRequest !== currentObjectStateId && newCurrentStateIdFromRequest !== null) { 
+                    if (!currentObjectState) { 
                         finalCurrentStateIdToSave = newCurrentStateIdFromRequest;
                     } else {
                         const validSuccessorIds = currentObjectState.successorStateIdsStr ? currentObjectState.successorStateIdsStr.split(',') : [];
@@ -97,25 +98,23 @@ export async function PUT(request: Request, { params }: Params) {
                         }
                         finalCurrentStateIdToSave = newCurrentStateIdFromRequest;
                     }
-                } else if (newCurrentStateIdFromRequest === null) { // Clearing the state (explicitly setting to null)
+                } else if (newCurrentStateIdFromRequest === null) { 
                     finalCurrentStateIdToSave = null;
-                } else { // No change in state or staying in the same state
+                } else { 
                      finalCurrentStateIdToSave = currentObjectStateId;
                 }
             } else {
-                 // Model has workflowId but workflow not found - should not happen if DB is consistent
                 console.warn(`Workflow ${modelDetails.workflowId} for model ${params.modelId} not found during object update. State not changed.`);
             }
         } else {
-            // Model has no workflow, so state should be null
             finalCurrentStateIdToSave = null;
         }
     }
 
 
     const newData = { ...currentData, ...updates };
-    if (Object.prototype.hasOwnProperty.call(updates, 'currentStateId')) {
-      delete newData.currentStateId; // Don't store it in the JSON data blob
+    if (Object.prototype.hasOwnProperty.call(requestBody, 'currentStateId')) {
+      delete newData.currentStateId; 
     }
 
 
@@ -130,12 +129,13 @@ export async function PUT(request: Request, { params }: Params) {
     const updatedObject: DataObject = { id: params.objectId, currentStateId: finalCurrentStateIdToSave, ...newData };
     return NextResponse.json(updatedObject);
   } catch (error: any) {
-    console.error(`Failed to update object ${params.objectId}:`, error);
-    let errorMessage = 'Failed to update object';
-    if (error.message) {
-        errorMessage += `: ${error.message}`;
+    console.error(`API Error (PUT /models/${params.modelId}/objects/${params.objectId}) - Error updating object. Message: ${error.message}, Stack: ${error.stack}`, error);
+    let apiErrorMessage = 'Failed to update object during server processing.';
+    let errorDetails = error.message || 'No specific error message available from caught error.';
+    if (error.stack) {
+        errorDetails += ` Server Stack: ${error.stack}`;
     }
-    return NextResponse.json({ error: errorMessage, details: error.message }, { status: 500 });
+    return NextResponse.json({ error: apiErrorMessage, details: errorDetails }, { status: 500 });
   }
 }
 

@@ -64,7 +64,7 @@ const mapDbModelToClientModel = (dbModel: any): Model => {
     description: dbModel.description,
     namespace: dbModel.namespace || 'Default',
     displayPropertyNames: parsedDisplayPropertyNames,
-    workflowId: dbModel.workflowId === undefined ? null : dbModel.workflowId, // Ensure null if undefined
+    workflowId: dbModel.workflowId === undefined ? null : dbModel.workflowId,
     properties: (dbModel.properties || []).map((p: any) => ({
       id: p.id || crypto.randomUUID(),
       name: p.name,
@@ -84,26 +84,27 @@ const mapDbModelToClientModel = (dbModel: any): Model => {
 };
 
 const formatApiError = async (response: Response, defaultMessage: string): Promise<string> => {
-    let errorMessage = defaultMessage;
-    try {
-      const errorData = await response.json();
-      if (errorData && errorData.error) {
-        errorMessage = errorData.error;
-        if (errorData.details && typeof errorData.details === 'string') {
-          errorMessage += ` Details: ${errorData.details}`;
-        } else if (errorData.details && typeof errorData.details === 'object') {
-           errorMessage += ` Details: ${JSON.stringify(errorData.details)}`;
-        }
-      } else if(response.statusText && response.statusText.trim() !== '') {
-        errorMessage = `${defaultMessage}. Status: ${response.status} - Server: ${response.statusText}`;
-      } else {
-         errorMessage = `${defaultMessage}. Status: ${response.status} - Server did not provide detailed error.`;
+  let errorMessage = defaultMessage;
+  const status = response.status;
+  const statusText = response.statusText;
+
+  try {
+    const errorData = await response.json();
+    if (errorData && errorData.error) {
+      errorMessage = String(errorData.error); // Ensure it's a string
+      if (errorData.details) {
+        errorMessage += ` (Details: ${ (typeof errorData.details === 'string') ? errorData.details : JSON.stringify(errorData.details) })`;
       }
-    } catch (e) {
-      errorMessage = `${defaultMessage}. Status: ${response.status} - ${response.statusText || 'Server did not provide detailed error or a non-JSON response.'}`;
+    } else {
+      // JSON was valid, but no 'error' field. Use statusText or a generic message.
+      errorMessage = `${defaultMessage}. Status: ${status} - ${statusText || 'Server returned a JSON response without a specific error field.'}`;
     }
-    return errorMessage;
-  };
+  } catch (e) { // response.json() failed - body is not valid JSON
+    const responseText = await response.text().catch(() => 'Could not read response text.');
+    errorMessage = `${defaultMessage}. Status: ${status} - ${statusText || 'Non-JSON response from server.'} Body: ${responseText.substring(0, 200)}...`;
+  }
+  return errorMessage;
+};
 
 
 export function DataProvider({ children }: { children: ReactNode }) {
@@ -199,7 +200,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         ...modelData, 
         id: modelId, 
         namespace: finalNamespace, 
-        workflowId: modelData.workflowId, // Will be string ID or null
+        workflowId: modelData.workflowId,
         properties: propertiesWithIdsAndOrder 
     };
     console.log("[DataContext DEBUG] addModel - payload to API:", JSON.stringify(payload, null, 2));
@@ -242,7 +243,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const payload = {
       ...updates,
       namespace: finalNamespace, 
-      workflowId: Object.prototype.hasOwnProperty.call(updates, 'workflowId') ? updates.workflowId : undefined, // Send only if explicitly in updates
+      workflowId: updates.workflowId,
       properties: propertiesWithEnsuredIdsAndOrder,
     };
     console.log("[DataContext DEBUG] updateModel - payload to API:", JSON.stringify(payload, null, 2));
@@ -289,7 +290,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const addObject = useCallback(async (modelId: string, objectData: Omit<DataObject, 'id' | 'currentStateId'> & {currentStateId?: string | null}, objectId?: string): Promise<DataObject> => {
     const finalObjectId = objectId || crypto.randomUUID();
-    // currentStateId will be set by the backend based on workflow's initial state
     const payload = { ...objectData, id: finalObjectId }; 
     const response = await fetch(`/api/codex-structure/models/${modelId}/objects`, {
       method: 'POST',
@@ -317,7 +317,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const response = await fetch(`/api/codex-structure/models/${modelId}/objects/${objectId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates), // `updates` can include `currentStateId`
+      body: JSON.stringify(updates),
     });
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ error: `Failed to update object ${objectId}. Status: ${response.status}` }));
