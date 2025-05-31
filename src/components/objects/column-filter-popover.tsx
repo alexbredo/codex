@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -28,6 +29,7 @@ interface ColumnFilterPopoverProps {
 }
 
 const INTERNAL_ANY_BOOLEAN_VALUE = "__ANY_BOOLEAN__";
+const INTERNAL_ANY_WORKFLOW_STATE_VALUE = "__ANY_WORKFLOW_STATE__"; // Added constant
 const NUMBER_OPERATORS = [
   { value: 'eq', label: 'Equals' },
   { value: 'gte', label: '>=' },
@@ -72,7 +74,10 @@ export default function ColumnFilterPopover({
     if (filterInput === '' || filterInput === null || filterInput === undefined) {
       if (filterType === 'boolean' && filterInput === INTERNAL_ANY_BOOLEAN_VALUE) {
         onFilterChange(columnKey, null); // Clear filter for "Any"
-      } else {
+      } else if (filterType === 'workflowState' && filterInput === INTERNAL_ANY_WORKFLOW_STATE_VALUE) {
+        onFilterChange(columnKey, null); // Clear filter for "Any State"
+      }
+      else {
         onFilterChange(columnKey, null);
       }
       setIsOpen(false);
@@ -112,7 +117,16 @@ export default function ColumnFilterPopover({
             finalFilterValue = Number(filterInput);
             operatorForFilter = 'eq';
             break;
-        default: // string, markdown, image, workflowState
+        case 'workflowState':
+            if (filterInput === INTERNAL_ANY_WORKFLOW_STATE_VALUE) {
+                onFilterChange(columnKey, null);
+                setIsOpen(false);
+                return;
+            }
+            finalFilterValue = String(filterInput); // State ID
+            operatorForFilter = 'eq'; // Assuming state ID matching is 'equals'
+            break;
+        default: // string, markdown, image
             operatorForFilter = 'contains';
             break;
     }
@@ -122,10 +136,19 @@ export default function ColumnFilterPopover({
   };
 
   const handleClearFilter = () => {
-    setFilterInput('');
+    if (filterType === 'workflowState') {
+      setFilterInput(INTERNAL_ANY_WORKFLOW_STATE_VALUE);
+    } else if (filterType === 'boolean') {
+      setFilterInput(INTERNAL_ANY_BOOLEAN_VALUE);
+    } else if (filterType === 'date') {
+      setFilterInput(null);
+    } else if (filterType === 'rating') {
+      setFilterInput(0);
+    }
+     else {
+      setFilterInput('');
+    }
     if (filterType === 'number') setNumberOperator('eq');
-    if (filterType === 'date') setFilterInput(null);
-    if (filterType === 'rating') setFilterInput(0);
     onFilterChange(columnKey, null);
     setIsOpen(false);
   };
@@ -224,14 +247,14 @@ export default function ColumnFilterPopover({
         if (!currentWorkflow) return <Input placeholder="No workflow active" disabled />;
         return (
           <Select
-            value={String(filterInput ?? '')}
-            onValueChange={(val) => setFilterInput(val)}
+            value={filterInput === null || filterInput === undefined || filterInput === '' ? INTERNAL_ANY_WORKFLOW_STATE_VALUE : String(filterInput)}
+            onValueChange={(val) => setFilterInput(val === INTERNAL_ANY_WORKFLOW_STATE_VALUE ? '' : val)}
           >
             <SelectTrigger>
               <SelectValue placeholder="Select state..." />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Any State</SelectItem>
+              <SelectItem value={INTERNAL_ANY_WORKFLOW_STATE_VALUE}>Any State</SelectItem>
               {currentWorkflow.states.map((state) => (
                 <SelectItem key={state.id} value={state.id}>
                   {state.name}
@@ -275,3 +298,4 @@ export default function ColumnFilterPopover({
     </Popover>
   );
 }
+
