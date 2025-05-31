@@ -139,7 +139,7 @@ export default function DataObjectsPage() {
   const handleColumnFilterChange = useCallback((columnKey: string, filter: ColumnFilterValue | null) => {
     setColumnFilters(prev => {
       const newFilters = { ...prev };
-      if (filter === null || filter.value === '' || filter.value === null || filter.value === undefined) { // Ensure empty/null also clears
+      if (filter === null || filter.value === '' || filter.value === null || filter.value === undefined) { 
         delete newFilters[columnKey];
       } else {
         newFilters[columnKey] = filter;
@@ -155,21 +155,21 @@ export default function DataObjectsPage() {
   };
 
   const getFilterDisplayDetails = useCallback((columnKey: string, filter: ColumnFilterValue): { columnName: string; displayValue: string; operator: string } | null => {
-    if (!currentModel) return null;
+    if (!currentModel && !virtualIncomingRelationColumns.some(vc => vc.id === columnKey)) return null;
 
     let columnName = '';
     let displayValue = String(filter.value);
-    let operator = filter.operator || '='; // Default operator
+    let operator = filter.operator || '='; 
+
+    const property = currentModel?.properties.find(p => p.id === columnKey);
+    const virtualCol = virtualIncomingRelationColumns.find(vc => vc.id === columnKey);
 
     if (columnKey === 'workflowState') {
       columnName = 'State';
       const state = currentWorkflow?.states.find(s => s.id === filter.value);
       displayValue = state ? state.name : 'Unknown State';
-    } else {
-      const property = currentModel.properties.find(p => p.id === columnKey);
-      if (!property) return null;
+    } else if (property) {
       columnName = property.name;
-
       switch (property.type) {
         case 'boolean':
           displayValue = filter.value ? 'Yes' : 'No';
@@ -192,16 +192,17 @@ export default function DataObjectsPage() {
           }
           operator = property.relationshipType === 'many' ? 'includes' : '=';
           break;
-        case 'number':
-          // Operator is part of the filter for numbers
-          break;
-        default: // string, markdown, image
-          operator = 'contains';
-          break;
       }
+    } else if (virtualCol) {
+        columnName = virtualCol.headerLabel;
+        if (filter.value === true) displayValue = "Yes";
+        else if (filter.value === false) displayValue = "No";
+        else displayValue = "Any";
+        operator = "has"; // Custom operator display for this type
+    } else {
+      return null; // Unknown column key
     }
     
-    // Map operator symbols for display
     const operatorDisplayMap: Record<string, string> = {
         'eq': '=',
         'gt': '>',
@@ -211,12 +212,13 @@ export default function DataObjectsPage() {
         'contains': 'contains',
         'date_eq': '=',
         'includes': 'includes',
+        'has': '', // For "Has references: Yes", operator is implicit
     };
     operator = operatorDisplayMap[operator] || operator;
 
 
     return { columnName, displayValue, operator };
-  }, [currentModel, currentWorkflow, getModelById, allDbObjects, allModels]);
+  }, [currentModel, currentWorkflow, getModelById, allDbObjects, allModels, virtualIncomingRelationColumns]);
 
 
   const handleCreateNew = () => {
@@ -315,60 +317,73 @@ export default function DataObjectsPage() {
       if (!filter || filter.value === '' || filter.value === null || filter.value === undefined) return;
 
       const property = currentModel.properties.find(p => p.id === columnKey);
+      const virtualColumnDef = virtualIncomingRelationColumns.find(vc => vc.id === columnKey);
 
       searchableObjects = searchableObjects.filter(obj => {
         if (columnKey === 'workflowState') {
           return obj.currentStateId === filter.value;
         }
 
-        if (!property) return true; // Should not happen if columnKey is from a property
+        if (property) {
+            const value = obj[property.name];
+            switch (property.type) {
+            case 'string':
+            case 'markdown':
+            case 'image':
+                return value !== null && value !== undefined && String(value).toLowerCase().includes(String(filter.value).toLowerCase());
+            case 'number':
+                const numValue = parseFloat(String(value));
+                const filterNumValue = parseFloat(String(filter.value));
+                if (isNaN(numValue) || isNaN(filterNumValue)) return false;
+                switch (filter.operator) {
+                case 'eq': return numValue === filterNumValue;
+                case 'gt': return numValue > filterNumValue;
+                case 'lt': return numValue < filterNumValue;
+                case 'gte': return numValue >= filterNumValue;
+                case 'lte': return numValue <= filterNumValue;
+                default: return false;
+                }
+            case 'boolean':
+                return (value === true || value === 1) === filter.value;
+            case 'date':
+                if (!value || !filter.value) return false;
+                try {
+                const objDate = startOfDay(new Date(value));
+                const filterDate = startOfDay(new Date(filter.value)); 
+                return isDateValid(objDate) && isDateValid(filterDate) && isEqualDate(objDate, filterDate);
+                } catch {
+                return false;
+                }
+            case 'rating':
+                return Number(value) === Number(filter.value);
+            case 'relationship':
+                const filterRelId = String(filter.value);
+                if (property.relationshipType === 'many') {
+                return Array.isArray(value) && value.includes(filterRelId);
+                } else {
+                return value === filterRelId;
+                }
+            default:
+                return true;
+            }
+        } else if (virtualColumnDef) { // Handle virtual incoming relationship columns
+            const referencingData = allDbObjects[virtualColumnDef.referencingModel.id] || [];
+            const count = referencingData.filter(refObj => {
+                const linkedValue = refObj[virtualColumnDef.referencingProperty.name];
+                return virtualColumnDef.referencingProperty.relationshipType === 'many'
+                    ? (Array.isArray(linkedValue) && linkedValue.includes(obj.id))
+                    : linkedValue === obj.id;
+            }).length;
 
-        const value = obj[property.name];
-
-        switch (property.type) {
-          case 'string':
-          case 'markdown':
-          case 'image':
-            return value !== null && value !== undefined && String(value).toLowerCase().includes(String(filter.value).toLowerCase());
-          case 'number':
-            const numValue = parseFloat(String(value));
-            const filterNumValue = parseFloat(String(filter.value));
-            if (isNaN(numValue) || isNaN(filterNumValue)) return false;
-            switch (filter.operator) {
-              case 'eq': return numValue === filterNumValue;
-              case 'gt': return numValue > filterNumValue;
-              case 'lt': return numValue < filterNumValue;
-              case 'gte': return numValue >= filterNumValue;
-              case 'lte': return numValue <= filterNumValue;
-              default: return false;
-            }
-          case 'boolean':
-            return (value === true || value === 1) === filter.value;
-          case 'date':
-            if (!value || !filter.value) return false;
-            try {
-              const objDate = startOfDay(new Date(value));
-              const filterDate = startOfDay(new Date(filter.value)); // filter.value is already ISO string
-              return isDateValid(objDate) && isDateValid(filterDate) && isEqualDate(objDate, filterDate);
-            } catch {
-              return false;
-            }
-          case 'rating':
-            return Number(value) === Number(filter.value);
-          case 'relationship':
-            const filterRelId = String(filter.value);
-            if (property.relationshipType === 'many') {
-              return Array.isArray(value) && value.includes(filterRelId);
-            } else {
-              return value === filterRelId;
-            }
-          default:
-            return true;
+            if (filter.value === true) return count > 0; // "Has references"
+            if (filter.value === false) return count === 0; // "No references"
+            return true; // Should not happen if filter.value is strictly boolean for this type
         }
+        return true; 
       });
     });
     return searchableObjects;
-  }, [objects, searchTerm, currentModel, columnFilters, getModelById, allDbObjects, allModels, currentWorkflow, getWorkflowStateName]);
+  }, [objects, searchTerm, currentModel, columnFilters, getModelById, allDbObjects, allModels, currentWorkflow, getWorkflowStateName, virtualIncomingRelationColumns]);
 
 
   const sortedObjects = useMemo(() => {
@@ -791,7 +806,6 @@ export default function DataObjectsPage() {
             <p className="text-muted-foreground mb-4">
               Your {searchTerm && hasActiveColumnFilters ? "search and column filters" : searchTerm ? "search" : "column filters"} did not match any {currentModel.name.toLowerCase()}s.
             </p>
-            {/* Removed the link here as the clear button and individual badges serve this purpose */}
           </CardContent>
         </Card>
       ) : viewMode === 'table' ? (
@@ -836,10 +850,19 @@ export default function DataObjectsPage() {
                 )}
                 {virtualIncomingRelationColumns.map((col) => (
                   <TableHead key={col.id} className="text-xs">
-                     <Button variant="ghost" onClick={() => requestSort(col.id)} className="px-1 text-xs text-left justify-start flex-grow">
-                      {col.headerLabel}
-                      {getSortIcon(col.id)}
-                    </Button>
+                     <div className="flex items-center">
+                        <Button variant="ghost" onClick={() => requestSort(col.id)} className="px-1 text-xs text-left justify-start flex-grow">
+                        {col.headerLabel}
+                        {getSortIcon(col.id)}
+                        </Button>
+                        <ColumnFilterPopover
+                            columnKey={col.id}
+                            columnName={col.headerLabel}
+                            currentFilter={columnFilters[col.id] || null}
+                            onFilterChange={handleColumnFilterChange}
+                            filterTypeOverride="incomingRelationshipCount"
+                        />
+                     </div>
                   </TableHead>
                 ))}
                 <TableHead className="text-right w-[120px]">Actions</TableHead>
@@ -937,7 +960,7 @@ export default function DataObjectsPage() {
               getWorkflowStateName={getWorkflowStateName}
               onView={handleView}
               onEdit={handleEdit}
-              onDelete={handleDelete} // Corrected prop name
+              onDelete={handleDelete} 
             />
           ))}
         </div>

@@ -27,6 +27,7 @@ interface ColumnFilterPopoverProps {
   currentWorkflow?: WorkflowWithDetails | null;
   currentFilter?: ColumnFilterValue | null;
   onFilterChange: (columnKey: string, filter: ColumnFilterValue | null) => void;
+  filterTypeOverride?: 'incomingRelationshipCount';
 }
 
 const INTERNAL_ANY_BOOLEAN_VALUE = "__ANY_BOOLEAN__";
@@ -49,6 +50,7 @@ export default function ColumnFilterPopover({
   currentWorkflow,
   currentFilter,
   onFilterChange,
+  filterTypeOverride,
 }: ColumnFilterPopoverProps) {
   const { getModelById, getObjectsByModelId, models: allModels, getAllObjects } = useData();
   const [isOpen, setIsOpen] = useState(false);
@@ -57,32 +59,35 @@ export default function ColumnFilterPopover({
     (currentFilter?.operator as any) || 'eq'
   );
 
-  const filterType = property?.type || (columnKey === 'workflowState' ? 'workflowState' : 'string');
+  const effectiveFilterType = filterTypeOverride || property?.type || (columnKey === 'workflowState' ? 'workflowState' : 'string');
+
 
   useEffect(() => {
-    if (filterType === 'number') {
+    if (effectiveFilterType === 'number') {
       setFilterInput(currentFilter?.value ?? '');
       setNumberOperator((currentFilter?.operator as any) || 'eq');
-    } else if (filterType === 'date') {
+    } else if (effectiveFilterType === 'date') {
       setFilterInput(currentFilter?.value ? new Date(currentFilter.value) : null);
-    } else if (filterType === 'relationship') {
+    } else if (effectiveFilterType === 'relationship') {
       setFilterInput(currentFilter?.value ?? INTERNAL_ANY_RELATIONSHIP_VALUE);
+    } else if (effectiveFilterType === 'boolean' || effectiveFilterType === 'incomingRelationshipCount') {
+      setFilterInput(currentFilter?.value === undefined || currentFilter?.value === null || currentFilter?.value === '' ? INTERNAL_ANY_BOOLEAN_VALUE : String(currentFilter.value));
     }
     else {
       setFilterInput(currentFilter?.value ?? '');
     }
-  }, [currentFilter, filterType]);
+  }, [currentFilter, effectiveFilterType]);
 
   const handleApplyFilter = () => {
     let finalFilterValue: any = filterInput;
     let operatorForFilter: ColumnFilterValue['operator'] | undefined = undefined;
 
     if (filterInput === '' || filterInput === null || filterInput === undefined) {
-      if (filterType === 'boolean' && filterInput === INTERNAL_ANY_BOOLEAN_VALUE) {
+      if ((effectiveFilterType === 'boolean' || effectiveFilterType === 'incomingRelationshipCount') && filterInput === INTERNAL_ANY_BOOLEAN_VALUE) {
         onFilterChange(columnKey, null);
-      } else if (filterType === 'workflowState' && filterInput === INTERNAL_ANY_WORKFLOW_STATE_VALUE) {
+      } else if (effectiveFilterType === 'workflowState' && filterInput === INTERNAL_ANY_WORKFLOW_STATE_VALUE) {
         onFilterChange(columnKey, null);
-      } else if (filterType === 'relationship' && filterInput === INTERNAL_ANY_RELATIONSHIP_VALUE) {
+      } else if (effectiveFilterType === 'relationship' && filterInput === INTERNAL_ANY_RELATIONSHIP_VALUE) {
         onFilterChange(columnKey, null);
       }
       else {
@@ -92,7 +97,7 @@ export default function ColumnFilterPopover({
       return;
     }
     
-    switch (filterType) {
+    switch (effectiveFilterType) {
         case 'number':
             finalFilterValue = parseFloat(String(filterInput));
             if (isNaN(finalFilterValue)) {
@@ -103,6 +108,7 @@ export default function ColumnFilterPopover({
             operatorForFilter = numberOperator;
             break;
         case 'boolean':
+        case 'incomingRelationshipCount': // Treat same as boolean for value storage
             if (filterInput === INTERNAL_ANY_BOOLEAN_VALUE) {
                 onFilterChange(columnKey, null);
                 setIsOpen(false);
@@ -140,7 +146,7 @@ export default function ColumnFilterPopover({
                 setIsOpen(false);
                 return;
             }
-            finalFilterValue = String(filterInput); // Selected related object ID
+            finalFilterValue = String(filterInput); 
             operatorForFilter = property?.relationshipType === 'many' ? 'includes' : 'eq';
             break;
         default: // string, markdown, image
@@ -153,27 +159,27 @@ export default function ColumnFilterPopover({
   };
 
   const handleClearFilter = () => {
-    if (filterType === 'workflowState') {
+    if (effectiveFilterType === 'workflowState') {
       setFilterInput(INTERNAL_ANY_WORKFLOW_STATE_VALUE);
-    } else if (filterType === 'boolean') {
+    } else if (effectiveFilterType === 'boolean' || effectiveFilterType === 'incomingRelationshipCount') {
       setFilterInput(INTERNAL_ANY_BOOLEAN_VALUE);
-    } else if (filterType === 'date') {
+    } else if (effectiveFilterType === 'date') {
       setFilterInput(null);
-    } else if (filterType === 'rating') {
+    } else if (effectiveFilterType === 'rating') {
       setFilterInput(0);
-    } else if (filterType === 'relationship') {
+    } else if (effectiveFilterType === 'relationship') {
       setFilterInput(INTERNAL_ANY_RELATIONSHIP_VALUE);
     }
      else {
       setFilterInput('');
     }
-    if (filterType === 'number') setNumberOperator('eq');
+    if (effectiveFilterType === 'number') setNumberOperator('eq');
     onFilterChange(columnKey, null);
     setIsOpen(false);
   };
 
   const renderFilterInput = () => {
-    switch (filterType) {
+    switch (effectiveFilterType) {
       case 'string':
       case 'markdown':
       case 'image':
@@ -222,6 +228,22 @@ export default function ColumnFilterPopover({
               <SelectItem value={INTERNAL_ANY_BOOLEAN_VALUE}>Any</SelectItem>
               <SelectItem value="true">Yes</SelectItem>
               <SelectItem value="false">No</SelectItem>
+            </SelectContent>
+          </Select>
+        );
+       case 'incomingRelationshipCount':
+        return (
+          <Select
+            value={filterInput === null || filterInput === undefined || filterInput === '' ? INTERNAL_ANY_BOOLEAN_VALUE : String(filterInput)}
+            onValueChange={(val) => setFilterInput(val === INTERNAL_ANY_BOOLEAN_VALUE ? '' : val)}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Filter reference existence..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={INTERNAL_ANY_BOOLEAN_VALUE}>Any</SelectItem>
+              <SelectItem value="true">Has references</SelectItem>
+              <SelectItem value="false">No references</SelectItem>
             </SelectContent>
           </Select>
         );
@@ -350,3 +372,4 @@ export default function ColumnFilterPopover({
     </Popover>
   );
 }
+
