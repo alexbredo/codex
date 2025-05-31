@@ -797,7 +797,13 @@ export default function DataObjectsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {paginatedObjects.map((obj) => (
+              {paginatedObjects.map((obj) => {
+                const deleteTriggerButton = (
+                    <Button variant="ghost" size="icon" className="hover:text-destructive">
+                        <Trash2 className="h-4 w-4" />
+                    </Button>
+                );
+                return (
                 <TableRow key={obj.id} data-state={selectedObjectIds.has(obj.id) ? "selected" : ""}>
                   <TableCell className="text-center">
                     <Checkbox
@@ -816,11 +822,7 @@ export default function DataObjectsPage() {
                     return (
                       <TableCell key={colDef.id} className="space-x-1 space-y-1">
                         {linkedItems.map(item => (
-                          <Link
-                            key={item.id}
-                            href={`/data/${colDef.referencingModel.id}/edit/${item.id}`}
-                            className="inline-block"
-                          >
+                          <Link key={item.id} href={`/data/${colDef.referencingModel.id}/edit/${item.id}`} className="inline-block">
                             <Badge variant="secondary" className="hover:bg-muted cursor-pointer">
                               {getObjectDisplayValue(item, colDef.referencingModel, allModels, allDbObjects)}
                             </Badge>
@@ -831,10 +833,24 @@ export default function DataObjectsPage() {
                   })}
                   <TableCell className="text-right">
                     <Button variant="ghost" size="icon" onClick={() => handleEdit(obj)} className="mr-2 hover:text-primary"> <Edit className="h-4 w-4" /> </Button>
-                    <AlertDialog> <AlertDialogTrigger asChild> <Button variant="ghost" size="icon" className="hover:text-destructive"> <Trash2 className="h-4 w-4" /> </Button> </AlertDialogTrigger> <AlertDialogContent> <AlertDialogHeader> <AlertDialogTitle>Are you sure?</AlertDialogTitle> <AlertDialogDescription> This action cannot be undone. This will permanently delete this {currentModel.name.toLowerCase()} object. </AlertDialogDescription> </AlertDialogHeader> <AlertDialogFooter> <AlertDialogCancel>Cancel</AlertDialogCancel> <AlertDialogAction onClick={() => handleDelete(obj.id)}> Delete </AlertDialogAction> </AlertDialogFooter> </AlertDialogContent> </AlertDialog>
+                    <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                            {deleteTriggerButton}
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                            <AlertDialogHeader>
+                                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                <AlertDialogDescription> This action cannot be undone. This will permanently delete this {currentModel.name.toLowerCase()} object. </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleDelete(obj.id)}> Delete </AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
                   </TableCell>
                 </TableRow>
-              ))}
+              )})}
             </TableBody>
           </Table>
         </Card>
@@ -853,4 +869,5 @@ export default function DataObjectsPage() {
     </div>
   );
 }
+
 
