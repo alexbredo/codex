@@ -28,9 +28,11 @@ function parseDefaultValueForStorage(value: string | undefined | null, type: Pro
     case 'date':
       try {
         const date = new Date(value);
-        return isNaN(date.getTime()) ? String(value).trim() : date.toISOString();
+        // Check if it's a valid date string, not just "Invalid Date" from new Date("")
+        if (isNaN(date.getTime()) && String(value).trim() !== '') return String(value).trim(); // Keep original invalid string if not empty
+        return isNaN(date.getTime()) ? undefined : date.toISOString(); // Return ISO or undefined if really invalid/empty
       } catch {
-        return String(value).trim();
+        return String(value).trim(); // Fallback if new Date throws (should be rare)
       }
     case 'relationship':
       if (relationshipType === 'many') {
@@ -138,149 +140,178 @@ export async function PUT(request: Request, { params }: Params) {
   }
 
   const db = await getDb();
+  await db.run('BEGIN TRANSACTION');
 
   try {
-    const body: Partial<Omit<Model, 'id'>> & { properties?: Property[] } = await request.json();
+    const body: Partial<Omit<Model, 'id'>> & { properties?: Property[], workflowId?: string | null } = await request.json();
     console.log(`[API PUT /models/:id DEBUG] Received payload:`, JSON.stringify(body, null, 2));
-    const { name, description, namespace, displayPropertyNames, properties: updatedPropertiesInput, workflowId: newWorkflowIdFromRequest } = body;
-
-    const finalNamespace = (namespace && namespace.trim() !== '') ? namespace.trim() : 'Default';
+    
+    const { name, description, namespace, displayPropertyNames, properties: updatedPropertiesInput } = body;
 
     const existingModel = await db.get('SELECT * FROM models WHERE id = ?', params.modelId);
     if (!existingModel) {
+      await db.run('ROLLBACK');
       return NextResponse.json({ error: 'Model not found' }, { status: 404 });
     }
 
     if (name && name !== existingModel.name) {
         const nameCheck = await db.get('SELECT id FROM models WHERE name = ? AND id != ?', name, params.modelId);
         if (nameCheck) {
+            await db.run('ROLLBACK');
             return NextResponse.json({ error: 'A model with this name already exists.' }, { status: 409 });
         }
     }
 
-    await db.run('BEGIN TRANSACTION');
+    const oldEffectiveWorkflowId = existingModel.workflowId || null; // Treat undefined/null from DB as null for comparison
+    let newEffectiveWorkflowId: string | null; // This will be the workflow ID for the model after this operation.
+    let workflowAssignmentActuallyChanged = false;
 
-    const oldPropertyIds = new Set((await db.all('SELECT id FROM properties WHERE model_id = ?', params.modelId)).map(p => p.id));
-    const oldPropertyNames = new Set((await db.all('SELECT name FROM properties WHERE model_id = ?', params.modelId)).map(p => p.name));
-
-    // Determine the final workflowId to save on the model
-    const finalWorkflowIdToSaveOnModel = Object.prototype.hasOwnProperty.call(body, 'workflowId')
-      ? (newWorkflowIdFromRequest === undefined ? null : newWorkflowIdFromRequest)
-      : existingModel.workflowId;
-
-    console.log(`[API PUT /models/:id DEBUG] Original existingModel.workflowId: ${existingModel.workflowId}`);
-    console.log(`[API PUT /models/:id DEBUG] newWorkflowIdFromRequest (from body): ${newWorkflowIdFromRequest}`);
-    console.log(`[API PUT /models/:id DEBUG] finalWorkflowIdToSaveOnModel (for model record): ${finalWorkflowIdToSaveOnModel}`);
-
-    // Update the model itself
-    await db.run(
-      'UPDATE models SET name = ?, description = ?, namespace = ?, displayPropertyNames = ?, workflowId = ? WHERE id = ?',
-      name ?? existingModel.name,
-      description ?? existingModel.description,
-      finalNamespace,
-      displayPropertyNames ? JSON.stringify(displayPropertyNames) : existingModel.displayPropertyNames,
-      finalWorkflowIdToSaveOnModel,
-      params.modelId
-    );
-
-    const propertiesToUpdateOrCreate = updatedPropertiesInput || [];
-    const newPropertiesWithDefaults: Property[] = [];
-
-    // Properties are fully replaced: delete old, insert new ones
-    await db.run('DELETE FROM properties WHERE model_id = ?', params.modelId);
-    for (const prop of propertiesToUpdateOrCreate) {
-      const propertyId = prop.id || crypto.randomUUID();
-      await db.run(
-        'INSERT INTO properties (id, model_id, name, type, relatedModelId, required, relationshipType, unit, precision, autoSetOnCreate, autoSetOnUpdate, isUnique, orderIndex, defaultValue) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        propertyId,
-        params.modelId,
-        prop.name,
-        prop.type,
-        prop.relatedModelId,
-        prop.required ? 1 : 0,
-        prop.relationshipType,
-        prop.unit,
-        prop.precision,
-        prop.autoSetOnCreate ? 1 : 0,
-        prop.autoSetOnUpdate ? 1 : 0,
-        prop.isUnique ? 1 : 0,
-        prop.orderIndex,
-        prop.defaultValue ?? null
-      );
-      // Check if this property is new or its name changed, and has a default value
-      if ((!oldPropertyIds.has(propertyId) || !oldPropertyNames.has(prop.name)) && prop.defaultValue !== undefined && prop.defaultValue !== null) {
-        newPropertiesWithDefaults.push(prop);
+    if (Object.prototype.hasOwnProperty.call(body, 'workflowId')) {
+      // workflowId key *was* present in the request.
+      // Normalize undefined, empty string from request to null.
+      const normalizedRequestedWfId = (body.workflowId === undefined || body.workflowId === '') ? null : body.workflowId;
+      newEffectiveWorkflowId = normalizedRequestedWfId;
+      if (newEffectiveWorkflowId !== oldEffectiveWorkflowId) {
+        workflowAssignmentActuallyChanged = true;
       }
+      console.log(`[API PUT /models/:id DEBUG] workflowId WAS IN request. Raw: ${body.workflowId}, Normalized: ${newEffectiveWorkflowId}, Old DB: ${oldEffectiveWorkflowId}, ActualChange: ${workflowAssignmentActuallyChanged}`);
+    } else {
+      // workflowId key was NOT in request. Model's workflowId does not change.
+      newEffectiveWorkflowId = oldEffectiveWorkflowId;
+      console.log(`[API PUT /models/:id DEBUG] workflowId was NOT IN request. Effective workflowId remains: ${newEffectiveWorkflowId}`);
     }
 
-    // Apply default values for *newly added* properties to existing objects
-    if (newPropertiesWithDefaults.length > 0) {
-      const existingDataObjects = await db.all('SELECT id, data FROM data_objects WHERE model_id = ?', params.modelId);
-      for (const propWithDefault of newPropertiesWithDefaults) {
-        const parsedDefaultValue = parseDefaultValueForStorage(propWithDefault.defaultValue, propWithDefault.type, propWithDefault.relationshipType);
-        if (parsedDefaultValue !== undefined) {
-          for (const dataObj of existingDataObjects) {
-            let currentData = JSON.parse(dataObj.data);
-            if (!Object.prototype.hasOwnProperty.call(currentData, propWithDefault.name)) {
-              currentData[propWithDefault.name] = parsedDefaultValue;
-              await db.run('UPDATE data_objects SET data = ? WHERE id = ?', JSON.stringify(currentData), dataObj.id);
+    // Update model's core properties (name, description, namespace, displayPropertyNames)
+    // and workflowId *only if* it was part of the request and changed.
+    const updateModelFields: string[] = [];
+    const updateModelValues: any[] = [];
+
+    if (name !== undefined && name !== existingModel.name) {
+      updateModelFields.push('name = ?');
+      updateModelValues.push(name);
+    }
+    if (description !== undefined && description !== existingModel.description) {
+      updateModelFields.push('description = ?');
+      updateModelValues.push(description);
+    }
+    
+    const finalNamespace = (namespace === undefined || namespace.trim() === '') ? 'Default' : namespace.trim();
+    if (finalNamespace !== existingModel.namespace) {
+        updateModelFields.push('namespace = ?');
+        updateModelValues.push(finalNamespace);
+    }
+
+    if (displayPropertyNames !== undefined) {
+        const newDpnJson = JSON.stringify(displayPropertyNames || []);
+        if (newDpnJson !== existingModel.displayPropertyNames) {
+            updateModelFields.push('displayPropertyNames = ?');
+            updateModelValues.push(newDpnJson);
+        }
+    }
+    
+    // Only add workflowId to the SET clause if it was explicitly part of the request
+    // AND its effective value (newEffectiveWorkflowId) is different from what's in the DB.
+    if (Object.prototype.hasOwnProperty.call(body, 'workflowId') && newEffectiveWorkflowId !== existingModel.workflowId) {
+      updateModelFields.push('workflowId = ?');
+      updateModelValues.push(newEffectiveWorkflowId); // This is the normalized value (UUID or null)
+      console.log(`[API PUT /models/:id DEBUG] Adding workflowId = ${newEffectiveWorkflowId} to model update SQL.`);
+    }
+
+
+    if (updateModelFields.length > 0) {
+      const updateModelSql = `UPDATE models SET ${updateModelFields.join(', ')} WHERE id = ?`;
+      updateModelValues.push(params.modelId);
+      console.log(`[API PUT /models/:id DEBUG] Updating model record with SQL: ${updateModelSql}`, updateModelValues);
+      await db.run(updateModelSql, ...updateModelValues);
+    } else {
+      console.log(`[API PUT /models/:id DEBUG] No core model fields (name, desc, ns, dpn, workflowId) changed on the model record itself.`);
+    }
+
+
+    // Properties update logic
+    if (updatedPropertiesInput) {
+      const oldPropertyIds = new Set((await db.all('SELECT id FROM properties WHERE model_id = ?', params.modelId)).map(p => p.id));
+      const oldPropertyNames = new Set((await db.all('SELECT name FROM properties WHERE model_id = ?', params.modelId)).map(p => p.name));
+      const newPropertiesWithDefaults: Property[] = [];
+
+      await db.run('DELETE FROM properties WHERE model_id = ?', params.modelId);
+      for (const prop of updatedPropertiesInput) {
+        const propertyId = prop.id || crypto.randomUUID();
+        await db.run(
+          'INSERT INTO properties (id, model_id, name, type, relatedModelId, required, relationshipType, unit, precision, autoSetOnCreate, autoSetOnUpdate, isUnique, orderIndex, defaultValue) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          propertyId, params.modelId, prop.name, prop.type, prop.relatedModelId,
+          prop.required ? 1 : 0, prop.relationshipType, prop.unit, prop.precision,
+          prop.autoSetOnCreate ? 1 : 0, prop.autoSetOnUpdate ? 1 : 0,
+          prop.isUnique ? 1 : 0, prop.orderIndex, prop.defaultValue ?? null
+        );
+        if ((!oldPropertyIds.has(propertyId) || !oldPropertyNames.has(prop.name)) && prop.defaultValue !== undefined && prop.defaultValue !== null) {
+          newPropertiesWithDefaults.push(prop as Property);
+        }
+      }
+
+      if (newPropertiesWithDefaults.length > 0) {
+        const existingDataObjects = await db.all('SELECT id, data FROM data_objects WHERE model_id = ?', params.modelId);
+        for (const propWithDefault of newPropertiesWithDefaults) {
+          const parsedDefaultValue = parseDefaultValueForStorage(propWithDefault.defaultValue, propWithDefault.type, propWithDefault.relationshipType);
+          if (parsedDefaultValue !== undefined) {
+            for (const dataObj of existingDataObjects) {
+              let currentData = JSON.parse(dataObj.data);
+              if (!Object.prototype.hasOwnProperty.call(currentData, propWithDefault.name)) {
+                currentData[propWithDefault.name] = parsedDefaultValue;
+                await db.run('UPDATE data_objects SET data = ? WHERE id = ?', JSON.stringify(currentData), dataObj.id);
+              }
             }
           }
         }
       }
+      console.log(`[API PUT /models/:id DEBUG] Processed properties update.`);
+    } else {
+      console.log(`[API PUT /models/:id DEBUG] No properties were included in the update payload. Properties not changed.`);
     }
 
-    // Logic for updating currentStateId on objects IF the model's workflowId has changed.
-    const oldWorkflowIdOnModel = existingModel.workflowId || null;
-    const newWorkflowIdOnModel = finalWorkflowIdToSaveOnModel || null;
 
-    console.log(`[API PUT /models/:id DEBUG] Workflow check for object states - Old WF ID on Model: ${oldWorkflowIdOnModel}, New WF ID on Model: ${newWorkflowIdOnModel}`);
+    // Logic for updating currentStateId on ALL objects IF the model's workflowId assignment ACTUALLY CHANGED.
+    if (workflowAssignmentActuallyChanged) {
+      console.log(`[API PUT /models/:id DEBUG] Model's effective workflowId HAS CHANGED from '${oldEffectiveWorkflowId}' to '${newEffectiveWorkflowId}'. Updating object states.`);
 
-    if (newWorkflowIdOnModel !== oldWorkflowIdOnModel) {
-      console.log(`[API PUT /models/:id DEBUG] Model's workflowId HAS CHANGED from '${oldWorkflowIdOnModel}' to '${newWorkflowIdOnModel}'.`);
-
-      if (newWorkflowIdOnModel) {
-        // A workflow is newly assigned or changed.
-        // Reset ALL objects of this model to the new workflow's initial state.
-        console.log(`[API PUT /models/:id DEBUG] Workflow set to ${newWorkflowIdOnModel}. Attempting to set initial state for ALL objects of model ${params.modelId}.`);
-        const workflowForUpdate: WorkflowWithDetails | undefined = await db.get('SELECT * FROM workflows WHERE id = ?', newWorkflowIdOnModel);
-
+      if (newEffectiveWorkflowId) { // A workflow is newly assigned or changed to a different one.
+        const workflowForUpdate: WorkflowWithDetails | undefined = await db.get('SELECT * FROM workflows WHERE id = ?', newEffectiveWorkflowId);
         if (workflowForUpdate) {
-          const statesForUpdate: WorkflowState[] = await db.all('SELECT id, isInitial FROM workflow_states WHERE workflowId = ?', newWorkflowIdOnModel);
+          const statesForUpdate: WorkflowState[] = await db.all('SELECT id, isInitial FROM workflow_states WHERE workflowId = ?', newEffectiveWorkflowId);
           const initialStateForUpdate = statesForUpdate.find(s => s.isInitial === 1 || s.isInitial === true);
 
           if (initialStateForUpdate && initialStateForUpdate.id) {
-            console.log(`[API PUT /models/:id DEBUG] Found initial state ${initialStateForUpdate.id} for workflow ${newWorkflowIdOnModel}.`);
+            console.log(`[API PUT /models/:id DEBUG] New workflow ${newEffectiveWorkflowId} has initial state ${initialStateForUpdate.id}. Updating ALL objects of model ${params.modelId}.`);
             const backfillResult = await db.run(
-              "UPDATE data_objects SET currentStateId = ? WHERE model_id = ?", // Update ALL objects for this model
+              "UPDATE data_objects SET currentStateId = ? WHERE model_id = ?",
               initialStateForUpdate.id,
               params.modelId
             );
-            console.log(`[API PUT /models/:id DEBUG] RESET ALL currentStateIds to ${initialStateForUpdate.id} for ${backfillResult.changes} objects in model ${params.modelId}.`);
+            console.log(`[API PUT /models/:id DEBUG] Updated currentStateId for ${backfillResult.changes} objects to ${initialStateForUpdate.id}.`);
           } else {
-            console.warn(`[API PUT /models/:id DEBUG] No initial state found for new workflow ${newWorkflowIdOnModel}. Objects for model ${params.modelId} will NOT have their states reset by this operation. They might retain old state IDs or become NULL if no objects existed.`);
-            // If no initial state, objects will implicitly have currentStateId as NULL or their old value.
-            // As per new requirement, if workflow changes and new one has no initial state, what to do?
-            // For now, they won't be changed. If the requirement is to clear them:
-            // const clearStateResult = await db.run("UPDATE data_objects SET currentStateId = NULL WHERE model_id = ?", params.modelId);
-            // console.log(`[API PUT /models/:id DEBUG] Cleared currentStateId for ${clearStateResult.changes} objects in model ${params.modelId} as new workflow has no initial state.`);
+            console.warn(`[API PUT /models/:id DEBUG] New workflow ${newEffectiveWorkflowId} has NO initial state. Setting currentStateId to NULL for ALL objects of model ${params.modelId}.`);
+            const clearStateResult = await db.run("UPDATE data_objects SET currentStateId = NULL WHERE model_id = ?", params.modelId);
+            console.log(`[API PUT /models/:id DEBUG] Set currentStateId to NULL for ${clearStateResult.changes} objects as new workflow has no initial state.`);
           }
         } else {
-          console.warn(`[API PUT /models/:id DEBUG] New workflow ${newWorkflowIdOnModel} not found in DB. Object states for model ${params.modelId} will not be changed.`);
+          console.warn(`[API PUT /models/:id DEBUG] New workflow ID ${newEffectiveWorkflowId} not found in DB. Setting currentStateId to NULL for ALL objects of model ${params.modelId} as a precaution.`);
+          const clearStateResult = await db.run("UPDATE data_objects SET currentStateId = NULL WHERE model_id = ?", params.modelId);
+          console.log(`[API PUT /models/:id DEBUG] Set currentStateId to NULL for ${clearStateResult.changes} objects due to missing workflow record.`);
         }
-      } else {
-        // Workflow was removed (newWorkflowIdOnModel is null).
-        // Per current understanding, object states should remain untouched (data preserved, may show as N/A).
-        console.log(`[API PUT /models/:id DEBUG] Workflow was removed from model ${params.modelId}. Existing object states are preserved.`);
+      } else { // Workflow was removed (newEffectiveWorkflowId is null).
+        console.log(`[API PUT /models/:id DEBUG] Workflow was removed from model ${params.modelId}. Setting currentStateId to NULL for ALL objects.`);
+        const clearStateResult = await db.run("UPDATE data_objects SET currentStateId = NULL WHERE model_id = ?", params.modelId);
+        console.log(`[API PUT /models/:id DEBUG] Set currentStateId to NULL for ${clearStateResult.changes} objects.`);
       }
     } else {
-      console.log(`[API PUT /models/:id DEBUG] Model's workflowId DID NOT CHANGE. No mass update of object states performed.`);
+      console.log(`[API PUT /models/:id DEBUG] Model's effective workflowId DID NOT CHANGE. No mass update of object states performed.`);
     }
 
     await db.run('COMMIT');
 
+    // Fetch refreshed model and return
     const refreshedModelRow = await db.get('SELECT * FROM models WHERE id = ?', params.modelId);
-    const refreshedProperties = await db.all('SELECT * FROM properties WHERE model_id = ? ORDER BY orderIndex ASC', params.modelId);
+    const refreshedPropertiesFromDb = await db.all('SELECT * FROM properties WHERE model_id = ? ORDER BY orderIndex ASC', params.modelId);
 
     let refreshedParsedDpn: string[] = [];
     if (refreshedModelRow.displayPropertyNames && typeof refreshedModelRow.displayPropertyNames === 'string') {
@@ -293,25 +324,25 @@ export async function PUT(request: Request, { params }: Params) {
             console.warn(`API (PUT /models/[modelId]): Invalid JSON for displayPropertyNames for model ${refreshedModelRow.id} after update: ${refreshedModelRow.displayPropertyNames}. Error: ${e.message}`);
         }
     }
-
+    
     const returnedModel: Model = {
       id: refreshedModelRow.id,
       name: refreshedModelRow.name,
       description: refreshedModelRow.description,
       namespace: refreshedModelRow.namespace || 'Default',
       displayPropertyNames: refreshedParsedDpn,
-      properties: refreshedProperties.map(p => ({
-        ...p,
+      properties: refreshedPropertiesFromDb.map(p => ({
+        ...(p as any), 
         required: p.required === 1,
         autoSetOnCreate: p.autoSetOnCreate === 1,
         autoSetOnUpdate: p.autoSetOnUpdate === 1,
         isUnique: p.isUnique === 1,
-        defaultValue: p.defaultValue,
       }) as Property),
       workflowId: refreshedModelRow.workflowId === undefined ? null : refreshedModelRow.workflowId,
     };
     console.log("[API PUT /models/:id DEBUG] Returning updatedModel:", JSON.stringify(returnedModel, null, 2));
     return NextResponse.json(returnedModel);
+
   } catch (error: any) {
     await db.run('ROLLBACK');
     const errorMessage = error.message || `An unknown server error occurred while updating model ${params.modelId}.`;
@@ -320,7 +351,7 @@ export async function PUT(request: Request, { params }: Params) {
     if (error.message && error.message.includes('UNIQUE constraint failed: models.name')) {
       return NextResponse.json({ error: 'A model with this name already exists.', details: errorMessage }, { status: 409 });
     }
-    return NextResponse.json({ error: 'Failed to update model', details: errorMessage }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to update model', details: errorMessage, stack: error.stack }, { status: 500 });
   }
 }
 
@@ -331,13 +362,14 @@ export async function DELETE(request: Request, { params }: Params) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
   const db = await getDb();
+  await db.run('BEGIN TRANSACTION');
   try {
     const modelExists = await db.get('SELECT id FROM models WHERE id = ?', params.modelId);
     if (!modelExists) {
+      await db.run('ROLLBACK');
       return NextResponse.json({ error: 'Model not found' }, { status: 404 });
     }
 
-    await db.run('BEGIN TRANSACTION');
     await db.run('DELETE FROM models WHERE id = ?', params.modelId); // Properties and data_objects are deleted via CASCADE
     await db.run('COMMIT');
 
