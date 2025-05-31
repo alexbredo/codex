@@ -7,7 +7,8 @@ import type { DataObject } from '@/lib/types';
 export async function GET() {
   try {
     const db = await getDb();
-    const rows = await db.all('SELECT id, model_id, data FROM data_objects');
+    // Include currentStateId in the SELECT statement
+    const rows = await db.all('SELECT id, model_id, data, currentStateId FROM data_objects');
     
     const allObjects: Record<string, DataObject[]> = {};
 
@@ -18,6 +19,7 @@ export async function GET() {
       const objectData = JSON.parse(row.data);
       allObjects[row.model_id].push({
         id: row.id,
+        currentStateId: row.currentStateId, // Add currentStateId here
         ...objectData,
       });
     }
@@ -28,3 +30,4 @@ export async function GET() {
     return NextResponse.json({ error: 'Failed to fetch all objects' }, { status: 500 });
   }
 }
+

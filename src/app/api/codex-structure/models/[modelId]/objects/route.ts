@@ -12,7 +12,6 @@ interface Params {
 export async function GET(request: Request, { params }: Params) {
   const currentUser = await getCurrentUserFromCookie();
   if (!currentUser || !['user', 'administrator'].includes(currentUser.role)) {
-    // Allow 'user' and 'administrator' to view objects
     return NextResponse.json({ error: 'Unauthorized to view objects' }, { status: 403 });
   }
   try {
@@ -22,10 +21,11 @@ export async function GET(request: Request, { params }: Params) {
       return NextResponse.json({ error: 'Model not found' }, { status: 404 });
     }
 
+    // Include currentStateId in the SELECT statement
     const rows = await db.all('SELECT id, data, currentStateId FROM data_objects WHERE model_id = ?', params.modelId);
     const objects: DataObject[] = rows.map(row => ({
       id: row.id,
-      currentStateId: row.currentStateId,
+      currentStateId: row.currentStateId, // Add currentStateId here
       ...JSON.parse(row.data),
     }));
     return NextResponse.json(objects);
@@ -79,7 +79,7 @@ export async function POST(request: Request, { params }: Params) {
             const statesFromDb: WorkflowStateWithSuccessors[] = await db.all(
                 'SELECT * FROM workflow_states WHERE workflowId = ?', workflow.id
             );
-            const initialState = statesFromDb.find(s => s.isInitial);
+            const initialState = statesFromDb.find(s => s.isInitial === 1 || s.isInitial === true); // Ensure boolean check for SQLite
             if (initialState) {
                 finalCurrentStateId = initialState.id;
             } else {
@@ -110,3 +110,4 @@ export async function POST(request: Request, { params }: Params) {
     return NextResponse.json({ error: errorMessage, details: error.message }, { status: 500 });
   }
 }
+
