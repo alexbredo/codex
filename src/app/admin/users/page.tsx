@@ -25,11 +25,9 @@ function UserAdminPageInternal() {
   const { fetchData, isReady: dataContextIsReady, formatApiError } = useData();
 
   useEffect(() => {
-    // Fetch data when component mounts and data context is ready
-    if (dataContextIsReady) {
-      fetchData('Navigated to User Admin');
-    }
-  }, [fetchData, dataContextIsReady]);
+    // Fetch general data when component mounts
+    fetchData('Navigated to User Admin');
+  }, [fetchData]);
 
 
   const fetchUsersApi = useCallback(async () => {
