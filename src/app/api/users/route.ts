@@ -2,7 +2,16 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getCurrentUserFromCookie } from '@/lib/auth';
+import { z } from 'zod';
 
+// Schema for creating a new user by an admin
+const createUserSchema = z.object({
+  username: z.string().min(3, 'Username must be at least 3 characters').max(50),
+  password: z.string().min(6, 'Password must be at least 6 characters').max(100),
+  role: z.enum(['user', 'administrator']),
+});
+
+// GET all users (existing functionality)
 export async function GET(request: Request) {
   const currentUser = await getCurrentUserFromCookie();
   if (!currentUser || currentUser.role !== 'administrator') {
@@ -16,5 +25,47 @@ export async function GET(request: Request) {
   } catch (error: any) {
     console.error('API Error - Failed to fetch users:', error);
     return NextResponse.json({ error: 'Failed to fetch users', details: error.message }, { status: 500 });
+  }
+}
+
+// POST (create) a new user (Admin action)
+export async function POST(request: Request) {
+  const adminUser = await getCurrentUserFromCookie();
+  if (!adminUser || adminUser.role !== 'administrator') {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+  }
+
+  try {
+    const body = await request.json();
+    const validation = createUserSchema.safeParse(body);
+
+    if (!validation.success) {
+      return NextResponse.json({ error: 'Invalid input', details: validation.error.flatten().fieldErrors }, { status: 400 });
+    }
+
+    const { username, password, role } = validation.data;
+    const db = await getDb();
+
+    const existingUser = await db.get('SELECT id FROM users WHERE username = ?', username);
+    if (existingUser) {
+      return NextResponse.json({ error: 'Username already taken' }, { status: 409 });
+    }
+
+    const userId = crypto.randomUUID();
+    // WARNING: Storing plaintext password. Highly insecure. For demo only.
+    await db.run(
+      'INSERT INTO users (id, username, password, role) VALUES (?, ?, ?, ?)',
+      userId,
+      username,
+      password, // Plaintext password
+      role
+    );
+
+    const createdUser = await db.get('SELECT id, username, role FROM users WHERE id = ?', userId);
+    return NextResponse.json(createdUser, { status: 201 });
+
+  } catch (error: any) {
+    console.error('API Error - Failed to create user:', error);
+    return NextResponse.json({ error: 'Failed to create user', details: error.message }, { status: 500 });
   }
 }
