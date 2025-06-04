@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useEffect } from 'react'; // Added useEffect
+import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
@@ -17,7 +17,7 @@ import type { Property } from '@/lib/types';
 
 export default function CreateModelPage() {
   const router = useRouter();
-  const { addModel, getModelByName, isReady, pausePolling, resumePolling } = useData(); // Added pause/resume
+  const { addModel, getModelByName, isReady } = useData(); // Removed pause/resumePolling
   const { toast } = useToast();
 
   const form = useForm<ModelFormValues>({
@@ -45,13 +45,7 @@ export default function CreateModelPage() {
     },
   });
 
-  useEffect(() => {
-    pausePolling();
-    return () => {
-      resumePolling();
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Removed useEffect for pause/resumePolling
 
   const onSubmit = async (values: ModelFormValues) => {
     console.log("[CreateModelPage] onSubmit - received values from ModelForm:", JSON.stringify(values, null, 2));

@@ -19,7 +19,7 @@ export default function EditModelPage() {
   const router = useRouter();
   const params = useParams();
   const modelId = params.modelId as string;
-  const { getModelById, updateModel, getModelByName, isReady, pausePolling, resumePolling, fetchData } = useData();
+  const { getModelById, updateModel, getModelByName, isReady, fetchData } = useData(); // Removed pause/resumePolling
   const { toast } = useToast();
   const [currentModel, setCurrentModel] = useState<Model | null>(null);
   const [isLoadingModel, setIsLoadingModel] = useState(true);
@@ -29,13 +29,9 @@ export default function EditModelPage() {
   });
 
   useEffect(() => {
-    pausePolling();
     fetchData(`Navigated to Edit Model: ${modelId}`); 
-    return () => {
-      resumePolling();
-    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelId]); // Re-fetch if modelId changes, though usually not expected on this page
+  }, [modelId]); 
 
   useEffect(() => {
     if (isReady && modelId) {

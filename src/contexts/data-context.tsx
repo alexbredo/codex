@@ -5,8 +5,9 @@ import type { ReactNode } from 'react';
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import type { Model, DataObject, Property, ModelGroup, WorkflowWithDetails } from '@/lib/types';
 
-const POLLING_INTERVAL_MS = 30000; // 30 seconds
-const HIGHLIGHT_DURATION_MS = 3000; // 3 seconds
+// Polling is now disabled
+// const POLLING_INTERVAL_MS = 30000; 
+const HIGHLIGHT_DURATION_MS = 3000; 
 
 interface DataContextType {
   models: Model[];
@@ -43,8 +44,9 @@ interface DataContextType {
   isReady: boolean;
   fetchData: (triggeredBy?: string) => Promise<void>;
   formatApiError: (response: Response, defaultMessage: string) => Promise<string>;
-  pausePolling: () => void;
-  resumePolling: () => void;
+  // Polling functions are removed
+  // pausePolling: () => void;
+  // resumePolling: () => void;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -123,11 +125,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [isReady, setIsReady] = useState(false);
   const [lastChangedInfo, setLastChangedInfo] = useState<{ modelId: string, objectId: string, changeType: 'added' | 'updated' } | null>(null);
 
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const highlightTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const isPollingPausedRef = useRef(false);
-
-
+  
   const fetchWorkflows = useCallback(async (currentWorkflowsState: WorkflowWithDetails[]) => {
     try {
       const response = await fetch('/api/codex-structure/workflows');
@@ -135,11 +134,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const errorMessage = await formatApiError(response, 'Failed to fetch workflows');
         throw new Error(errorMessage);
       }
-      const workflowsData: WorkflowWithDetails[] = await response.json();
-      const clientWorkflows = workflowsData.map(wf => ({
+      const workflowsDataFromApi: WorkflowWithDetails[] = await response.json();
+      const clientWorkflows = workflowsDataFromApi.map(wf => ({
         ...wf,
         states: wf.states.map(s => {
           const successorStateIds = (s as any).successorStateIdsStr ? (s as any).successorStateIdsStr.split(',').filter(Boolean) : s.successorStateIds || [];
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
           const { successorStateIdsStr, ...restOfState } = s as any;
           return {...restOfState, isInitial: !!s.isInitial, successorStateIds };
         })
@@ -151,24 +151,27 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (currentSortedJson !== newSortedJson) {
         setWorkflows(clientWorkflows);
       } else {
-        setWorkflows(currentWorkflowsState); // Preserve reference if no change
+        setWorkflows(currentWorkflowsState); 
       }
     } catch (error: any) {
       console.error("Failed to load workflows from API:", error.message, error);
-      setWorkflows(currentWorkflowsState); // Preserve reference on error
+      setWorkflows(currentWorkflowsState); 
     }
   }, []);
 
   const fetchData = useCallback(async (triggeredBy?: string) => {
     console.log(`[DataContext] fetchData called. Trigger: ${triggeredBy || 'Unknown'}`);
-    setIsReady(false); 
     try {
+      setIsReady(false); 
       const groupsResponse = await fetch('/api/codex-structure/model-groups');
       if (!groupsResponse.ok) throw new Error(await formatApiError(groupsResponse, 'Failed to fetch model groups'));
       const groupsDataFromApi: ModelGroup[] = await groupsResponse.json();
+      
       setModelGroups(prevGroups => {
         const newGroups = groupsDataFromApi.sort((a, b) => a.name.localeCompare(b.name));
-        if (JSON.stringify(newGroups.map(g=>g.id)) !== JSON.stringify(prevGroups.map(g=>g.id).sort((a,b) => a.localeCompare(b))) || JSON.stringify(newGroups) !== JSON.stringify(prevGroups.sort((a,b) => a.name.localeCompare(b.name)))) {
+        const newGroupsString = JSON.stringify(newGroups);
+        const prevGroupsString = JSON.stringify(prevGroups.sort((a, b) => a.name.localeCompare(b.name)));
+        if (newGroupsString !== prevGroupsString) {
            return newGroups;
         }
         return prevGroups;
@@ -190,17 +193,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const allObjectsResponse = await fetch('/api/codex-structure/objects/all');
       if (!allObjectsResponse.ok) throw new Error(await formatApiError(allObjectsResponse, 'Failed to fetch all objects'));
       const newAllObjectsData: Record<string, DataObject[]> = await allObjectsResponse.json();
+      
       setObjects(prevAllObjects => {
         let hasChanged = false;
         const nextAllObjectsState = { ...prevAllObjects };
-
         const allModelIds = new Set([...Object.keys(prevAllObjects), ...Object.keys(newAllObjectsData)]);
 
         allModelIds.forEach(modelId => {
           const newObjectsForModel = newAllObjectsData[modelId] || [];
           const currentObjectsForModel = prevAllObjects[modelId] || [];
-
-          // Sort by ID before stringifying for consistent comparison
           const newObjectsJson = JSON.stringify(newObjectsForModel.slice().sort((a, b) => a.id.localeCompare(b.id)));
           const currentObjectsJson = JSON.stringify(currentObjectsForModel.slice().sort((a, b) => a.id.localeCompare(b.id)));
 
@@ -208,76 +209,35 @@ export function DataProvider({ children }: { children: ReactNode }) {
             nextAllObjectsState[modelId] = newObjectsForModel;
             hasChanged = true;
           } else if (prevAllObjects[modelId]) {
-             // If JSON is same, ensure we use the old reference if it exists to prevent re-render
             nextAllObjectsState[modelId] = prevAllObjects[modelId];
-          } else if (newObjectsForModel.length > 0) { // If new model ID with objects
+          } else if (newObjectsForModel.length > 0) { 
             nextAllObjectsState[modelId] = newObjectsForModel;
             hasChanged = true;
-          } else if (!newObjectsForModel.length && !currentObjectsForModel.length) {
-            // Both are empty, no change needed
           }
         });
         return hasChanged ? nextAllObjectsState : prevAllObjects;
       });
 
-      // Pass the current workflows state to fetchWorkflows for comparison
-      await fetchWorkflows(workflows); 
+      await fetchWorkflows(workflows);
     } catch (error: any) {
       console.error(`Failed to load data from API. Trigger: ${triggeredBy}. Error:`, error.message, error);
-      // Optionally, reset to empty on error, or keep stale data. Keeping stale for now.
-      // setModels([]); setObjects({}); setModelGroups([]); setWorkflows([]);
     } finally {
       setIsReady(true);
     }
-  }, [fetchWorkflows, workflows]); // Added workflows to dependency array of fetchData
-
-  const stopHttpPolling = useCallback(() => {
-    if (pollingIntervalRef.current) {
-      clearInterval(pollingIntervalRef.current);
-      pollingIntervalRef.current = null;
-      // console.log("[DataContext] HTTP polling stopped.");
-    }
-  }, []);
-
-  const startHttpPolling = useCallback(() => {
-    if (isPollingPausedRef.current) {
-      // console.log("[DataContext] Polling is paused, not starting interval.");
-      return;
-    }
-    stopHttpPolling(); 
-    // console.log("[DataContext] Setting up HTTP polling interval...");
-    pollingIntervalRef.current = setInterval(() => {
-      if (!isPollingPausedRef.current) { 
-        fetchData('Polling Interval');
-      } else {
-        // console.log("[DataContext] Polling interval fired, but polling is paused. Skipping fetch.");
-      }
-    }, POLLING_INTERVAL_MS);
-  }, [fetchData, stopHttpPolling]);
-
-  const pausePolling = useCallback(() => {
-    isPollingPausedRef.current = true;
-    stopHttpPolling();
-    console.log("[DataContext] Polling paused.");
-  }, [stopHttpPolling]);
-
-  const resumePolling = useCallback(() => {
-    isPollingPausedRef.current = false;
-    console.log("[DataContext] Polling resumed. Restarting interval.");
-    startHttpPolling(); 
-  }, [startHttpPolling]);
+  }, [fetchWorkflows, workflows]);
 
 
   useEffect(() => {
     fetchData('Initial Load');
-    startHttpPolling();
+    // HTTP Polling is now disabled
+    // startHttpPolling();
 
     return () => {
-      stopHttpPolling();
+      // stopHttpPolling(); // No longer needed
       if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Empty array: run once on mount. fetchData and startHttpPolling are memoized.
+  }, [fetchData]); // fetchData is memoized
 
 
   const addModel = useCallback(async (modelData: Omit<Model, 'id' | 'namespace' | 'workflowId'> & { namespace?: string, workflowId?: string | null }): Promise<Model> => {
@@ -480,7 +440,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     addModelGroup, updateModelGroup, deleteModelGroup, getModelGroupById, getModelGroupByName, getAllModelGroups,
     fetchWorkflows, addWorkflow, updateWorkflow, deleteWorkflow, getWorkflowById,
     isReady, fetchData, formatApiError,
-    pausePolling, resumePolling,
+    // pausePolling, resumePolling, // Removed from context
   };
 
   return <DataContext.Provider value={contextValue}>{children}</DataContext.Provider>;
@@ -491,4 +451,3 @@ export function useData(): DataContextType {
   if (context === undefined) throw new Error('useData must be used within a DataProvider');
   return context;
 }
-

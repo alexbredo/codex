@@ -21,7 +21,7 @@ export default function EditObjectPage() {
   const modelId = params.modelId as string;
   const objectId = params.objectId as string;
 
-  const { getModelById, updateObject, getWorkflowById, isReady: dataContextIsReady, formatApiError, pausePolling, resumePolling } = useData();
+  const { getModelById, updateObject, getWorkflowById, isReady: dataContextIsReady, formatApiError } = useData(); // Removed pause/resumePolling
   const { toast } = useToast();
 
   const [currentModel, setCurrentModel] = useState<Model | null>(null);
@@ -37,13 +37,7 @@ export default function EditObjectPage() {
     defaultValues: {},
   });
 
-  useEffect(() => {
-    pausePolling();
-    return () => {
-      resumePolling();
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Empty dependency array so it runs once on mount and cleanup on unmount
+  // Removed useEffect for pause/resumePolling
 
   useEffect(() => {
     const loadObjectForEditing = async () => {

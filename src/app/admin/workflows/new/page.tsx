@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useEffect } from 'react'; // Added useEffect
+import { useEffect } from 'react'; 
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
@@ -17,7 +17,7 @@ import { withAuth } from '@/contexts/auth-context';
 
 function CreateWorkflowPageInternal() {
   const router = useRouter();
-  const { addWorkflow, isReady: dataIsReady, fetchData, pausePolling, resumePolling } = useData(); // Added pause/resume
+  const { addWorkflow, isReady: dataIsReady, fetchData } = useData(); // Removed pause/resumePolling
   const { toast } = useToast();
 
   const form = useForm<WorkflowFormValues>({
@@ -29,14 +29,7 @@ function CreateWorkflowPageInternal() {
     },
   });
   
-  useEffect(() => {
-    pausePolling();
-    return () => {
-      resumePolling();
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
+  // Removed useEffect for pause/resumePolling
 
   const onSubmit = async (values: WorkflowFormValues) => {
     const payloadStates = values.states.map(s => ({

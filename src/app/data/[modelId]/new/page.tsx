@@ -62,7 +62,7 @@ export default function CreateObjectPage() {
   const router = useRouter();
   const params = useParams();
   const modelId = params.modelId as string;
-  const { getModelById, addObject, isReady, pausePolling, resumePolling } = useData(); // Added pause/resume
+  const { getModelById, addObject, isReady } = useData(); // Removed pause/resumePolling
   const { toast } = useToast();
   const [currentModel, setCurrentModel] = useState<Model | null>(null);
   const [isLoadingModel, setIsLoadingModel] = useState(true);
@@ -75,13 +75,7 @@ export default function CreateObjectPage() {
     defaultValues: {},
   });
 
-  useEffect(() => {
-    pausePolling();
-    return () => {
-      resumePolling();
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Removed useEffect for pause/resumePolling
 
   useEffect(() => {
     if (isReady && modelId) {

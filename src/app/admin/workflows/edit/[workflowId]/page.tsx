@@ -47,7 +47,7 @@ function EditWorkflowPageInternal() {
   const params = useParams();
   const workflowId = params.workflowId as string;
 
-  const { getWorkflowById, updateWorkflow, isReady: dataIsReady, fetchData, pausePolling, resumePolling } = useData();
+  const { getWorkflowById, updateWorkflow, isReady: dataIsReady, fetchData } = useData(); // Removed pause/resumePolling
   const { toast } = useToast();
 
   const [currentWorkflow, setCurrentWorkflow] = useState<WorkflowWithDetails | null>(null);
@@ -58,13 +58,7 @@ function EditWorkflowPageInternal() {
     defaultValues: mapWorkflowToFormValues(), 
   });
   
-  useEffect(() => {
-    pausePolling();
-    return () => {
-      resumePolling();
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Removed useEffect for pause/resumePolling
 
   useEffect(() => {
     if (dataIsReady && workflowId) {
