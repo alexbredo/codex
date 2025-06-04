@@ -1,6 +1,7 @@
 
 'use client';
 
+import { useEffect } from 'react'; // Added useEffect
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
@@ -16,7 +17,7 @@ import { withAuth } from '@/contexts/auth-context';
 
 function CreateWorkflowPageInternal() {
   const router = useRouter();
-  const { addWorkflow, isReady: dataIsReady, fetchData } = useData();
+  const { addWorkflow, isReady: dataIsReady, fetchData, pausePolling, resumePolling } = useData(); // Added pause/resume
   const { toast } = useToast();
 
   const form = useForm<WorkflowFormValues>({
@@ -27,6 +28,15 @@ function CreateWorkflowPageInternal() {
       states: [{ id: `temp-${crypto.randomUUID()}`, name: 'New', description: 'Initial state', isInitial: true, successorStateNames: [] }],
     },
   });
+  
+  useEffect(() => {
+    pausePolling();
+    return () => {
+      resumePolling();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
 
   const onSubmit = async (values: WorkflowFormValues) => {
     const payloadStates = values.states.map(s => ({
@@ -46,7 +56,7 @@ function CreateWorkflowPageInternal() {
     try {
       await addWorkflow(payload);
       toast({ title: "Workflow Created", description: `Workflow "${values.name}" has been created.` });
-      await fetchData(); // Re-fetch all data including workflows
+      await fetchData(); 
       router.push('/admin/workflows');
     } catch (error: any) {
       let errorMessage = "Failed to create workflow.";

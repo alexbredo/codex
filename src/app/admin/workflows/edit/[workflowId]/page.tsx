@@ -47,7 +47,7 @@ function EditWorkflowPageInternal() {
   const params = useParams();
   const workflowId = params.workflowId as string;
 
-  const { getWorkflowById, updateWorkflow, isReady: dataIsReady, fetchData } = useData();
+  const { getWorkflowById, updateWorkflow, isReady: dataIsReady, fetchData, pausePolling, resumePolling } = useData();
   const { toast } = useToast();
 
   const [currentWorkflow, setCurrentWorkflow] = useState<WorkflowWithDetails | null>(null);
@@ -57,6 +57,14 @@ function EditWorkflowPageInternal() {
     resolver: zodResolver(workflowFormSchema),
     defaultValues: mapWorkflowToFormValues(), 
   });
+  
+  useEffect(() => {
+    pausePolling();
+    return () => {
+      resumePolling();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (dataIsReady && workflowId) {
@@ -92,7 +100,7 @@ function EditWorkflowPageInternal() {
     try {
       await updateWorkflow(currentWorkflow.id, payload);
       toast({ title: "Workflow Updated", description: `Workflow "${values.name}" has been updated.` });
-      await fetchData(); // Re-fetch all data including workflows
+      await fetchData(); 
       router.push('/admin/workflows');
     } catch (error: any) {
       let errorMessage = "Failed to update workflow.";

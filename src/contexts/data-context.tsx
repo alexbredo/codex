@@ -43,6 +43,8 @@ interface DataContextType {
   isReady: boolean;
   fetchData: (triggeredBy?: string) => Promise<void>;
   formatApiError: (response: Response, defaultMessage: string) => Promise<string>;
+  pausePolling: () => void;
+  resumePolling: () => void;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -123,6 +125,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const highlightTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isPollingPausedRef = useRef(false);
+
 
   const fetchWorkflows = useCallback(async () => {
     try {
@@ -184,27 +188,44 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const startHttpPolling = useCallback(() => {
-    console.log("[DataContext] Setting up HTTP polling interval...");
-    if (pollingIntervalRef.current) { // Clear any existing interval
-      clearInterval(pollingIntervalRef.current);
+    if (isPollingPausedRef.current) {
+      console.log("[DataContext] Polling is paused, not starting interval.");
+      return;
     }
+    stopHttpPolling(); // Clear any existing interval before starting a new one
+    console.log("[DataContext] Setting up HTTP polling interval...");
     pollingIntervalRef.current = setInterval(() => {
-      fetchData('Polling Interval');
+      if (!isPollingPausedRef.current) { // Double check before fetching
+        fetchData('Polling Interval');
+      } else {
+        console.log("[DataContext] Polling interval fired, but polling is paused. Skipping fetch.");
+      }
     }, POLLING_INTERVAL_MS);
-  }, [fetchData]);
+  }, [fetchData, stopHttpPolling]);
+
+  const pausePolling = useCallback(() => {
+    isPollingPausedRef.current = true;
+    stopHttpPolling();
+    console.log("[DataContext] Polling paused.");
+  }, [stopHttpPolling]);
+
+  const resumePolling = useCallback(() => {
+    isPollingPausedRef.current = false;
+    console.log("[DataContext] Polling resumed. Restarting interval.");
+    startHttpPolling(); // Restart polling
+  }, [startHttpPolling]);
 
 
-  // Main effect for initial load and setting up polling
   useEffect(() => {
-    fetchData('Initial Load'); // Initial fetch
-    startHttpPolling();        // Sets up polling interval
+    fetchData('Initial Load');
+    startHttpPolling();
 
     return () => {
       stopHttpPolling();
       if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Runs only on mount and unmount
+  }, []);
 
 
   const addModel = useCallback(async (modelData: Omit<Model, 'id' | 'namespace' | 'workflowId'> & { namespace?: string, workflowId?: string | null }): Promise<Model> => {
@@ -307,7 +328,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setLastChangedInfo({ modelId, objectId: newObject.id, changeType: 'added' });
     if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
     highlightTimeoutRef.current = setTimeout(() => setLastChangedInfo(null), HIGHLIGHT_DURATION_MS);
-    // No full fetchData here, rely on polling or manual refresh if broader updates are needed
     return newObject;
   }, []);
 
@@ -331,7 +351,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setLastChangedInfo({ modelId, objectId, changeType: 'updated' });
     if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
     highlightTimeoutRef.current = setTimeout(() => setLastChangedInfo(null), HIGHLIGHT_DURATION_MS);
-    // No full fetchData here
     return updatedObjectFromApi;
   }, []);
 
@@ -339,7 +358,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const response = await fetch(`/api/codex-structure/models/${modelId}/objects/${objectId}`, { method: 'DELETE' });
     if (!response.ok) throw new Error(await formatApiError(response, `Failed to delete object ${objectId} from model ${modelId}`));
     setObjects((prev) => ({ ...prev, [modelId]: (prev[modelId] || []).filter((obj) => obj.id !== objectId) }));
-    // No full fetchData here
   }, []);
 
   const getObjectsByModelId = useCallback((modelId: string) => objects[modelId] || [], [objects]);
@@ -409,7 +427,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     addObject, updateObject, deleteObject, getObjectsByModelId, getAllObjects,
     addModelGroup, updateModelGroup, deleteModelGroup, getModelGroupById, getModelGroupByName, getAllModelGroups,
     fetchWorkflows, addWorkflow, updateWorkflow, deleteWorkflow, getWorkflowById,
-    isReady, fetchData, formatApiError
+    isReady, fetchData, formatApiError,
+    pausePolling, resumePolling,
   };
 
   return <DataContext.Provider value={contextValue}>{children}</DataContext.Provider>;

@@ -21,7 +21,7 @@ export default function EditObjectPage() {
   const modelId = params.modelId as string;
   const objectId = params.objectId as string;
 
-  const { getModelById, updateObject, getWorkflowById, isReady: dataContextIsReady, formatApiError } = useData();
+  const { getModelById, updateObject, getWorkflowById, isReady: dataContextIsReady, formatApiError, pausePolling, resumePolling } = useData();
   const { toast } = useToast();
 
   const [currentModel, setCurrentModel] = useState<Model | null>(null);
@@ -38,6 +38,14 @@ export default function EditObjectPage() {
   });
 
   useEffect(() => {
+    pausePolling();
+    return () => {
+      resumePolling();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty dependency array so it runs once on mount and cleanup on unmount
+
+  useEffect(() => {
     const loadObjectForEditing = async () => {
       if (!dataContextIsReady || !modelId || !objectId) {
         return;
@@ -51,8 +59,7 @@ export default function EditObjectPage() {
         setPageError(modelNotFoundError);
         toast({ variant: "destructive", title: "Error", description: modelNotFoundError });
         setIsLoadingPageData(false);
-        // Optionally redirect or show a more permanent error message
-        router.push('/models'); // Example redirect
+        router.push('/models'); 
         return;
       }
       setCurrentModel(foundModel);
@@ -72,7 +79,6 @@ export default function EditObjectPage() {
         const objectToEdit: DataObject = await response.json();
         setEditingObject(objectToEdit);
 
-        // Populate form with fresh data
         const formValues: Record<string, any> = {
           currentStateId: objectToEdit.currentStateId || null,
         };

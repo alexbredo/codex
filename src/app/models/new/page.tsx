@@ -1,6 +1,7 @@
 
 'use client';
 
+import { useEffect } from 'react'; // Added useEffect
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
@@ -16,7 +17,7 @@ import type { Property } from '@/lib/types';
 
 export default function CreateModelPage() {
   const router = useRouter();
-  const { addModel, getModelByName, isReady } = useData();
+  const { addModel, getModelByName, isReady, pausePolling, resumePolling } = useData(); // Added pause/resume
   const { toast } = useToast();
 
   const form = useForm<ModelFormValues>({
@@ -44,6 +45,14 @@ export default function CreateModelPage() {
     },
   });
 
+  useEffect(() => {
+    pausePolling();
+    return () => {
+      resumePolling();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const onSubmit = async (values: ModelFormValues) => {
     console.log("[CreateModelPage] onSubmit - received values from ModelForm:", JSON.stringify(values, null, 2));
     const existingByName = getModelByName(values.name);
@@ -57,7 +66,7 @@ export default function CreateModelPage() {
       description: values.description,
       namespace: (values.namespace && values.namespace.trim() !== '') ? values.namespace.trim() : 'Default',
       displayPropertyNames: values.displayPropertyNames, 
-      workflowId: values.workflowId, // This should be string ID or null from ModelForm
+      workflowId: values.workflowId, 
       properties: values.properties.map((p, index) => ({
         id: p.id || crypto.randomUUID(),
         name: p.name,

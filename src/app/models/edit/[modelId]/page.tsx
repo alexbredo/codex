@@ -19,7 +19,7 @@ export default function EditModelPage() {
   const router = useRouter();
   const params = useParams();
   const modelId = params.modelId as string;
-  const { getModelById, updateModel, getModelByName, isReady } = useData();
+  const { getModelById, updateModel, getModelByName, isReady, pausePolling, resumePolling, fetchData } = useData();
   const { toast } = useToast();
   const [currentModel, setCurrentModel] = useState<Model | null>(null);
   const [isLoadingModel, setIsLoadingModel] = useState(true);
@@ -27,6 +27,15 @@ export default function EditModelPage() {
   const form = useForm<ModelFormValues>({
     resolver: zodResolver(modelFormSchema),
   });
+
+  useEffect(() => {
+    pausePolling();
+    fetchData(`Navigated to Edit Model: ${modelId}`); 
+    return () => {
+      resumePolling();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelId]); // Re-fetch if modelId changes, though usually not expected on this page
 
   useEffect(() => {
     if (isReady && modelId) {
@@ -80,7 +89,7 @@ export default function EditModelPage() {
       description: values.description,
       namespace: (values.namespace && values.namespace.trim() !== '') ? values.namespace.trim() : 'Default',
       displayPropertyNames: values.displayPropertyNames, 
-      workflowId: values.workflowId, // This should be string ID or null from ModelForm
+      workflowId: values.workflowId,
       properties: values.properties.map((p, index) => ({
         id: p.id || crypto.randomUUID(),
         name: p.name,

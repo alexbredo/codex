@@ -41,19 +41,17 @@ function parseDefaultValue(value: string | undefined, type: Property['type'], re
     case 'relationship':
       if (relationshipType === 'many') {
         try {
-          // Try parsing as JSON array first
           const parsedArray = JSON.parse(value);
           if (Array.isArray(parsedArray) && parsedArray.every(item => typeof item === 'string')) {
             return parsedArray;
           }
         } catch (e) {
-          // If JSON.parse fails, try splitting by comma
           const ids = value.split(',').map(id => id.trim()).filter(id => id !== '');
           if (ids.length > 0) return ids;
         }
-        return []; // Default to empty array if parsing fails or empty
+        return []; 
       }
-      return value.trim(); // Single ID
+      return value.trim(); 
     default:
       return undefined;
   }
@@ -64,11 +62,11 @@ export default function CreateObjectPage() {
   const router = useRouter();
   const params = useParams();
   const modelId = params.modelId as string;
-  const { getModelById, addObject, isReady } = useData();
+  const { getModelById, addObject, isReady, pausePolling, resumePolling } = useData(); // Added pause/resume
   const { toast } = useToast();
   const [currentModel, setCurrentModel] = useState<Model | null>(null);
   const [isLoadingModel, setIsLoadingModel] = useState(true);
-  const [formObjectId, setFormObjectId] = useState<string | null>(null); // For image uploads
+  const [formObjectId, setFormObjectId] = useState<string | null>(null); 
 
   const dynamicSchema = useMemo(() => currentModel ? createObjectFormSchema(currentModel) : z.object({}), [currentModel]);
 
@@ -76,6 +74,14 @@ export default function CreateObjectPage() {
     resolver: zodResolver(dynamicSchema),
     defaultValues: {},
   });
+
+  useEffect(() => {
+    pausePolling();
+    return () => {
+      resumePolling();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (isReady && modelId) {
@@ -96,14 +102,14 @@ export default function CreateObjectPage() {
              valueToSet = parseDefaultValue(prop.defaultValue, prop.type, prop.relationshipType);
           }
           
-          if (valueToSet === undefined) { // If still undefined, apply generic defaults
+          if (valueToSet === undefined) { 
              switch (prop.type) {
                 case 'boolean': valueToSet = false; break;
                 case 'date': valueToSet = null; break;
                 case 'relationship': valueToSet = prop.relationshipType === 'many' ? [] : ''; break;
                 case 'rating': valueToSet = 0; break;
                 case 'image': valueToSet = null; break;
-                default: valueToSet = undefined; // Let Zod handle or remain undefined
+                default: valueToSet = undefined; 
             }
           }
           defaultValues[prop.name] = valueToSet;
