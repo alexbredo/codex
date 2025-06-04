@@ -292,7 +292,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     };
 
     wsRef.current.onerror = (error) => {
-      console.error("[DataContext] WebSocket error:", error);
+      console.error(`[DataContext] WebSocket onerror event. Type: ${(error as Event).type}. See onclose handler for reconnection logic.`);
       // onclose will typically follow an error, so reconnection logic is primarily there.
     };
   }, [fetchData, startHttpPolling, stopHttpPolling]);
@@ -310,7 +310,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       stopHttpPolling(); // Ensure polling is stopped on unmount
       if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
     };
-  }, [connectWebSocket]); // Removed fetchData from here based on user feedback
+  }, [connectWebSocket]);
 
 
   const addModel = useCallback(async (modelData: Omit<Model, 'id' | 'namespace' | 'workflowId'> & { namespace?: string, workflowId?: string | null }): Promise<Model> => {
