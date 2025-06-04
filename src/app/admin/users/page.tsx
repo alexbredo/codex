@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, Users as UsersIcon, ShieldAlert } from 'lucide-react'; // Renamed Users to UsersIcon to avoid conflict
+import { Loader2, Users as UsersIcon, ShieldAlert } from 'lucide-react';
+import { useData } from '@/contexts/data-context';
 
 interface User {
   id: string;
@@ -21,15 +22,24 @@ function UserAdminPageInternal() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  const { fetchData, isReady: dataContextIsReady, formatApiError } = useData();
 
-  const fetchUsers = useCallback(async () => {
+  useEffect(() => {
+    // Fetch data when component mounts and data context is ready
+    if (dataContextIsReady) {
+      fetchData('Navigated to User Admin');
+    }
+  }, [fetchData, dataContextIsReady]);
+
+
+  const fetchUsersApi = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
       const response = await fetch('/api/users');
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to fetch users');
+        const errorMsg = await formatApiError(response, 'Failed to fetch users');
+        throw new Error(errorMsg);
       }
       const data: User[] = await response.json();
       setUsers(data);
@@ -39,11 +49,14 @@ function UserAdminPageInternal() {
     } finally {
       setIsLoading(false);
     }
-  }, [toast]);
+  }, [toast, formatApiError]);
 
   useEffect(() => {
-    fetchUsers();
-  }, [fetchUsers]);
+    // Also fetch users specifically for this page if data context is ready
+    if (dataContextIsReady) {
+      fetchUsersApi();
+    }
+  }, [fetchUsersApi, dataContextIsReady]);
 
   const handleRoleChange = async (userId: string, newRole: 'user' | 'administrator') => {
     try {
@@ -53,8 +66,8 @@ function UserAdminPageInternal() {
         body: JSON.stringify({ role: newRole }),
       });
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update user role');
+        const errorMsg = await formatApiError(response, 'Failed to update user role');
+        throw new Error(errorMsg);
       }
       const updatedUser: User = await response.json();
       setUsers(prevUsers => prevUsers.map(u => (u.id === updatedUser.id ? updatedUser : u)));
@@ -64,7 +77,7 @@ function UserAdminPageInternal() {
     }
   };
 
-  if (isLoading) {
+  if (!dataContextIsReady || isLoading) {
     return (
       <div className="flex flex-col justify-center items-center h-screen">
         <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
@@ -79,7 +92,7 @@ function UserAdminPageInternal() {
          <ShieldAlert className="h-12 w-12 text-destructive mx-auto mb-4" />
         <h2 className="text-2xl font-semibold text-destructive mb-2">Error Loading Users</h2>
         <p className="text-muted-foreground mb-4">{error}</p>
-        <Button onClick={fetchUsers}>Try Again</Button>
+        <Button onClick={fetchUsersApi}>Try Again</Button>
       </div>
     );
   }

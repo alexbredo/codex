@@ -27,7 +27,7 @@ import {
 } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { useData } from '@/contexts/data-context';
-import { useAuth, withAuth } from '@/contexts/auth-context'; // Import withAuth
+import { withAuth } from '@/contexts/auth-context';
 import type { ModelGroup, ModelGroupFormValues } from '@/lib/types';
 import { modelGroupFormSchema } from '@/components/model-groups/model-group-form-schema';
 import ModelGroupForm from '@/components/model-groups/model-group-form';
@@ -39,8 +39,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  // DialogTrigger, // No longer needed as button opens dialog programmatically
-  // DialogClose // No longer needed if form handles close
 } from "@/components/ui/dialog";
 
 
@@ -58,6 +56,10 @@ function ModelGroupsPageInternal() {
   });
 
   useEffect(() => {
+    fetchData('Navigated to Group Admin');
+  }, [fetchData]);
+
+  useEffect(() => {
     if (editingGroup) {
       form.reset({
         name: editingGroup.name,
@@ -66,7 +68,7 @@ function ModelGroupsPageInternal() {
     } else {
       form.reset({ name: '', description: '' });
     }
-  }, [editingGroup, form, isFormOpen]); // Added isFormOpen to reset on dialog close too
+  }, [editingGroup, form, isFormOpen]);
 
   const filteredGroups = useMemo(() => {
     return modelGroups.filter(group =>
@@ -77,7 +79,6 @@ function ModelGroupsPageInternal() {
 
   const handleCreateNew = () => {
     setEditingGroup(null);
-    // form.reset is handled by useEffect based on editingGroup
     setIsFormOpen(true);
   };
 
@@ -111,7 +112,7 @@ function ModelGroupsPageInternal() {
         toast({ title: "Model Group Created", description: `Group "${values.name}" has been created.` });
       }
       setIsFormOpen(false);
-      setEditingGroup(null); // Ensure editingGroup is cleared
+      setEditingGroup(null); 
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error Saving Group", description: error.message });
     }
@@ -152,7 +153,7 @@ function ModelGroupsPageInternal() {
 
       <Dialog open={isFormOpen} onOpenChange={(open) => {
           setIsFormOpen(open);
-          if (!open) setEditingGroup(null); // Clear editing state when dialog closes
+          if (!open) setEditingGroup(null); 
       }}>
         <DialogContent className="sm:max-w-[525px]">
           <DialogHeader>

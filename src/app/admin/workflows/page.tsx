@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { useRouter } from 'next/navigation'; // Changed from useForm
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import {
@@ -20,7 +20,6 @@ import { PlusCircle, Edit, Trash2, Search, Workflow as WorkflowIconLucide, Loade
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 
-// mapWorkflowToFormValues is no longer needed here, will be in edit page.
 
 function WorkflowsAdminPageInternal() {
   const { workflows, deleteWorkflow, isReady: dataIsReady, fetchData } = useData();
@@ -28,6 +27,10 @@ function WorkflowsAdminPageInternal() {
   const router = useRouter();
   
   const [searchTerm, setSearchTerm] = useState('');
+
+  useEffect(() => {
+    fetchData('Navigated to Workflow Admin');
+  }, [fetchData]);
 
   const filteredWorkflows = useMemo(() => {
     return workflows.filter(wf =>
