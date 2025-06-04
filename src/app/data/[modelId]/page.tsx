@@ -47,7 +47,7 @@ import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useData } from '@/contexts/data-context';
 import type { Model, DataObject, Property, WorkflowWithDetails, WorkflowStateWithSuccessors } from '@/lib/types';
-import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye, LayoutGrid, List as ListIcon, ExternalLink, Image as ImageIcon, CheckCircle2, FilterX, X as XIcon, Settings as SettingsIcon, Edit3, Workflow as WorkflowIconLucide, CalendarIcon as CalendarIconLucideLucide, Star } from 'lucide-react'; // Renamed CalendarIcon
+import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye, LayoutGrid, List as ListIcon, ExternalLink, Image as ImageIcon, CheckCircle2, FilterX, X as XIcon, Settings as SettingsIcon, Edit3, Workflow as WorkflowIconLucide, CalendarIcon as CalendarIconLucideLucide, Star, RefreshCw, Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -87,7 +87,7 @@ const INTERNAL_CLEAR_RELATIONSHIP_VALUE = "__CLEAR_RELATIONSHIP__";
 export default function DataObjectsPage() {
   const router = useRouter();
   const params = useParams();
-  const modelId = params.modelId as string;
+  const modelIdFromUrl = params.modelId as string; // Use a different name to avoid conflict with state
 
   const dataContext = useData();
   const {
@@ -97,8 +97,9 @@ export default function DataObjectsPage() {
     deleteObject,
     getAllObjects,
     getWorkflowById,
-    isReady,
-    fetchData, 
+    isReady: dataContextIsReady,
+    fetchData,
+    lastChangedInfo, // For highlighting
   } = dataContext;
   const { toast } = useToast();
 
@@ -110,13 +111,13 @@ export default function DataObjectsPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [currentWorkflow, setCurrentWorkflow] = useState<WorkflowWithDetails | null>(null);
   const [columnFilters, setColumnFilters] = useState<Record<string, ColumnFilterValue | null>>({});
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Batch Update State
   const [selectedObjectIds, setSelectedObjectIds] = useState<Set<string>>(new Set());
   const [isBatchUpdateDialogOpen, setIsBatchUpdateDialogOpen] = useState(false);
   const [batchUpdateProperty, setBatchUpdateProperty] = useState<string>('');
   const [batchUpdateValue, setBatchUpdateValue] = useState<any>('');
-  const [isBatchUpdating, setIsBatchUpdating] = useState(false);
   const [batchUpdateDate, setBatchUpdateDate] = useState<Date | undefined>(undefined);
 
 
@@ -124,22 +125,22 @@ export default function DataObjectsPage() {
     if (!currentModel) return [];
     const props = currentModel.properties.filter(
       (p) => (p.type === 'boolean' || p.type === 'string' || p.type === 'number' || p.type === 'date' || p.type === 'relationship' || p.type === 'rating') &&
-             !p.name.toLowerCase().includes('markdown') && 
+             !p.name.toLowerCase().includes('markdown') &&
              !p.name.toLowerCase().includes('image')
     );
-    const updatable = props.map(p => ({ 
-        name: p.name, 
-        type: p.type, 
-        id: p.id, 
+    const updatable = props.map(p => ({
+        name: p.name,
+        type: p.type,
+        id: p.id,
         label: `${p.name} (${
-            p.type === 'relationship' ? `Relationship to ${getModelById(p.relatedModelId!)?.name || 'Unknown'}` 
+            p.type === 'relationship' ? `Relationship to ${getModelById(p.relatedModelId!)?.name || 'Unknown'}`
             : p.type === 'rating' ? 'Rating (0-5)'
             : p.type
         })`,
         relationshipType: p.relationshipType,
         relatedModelId: p.relatedModelId
     }));
-    
+
     if (currentWorkflow && currentWorkflow.states.length > 0) {
         updatable.unshift({ name: INTERNAL_WORKFLOW_STATE_UPDATE_KEY, type: 'workflow_state', id: INTERNAL_WORKFLOW_STATE_UPDATE_KEY, label: 'Workflow State', relationshipType: undefined, relatedModelId: undefined });
     }
@@ -191,11 +192,10 @@ export default function DataObjectsPage() {
     return {};
   }, [relatedModelForBatchUpdate, getObjectsByModelId, getAllObjects, allModels]);
 
-
-  const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects, isReady]);
+  const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects, dataContextIsReady]);
 
   const virtualIncomingRelationColumns = useMemo(() => {
-    if (!currentModel || !isReady) return [];
+    if (!currentModel || !dataContextIsReady) return [];
     const columns: IncomingRelationColumn[] = [];
     allModels.forEach(otherModel => {
       if (otherModel.id === currentModel.id) return;
@@ -211,11 +211,12 @@ export default function DataObjectsPage() {
       });
     });
     return columns;
-  }, [currentModel, allModels, isReady]);
+  }, [currentModel, allModels, dataContextIsReady]);
 
+  // Effect to load model details and objects when modelIdFromUrl changes or context is ready
   useEffect(() => {
-    if (isReady && modelId) {
-      const foundModel = getModelById(modelId);
+    if (dataContextIsReady && modelIdFromUrl) {
+      const foundModel = getModelById(modelIdFromUrl);
       if (foundModel) {
         setCurrentModel(foundModel);
         if (foundModel.workflowId) {
@@ -223,43 +224,66 @@ export default function DataObjectsPage() {
         } else {
           setCurrentWorkflow(null);
         }
-        const modelObjects = getObjectsByModelId(modelId);
-        setObjects(modelObjects);
+        // Local object state is now primarily updated by the effect below that watches dataContext.objects
 
-        const savedViewMode = sessionStorage.getItem(`codexStructure-viewMode-${modelId}`) as ViewMode | null;
+        const savedViewMode = sessionStorage.getItem(`codexStructure-viewMode-${modelIdFromUrl}`) as ViewMode | null;
         if (savedViewMode && (savedViewMode === 'table' || savedViewMode === 'gallery')) {
           setViewMode(savedViewMode);
         } else {
           setViewMode('table');
         }
+        // Reset page-specific states when model changes
+        setSearchTerm('');
+        setCurrentPage(1);
+        setSortConfig(null);
+        setColumnFilters({});
+        setSelectedObjectIds(new Set());
 
       } else {
         toast({ variant: "destructive", title: "Error", description: "Model not found." });
         router.push('/models');
       }
     }
-  }, [modelId, getModelById, getObjectsByModelId, getWorkflowById, isReady, toast, router]);
+  }, [modelIdFromUrl, getModelById, getWorkflowById, dataContextIsReady, toast, router]);
+
+  // Effect to sync local objects with DataContext
+  useEffect(() => {
+    if (dataContextIsReady && currentModel) {
+      setObjects(getObjectsByModelId(currentModel.id));
+    }
+  }, [dataContext.objects, currentModel, dataContextIsReady, getObjectsByModelId]);
+
+
+  // Effect for refreshing data when modelIdFromUrl changes (after initial context load)
+  useEffect(() => {
+    if (dataContextIsReady && modelIdFromUrl) {
+      // Check if this is a genuine navigation to a new model, not just initial load
+      if (currentModel && currentModel.id !== modelIdFromUrl) {
+        console.log(`[DataObjectsPage] Model ID changed from ${currentModel.id} to ${modelIdFromUrl}. Fetching data.`);
+        fetchData('Model ID Change');
+      }
+    }
+  }, [modelIdFromUrl, dataContextIsReady, fetchData, currentModel]);
+
 
   useEffect(() => {
-    // This effect should only run when selectedBatchPropertyDetails changes,
-    // to reset the input value for the new property type.
     if (selectedBatchPropertyDetails?.type === 'rating') {
-        setBatchUpdateValue(0); 
+        setBatchUpdateValue(0);
     } else if (selectedBatchPropertyDetails?.type === 'date') {
         setBatchUpdateDate(undefined);
-        setBatchUpdateValue(''); 
+        setBatchUpdateValue('');
     } else if (selectedBatchPropertyDetails?.type === 'relationship') {
         setBatchUpdateValue(selectedBatchPropertyDetails.relationshipType === 'many' ? [] : '');
     } else {
-        setBatchUpdateValue(''); 
+        setBatchUpdateValue('');
     }
-  }, [selectedBatchPropertyDetails]); // Corrected dependency array
+  }, [selectedBatchPropertyDetails]);
 
 
   const handleViewModeChange = (newMode: ViewMode) => {
     setViewMode(newMode);
-    if (modelId) {
-      sessionStorage.setItem(`codexStructure-viewMode-${modelId}`, newMode);
+    if (modelIdFromUrl) {
+      sessionStorage.setItem(`codexStructure-viewMode-${modelIdFromUrl}`, newMode);
     }
   };
 
@@ -375,7 +399,7 @@ export default function DataObjectsPage() {
     if (!currentModel) return;
     try {
         await deleteObject(currentModel.id, objectId);
-        setObjects(prev => prev.filter(obj => obj.id !== objectId));
+        // Local state update handled by useEffect watching dataContext.objects
         setSelectedObjectIds(prev => {
           const newSet = new Set(prev);
           newSet.delete(objectId);
@@ -593,8 +617,8 @@ export default function DataObjectsPage() {
         let payloadPropertyType = selectedBatchPropertyDetails.type;
 
         if (selectedBatchPropertyDetails.name === INTERNAL_WORKFLOW_STATE_UPDATE_KEY) {
-            payloadPropertyType = 'workflow_state'; 
-            processedNewValue = batchUpdateValue; 
+            payloadPropertyType = 'workflow_state';
+            processedNewValue = batchUpdateValue;
         } else if (selectedBatchPropertyDetails.type === 'boolean') {
             processedNewValue = Boolean(batchUpdateValue);
         } else if (selectedBatchPropertyDetails.type === 'number') {
@@ -623,7 +647,7 @@ export default function DataObjectsPage() {
                 processedNewValue = Array.isArray(batchUpdateValue) ? batchUpdateValue : [];
             }
         }
-        
+
         const payload = {
             objectIds: Array.from(selectedObjectIds),
             propertyName: payloadPropertyName,
@@ -632,7 +656,7 @@ export default function DataObjectsPage() {
         };
         console.log("Batch update payload:", JSON.stringify(payload, null, 2));
 
-        const response = await fetch(`/api/codex-structure/models/${modelId}/objects/batch-update`, {
+        const response = await fetch(`/api/codex-structure/models/${modelIdFromUrl}/objects/batch-update`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
@@ -643,20 +667,20 @@ export default function DataObjectsPage() {
         if (!response.ok) {
             throw new Error(responseData.error || responseData.message || "Batch update failed at API level");
         }
-        
+
         if (responseData.errors && responseData.errors.length > 0) {
-            toast({ 
-                variant: "warning", 
-                title: "Batch Update Partially Successful", 
+            toast({
+                variant: "warning",
+                title: "Batch Update Partially Successful",
                 description: `${responseData.message}. Errors: ${responseData.errors.map((e: any) => e.message || String(e)).join(', ')}`
             });
         } else {
             toast({ title: "Batch Update Successful", description: responseData.message || `${selectedObjectIds.size} records updated.` });
         }
 
-        await fetchData(); 
+        await fetchData('Batch Update');
         setIsBatchUpdateDialogOpen(false);
-        setSelectedObjectIds(new Set()); 
+        setSelectedObjectIds(new Set());
         setBatchUpdateProperty('');
         // Value reset is handled by useEffect on selectedBatchPropertyDetails
     } catch (error: any) {
@@ -762,7 +786,20 @@ export default function DataObjectsPage() {
     } else toast({ variant: "destructive", title: "Export Failed", description: "Your browser doesn't support this feature." });
   };
 
-  if (!isReady || !currentModel) return <div className="flex justify-center items-center h-screen"><p className="text-lg text-muted-foreground">Loading data objects...</p></div>;
+  const handleRefreshData = async () => {
+    setIsRefreshing(true);
+    try {
+      await fetchData('Manual Refresh');
+      toast({ title: "Data Refreshed", description: "The latest data has been loaded." });
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Refresh Failed", description: error.message || "Could not refresh data." });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+
+  if (!dataContextIsReady || !currentModel) return <div className="flex justify-center items-center h-screen"><Loader2 className="h-8 w-8 animate-spin text-primary mr-2" /><p className="text-lg text-muted-foreground">Loading data objects...</p></div>;
 
   const directPropertiesToShowInTable = currentModel.properties.sort((a,b) => a.orderIndex - b.orderIndex);
   const hasActiveColumnFilters = Object.keys(columnFilters).length > 0;
@@ -785,6 +822,10 @@ export default function DataObjectsPage() {
               <Button variant={viewMode === 'table' ? 'secondary' : 'ghost'} size="sm" onClick={() => handleViewModeChange('table')} className="rounded-r-none" aria-label="Table View"><ListIcon className="h-5 w-5" /></Button>
               <Button variant={viewMode === 'gallery' ? 'secondary' : 'ghost'} size="sm" onClick={() => handleViewModeChange('gallery')} className="rounded-l-none border-l" aria-label="Gallery View"><LayoutGrid className="h-5 w-5" /></Button>
             </div>
+            <Button onClick={handleRefreshData} variant="outline" disabled={isRefreshing}>
+              {isRefreshing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+              {isRefreshing ? "Refreshing..." : "Refresh"}
+            </Button>
             <Button onClick={handleEditModelStructure} variant="outline"><SettingsIcon className="mr-2 h-4 w-4" /> Edit Model</Button>
             <Button onClick={handleExportCSV} variant="outline"><Download className="mr-2 h-4 w-4" /> Export CSV</Button>
             <Button onClick={handleCreateNew} className="bg-accent text-accent-foreground hover:bg-accent/90"><PlusCircle className="mr-2 h-4 w-4" /> Create New</Button>
@@ -796,7 +837,7 @@ export default function DataObjectsPage() {
             <span className="text-sm font-medium text-secondary-foreground">{selectedObjectIds.size} item(s) selected</span>
             <Dialog open={isBatchUpdateDialogOpen} onOpenChange={(open) => {
                 setIsBatchUpdateDialogOpen(open);
-                if (!open) { 
+                if (!open) {
                     setBatchUpdateProperty('');
                     // Value reset handled by useEffect on selectedBatchPropertyDetails
                 }
@@ -1016,8 +1057,17 @@ export default function DataObjectsPage() {
                         <Trash2 className="h-4 w-4" />
                     </Button>
                 );
+                const isHighlightedAdded = lastChangedInfo?.objectId === obj.id && lastChangedInfo?.modelId === currentModel?.id && lastChangedInfo?.changeType === 'added';
+                const isHighlightedUpdated = lastChangedInfo?.objectId === obj.id && lastChangedInfo?.modelId === currentModel?.id && lastChangedInfo?.changeType === 'updated';
                 return (
-                <TableRow key={obj.id} data-state={selectedObjectIds.has(obj.id) ? "selected" : ""}>
+                <TableRow
+                  key={obj.id}
+                  data-state={selectedObjectIds.has(obj.id) ? "selected" : ""}
+                  className={cn(
+                    isHighlightedAdded && "animate-highlight-green",
+                    isHighlightedUpdated && "animate-highlight-yellow"
+                  )}
+                >
                   <TableCell className="text-center">
                     <Checkbox
                         checked={selectedObjectIds.has(obj.id)}
@@ -1069,7 +1119,7 @@ export default function DataObjectsPage() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-          {paginatedObjects.map((obj) => ( <GalleryCard key={obj.id} obj={obj} model={currentModel} allModels={allModels} allObjects={allDbObjects} currentWorkflow={currentWorkflow} getWorkflowStateName={getWorkflowStateName} onView={handleView} onEdit={handleEdit} onDelete={handleDelete} /> ))}
+          {paginatedObjects.map((obj) => ( <GalleryCard key={obj.id} obj={obj} model={currentModel} allModels={allModels} allObjects={allDbObjects} currentWorkflow={currentWorkflow} getWorkflowStateName={getWorkflowStateName} onView={handleView} onEdit={handleEdit} onDelete={handleDelete} lastChangedInfo={lastChangedInfo}/> ))}
         </div>
       )}
       {totalPages > 1 && (
