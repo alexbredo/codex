@@ -124,7 +124,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const highlightTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-
   const fetchWorkflows = useCallback(async () => {
     try {
       const response = await fetch('/api/codex-structure/workflows');
@@ -185,9 +184,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const startHttpPolling = useCallback(() => {
-    console.log("[DataContext] Starting HTTP polling...");
-    fetchData('Polling Started'); // Initial fetch when polling starts
-    if (pollingIntervalRef.current) { // Clear existing before starting new
+    console.log("[DataContext] Setting up HTTP polling interval...");
+    if (pollingIntervalRef.current) { // Clear any existing interval
       clearInterval(pollingIntervalRef.current);
     }
     pollingIntervalRef.current = setInterval(() => {
@@ -196,14 +194,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [fetchData]);
 
 
+  // Main effect for initial load and setting up polling
   useEffect(() => {
-    fetchData('Initial Load');
-    startHttpPolling();
+    fetchData('Initial Load'); // Initial fetch
+    startHttpPolling();        // Sets up polling interval
+
     return () => {
       stopHttpPolling();
       if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
     };
-  }, [fetchData, startHttpPolling, stopHttpPolling]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Runs only on mount and unmount
 
 
   const addModel = useCallback(async (modelData: Omit<Model, 'id' | 'namespace' | 'workflowId'> & { namespace?: string, workflowId?: string | null }): Promise<Model> => {
@@ -306,8 +307,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setLastChangedInfo({ modelId, objectId: newObject.id, changeType: 'added' });
     if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
     highlightTimeoutRef.current = setTimeout(() => setLastChangedInfo(null), HIGHLIGHT_DURATION_MS);
-    // Optionally, trigger a full fetchData or a more targeted one if other clients need this update immediately via polling
-    // For now, relying on the next polling cycle for other clients.
+    // No full fetchData here, rely on polling or manual refresh if broader updates are needed
     return newObject;
   }, []);
 
@@ -331,6 +331,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setLastChangedInfo({ modelId, objectId, changeType: 'updated' });
     if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
     highlightTimeoutRef.current = setTimeout(() => setLastChangedInfo(null), HIGHLIGHT_DURATION_MS);
+    // No full fetchData here
     return updatedObjectFromApi;
   }, []);
 
@@ -338,6 +339,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const response = await fetch(`/api/codex-structure/models/${modelId}/objects/${objectId}`, { method: 'DELETE' });
     if (!response.ok) throw new Error(await formatApiError(response, `Failed to delete object ${objectId} from model ${modelId}`));
     setObjects((prev) => ({ ...prev, [modelId]: (prev[modelId] || []).filter((obj) => obj.id !== objectId) }));
+    // No full fetchData here
   }, []);
 
   const getObjectsByModelId = useCallback((modelId: string) => objects[modelId] || [], [objects]);
