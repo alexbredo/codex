@@ -92,6 +92,7 @@ export default function DataObjectsPage() {
   const dataContext = useData();
   const {
     models: allModels,
+    objects, // Destructure 'objects' here
     getModelById,
     getObjectsByModelId,
     deleteObject,
@@ -100,11 +101,12 @@ export default function DataObjectsPage() {
     isReady: dataContextIsReady,
     fetchData,
     lastChangedInfo,
-  }: DataContextType = dataContext; // Explicitly type dataContext for clarity
+  }: DataContextType = dataContext; 
   const { toast } = useToast();
 
   const [currentModel, setCurrentModel] = useState<Model | null>(null);
-  const [objects, setObjects] = useState<DataObject[]>([]);
+  // Local objects state specific to this model, initialized from context
+  const [localObjects, setLocalObjects] = useState<DataObject[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [sortConfig, setSortConfig] = useState<SortConfig | null>(null);
@@ -112,7 +114,7 @@ export default function DataObjectsPage() {
   const [currentWorkflow, setCurrentWorkflow] = useState<WorkflowWithDetails | null>(null);
   const [columnFilters, setColumnFilters] = useState<Record<string, ColumnFilterValue | null>>({});
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isBatchUpdating, setIsBatchUpdating] = useState(false);
+  const [isBatchUpdating, setIsBatchUpdating] = useState(isBatchUpdating);
 
   const [selectedObjectIds, setSelectedObjectIds] = useState<Set<string>>(new Set());
   const [isBatchUpdateDialogOpen, setIsBatchUpdateDialogOpen] = useState(false);
@@ -130,11 +132,8 @@ export default function DataObjectsPage() {
       if (foundModel) {
         const isTrulyDifferentModel = previousModelIdRef.current !== modelIdFromUrl;
 
-        // Always update currentModel state if foundModel is valid.
-        // This handles the case where the model context data itself might have updated.
         setCurrentModel(foundModel);
-        // Sync local objects immediately based on the potentially updated foundModel or context
-        setObjects(getObjectsByModelId(foundModel.id));
+        setLocalObjects(getObjectsByModelId(foundModel.id));
 
 
         if (foundModel.workflowId) {
@@ -165,21 +164,17 @@ export default function DataObjectsPage() {
       } else {
         toast({ variant: "destructive", title: "Error", description: `Model with ID ${modelIdFromUrl} not found.` });
         router.push('/models');
-        previousModelIdRef.current = null; // Reset if model not found
+        previousModelIdRef.current = null; 
       }
     }
-  // Key dependencies: modelIdFromUrl (from router), dataContextIsReady (from context),
-  // and the data fetching functions from context (which should be stable).
-  // currentModel is NOT a dependency here to prevent loops. It's set inside.
   }, [modelIdFromUrl, dataContextIsReady, getModelById, getWorkflowById, getObjectsByModelId, fetchData, toast, router]);
 
 
-  // Effect to sync local objects state with DataContext.objects changes for the *current* model
   useEffect(() => {
     if (dataContextIsReady && currentModel) {
-      setObjects(getObjectsByModelId(currentModel.id));
+      setLocalObjects(getObjectsByModelId(currentModel.id));
     }
-  }, [dataContext.objects, currentModel, dataContextIsReady, getObjectsByModelId]);
+  }, [objects, currentModel, dataContextIsReady, getObjectsByModelId]); // Depend on the global 'objects' from context
 
 
   const batchUpdatableProperties = useMemo(() => {
@@ -236,22 +231,24 @@ export default function DataObjectsPage() {
     return undefined;
   }, [selectedBatchPropertyDetails, getModelById]);
 
+  const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects, dataContextIsReady]);
+
   const relatedObjectsForBatchUpdateOptions = useMemo(() => {
     if (relatedModelForBatchUpdate && relatedModelForBatchUpdate.id) {
         const relatedObjects = getObjectsByModelId(relatedModelForBatchUpdate.id);
-        const dbObjects = getAllObjects(); 
+        // const dbObjects = getAllObjects(); // Use allDbObjects from outer scope
         return relatedObjects.map(obj => ({
             value: obj.id,
-            label: getObjectDisplayValue(obj, relatedModelForBatchUpdate, allModels, dbObjects),
+            label: getObjectDisplayValue(obj, relatedModelForBatchUpdate, allModels, allDbObjects),
         })).sort((a, b) => a.label.localeCompare(b.label));
     }
     return [];
-  }, [relatedModelForBatchUpdate, getObjectsByModelId, getAllObjects, allModels]);
+  }, [relatedModelForBatchUpdate, getObjectsByModelId, allModels, allDbObjects]);
 
   const relatedObjectsForBatchUpdateGrouped = useMemo(() => {
     if (relatedModelForBatchUpdate && relatedModelForBatchUpdate.id) {
         const relatedObjects = getObjectsByModelId(relatedModelForBatchUpdate.id);
-        const dbObjects = getAllObjects();
+        // const dbObjects = getAllObjects(); // Use allDbObjects from outer scope
         return relatedObjects.reduce((acc, obj) => {
             const namespace = allModels.find(m => m.id === relatedModelForBatchUpdate.id)?.namespace || 'Default';
             if (!acc[namespace]) {
@@ -259,15 +256,14 @@ export default function DataObjectsPage() {
             }
             acc[namespace].push({
                 value: obj.id,
-                label: getObjectDisplayValue(obj, relatedModelForBatchUpdate, allModels, dbObjects),
+                label: getObjectDisplayValue(obj, relatedModelForBatchUpdate, allModels, allDbObjects),
             });
             return acc;
         }, {} as Record<string, MultiSelectOption[]>);
     }
     return {};
-  }, [relatedModelForBatchUpdate, getObjectsByModelId, getAllObjects, allModels]);
+  }, [relatedModelForBatchUpdate, getObjectsByModelId, allModels, allDbObjects]);
 
-  const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects, dataContextIsReady]);
 
   const virtualIncomingRelationColumns = useMemo(() => {
     if (!currentModel || !dataContextIsReady) return [];
@@ -442,7 +438,7 @@ export default function DataObjectsPage() {
 
   const filteredObjects = useMemo(() => {
     if (!currentModel) return [];
-    let searchableObjects = [...objects];
+    let searchableObjects = [...localObjects]; // Use localObjects state
 
     if (searchTerm) {
       searchableObjects = searchableObjects.filter(obj => {
@@ -539,7 +535,7 @@ export default function DataObjectsPage() {
       });
     });
     return searchableObjects;
-  }, [objects, searchTerm, currentModel, columnFilters, getModelById, allDbObjects, allModels, currentWorkflow, getWorkflowStateName, virtualIncomingRelationColumns]);
+  }, [localObjects, searchTerm, currentModel, columnFilters, getModelById, allDbObjects, allModels, currentWorkflow, getWorkflowStateName, virtualIncomingRelationColumns]); // Use localObjects
 
   const sortedObjects = useMemo(() => {
     if (!sortConfig || !currentModel) return filteredObjects;
@@ -1120,7 +1116,7 @@ export default function DataObjectsPage() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-          {paginatedObjects.map((obj) => ( <GalleryCard key={obj.id} obj={obj} model={currentModel} allModels={allModels} allObjects={allObjects} currentWorkflow={currentWorkflow} getWorkflowStateName={getWorkflowStateName} onView={handleView} onEdit={handleEdit} onDelete={handleDelete} lastChangedInfo={lastChangedInfo}/> ))}
+          {paginatedObjects.map((obj) => ( <GalleryCard key={obj.id} obj={obj} model={currentModel} allModels={allModels} allObjects={allDbObjects} currentWorkflow={currentWorkflow} getWorkflowStateName={getWorkflowStateName} onView={handleView} onEdit={handleEdit} onDelete={handleDelete} lastChangedInfo={lastChangedInfo}/> ))}
         </div>
       )}
       {totalPages > 1 && (
@@ -1136,3 +1132,4 @@ export default function DataObjectsPage() {
 
 
       
+
