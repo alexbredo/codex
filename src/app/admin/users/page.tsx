@@ -68,10 +68,12 @@ function UserAdminPageInternal() {
   }, [toast, formatApiError]);
 
   useEffect(() => {
+    // This effect runs on mount and if fetchUsersApi changes (which is stable).
+    // The check inside ensures it only acts when the data context is actually ready.
     if (dataContextIsReady) {
       fetchUsersApi();
     }
-  }, [fetchUsersApi, dataContextIsReady]);
+  }, [fetchUsersApi]); // Removed dataContextIsReady from dependencies
   
   useEffect(() => {
     form.reset({
