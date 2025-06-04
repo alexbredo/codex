@@ -128,7 +128,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const isPollingPausedRef = useRef(false);
 
 
-  const fetchWorkflows = useCallback(async () => {
+  const fetchWorkflows = useCallback(async (currentWorkflowsState: WorkflowWithDetails[]) => {
     try {
       const response = await fetch('/api/codex-structure/workflows');
       if (!response.ok) {
@@ -143,11 +143,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
           const { successorStateIdsStr, ...restOfState } = s as any;
           return {...restOfState, isInitial: !!s.isInitial, successorStateIds };
         })
-      }));
-      setWorkflows(clientWorkflows.sort((a, b) => a.name.localeCompare(b.name)));
+      })).sort((a, b) => a.name.localeCompare(b.name));
+      
+      const currentSortedJson = JSON.stringify(currentWorkflowsState.sort((a,b) => a.id.localeCompare(b.id)));
+      const newSortedJson = JSON.stringify(clientWorkflows.sort((a,b) => a.id.localeCompare(b.id)));
+
+      if (currentSortedJson !== newSortedJson) {
+        setWorkflows(clientWorkflows);
+      } else {
+        setWorkflows(currentWorkflowsState); // Preserve reference if no change
+      }
     } catch (error: any) {
       console.error("Failed to load workflows from API:", error.message, error);
-      setWorkflows([]);
+      setWorkflows(currentWorkflowsState); // Preserve reference on error
     }
   }, []);
 
@@ -157,48 +165,92 @@ export function DataProvider({ children }: { children: ReactNode }) {
     try {
       const groupsResponse = await fetch('/api/codex-structure/model-groups');
       if (!groupsResponse.ok) throw new Error(await formatApiError(groupsResponse, 'Failed to fetch model groups'));
-      const groupsData: ModelGroup[] = await groupsResponse.json();
-      setModelGroups(groupsData.sort((a, b) => a.name.localeCompare(b.name)));
+      const groupsDataFromApi: ModelGroup[] = await groupsResponse.json();
+      setModelGroups(prevGroups => {
+        const newGroups = groupsDataFromApi.sort((a, b) => a.name.localeCompare(b.name));
+        if (JSON.stringify(newGroups.map(g=>g.id)) !== JSON.stringify(prevGroups.map(g=>g.id).sort((a,b) => a.localeCompare(b))) || JSON.stringify(newGroups) !== JSON.stringify(prevGroups.sort((a,b) => a.name.localeCompare(b.name)))) {
+           return newGroups;
+        }
+        return prevGroups;
+      });
 
       const modelsResponse = await fetch('/api/codex-structure/models');
       if (!modelsResponse.ok) throw new Error(await formatApiError(modelsResponse, 'Failed to fetch models'));
       const modelsDataFromApi: Model[] = await modelsResponse.json();
-      setModels(modelsDataFromApi.map(mapDbModelToClientModel));
+      setModels(prevModels => {
+        const newModelsMapped = modelsDataFromApi.map(mapDbModelToClientModel);
+        const newModelsSorted = [...newModelsMapped].sort((a,b) => a.id.localeCompare(b.id));
+        const prevModelsSorted = [...prevModels].sort((a,b) => a.id.localeCompare(b.id));
+        if(JSON.stringify(newModelsSorted) !== JSON.stringify(prevModelsSorted)) {
+          return newModelsMapped;
+        }
+        return prevModels;
+      });
 
       const allObjectsResponse = await fetch('/api/codex-structure/objects/all');
       if (!allObjectsResponse.ok) throw new Error(await formatApiError(allObjectsResponse, 'Failed to fetch all objects'));
-      const allObjectsData: Record<string, DataObject[]> = await allObjectsResponse.json();
-      setObjects(allObjectsData);
+      const newAllObjectsData: Record<string, DataObject[]> = await allObjectsResponse.json();
+      setObjects(prevAllObjects => {
+        let hasChanged = false;
+        const nextAllObjectsState = { ...prevAllObjects };
 
-      await fetchWorkflows();
+        const allModelIds = new Set([...Object.keys(prevAllObjects), ...Object.keys(newAllObjectsData)]);
+
+        allModelIds.forEach(modelId => {
+          const newObjectsForModel = newAllObjectsData[modelId] || [];
+          const currentObjectsForModel = prevAllObjects[modelId] || [];
+
+          // Sort by ID before stringifying for consistent comparison
+          const newObjectsJson = JSON.stringify(newObjectsForModel.slice().sort((a, b) => a.id.localeCompare(b.id)));
+          const currentObjectsJson = JSON.stringify(currentObjectsForModel.slice().sort((a, b) => a.id.localeCompare(b.id)));
+
+          if (newObjectsJson !== currentObjectsJson) {
+            nextAllObjectsState[modelId] = newObjectsForModel;
+            hasChanged = true;
+          } else if (prevAllObjects[modelId]) {
+             // If JSON is same, ensure we use the old reference if it exists to prevent re-render
+            nextAllObjectsState[modelId] = prevAllObjects[modelId];
+          } else if (newObjectsForModel.length > 0) { // If new model ID with objects
+            nextAllObjectsState[modelId] = newObjectsForModel;
+            hasChanged = true;
+          } else if (!newObjectsForModel.length && !currentObjectsForModel.length) {
+            // Both are empty, no change needed
+          }
+        });
+        return hasChanged ? nextAllObjectsState : prevAllObjects;
+      });
+
+      // Pass the current workflows state to fetchWorkflows for comparison
+      await fetchWorkflows(workflows); 
     } catch (error: any) {
       console.error(`Failed to load data from API. Trigger: ${triggeredBy}. Error:`, error.message, error);
-      setModels([]); setObjects({}); setModelGroups([]); setWorkflows([]);
+      // Optionally, reset to empty on error, or keep stale data. Keeping stale for now.
+      // setModels([]); setObjects({}); setModelGroups([]); setWorkflows([]);
     } finally {
       setIsReady(true);
     }
-  }, [fetchWorkflows]);
+  }, [fetchWorkflows, workflows]); // Added workflows to dependency array of fetchData
 
   const stopHttpPolling = useCallback(() => {
     if (pollingIntervalRef.current) {
       clearInterval(pollingIntervalRef.current);
       pollingIntervalRef.current = null;
-      console.log("[DataContext] HTTP polling stopped.");
+      // console.log("[DataContext] HTTP polling stopped.");
     }
   }, []);
 
   const startHttpPolling = useCallback(() => {
     if (isPollingPausedRef.current) {
-      console.log("[DataContext] Polling is paused, not starting interval.");
+      // console.log("[DataContext] Polling is paused, not starting interval.");
       return;
     }
-    stopHttpPolling(); // Clear any existing interval before starting a new one
-    console.log("[DataContext] Setting up HTTP polling interval...");
+    stopHttpPolling(); 
+    // console.log("[DataContext] Setting up HTTP polling interval...");
     pollingIntervalRef.current = setInterval(() => {
-      if (!isPollingPausedRef.current) { // Double check before fetching
+      if (!isPollingPausedRef.current) { 
         fetchData('Polling Interval');
       } else {
-        console.log("[DataContext] Polling interval fired, but polling is paused. Skipping fetch.");
+        // console.log("[DataContext] Polling interval fired, but polling is paused. Skipping fetch.");
       }
     }, POLLING_INTERVAL_MS);
   }, [fetchData, stopHttpPolling]);
@@ -212,7 +264,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const resumePolling = useCallback(() => {
     isPollingPausedRef.current = false;
     console.log("[DataContext] Polling resumed. Restarting interval.");
-    startHttpPolling(); // Restart polling
+    startHttpPolling(); 
   }, [startHttpPolling]);
 
 
@@ -225,7 +277,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, []); // Empty array: run once on mount. fetchData and startHttpPolling are memoized.
 
 
   const addModel = useCallback(async (modelData: Omit<Model, 'id' | 'namespace' | 'workflowId'> & { namespace?: string, workflowId?: string | null }): Promise<Model> => {
@@ -439,3 +491,4 @@ export function useData(): DataContextType {
   if (context === undefined) throw new Error('useData must be used within a DataProvider');
   return context;
 }
+
