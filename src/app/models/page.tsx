@@ -23,7 +23,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { useData } from '@/contexts/data-context';
-import { useAuth, withAuth } from '@/contexts/auth-context'; // Import withAuth
+import { useAuth, withAuth } from '@/contexts/auth-context';
 import type { Model } from '@/lib/types';
 import { PlusCircle, Edit, Trash2, Eye, DatabaseZap, ListChecks, Search, Info, Code2, StickyNote, FolderOpen, Loader2 } from 'lucide-react';
 import Link from 'next/link';
@@ -39,14 +39,57 @@ function ModelsPageInternal() {
   const router = useRouter(); 
   const [searchTerm, setSearchTerm] = useState('');
   const [openAccordionItems, setOpenAccordionItems] = useState<string[]>([]);
-  const [isLoadingPage, setIsLoadingPage] = useState(true);
 
   useEffect(() => {
-    if (dataContextIsReady) {
-      fetchData('Navigated to Model Admin');
-      setIsLoadingPage(false);
+    // This effect runs once when the component mounts if fetchData is stable,
+    // or if dataContextIsReady changes.
+    // It ensures that navigating TO this page triggers a specific data refresh.
+    // The loading indicator relies on dataContextIsReady.
+    if (dataContextIsReady) { // Optional: only fetch if context was already ready, to avoid double fetch on initial mount.
+                              // Or, always fetch and let DataProvider handle isReady states.
+        fetchData('Navigated to Model Admin');
+    } else {
+        // If context is not ready, it means DataProvider is doing its initial load.
+        // No need to call fetchData again here, just wait for dataContextIsReady to become true.
     }
   }, [dataContextIsReady, fetchData]);
+
+
+  const filteredModels = useMemo(() => {
+    if (!searchTerm) return models;
+    return models.filter(model =>
+        model.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (model.description && model.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        model.namespace.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+  }, [models, searchTerm]);
+
+  const groupedModels = useMemo(() => {
+    return filteredModels.reduce((acc, model) => {
+      const namespace = model.namespace || 'Default';
+      if (!acc[namespace]) {
+        acc[namespace] = [];
+      }
+      acc[namespace].push(model);
+      return acc;
+    }, {} as Record<string, Model[]>);
+  }, [filteredModels]);
+
+  const sortedNamespaces = useMemo(() => {
+    return Object.keys(groupedModels).sort((a, b) => {
+      if (a === 'Default') return -1;
+      if (b === 'Default') return 1;
+      return a.localeCompare(b);
+    });
+  }, [groupedModels]);
+
+  useEffect(() => {
+    // Open all accordion items by default if none are explicitly set and there are namespaces
+    if (dataContextIsReady && sortedNamespaces.length > 0 && openAccordionItems.length === 0) {
+      setOpenAccordionItems(sortedNamespaces); 
+    }
+  }, [dataContextIsReady, sortedNamespaces, openAccordionItems.length]);
+
 
   const handleCreateNew = () => {
     router.push('/models/new');
@@ -65,41 +108,8 @@ function ModelsPageInternal() {
     }
   };
 
-  const groupedModels = useMemo(() => {
-    const filtered = searchTerm
-      ? models.filter(model =>
-          model.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (model.description && model.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
-          model.namespace.toLowerCase().includes(searchTerm.toLowerCase())
-        )
-      : models;
 
-    return filtered.reduce((acc, model) => {
-      const namespace = model.namespace || 'Default';
-      if (!acc[namespace]) {
-        acc[namespace] = [];
-      }
-      acc[namespace].push(model);
-      return acc;
-    }, {} as Record<string, Model[]>);
-  }, [models, searchTerm]);
-
-  const sortedNamespaces = useMemo(() => {
-    return Object.keys(groupedModels).sort((a, b) => {
-      if (a === 'Default') return -1;
-      if (b === 'Default') return 1;
-      return a.localeCompare(b);
-    });
-  }, [groupedModels]);
-
-  useEffect(() => {
-    if (dataContextIsReady && sortedNamespaces.length > 0 && openAccordionItems.length === 0) {
-      setOpenAccordionItems(sortedNamespaces); // Open all by default if none are open
-    }
-  }, [dataContextIsReady, sortedNamespaces, openAccordionItems.length]);
-
-
-  if (!dataContextIsReady || isLoadingPage) {
+  if (!dataContextIsReady) {
     return (
       <div className="flex flex-col justify-center items-center h-screen">
         <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
@@ -161,7 +171,7 @@ function ModelsPageInternal() {
       </Accordion>
 
 
-      {sortedNamespaces.length === 0 ? (
+      {sortedNamespaces.length === 0 && models.length === 0 ? ( // Check models.length too, in case search clears namespaces but models exist
          <Card className="col-span-full text-center py-12">
           <CardContent>
             <DatabaseZap size={48} className="mx-auto text-muted-foreground mb-4" />
@@ -282,6 +292,4 @@ function ModelsPageInternal() {
   );
 }
 
-// Wrap the page component with the HOC for role protection
 export default withAuth(ModelsPageInternal, ['administrator']);
-
