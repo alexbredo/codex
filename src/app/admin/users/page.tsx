@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { withAuth } from '@/contexts/auth-context';
@@ -34,6 +34,9 @@ function UserAdminPageInternal() {
   const { toast } = useToast();
   const { fetchData, isReady: dataContextIsReady, formatApiError } = useData();
 
+  const generalDataFetchedOnMountRef = useRef(false);
+  const usersApiFetchedOnMountRef = useRef(false);
+
   const form = useForm<UserFormValues>({
     resolver: zodResolver(editingUser ? updateUserFormSchema : userFormSchema),
     defaultValues: {
@@ -44,10 +47,14 @@ function UserAdminPageInternal() {
     },
   });
 
-  // Effect for fetching general context data
+  // Effect for fetching general DataContext data (models, groups etc.)
   useEffect(() => {
-    fetchData('Navigated to User Admin');
+    if (!generalDataFetchedOnMountRef.current) {
+      fetchData('UserAdminPage Mounted');
+      generalDataFetchedOnMountRef.current = true;
+    }
   }, [fetchData]);
+
 
   const fetchUsersApi = useCallback(async () => {
     setIsLoading(true);
@@ -68,12 +75,13 @@ function UserAdminPageInternal() {
     }
   }, [toast, formatApiError]);
 
-  // Effect for fetching the user list
+  // Effect for fetching the user list. Runs once per mount.
   useEffect(() => {
-    if (dataContextIsReady) {
+    if (!usersApiFetchedOnMountRef.current) {
       fetchUsersApi();
+      usersApiFetchedOnMountRef.current = true;
     }
-  }, [dataContextIsReady, fetchUsersApi]); 
+  }, [fetchUsersApi]);
   
   useEffect(() => {
     form.reset({
@@ -105,6 +113,7 @@ function UserAdminPageInternal() {
         throw new Error(errorMsg);
       }
       toast({ title: 'User Deleted', description: `User "${username}" has been deleted.` });
+      usersApiFetchedOnMountRef.current = false; // Allow refetch on next render cycle if needed, or just call fetchUsersApi()
       fetchUsersApi(); // Refresh list
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Error Deleting User', description: err.message });
@@ -140,13 +149,15 @@ function UserAdminPageInternal() {
       
       toast({ title: `User ${editingUser ? 'Updated' : 'Created'}`, description: `User "${values.username}" has been successfully ${editingUser ? 'updated' : 'created'}.` });
       setIsFormOpen(false);
+      usersApiFetchedOnMountRef.current = false; // Allow refetch
       fetchUsersApi(); // Refresh list
     } catch (err: any) {
       toast({ variant: 'destructive', title: `Error ${editingUser ? 'Updating' : 'Creating'} User`, description: err.message });
     }
   };
 
-  if (!dataContextIsReady || isLoading) { // Check both general context readiness and user list loading
+  // Combined loading guard: waits for general context data AND local user list
+  if (!dataContextIsReady || isLoading) { 
     return (
       <div className="flex flex-col justify-center items-center h-screen">
         <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
@@ -161,7 +172,7 @@ function UserAdminPageInternal() {
          <ShieldAlert className="h-12 w-12 text-destructive mx-auto mb-4" />
         <h2 className="text-2xl font-semibold text-destructive mb-2">Error Loading Users</h2>
         <p className="text-muted-foreground mb-4">{error}</p>
-        <Button onClick={fetchUsersApi}>Try Again</Button>
+        <Button onClick={() => { usersApiFetchedOnMountRef.current = false; fetchUsersApi(); }}>Try Again</Button>
       </div>
     );
   }
