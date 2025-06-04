@@ -6,7 +6,6 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef } f
 import type { Model, DataObject, Property, ModelGroup, WorkflowWithDetails } from '@/lib/types';
 
 const POLLING_INTERVAL_MS = 30000; // 30 seconds
-const WEBSOCKET_RETRY_DELAY_MS = 5000; // 5 seconds
 const HIGHLIGHT_DURATION_MS = 3000; // 3 seconds
 
 interface DataContextType {
@@ -122,10 +121,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [isReady, setIsReady] = useState(false);
   const [lastChangedInfo, setLastChangedInfo] = useState<{ modelId: string, objectId: string, changeType: 'added' | 'updated' } | null>(null);
 
-  const wsRef = useRef<WebSocket | null>(null);
-  const [isPollingActive, setIsPollingActive] = useState(false);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const webSocketRetryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const highlightTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
 
@@ -154,7 +150,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const fetchData = useCallback(async (triggeredBy?: string) => {
     console.log(`[DataContext] fetchData called. Trigger: ${triggeredBy || 'Unknown'}`);
-    setIsReady(false);
+    setIsReady(false); 
     try {
       const groupsResponse = await fetch('/api/codex-structure/model-groups');
       if (!groupsResponse.ok) throw new Error(await formatApiError(groupsResponse, 'Failed to fetch model groups'));
@@ -186,131 +182,28 @@ export function DataProvider({ children }: { children: ReactNode }) {
       pollingIntervalRef.current = null;
       console.log("[DataContext] HTTP polling stopped.");
     }
-    setIsPollingActive(false);
   }, []);
 
   const startHttpPolling = useCallback(() => {
-    if (isPollingActive) return;
     console.log("[DataContext] Starting HTTP polling...");
-    setIsPollingActive(true);
-    fetchData('Polling Started'); 
+    fetchData('Polling Started'); // Initial fetch when polling starts
+    if (pollingIntervalRef.current) { // Clear existing before starting new
+      clearInterval(pollingIntervalRef.current);
+    }
     pollingIntervalRef.current = setInterval(() => {
       fetchData('Polling Interval');
     }, POLLING_INTERVAL_MS);
-  }, [isPollingActive, fetchData]);
+  }, [fetchData]);
 
-  const connectWebSocket = useCallback(() => {
-    console.log("[DataContext] connectWebSocket called.");
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsHost = window.location.host;
-    const wsUrl = `${wsProtocol}//${wsHost}/api/ws`;
-
-    // Diagnostic GET request
-    fetch('/api/ws')
-      .then(async response => {
-        const responseText = await response.text();
-        console.log(`[DataContext] Diagnostic HTTP GET to /api/ws status: ${response.status}, statusText: N/A, response: ${responseText}`);
-        if (!response.ok) {
-          console.warn(`[DataContext] Diagnostic GET to /api/ws failed, status ${response.status}. WebSocket connection might also fail.`);
-        }
-      })
-      .catch(error => {
-        console.error('[DataContext] Diagnostic GET to /api/ws failed:', error);
-      });
-
-    console.log(`[DataContext] Attempting to connect to WebSocket at: ${wsUrl}`);
-    if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
-      console.log("[DataContext] WebSocket connection attempt skipped: already open or connecting.");
-      return;
-    }
-
-    wsRef.current = new WebSocket(wsUrl);
-
-    wsRef.current.onopen = () => {
-      console.log("[DataContext] WebSocket connection established.");
-      if (webSocketRetryTimeoutRef.current) {
-        clearTimeout(webSocketRetryTimeoutRef.current);
-        webSocketRetryTimeoutRef.current = null;
-      }
-      stopHttpPolling();
-    };
-
-    wsRef.current.onmessage = async (event) => {
-      console.log("[DataContext] WebSocket message received:", event.data);
-      try {
-        const message = JSON.parse(event.data as string);
-        if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
-
-        if (message.type === 'OBJECT_CREATED' || message.type === 'OBJECT_UPDATED') {
-          const { modelId, objectId } = message.payload;
-          const response = await fetch(`/api/codex-structure/models/${modelId}/objects/${objectId}`);
-          if (response.ok) {
-            const updatedObject: DataObject = await response.json();
-            setObjects(prev => ({
-              ...prev,
-              [modelId]: (prev[modelId] || []).map(obj => obj.id === objectId ? updatedObject : obj)
-                                             .filter(obj => obj.id !== objectId || message.type === 'OBJECT_UPDATED') // remove if created then updated
-                                             .concat(message.type === 'OBJECT_CREATED' && !(prev[modelId] || []).find(obj => obj.id === objectId) ? [updatedObject] : [])
-            }));
-            setLastChangedInfo({ modelId, objectId, changeType: message.type === 'OBJECT_CREATED' ? 'added' : 'updated' });
-          } else {
-            console.warn(`[DataContext] Failed to fetch details for ${message.type} object ${objectId} in model ${modelId}. Status: ${response.status}`);
-            fetchData(`Partial refresh after ${message.type} due to fetch failure`);
-          }
-        } else if (message.type === 'OBJECT_DELETED') {
-          const { modelId, objectId } = message.payload;
-          setObjects(prev => ({
-            ...prev,
-            [modelId]: (prev[modelId] || []).filter(obj => obj.id !== objectId)
-          }));
-           setLastChangedInfo(null); // No specific highlight for delete, or could add one
-        } else if (message.type === 'MODEL_STRUCTURE_CHANGED' || message.type === 'MODEL_GROUP_CHANGED' || message.type === 'WORKFLOW_CHANGED') {
-           fetchData(`Data refresh due to ${message.type}`);
-           setLastChangedInfo(null);
-        } else {
-           fetchData('WebSocket Full Refresh Trigger');
-           setLastChangedInfo(null);
-        }
-        highlightTimeoutRef.current = setTimeout(() => setLastChangedInfo(null), HIGHLIGHT_DURATION_MS);
-      } catch (error) {
-        console.error("[DataContext] Error processing WebSocket message or fetching update:", error);
-        fetchData('WebSocket Error Recovery Refresh');
-        setLastChangedInfo(null);
-      }
-    };
-
-    wsRef.current.onclose = (event) => {
-      console.log(`[DataContext] WebSocket connection closed. Code: ${event.code}, Reason: ${event.reason || 'N/A'}, WasClean: ${event.wasClean}`);
-      if (!event.wasClean) {
-        console.log("[DataContext] WebSocket closed unexpectedly. Attempting to reconnect and starting HTTP polling.");
-        if (webSocketRetryTimeoutRef.current) clearTimeout(webSocketRetryTimeoutRef.current);
-        webSocketRetryTimeoutRef.current = setTimeout(connectWebSocket, WEBSOCKET_RETRY_DELAY_MS);
-        startHttpPolling();
-      } else {
-        stopHttpPolling(); // Stop polling if connection closed cleanly
-      }
-    };
-
-    wsRef.current.onerror = (error) => {
-      console.error(`[DataContext] WebSocket onerror event. Type: ${(error as Event).type}. See onclose handler for reconnection logic.`);
-      // onclose will typically follow an error, so reconnection logic is primarily there.
-    };
-  }, [fetchData, startHttpPolling, stopHttpPolling]);
 
   useEffect(() => {
     fetchData('Initial Load');
-    connectWebSocket();
+    startHttpPolling();
     return () => {
-      if (wsRef.current) {
-        console.log("[DataContext] Closing WebSocket connection on component unmount.");
-        wsRef.current.close();
-        wsRef.current = null;
-      }
-      if (webSocketRetryTimeoutRef.current) clearTimeout(webSocketRetryTimeoutRef.current);
-      stopHttpPolling(); // Ensure polling is stopped on unmount
+      stopHttpPolling();
       if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
     };
-  }, [connectWebSocket]);
+  }, [fetchData, startHttpPolling, stopHttpPolling]);
 
 
   const addModel = useCallback(async (modelData: Omit<Model, 'id' | 'namespace' | 'workflowId'> & { namespace?: string, workflowId?: string | null }): Promise<Model> => {
@@ -346,7 +239,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
        throw new Error(errorMessage);
     }
     const newModel: Model = await response.json();
-    // Optimistic update handled by WebSocket message and fetchData for full consistency
     await fetchData('After Add Model');
     return mapDbModelToClientModel(newModel);
   }, [fetchData]);
@@ -410,12 +302,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       throw new Error(errorMessage);
     }
     const newObject: DataObject = await response.json();
-    // Optimistic update for immediate UI, WebSocket will confirm/update
     setObjects((prev) => ({ ...prev, [modelId]: [...(prev[modelId] || []), newObject] }));
     setLastChangedInfo({ modelId, objectId: newObject.id, changeType: 'added' });
     if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
     highlightTimeoutRef.current = setTimeout(() => setLastChangedInfo(null), HIGHLIGHT_DURATION_MS);
-    // No full fetchData here; rely on WebSocket or polling for eventual consistency of others
+    // Optionally, trigger a full fetchData or a more targeted one if other clients need this update immediately via polling
+    // For now, relying on the next polling cycle for other clients.
     return newObject;
   }, []);
 
@@ -432,7 +324,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       throw new Error(errorMessage);
     }
     const updatedObjectFromApi: DataObject = await response.json();
-    // Optimistic update
     setObjects((prev) => ({
       ...prev,
       [modelId]: (prev[modelId] || []).map((obj) => obj.id === objectId ? { ...obj, ...updatedObjectFromApi } : obj),
@@ -446,9 +337,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const deleteObject = useCallback(async (modelId: string, objectId: string) => {
     const response = await fetch(`/api/codex-structure/models/${modelId}/objects/${objectId}`, { method: 'DELETE' });
     if (!response.ok) throw new Error(await formatApiError(response, `Failed to delete object ${objectId} from model ${modelId}`));
-    // Optimistic update
     setObjects((prev) => ({ ...prev, [modelId]: (prev[modelId] || []).filter((obj) => obj.id !== objectId) }));
-    // No highlight for delete or specific action
   }, []);
 
   const getObjectsByModelId = useCallback((modelId: string) => objects[modelId] || [], [objects]);
