@@ -151,10 +151,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       console.warn(`[DataContext] Fetch already in progress. New trigger: ${triggeredBy}. Skipping.`);
       return;
     }
-
     console.log(`[DataContext] Starting fetchData. Trigger: ${triggeredBy || 'Unknown'}`);
     isFetchingDataRef.current = true;
-    setIsReady(false); 
+    setIsReady(false);
 
     try {
       const groupsResponse = await fetch('/api/codex-structure/model-groups');
@@ -162,10 +161,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const groupsDataFromApi: ModelGroup[] = await groupsResponse.json();
       
       setModelGroups(prevGroups => {
-        const newGroups = groupsDataFromApi.sort((a, b) => a.name.localeCompare(b.name));
-        const newGroupsString = JSON.stringify(newGroups);
-        const prevGroupsString = JSON.stringify([...prevGroups].sort((a, b) => a.name.localeCompare(b.name)));
-        return newGroupsString !== prevGroupsString ? newGroups : prevGroups;
+        const newGroupsSorted = [...groupsDataFromApi].sort((a, b) => a.name.localeCompare(b.name));
+        const prevGroupsSorted = [...prevGroups].sort((a, b) => a.name.localeCompare(b.name));
+        return JSON.stringify(newGroupsSorted) !== JSON.stringify(prevGroupsSorted) ? newGroupsSorted : prevGroups;
       });
 
       const modelsResponse = await fetch('/api/codex-structure/models');
@@ -185,7 +183,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       
       setObjects(prevAllObjects => {
         let hasChanged = false;
-        const nextAllObjectsState = { ...prevAllObjects };
+        const nextAllObjectsState: Record<string, DataObject[]> = {};
         const allModelIds = new Set([...Object.keys(prevAllObjects), ...Object.keys(newAllObjectsData)]);
 
         allModelIds.forEach(modelId => {
@@ -198,13 +196,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
             nextAllObjectsState[modelId] = newObjectsForModel;
             hasChanged = true;
           } else if (prevAllObjects[modelId]) {
-            nextAllObjectsState[modelId] = prevAllObjects[modelId];
-          } else if (newObjectsForModel.length > 0) { 
+            nextAllObjectsState[modelId] = prevAllObjects[modelId]; // Keep old reference
+          } else if (newObjectsForModel.length > 0) { // Case where prev was empty, new has items
             nextAllObjectsState[modelId] = newObjectsForModel;
             hasChanged = true;
           }
         });
-        return hasChanged ? nextAllObjectsState : prevAllObjects;
+        // If nothing changed at all (no models added/removed, no objects changed in any model)
+        // preserve the top-level object reference.
+        if (!hasChanged && Object.keys(prevAllObjects).length === Object.keys(nextAllObjectsState).length) {
+          return prevAllObjects;
+        }
+        return nextAllObjectsState;
       });
 
       const newWorkflowsData = await fetchWorkflowsInternal();
@@ -223,7 +226,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       isFetchingDataRef.current = false;
       console.log(`[DataContext] Finished fetchData. Trigger: ${triggeredBy || 'Unknown'}`);
     }
-  }, [fetchWorkflowsInternal]);
+  }, [fetchWorkflowsInternal]); // Only depend on stable callbacks
 
 
   useEffect(() => {
@@ -432,7 +435,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     addModel, updateModel, deleteModel, getModelById, getModelByName,
     addObject, updateObject, deleteObject, getObjectsByModelId, getAllObjects,
     addModelGroup, updateModelGroup, deleteModelGroup, getModelGroupById, getModelGroupByName, getAllModelGroups,
-    addWorkflow, updateWorkflow, deleteWorkflow, getWorkflowById, // fetchWorkflows removed from export
+    addWorkflow, updateWorkflow, deleteWorkflow, getWorkflowById, 
     isReady, fetchData, formatApiError,
   };
 
@@ -444,3 +447,4 @@ export function useData(): DataContextType {
   if (context === undefined) throw new Error('useData must be used within a DataProvider');
   return context;
 }
+

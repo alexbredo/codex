@@ -26,7 +26,7 @@ interface User {
 
 function UserAdminPageInternal() {
   const [users, setUsers] = useState<User[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true); // For user list specific loading
   const [error, setError] = useState<string | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -44,6 +44,7 @@ function UserAdminPageInternal() {
     },
   });
 
+  // Effect for fetching general context data
   useEffect(() => {
     fetchData('Navigated to User Admin');
   }, [fetchData]);
@@ -67,13 +68,12 @@ function UserAdminPageInternal() {
     }
   }, [toast, formatApiError]);
 
+  // Effect for fetching the user list
   useEffect(() => {
-    // This effect runs on mount and if fetchUsersApi changes (which is stable).
-    // The check inside ensures it only acts when the data context is actually ready.
     if (dataContextIsReady) {
       fetchUsersApi();
     }
-  }, [fetchUsersApi]); // Removed dataContextIsReady from dependencies
+  }, [dataContextIsReady, fetchUsersApi]); 
   
   useEffect(() => {
     form.reset({
@@ -115,7 +115,7 @@ function UserAdminPageInternal() {
     try {
       let response;
       const payload: Partial<UserFormValues> = { username: values.username, role: values.role };
-      if (values.password) {
+      if (values.password && values.password.trim() !== '') {
         payload.password = values.password;
       }
 
@@ -146,7 +146,7 @@ function UserAdminPageInternal() {
     }
   };
 
-  if (!dataContextIsReady || isLoading) {
+  if (!dataContextIsReady || isLoading) { // Check both general context readiness and user list loading
     return (
       <div className="flex flex-col justify-center items-center h-screen">
         <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
@@ -203,7 +203,7 @@ function UserAdminPageInternal() {
       </Dialog>
       
       <Card>
-        <CardContent className="pt-6"> {/* Added pt-6 to CardContent as CardHeader is removed */}
+        <CardContent className="pt-6">
           {users.length === 0 ? (
             <p className="text-muted-foreground">No users found.</p>
           ) : (
