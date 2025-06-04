@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/sidebar';
 import Navigation from './navigation';
 import { Button } from '@/components/ui/button';
-import { UserCircle, LogOut, LogIn, UserPlus, Loader2 } from 'lucide-react'; // Added Loader2
+import { UserCircle, LogOut, LogIn, UserPlus, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/auth-context';
 import { cn } from '@/lib/utils';
@@ -25,38 +25,20 @@ interface AppLayoutProps {
 
 export default function AppLayout({ children }: AppLayoutProps) {
   const { user, logout, isLoading: authIsLoading } = useAuth();
+  // isClient is still useful if you need to gate very specific client-only effects or minor components,
+  // but not for major layout structures like the Sidebar itself if it's designed to be SSR-friendly.
   const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
     setIsClient(true);
   }, []);
 
-  // This loader is for the very brief moment before the client has mounted.
-  // It helps ensure child components that rely on client-side info (like useIsMobile in Sidebar)
-  // are not rendered prematurely causing hydration issues or flickers.
-  if (!isClient) {
-    // Render a minimal structural placeholder during SSR and initial client render before hydration
-    return (
-      <div className="flex min-h-screen">
-        <div className="hidden md:block border-r bg-sidebar-background" style={{ width: 'var(--sidebar-width, 16rem)' }} />
-        <div className="flex-1 flex flex-col">
-          <header className="sticky top-0 z-10 flex items-center justify-end h-14 px-4 border-b bg-background/80 backdrop-blur-sm" />
-          <main className="flex-1 p-6 overflow-auto">
-            <div className="flex justify-center items-center h-full">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
-          </main>
-        </div>
-      </div>
-    );
-  }
-  
-  // Once isClient is true, render the full layout.
   // The Sidebar component itself handles its collapsed/expanded state and mobile view (Sheet).
+  // It relies on useIsMobile internally, which correctly defaults for SSR and updates on client.
   return (
     <SidebarProvider defaultOpen> {/* defaultOpen true means sidebar is initially expanded on desktop */}
       <div className="flex min-h-screen">
-        <Sidebar collapsible="icon" className="border-r"> {/* Sidebar rendered by client */}
+        <Sidebar collapsible="icon" className="border-r">
           <SidebarHeader>
             <Link href="/" className="flex items-center gap-2 p-2 hover:bg-sidebar-accent rounded-md transition-colors">
               <svg width="28" height="28" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-primary">
@@ -113,17 +95,21 @@ export default function AppLayout({ children }: AppLayoutProps) {
                 <LogOut size={18} className="mr-1" /> Logout
               </Button>
             )}
-            {/* Avoid window.location in render path for SSR compatibility */}
             {!user && (
               <div className="md:hidden h-9"></div> 
             )}
           </header>
           <main className="flex-1 p-6 overflow-auto">
-            {authIsLoading && !user ? ( // Show loader if auth is genuinely loading (not just initial client mount)
+            {authIsLoading && !user && isClient ? ( // Show loader if auth is genuinely loading AND client has mounted
                  <div className="flex justify-center items-center h-full">
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
                  </div>
-            ) : (
+            ) : !isClient && !user ? ( // Placeholder for SSR/initial render if auth might show a loader
+                 <div className="flex justify-center items-center h-full">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                 </div>
+            )
+            : (
                 children
             )}
           </main>
