@@ -114,7 +114,7 @@ export default function DataObjectsPage() {
   const [currentWorkflow, setCurrentWorkflow] = useState<WorkflowWithDetails | null>(null);
   const [columnFilters, setColumnFilters] = useState<Record<string, ColumnFilterValue | null>>({});
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isBatchUpdating, setIsBatchUpdating] = useState(isBatchUpdating);
+  const [isBatchUpdating, setIsBatchUpdating] = useState(false);
 
   const [selectedObjectIds, setSelectedObjectIds] = useState<Set<string>>(new Set());
   const [isBatchUpdateDialogOpen, setIsBatchUpdateDialogOpen] = useState(false);
@@ -1132,4 +1132,5 @@ export default function DataObjectsPage() {
 
 
       
+
 
