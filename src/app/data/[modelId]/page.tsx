@@ -375,27 +375,27 @@ export default function DataObjectsPage() {
     return { columnName, displayValue, operator };
   }, [currentModel, currentWorkflow, getModelById, allDbObjects, allModels, virtualIncomingRelationColumns]);
 
-  const handleCreateNew = () => {
+  const handleCreateNew = useCallback(() => {
     if (!currentModel) return;
     router.push(`/data/${currentModel.id}/new`);
-  };
+  }, [currentModel, router]);
 
-  const handleEdit = (obj: DataObject) => {
+  const handleEdit = useCallback((obj: DataObject) => {
     if (!currentModel) return;
     router.push(`/data/${currentModel.id}/edit/${obj.id}`);
-  };
+  }, [currentModel, router]);
 
-  const handleEditModelStructure = () => {
+  const handleEditModelStructure = useCallback(() => {
     if (!currentModel) return;
     router.push(`/models/edit/${currentModel.id}`);
-  };
+  }, [currentModel, router]);
 
-  const handleView = (obj: DataObject) => {
+  const handleView = useCallback((obj: DataObject) => {
     if (!currentModel) return;
     router.push(`/data/${currentModel.id}/view/${obj.id}`);
-  };
+  }, [currentModel, router]);
 
-  const handleDelete = async (objectId: string) => {
+  const handleDelete = useCallback(async (objectId: string) => {
     if (!currentModel) return;
     try {
         await deleteObject(currentModel.id, objectId);
@@ -408,7 +408,7 @@ export default function DataObjectsPage() {
     } catch (error: any) {
         toast({ variant: "destructive", title: "Error Deleting Object", description: error.message || "An unexpected error occurred." });
     }
-  };
+  }, [currentModel, deleteObject, toast]);
 
   const requestSort = (key: string) => {
     let direction: SortDirection = 'asc';

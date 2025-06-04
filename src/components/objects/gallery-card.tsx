@@ -1,11 +1,12 @@
 
 'use client';
 
+import * as React from 'react'; // Import React
 import type { DataObject, Model, Property, WorkflowWithDetails } from '@/lib/types';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Eye, Edit, Trash2, CheckCircle2 } from 'lucide-react';
-import { getObjectDisplayValue } from '@/lib/utils';
+import { getObjectDisplayValue, cn } from '@/lib/utils'; // Added cn
 import Image from 'next/image';
 import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
@@ -32,9 +33,11 @@ interface GalleryCardProps {
   onView: (obj: DataObject) => void;
   onEdit: (obj: DataObject) => void;
   onDelete: (objId: string) => void;
+  lastChangedInfo?: { modelId: string, objectId: string, changeType: 'added' | 'updated' } | null;
 }
 
-export default function GalleryCard({
+// Wrap with React.memo
+const GalleryCard = React.memo(function GalleryCard({
   obj,
   model,
   allModels,
@@ -44,6 +47,7 @@ export default function GalleryCard({
   onView,
   onEdit,
   onDelete,
+  lastChangedInfo,
 }: GalleryCardProps) {
   const displayName = getObjectDisplayValue(obj, model, allModels, allObjects);
   const stateName = currentWorkflow ? getWorkflowStateName(obj.currentStateId) : null;
@@ -120,8 +124,16 @@ export default function GalleryCard({
     }
   };
 
+  const isHighlightedAdded = lastChangedInfo?.objectId === obj.id && lastChangedInfo?.modelId === model.id && lastChangedInfo?.changeType === 'added';
+  const isHighlightedUpdated = lastChangedInfo?.objectId === obj.id && lastChangedInfo?.modelId === model.id && lastChangedInfo?.changeType === 'updated';
+
+
   return (
-    <Card className="flex flex-col overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300">
+    <Card className={cn(
+        "flex flex-col overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300",
+        isHighlightedAdded && "animate-highlight-green",
+        isHighlightedUpdated && "animate-highlight-yellow"
+      )}>
       <CardHeader className="p-0">
         <div className="aspect-[3/2] relative w-full">
           <Image
@@ -182,4 +194,6 @@ export default function GalleryCard({
       </CardFooter>
     </Card>
   );
-}
+});
+
+export default GalleryCard;
