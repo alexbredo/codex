@@ -23,9 +23,9 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { useData } from '@/contexts/data-context';
-import { useAuth, withAuth } from '@/contexts/auth-context';
+import { withAuth } from '@/contexts/auth-context';
 import type { Model } from '@/lib/types';
-import { PlusCircle, Edit, Trash2, Eye, DatabaseZap, ListChecks, Search, Info, Code2, StickyNote, FolderOpen, Loader2 } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, Eye, DatabaseZap, ListChecks, Search, Info, Code2, StickyNote, FolderOpen, Loader2, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useToast } from "@/hooks/use-toast";
@@ -39,13 +39,13 @@ function ModelsPageInternal() {
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState('');
   const [openAccordionItems, setOpenAccordionItems] = useState<string[]>([]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
     // Fetch data when the component mounts.
     // The DataProvider's isReady state will handle the overall loading UI.
-    // This ensures that if the user navigates here, a fresh fetch for this page's specific needs is initiated.
     fetchData('Navigated to Model Admin');
-  }, [fetchData]); // fetchData has a stable identity from useCallback in context.
+  }, [fetchData]);
 
 
   const filteredModels = useMemo(() => {
@@ -101,6 +101,18 @@ function ModelsPageInternal() {
     }
   };
 
+  const handleRefreshData = async () => {
+    setIsRefreshing(true);
+    try {
+      await fetchData('Manual Refresh Model Admin');
+      toast({ title: "Models Refreshed", description: "The latest model data has been loaded." });
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Refresh Failed", description: error.message || "Could not refresh model data." });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
 
   if (!dataContextIsReady) {
     return (
@@ -118,7 +130,7 @@ function ModelsPageInternal() {
           <h1 className="text-3xl font-bold text-primary">Model Admin</h1>
           <p className="text-muted-foreground">Define and manage your dynamic data structures.</p>
         </div>
-        <div className="flex gap-2 w-full md:w-auto">
+        <div className="flex flex-wrap gap-2 w-full md:w-auto justify-center md:justify-end">
             <div className="relative flex-grow md:flex-grow-0">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                 <Input
@@ -129,6 +141,10 @@ function ModelsPageInternal() {
                     className="pl-10 w-full md:w-64"
                 />
             </div>
+             <Button onClick={handleRefreshData} variant="outline" disabled={isRefreshing}>
+              {isRefreshing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+              {isRefreshing ? "Refreshing..." : "Refresh"}
+            </Button>
             <Button onClick={handleCreateNew} className="bg-accent text-accent-foreground hover:bg-accent/90">
                 <PlusCircle className="mr-2 h-4 w-4" /> Create Model
             </Button>
@@ -164,7 +180,7 @@ function ModelsPageInternal() {
       </Accordion>
 
 
-      {sortedNamespaces.length === 0 && models.length === 0 ? ( // Check models.length too, in case search clears namespaces but models exist
+      {sortedNamespaces.length === 0 && models.length === 0 ? ( 
          <Card className="col-span-full text-center py-12">
           <CardContent>
             <DatabaseZap size={48} className="mx-auto text-muted-foreground mb-4" />
@@ -286,3 +302,4 @@ function ModelsPageInternal() {
 }
 
 export default withAuth(ModelsPageInternal, ['administrator']);
+
