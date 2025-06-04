@@ -119,11 +119,6 @@ const SidebarProvider = React.forwardRef<
       [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar]
     )
 
-    const [isClient, setIsClient] = React.useState(false)
-    React.useEffect(() => {
-      setIsClient(true)
-    }, [])
-
     const mainDivContent = (
       <div
         style={
@@ -146,13 +141,9 @@ const SidebarProvider = React.forwardRef<
 
     return (
       <SidebarContext.Provider value={contextValue}>
-        {isClient ? (
-          <TooltipProvider delayDuration={0}>
-            {mainDivContent}
-          </TooltipProvider>
-        ) : (
-          mainDivContent
-        )}
+        <TooltipProvider delayDuration={0}>
+          {mainDivContent}
+        </TooltipProvider>
       </SidebarContext.Provider>
     )
   }
