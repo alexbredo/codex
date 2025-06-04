@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import {
@@ -46,7 +46,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useData } from '@/contexts/data-context';
-import type { Model, DataObject, Property, WorkflowWithDetails, WorkflowStateWithSuccessors } from '@/lib/types';
+import type { Model, DataObject, Property, WorkflowWithDetails, WorkflowStateWithSuccessors, DataContextType } from '@/lib/types';
 import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye, LayoutGrid, List as ListIcon, ExternalLink, Image as ImageIcon, CheckCircle2, FilterX, X as XIcon, Settings as SettingsIcon, Edit3, Workflow as WorkflowIconLucide, CalendarIcon as CalendarIconLucideLucide, Star, RefreshCw, Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
@@ -100,7 +100,7 @@ export default function DataObjectsPage() {
     isReady: dataContextIsReady,
     fetchData,
     lastChangedInfo,
-  } = dataContext;
+  }: DataContextType = dataContext; // Explicitly type dataContext for clarity
   const { toast } = useToast();
 
   const [currentModel, setCurrentModel] = useState<Model | null>(null);
@@ -120,15 +120,22 @@ export default function DataObjectsPage() {
   const [batchUpdateValue, setBatchUpdateValue] = useState<any>('');
   const [batchUpdateDate, setBatchUpdateDate] = useState<Date | undefined>(undefined);
 
-  // Effect to handle model changes based on URL and trigger data refresh
+  const previousModelIdRef = useRef<string | null>(null);
+
+
   useEffect(() => {
     if (dataContextIsReady && modelIdFromUrl) {
       const foundModel = getModelById(modelIdFromUrl);
 
       if (foundModel) {
-        const isDifferentModel = !currentModel || currentModel.id !== foundModel.id;
+        const isTrulyDifferentModel = previousModelIdRef.current !== modelIdFromUrl;
 
+        // Always update currentModel state if foundModel is valid.
+        // This handles the case where the model context data itself might have updated.
         setCurrentModel(foundModel);
+        // Sync local objects immediately based on the potentially updated foundModel or context
+        setObjects(getObjectsByModelId(foundModel.id));
+
 
         if (foundModel.workflowId) {
           setCurrentWorkflow(getWorkflowById(foundModel.workflowId) || null);
@@ -136,37 +143,38 @@ export default function DataObjectsPage() {
           setCurrentWorkflow(null);
         }
         
-        // This will be updated again after fetchData if it's a different model,
-        // but helps sync the local object list immediately if model data is already in context.
-        setObjects(getObjectsByModelId(foundModel.id));
-
         const savedViewMode = sessionStorage.getItem(`codexStructure-viewMode-${foundModel.id}`) as ViewMode | null;
         if (savedViewMode && (savedViewMode === 'table' || savedViewMode === 'gallery')) {
           setViewMode(savedViewMode);
         } else {
-          setViewMode('table');
+          setViewMode('table'); 
         }
         
-        if (isDifferentModel) {
-          console.log(`[DataObjectsPage] Model ID changed to ${foundModel.id} (${foundModel.name}). Fetching all data.`);
+        if (isTrulyDifferentModel) {
+          console.log(`[DataObjectsPage] Model ID TRULY changed to ${foundModel.id} (${foundModel.name}). Fetching all data and resetting page state.`);
           fetchData(`Model ID Change to ${foundModel.name}`);
           
-          // Reset page-specific states for the new model
           setSearchTerm('');
           setCurrentPage(1);
           setSortConfig(null);
           setColumnFilters({});
           setSelectedObjectIds(new Set());
+          
+          previousModelIdRef.current = modelIdFromUrl;
         }
       } else {
-        toast({ variant: "destructive", title: "Error", description: "Model not found." });
+        toast({ variant: "destructive", title: "Error", description: `Model with ID ${modelIdFromUrl} not found.` });
         router.push('/models');
+        previousModelIdRef.current = null; // Reset if model not found
       }
     }
-  }, [modelIdFromUrl, dataContextIsReady, getModelById, getWorkflowById, getObjectsByModelId, fetchData, toast, router, currentModel]);
+  // Key dependencies: modelIdFromUrl (from router), dataContextIsReady (from context),
+  // and the data fetching functions from context (which should be stable).
+  // currentModel is NOT a dependency here to prevent loops. It's set inside.
+  }, [modelIdFromUrl, dataContextIsReady, getModelById, getWorkflowById, getObjectsByModelId, fetchData, toast, router]);
 
 
-  // Effect to sync local objects state with DataContext after any fetch or update
+  // Effect to sync local objects state with DataContext.objects changes for the *current* model
   useEffect(() => {
     if (dataContextIsReady && currentModel) {
       setObjects(getObjectsByModelId(currentModel.id));
@@ -1112,7 +1120,7 @@ export default function DataObjectsPage() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-          {paginatedObjects.map((obj) => ( <GalleryCard key={obj.id} obj={obj} model={currentModel} allModels={allModels} allObjects={allDbObjects} currentWorkflow={currentWorkflow} getWorkflowStateName={getWorkflowStateName} onView={handleView} onEdit={handleEdit} onDelete={handleDelete} lastChangedInfo={lastChangedInfo}/> ))}
+          {paginatedObjects.map((obj) => ( <GalleryCard key={obj.id} obj={obj} model={currentModel} allModels={allModels} allObjects={allObjects} currentWorkflow={currentWorkflow} getWorkflowStateName={getWorkflowStateName} onView={handleView} onEdit={handleEdit} onDelete={handleDelete} lastChangedInfo={lastChangedInfo}/> ))}
         </div>
       )}
       {totalPages > 1 && (
@@ -1125,3 +1133,6 @@ export default function DataObjectsPage() {
     </div>
   );
 }
+
+
+      
