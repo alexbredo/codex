@@ -87,7 +87,7 @@ const INTERNAL_CLEAR_RELATIONSHIP_VALUE = "__CLEAR_RELATIONSHIP__";
 export default function DataObjectsPage() {
   const router = useRouter();
   const params = useParams();
-  const modelIdFromUrl = params.modelId as string; // Use a different name to avoid conflict with state
+  const modelIdFromUrl = params.modelId as string;
 
   const dataContext = useData();
   const {
@@ -99,7 +99,7 @@ export default function DataObjectsPage() {
     getWorkflowById,
     isReady: dataContextIsReady,
     fetchData,
-    lastChangedInfo, // For highlighting
+    lastChangedInfo,
   } = dataContext;
   const { toast } = useToast();
 
@@ -112,13 +112,66 @@ export default function DataObjectsPage() {
   const [currentWorkflow, setCurrentWorkflow] = useState<WorkflowWithDetails | null>(null);
   const [columnFilters, setColumnFilters] = useState<Record<string, ColumnFilterValue | null>>({});
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isBatchUpdating, setIsBatchUpdating] = useState(false);
 
-  // Batch Update State
   const [selectedObjectIds, setSelectedObjectIds] = useState<Set<string>>(new Set());
   const [isBatchUpdateDialogOpen, setIsBatchUpdateDialogOpen] = useState(false);
   const [batchUpdateProperty, setBatchUpdateProperty] = useState<string>('');
   const [batchUpdateValue, setBatchUpdateValue] = useState<any>('');
   const [batchUpdateDate, setBatchUpdateDate] = useState<Date | undefined>(undefined);
+
+  // Effect to handle model changes based on URL and trigger data refresh
+  useEffect(() => {
+    if (dataContextIsReady && modelIdFromUrl) {
+      const foundModel = getModelById(modelIdFromUrl);
+
+      if (foundModel) {
+        const isDifferentModel = !currentModel || currentModel.id !== foundModel.id;
+
+        setCurrentModel(foundModel);
+
+        if (foundModel.workflowId) {
+          setCurrentWorkflow(getWorkflowById(foundModel.workflowId) || null);
+        } else {
+          setCurrentWorkflow(null);
+        }
+        
+        // This will be updated again after fetchData if it's a different model,
+        // but helps sync the local object list immediately if model data is already in context.
+        setObjects(getObjectsByModelId(foundModel.id));
+
+        const savedViewMode = sessionStorage.getItem(`codexStructure-viewMode-${foundModel.id}`) as ViewMode | null;
+        if (savedViewMode && (savedViewMode === 'table' || savedViewMode === 'gallery')) {
+          setViewMode(savedViewMode);
+        } else {
+          setViewMode('table');
+        }
+        
+        if (isDifferentModel) {
+          console.log(`[DataObjectsPage] Model ID changed to ${foundModel.id} (${foundModel.name}). Fetching all data.`);
+          fetchData(`Model ID Change to ${foundModel.name}`);
+          
+          // Reset page-specific states for the new model
+          setSearchTerm('');
+          setCurrentPage(1);
+          setSortConfig(null);
+          setColumnFilters({});
+          setSelectedObjectIds(new Set());
+        }
+      } else {
+        toast({ variant: "destructive", title: "Error", description: "Model not found." });
+        router.push('/models');
+      }
+    }
+  }, [modelIdFromUrl, dataContextIsReady, getModelById, getWorkflowById, getObjectsByModelId, fetchData, toast, router, currentModel]);
+
+
+  // Effect to sync local objects state with DataContext after any fetch or update
+  useEffect(() => {
+    if (dataContextIsReady && currentModel) {
+      setObjects(getObjectsByModelId(currentModel.id));
+    }
+  }, [dataContext.objects, currentModel, dataContextIsReady, getObjectsByModelId]);
 
 
   const batchUpdatableProperties = useMemo(() => {
@@ -154,6 +207,20 @@ export default function DataObjectsPage() {
     return batchUpdatableProperties.find(p => p.name === batchUpdateProperty);
   }, [batchUpdateProperty, batchUpdatableProperties]);
 
+  useEffect(() => {
+    if (selectedBatchPropertyDetails?.type === 'rating') {
+        setBatchUpdateValue(0);
+    } else if (selectedBatchPropertyDetails?.type === 'date') {
+        setBatchUpdateDate(undefined);
+        setBatchUpdateValue('');
+    } else if (selectedBatchPropertyDetails?.type === 'relationship') {
+        setBatchUpdateValue(selectedBatchPropertyDetails.relationshipType === 'many' ? [] : '');
+    } else {
+        setBatchUpdateValue('');
+    }
+  }, [selectedBatchPropertyDetails]);
+
+
   const relatedModelForBatchUpdate = useMemo(() => {
     if (selectedBatchPropertyDetails?.type === 'relationship' && selectedBatchPropertyDetails.relatedModelId) {
         return getModelById(selectedBatchPropertyDetails.relatedModelId);
@@ -164,7 +231,7 @@ export default function DataObjectsPage() {
   const relatedObjectsForBatchUpdateOptions = useMemo(() => {
     if (relatedModelForBatchUpdate && relatedModelForBatchUpdate.id) {
         const relatedObjects = getObjectsByModelId(relatedModelForBatchUpdate.id);
-        const dbObjects = getAllObjects(); // Needed for getObjectDisplayValue context
+        const dbObjects = getAllObjects(); 
         return relatedObjects.map(obj => ({
             value: obj.id,
             label: getObjectDisplayValue(obj, relatedModelForBatchUpdate, allModels, dbObjects),
@@ -213,77 +280,10 @@ export default function DataObjectsPage() {
     return columns;
   }, [currentModel, allModels, dataContextIsReady]);
 
-  // Effect to load model details and objects when modelIdFromUrl changes or context is ready
-  useEffect(() => {
-    if (dataContextIsReady && modelIdFromUrl) {
-      const foundModel = getModelById(modelIdFromUrl);
-      if (foundModel) {
-        setCurrentModel(foundModel);
-        if (foundModel.workflowId) {
-          setCurrentWorkflow(getWorkflowById(foundModel.workflowId) || null);
-        } else {
-          setCurrentWorkflow(null);
-        }
-        // Local object state is now primarily updated by the effect below that watches dataContext.objects
-
-        const savedViewMode = sessionStorage.getItem(`codexStructure-viewMode-${modelIdFromUrl}`) as ViewMode | null;
-        if (savedViewMode && (savedViewMode === 'table' || savedViewMode === 'gallery')) {
-          setViewMode(savedViewMode);
-        } else {
-          setViewMode('table');
-        }
-        // Reset page-specific states when model changes
-        setSearchTerm('');
-        setCurrentPage(1);
-        setSortConfig(null);
-        setColumnFilters({});
-        setSelectedObjectIds(new Set());
-
-      } else {
-        toast({ variant: "destructive", title: "Error", description: "Model not found." });
-        router.push('/models');
-      }
-    }
-  }, [modelIdFromUrl, getModelById, getWorkflowById, dataContextIsReady, toast, router]);
-
-  // Effect to sync local objects with DataContext
-  useEffect(() => {
-    if (dataContextIsReady && currentModel) {
-      setObjects(getObjectsByModelId(currentModel.id));
-    }
-  }, [dataContext.objects, currentModel, dataContextIsReady, getObjectsByModelId]);
-
-
-  // Effect for refreshing data when modelIdFromUrl changes (after initial context load)
-  useEffect(() => {
-    if (dataContextIsReady && modelIdFromUrl) {
-      // Check if this is a genuine navigation to a new model, not just initial load
-      if (currentModel && currentModel.id !== modelIdFromUrl) {
-        console.log(`[DataObjectsPage] Model ID changed from ${currentModel.id} to ${modelIdFromUrl}. Fetching data.`);
-        fetchData('Model ID Change');
-      }
-    }
-  }, [modelIdFromUrl, dataContextIsReady, fetchData, currentModel]);
-
-
-  useEffect(() => {
-    if (selectedBatchPropertyDetails?.type === 'rating') {
-        setBatchUpdateValue(0);
-    } else if (selectedBatchPropertyDetails?.type === 'date') {
-        setBatchUpdateDate(undefined);
-        setBatchUpdateValue('');
-    } else if (selectedBatchPropertyDetails?.type === 'relationship') {
-        setBatchUpdateValue(selectedBatchPropertyDetails.relationshipType === 'many' ? [] : '');
-    } else {
-        setBatchUpdateValue('');
-    }
-  }, [selectedBatchPropertyDetails]);
-
-
   const handleViewModeChange = (newMode: ViewMode) => {
     setViewMode(newMode);
-    if (modelIdFromUrl) {
-      sessionStorage.setItem(`codexStructure-viewMode-${modelIdFromUrl}`, newMode);
+    if (currentModel) {
+      sessionStorage.setItem(`codexStructure-viewMode-${currentModel.id}`, newMode);
     }
   };
 
@@ -399,7 +399,6 @@ export default function DataObjectsPage() {
     if (!currentModel) return;
     try {
         await deleteObject(currentModel.id, objectId);
-        // Local state update handled by useEffect watching dataContext.objects
         setSelectedObjectIds(prev => {
           const newSet = new Set(prev);
           newSet.delete(objectId);
@@ -583,7 +582,6 @@ export default function DataObjectsPage() {
 
   const totalPages = Math.ceil(sortedObjects.length / ITEMS_PER_PAGE);
 
-  // Batch Select Logic
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
       setSelectedObjectIds(new Set(paginatedObjects.map(obj => obj.id)));
@@ -603,9 +601,8 @@ export default function DataObjectsPage() {
 
   const isAllPaginatedSelected = paginatedObjects.length > 0 && paginatedObjects.every(obj => selectedObjectIds.has(obj.id));
 
-
   const handleBatchUpdate = async () => {
-    if (!selectedBatchPropertyDetails || selectedObjectIds.size === 0) {
+    if (!currentModel || !selectedBatchPropertyDetails || selectedObjectIds.size === 0) {
         toast({ variant: "destructive", title: "Batch Update Error", description: "Please select a property and at least one record." });
         return;
     }
@@ -627,14 +624,14 @@ export default function DataObjectsPage() {
                 throw new Error(`Invalid number provided for batch update of ${selectedBatchPropertyDetails.type}.`);
             }
         } else if (selectedBatchPropertyDetails.type === 'rating') {
-            processedNewValue = Number(batchUpdateValue); // Use Number() for ratings
+            processedNewValue = Number(batchUpdateValue);
             if (isNaN(processedNewValue) || processedNewValue < 0 || processedNewValue > 5 || !Number.isInteger(processedNewValue)) {
                 throw new Error("Rating must be an integer between 0 and 5.");
             }
         } else if (selectedBatchPropertyDetails.type === 'date') {
             if (batchUpdateDate && isDateValidFn(batchUpdateDate)) {
                 processedNewValue = batchUpdateDate.toISOString();
-            } else if (!batchUpdateDate && batchUpdateValue === ''){ // Allow clearing date
+            } else if (!batchUpdateDate && batchUpdateValue === ''){ 
                 processedNewValue = null;
             }
              else {
@@ -643,7 +640,7 @@ export default function DataObjectsPage() {
         } else if (selectedBatchPropertyDetails.type === 'relationship') {
             if (selectedBatchPropertyDetails.relationshipType === 'one') {
                 processedNewValue = batchUpdateValue === INTERNAL_CLEAR_RELATIONSHIP_VALUE ? null : batchUpdateValue;
-            } else { // 'many'
+            } else { 
                 processedNewValue = Array.isArray(batchUpdateValue) ? batchUpdateValue : [];
             }
         }
@@ -656,7 +653,7 @@ export default function DataObjectsPage() {
         };
         console.log("Batch update payload:", JSON.stringify(payload, null, 2));
 
-        const response = await fetch(`/api/codex-structure/models/${modelIdFromUrl}/objects/batch-update`, {
+        const response = await fetch(`/api/codex-structure/models/${currentModel.id}/objects/batch-update`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
@@ -682,14 +679,12 @@ export default function DataObjectsPage() {
         setIsBatchUpdateDialogOpen(false);
         setSelectedObjectIds(new Set());
         setBatchUpdateProperty('');
-        // Value reset is handled by useEffect on selectedBatchPropertyDetails
     } catch (error: any) {
         toast({ variant: "destructive", title: "Batch Update Failed", description: error.message });
     } finally {
         setIsBatchUpdating(false);
     }
   };
-
 
   const displayCellContent = (obj: DataObject, property: Property) => {
     const value = obj[property.name];
@@ -839,7 +834,6 @@ export default function DataObjectsPage() {
                 setIsBatchUpdateDialogOpen(open);
                 if (!open) {
                     setBatchUpdateProperty('');
-                    // Value reset handled by useEffect on selectedBatchPropertyDetails
                 }
             }}>
                 <DialogTrigger asChild>
@@ -857,7 +851,6 @@ export default function DataObjectsPage() {
                             <Label htmlFor="batch-property" className="text-right">Property</Label>
                             <BatchSelect value={batchUpdateProperty} onValueChange={(value) => {
                                 setBatchUpdateProperty(value);
-                                // Initial value setting is handled by useEffect on selectedBatchPropertyDetails
                               }}
                             >
                                 <BatchSelectTrigger id="batch-property" className="col-span-3">
@@ -920,7 +913,7 @@ export default function DataObjectsPage() {
                                             !batchUpdateDate && "text-muted-foreground"
                                             )}
                                         >
-                                            <CalendarIconLucideLucide className="mr-2 h-4 w-4" /> {/* Renamed icon */}
+                                            <CalendarIconLucideLucide className="mr-2 h-4 w-4" />
                                             {batchUpdateDate ? formatDateFns(batchUpdateDate, "PPP") : <span>Pick a date</span>}
                                         </Button>
                                         </PopoverTrigger>
@@ -930,7 +923,7 @@ export default function DataObjectsPage() {
                                             selected={batchUpdateDate}
                                             onSelect={(date) => {
                                                 setBatchUpdateDate(date);
-                                                setBatchUpdateValue(date ? date.toISOString() : ''); // Update raw value as well
+                                                setBatchUpdateValue(date ? date.toISOString() : ''); 
                                             }}
                                             initialFocus
                                         />
@@ -992,7 +985,7 @@ export default function DataObjectsPage() {
                     <BatchUpdateDialogFooter>
                         <Button variant="outline" onClick={() => setIsBatchUpdateDialogOpen(false)} disabled={isBatchUpdating}>Cancel</Button>
                         <Button onClick={handleBatchUpdate} disabled={!selectedBatchPropertyDetails || isBatchUpdating} className="bg-primary hover:bg-primary/90">
-                            {isBatchUpdating ? "Updating..." : "Update Items"}
+                            {isBatchUpdating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Update Items"}
                         </Button>
                     </BatchUpdateDialogFooter>
                 </DialogContent>
