@@ -25,7 +25,7 @@ import {
 import { useData } from '@/contexts/data-context';
 import { useAuth, withAuth } from '@/contexts/auth-context'; // Import withAuth
 import type { Model } from '@/lib/types';
-import { PlusCircle, Edit, Trash2, Eye, DatabaseZap, ListChecks, Search, Info, Code2, StickyNote, FolderOpen } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, Eye, DatabaseZap, ListChecks, Search, Info, Code2, StickyNote, FolderOpen, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useToast } from "@/hooks/use-toast";
@@ -34,11 +34,19 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 
 function ModelsPageInternal() {
-  const { models, deleteModel, isReady } = useData(); 
+  const { models, deleteModel, isReady: dataContextIsReady, fetchData } = useData(); 
   const { toast } = useToast();
   const router = useRouter(); 
   const [searchTerm, setSearchTerm] = useState('');
   const [openAccordionItems, setOpenAccordionItems] = useState<string[]>([]);
+  const [isLoadingPage, setIsLoadingPage] = useState(true);
+
+  useEffect(() => {
+    if (dataContextIsReady) {
+      fetchData('Navigated to Model Admin');
+      setIsLoadingPage(false);
+    }
+  }, [dataContextIsReady, fetchData]);
 
   const handleCreateNew = () => {
     router.push('/models/new');
@@ -85,15 +93,16 @@ function ModelsPageInternal() {
   }, [groupedModels]);
 
   useEffect(() => {
-    if (isReady && sortedNamespaces.length > 0 && openAccordionItems.length === 0) {
+    if (dataContextIsReady && sortedNamespaces.length > 0 && openAccordionItems.length === 0) {
       setOpenAccordionItems(sortedNamespaces); // Open all by default if none are open
     }
-  }, [isReady, sortedNamespaces, openAccordionItems.length]);
+  }, [dataContextIsReady, sortedNamespaces, openAccordionItems.length]);
 
 
-  if (!isReady) {
+  if (!dataContextIsReady || isLoadingPage) {
     return (
-      <div className="flex justify-center items-center h-screen">
+      <div className="flex flex-col justify-center items-center h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
         <p className="text-lg text-muted-foreground">Loading model admin...</p>
       </div>
     );
@@ -275,3 +284,4 @@ function ModelsPageInternal() {
 
 // Wrap the page component with the HOC for role protection
 export default withAuth(ModelsPageInternal, ['administrator']);
+
