@@ -34,25 +34,18 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 
 function ModelsPageInternal() {
-  const { models, deleteModel, isReady: dataContextIsReady, fetchData } = useData(); 
+  const { models, deleteModel, isReady: dataContextIsReady, fetchData } = useData();
   const { toast } = useToast();
-  const router = useRouter(); 
+  const router = useRouter();
   const [searchTerm, setSearchTerm] = useState('');
   const [openAccordionItems, setOpenAccordionItems] = useState<string[]>([]);
 
   useEffect(() => {
-    // This effect runs once when the component mounts if fetchData is stable,
-    // or if dataContextIsReady changes.
-    // It ensures that navigating TO this page triggers a specific data refresh.
-    // The loading indicator relies on dataContextIsReady.
-    if (dataContextIsReady) { // Optional: only fetch if context was already ready, to avoid double fetch on initial mount.
-                              // Or, always fetch and let DataProvider handle isReady states.
-        fetchData('Navigated to Model Admin');
-    } else {
-        // If context is not ready, it means DataProvider is doing its initial load.
-        // No need to call fetchData again here, just wait for dataContextIsReady to become true.
-    }
-  }, [dataContextIsReady, fetchData]);
+    // Fetch data when the component mounts.
+    // The DataProvider's isReady state will handle the overall loading UI.
+    // This ensures that if the user navigates here, a fresh fetch for this page's specific needs is initiated.
+    fetchData('Navigated to Model Admin');
+  }, [fetchData]); // fetchData has a stable identity from useCallback in context.
 
 
   const filteredModels = useMemo(() => {
@@ -86,7 +79,7 @@ function ModelsPageInternal() {
   useEffect(() => {
     // Open all accordion items by default if none are explicitly set and there are namespaces
     if (dataContextIsReady && sortedNamespaces.length > 0 && openAccordionItems.length === 0) {
-      setOpenAccordionItems(sortedNamespaces); 
+      setOpenAccordionItems(sortedNamespaces);
     }
   }, [dataContextIsReady, sortedNamespaces, openAccordionItems.length]);
 
@@ -98,7 +91,7 @@ function ModelsPageInternal() {
   const handleEdit = (model: Model) => {
     router.push(`/models/edit/${model.id}`);
   };
-  
+
   const handleDelete = async (modelId: string, modelName: string) => {
     try {
       await deleteModel(modelId);
@@ -152,7 +145,7 @@ function ModelsPageInternal() {
           </AccordionTrigger>
           <AccordionContent className="p-0">
             <Alert variant="default" className="border-0 rounded-t-none">
-              <AlertDescription className="pt-2 px-4 pb-4"> 
+              <AlertDescription className="pt-2 px-4 pb-4">
                 You can programmatically access your models and data objects using an internal API. Here are some example endpoints:
                 <ul className="list-disc pl-5 mt-2 space-y-1">
                   <li><code>GET /api/codex-structure/models</code> - Retrieves a list of all defined models.</li>
@@ -187,8 +180,8 @@ function ModelsPageInternal() {
           </CardContent>
         </Card>
       ) : (
-        <Accordion 
-          type="multiple" 
+        <Accordion
+          type="multiple"
           value={openAccordionItems}
           onValueChange={setOpenAccordionItems}
           className="w-full space-y-4"
@@ -241,7 +234,7 @@ function ModelsPageInternal() {
                         <Button variant="outline" size="sm" onClick={() => handleEdit(model)} className="w-full">
                           <Edit className="mr-1 h-3 w-3" /> Edit
                         </Button>
-                        
+
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
                             <Button variant="destructive" size="sm" className="w-full">
