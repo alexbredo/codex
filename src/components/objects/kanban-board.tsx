@@ -68,24 +68,14 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 10, // Users have to drag an item by 10 pixels before a drag event is triggered
+        distance: 10, 
       },
     })
   );
   
   const findColumn = (id: UniqueIdentifier | undefined | null): KanbanColumn | null => {
     if (!id) return null;
-    // Check if the id is a column id itself
-    const columnById = columns.find(col => col.id === id);
-    if (columnById) return columnById;
-
-    // If not, check if it's an object id within a column
-    for (const col of columns) {
-        if (col.objects.some(obj => obj.id === id)) {
-            return col;
-        }
-    }
-    return null;
+    return columns.find(col => col.id === id || col.objects.some(obj => obj.id === id)) || null;
   };
   
   const findObjectById = (id: UniqueIdentifier | undefined | null): DataObject | null => {
@@ -102,9 +92,7 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
   };
   
   const handleDragOver = (event: DragOverEvent) => {
-    // No optimistic updates for now to simplify debugging inter-column drags.
-    // The DragOverlay will provide visual feedback.
-    // The item will "snap" after handleDragEnd completes and data is refetched.
+    // No-op: All visual updates handled by DragOverlay and final state update in handleDragEnd
   };
   
   async function handleDragEnd(event: DragEndEvent) {
@@ -112,76 +100,68 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
     const { active, over } = event;
 
     if (!over) {
+      console.log("DragEnd: No 'over' target.");
       return;
     }
 
     const activeObjectId = String(active.id);
-    const originalColumn = findColumn(activeObjectId); // Original column of the dragged item
+    const originalColumn = findColumn(activeObjectId); 
 
     if (!originalColumn) {
       console.warn("DragEnd: Could not find original column for active item:", activeObjectId);
       return;
     }
 
-    // Determine target column
     let targetColumnId: string | null = null;
-    // Case 1: Dropped directly onto a column Card (which is a droppable target)
-    if (columns.some(col => col.id === over.id)) { // over.id is a column id
-        targetColumnId = String(over.id);
-    } 
-    // Case 2: Dropped onto an item within a column (SortableKanbanItem) or empty space in a sortable container
-    // The containerId of the sortable item/context is the column's ID.
-    else if (over.data.current?.sortable?.containerId) {
-        targetColumnId = String(over.data.current.sortable.containerId);
-    } 
-    // Case 3: Fallback - if 'over.id' is an item id but not caught by sortable.containerId
-    // This case might be less common if items are always within a sortable context that provides containerId.
-    else {
-        const columnContainingOverItem = findColumn(over.id);
-        if (columnContainingOverItem) {
-            targetColumnId = columnContainingOverItem.id;
+    if (over) {
+        // Case 1: Dropped directly onto a column Card (or its SortableContext if ID is set)
+        if (columns.some(col => col.id === over.id)) {
+            targetColumnId = String(over.id);
+        }
+        // Case 2: Dropped onto an item within a column OR empty space in sortable container
+        else if (over.data.current?.sortable?.containerId) {
+            targetColumnId = String(over.data.current.sortable.containerId);
+        }
+        // Case 3: Fallback - if 'over.id' is an item id but not caught by sortable.containerId
+        else {
+            const columnContainingOverItem = findColumn(over.id);
+            if (columnContainingOverItem) {
+                targetColumnId = columnContainingOverItem.id;
+            }
         }
     }
 
     if (!targetColumnId) {
-        console.warn("DragEnd: Could not determine target column ID from 'over' object:", over);
+        console.warn(`DragEnd: Target column not found for ID: ${over.id}`);
         return;
     }
     
     const targetColumn = columns.find(col => col.id === targetColumnId);
 
     if (!targetColumn) {
-        console.warn("DragEnd: Target column not found for ID:", targetColumnId);
+        console.warn("DragEnd: Target column definition not found for ID:", targetColumnId);
         return;
     }
     
-    // Logic for handling the drop
     if (originalColumn.id !== targetColumn.id) {
-        // Item moved to a different column (state change)
         setIsLoading(true);
         try {
           await onObjectUpdate(activeObjectId, targetColumn.id);
-          // Parent component (DataObjectsPage) is responsible for calling fetchData 
-          // via its onObjectUpdate -> updateObject (in context) chain.
-          // The KanbanBoard will re-render when its 'objects' prop changes.
         } catch (error) {
             console.error("Error during onObjectUpdate in handleDragEnd:", error);
-            // Parent should also handle reverting or re-fetching on error.
         } finally {
             setIsLoading(false);
         }
     } else {
-      // Item moved within the same column - update local visual order
       const columnIndex = columns.findIndex(col => col.id === originalColumn.id);
       if (columnIndex !== -1) {
         const itemsInColumn = columns[columnIndex].objects;
         const oldIndex = itemsInColumn.findIndex(item => item.id === active.id);
         
         let newIndex;
-        // If 'over.id' is the column id itself, it means item was dropped in empty space of column
         if (over.id === originalColumn.id) {
-            newIndex = itemsInColumn.length - 1; // Place at the end of the column
-        } else { // Dropped onto another item in the same column
+            newIndex = itemsInColumn.length -1; 
+        } else { 
             newIndex = itemsInColumn.findIndex(item => item.id === over.id);
         }
 
@@ -223,7 +203,7 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
         measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
     >
       <ScrollArea className="w-full rounded-md border">
-        <div className="flex gap-4 p-4 min-h-[calc(100vh-20rem)]"> {/* Ensure columns have space */}
+        <div className="flex gap-4 p-4 min-h-[calc(100vh-20rem)]">
           {columns.map(column => (
             <Card key={column.id} id={column.id} className="w-80 flex-shrink-0 h-full flex flex-col bg-muted/50">
               <CardHeader className="p-3 border-b sticky top-0 bg-muted/80 backdrop-blur-sm z-10">
@@ -232,13 +212,13 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
                   <Badge variant="secondary">{column.objects.length}</Badge>
                 </CardTitle>
               </CardHeader>
-              <SortableContext items={column.objects.map(obj => obj.id)} strategy={verticalListSortingStrategy}>
-                <ScrollArea className="flex-grow"> {/* Allow columns to scroll internally */}
-                   <CardContent className="p-3 space-y-2 min-h-[150px]"> {/* min-h for drop target visibility */}
+              <SortableContext id={column.id} items={column.objects.map(obj => obj.id)} strategy={verticalListSortingStrategy}>
+                <ScrollArea className="flex-grow"> 
+                   <CardContent className="p-3 space-y-2 min-h-[150px]">
                     {column.objects.length > 0 ? column.objects.map(object => (
                       <SortableKanbanItem
                         key={object.id}
-                        id={object.id} // This ID is used by dnd-kit
+                        id={object.id} 
                         object={object}
                         model={model}
                         allModels={allModels}
@@ -265,7 +245,7 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
             model={model} 
             allModels={allModels} 
             allObjects={allObjects} 
-            onViewObject={() => {}} // Dummy for overlay
+            onViewObject={() => {}} 
             className="ring-2 ring-primary shadow-xl opacity-100 cursor-grabbing"
           />
         ) : null}
@@ -273,4 +253,3 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
     </DndContext>
   );
 }
-
