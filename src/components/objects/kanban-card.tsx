@@ -7,11 +7,13 @@ import { Button } from '@/components/ui/button';
 import { Eye, Edit, GripVertical } from 'lucide-react';
 import { getObjectDisplayValue, cn } from '@/lib/utils';
 import { useSortable } from '@dnd-kit/sortable';
+import { useDroppable } from '@dnd-kit/core'; // Corrected import
 import { CSS } from '@dnd-kit/utilities';
 import Image from 'next/image';
 import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { StarDisplay } from '@/components/ui/star-display';
+import * as React from 'react'; // Ensure React is imported for JSX
 
 interface KanbanCardProps {
   object: DataObject;
@@ -65,7 +67,7 @@ export function KanbanCard({
     .filter(p => 
       p.name.toLowerCase() !== 'name' && 
       p.name.toLowerCase() !== 'title' &&
-      p.id !== imageProp?.id && // Exclude the property already used for the main image
+      p.id !== imageProp?.id && 
       p.type !== 'markdown' && 
       !model.displayPropertyNames?.includes(p.name) && 
       object[p.name] !== null && object[p.name] !== undefined && String(object[p.name]).trim() !== ''
@@ -127,14 +129,14 @@ export function KanbanCard({
             layout="fill"
             objectFit="cover"
             data-ai-hint={model.name.toLowerCase()}
-            onError={(e) => { (e.target as HTMLImageElement).src = placeholderImageForError; }}
+             onError={(e) => { (e.target as HTMLImageElement).src = placeholderImageForError; }}
           />
         </div>
       )}
       <CardHeader 
         className={cn(
           "p-3 flex flex-row items-center justify-between", 
-          displayImage && imageUrlFromProp && "pt-2", // Only reduce top padding if image is shown
+          (displayImage && imageUrlFromProp) ? "pt-2" : "", 
           dragHandleListeners && "cursor-grab"
         )}
         {...(dragHandleListeners || {})}
@@ -206,7 +208,7 @@ interface DroppablePlaceholderProps {
 }
 
 export function DroppablePlaceholder({ id, className }: DroppablePlaceholderProps) {
-  const { setNodeRef, isOver } = useDroppable({
+  const { setNodeRef, isOver } = useDroppable({ 
     id: id, 
     data: {
       isPlaceholder: true, 
