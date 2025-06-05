@@ -4,10 +4,10 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useData } from '@/contexts/data-context';
-import type { Model, DataObject, Property, WorkflowWithDetails } from '@/lib/types';
+import type { Model, DataObject, Property, WorkflowWithDetails, ValidationRuleset } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Edit, Loader2, ExternalLink, ImageIcon, CheckCircle2, ShieldAlert } from 'lucide-react';
+import { ArrowLeft, Edit, Loader2, ExternalLink, ImageIcon, CheckCircle2, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
 import Link from 'next/link';
 import { getObjectDisplayValue } from '@/lib/utils';
@@ -16,6 +16,12 @@ import ReactMarkdown from 'react-markdown';
 import { StarDisplay } from '@/components/ui/star-display';
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 export default function ViewObjectPage() {
   const router = useRouter();
@@ -24,7 +30,7 @@ export default function ViewObjectPage() {
   const objectId = params.objectId as string;
   const { toast } = useToast();
 
-  const { getModelById, models: allModels, getAllObjects, getWorkflowById, isReady: dataContextIsReady, formatApiError } = useData();
+  const { getModelById, models: allModels, getAllObjects, getWorkflowById, validationRulesets, isReady: dataContextIsReady, formatApiError } = useData();
 
   const [currentModel, setCurrentModel] = useState<Model | null>(null);
   const [viewingObject, setViewingObject] = useState<DataObject | null>(null);
@@ -246,23 +252,44 @@ export default function ViewObjectPage() {
             </div>
           )}
         </CardHeader>
+        <TooltipProvider>
         <CardContent className="space-y-6">
           <div>
             <h3 className="text-sm font-medium text-muted-foreground mb-1">Object ID (UUID)</h3>
             <p className="text-sm font-mono bg-muted p-2 rounded-md">{viewingObject.id}</p>
           </div>
           <hr/>
-          {sortedProperties.map(prop => (
-            <div key={prop.id} className="grid grid-cols-1 md:grid-cols-3 gap-2 items-start">
-              <h3 className="text-md font-semibold text-foreground md:col-span-1">{prop.name}:</h3>
-              <div className="md:col-span-2 text-foreground break-words">
-                {displayFieldValue(prop, viewingObject[prop.name])}
+          {sortedProperties.map(prop => {
+            let appliedRule: ValidationRuleset | undefined;
+            if (prop.type === 'string' && prop.validationRulesetId) {
+              appliedRule = validationRulesets.find(rs => rs.id === prop.validationRulesetId);
+            }
+            return (
+              <div key={prop.id} className="grid grid-cols-1 md:grid-cols-3 gap-2 items-start">
+                <h3 className="text-md font-semibold text-foreground md:col-span-1 flex items-center">
+                  {prop.name}
+                  {appliedRule && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <ShieldCheck className="h-4 w-4 ml-2 text-blue-500" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p className="font-semibold">Validation Rule: {appliedRule.name}</p>
+                        {appliedRule.description && <p className="text-xs text-muted-foreground">{appliedRule.description}</p>}
+                        <p className="text-xs text-muted-foreground mt-1">Pattern: <code className="font-mono bg-muted p-0.5 rounded-sm">{appliedRule.regexPattern}</code></p>
+                      </TooltipContent>
+                    </Tooltip>
+                  )}:
+                </h3>
+                <div className="md:col-span-2 text-foreground break-words">
+                  {displayFieldValue(prop, viewingObject[prop.name])}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </CardContent>
+        </TooltipProvider>
       </Card>
     </div>
   );
 }
-

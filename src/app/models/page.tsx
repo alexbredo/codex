@@ -25,16 +25,22 @@ import {
 import { useData } from '@/contexts/data-context';
 import { withAuth } from '@/contexts/auth-context';
 import type { Model } from '@/lib/types';
-import { PlusCircle, Edit, Trash2, Eye, DatabaseZap, ListChecks, Search, Info, Code2, StickyNote, FolderOpen, Loader2, RefreshCw } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, Eye, DatabaseZap, ListChecks, Search, Info, Code2, StickyNote, FolderOpen, Loader2, RefreshCw, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useToast } from "@/hooks/use-toast";
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 function ModelsPageInternal() {
-  const { models, deleteModel, isReady: dataContextIsReady, fetchData } = useData();
+  const { models, deleteModel, validationRulesets, isReady: dataContextIsReady, fetchData } = useData();
   const { toast } = useToast();
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState('');
@@ -42,8 +48,6 @@ function ModelsPageInternal() {
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
-    // Fetch data when the component mounts.
-    // The DataProvider's isReady state will handle the overall loading UI.
     fetchData('Navigated to Model Admin');
   }, [fetchData]);
 
@@ -77,7 +81,6 @@ function ModelsPageInternal() {
   }, [groupedModels]);
 
   useEffect(() => {
-    // Open all accordion items by default if none are explicitly set and there are namespaces
     if (dataContextIsReady && sortedNamespaces.length > 0 && openAccordionItems.length === 0) {
       setOpenAccordionItems(sortedNamespaces);
     }
@@ -196,110 +199,129 @@ function ModelsPageInternal() {
           </CardContent>
         </Card>
       ) : (
-        <Accordion
-          type="multiple"
-          value={openAccordionItems}
-          onValueChange={setOpenAccordionItems}
-          className="w-full space-y-4"
-        >
-          {sortedNamespaces.map((namespace) => (
-            <AccordionItem key={namespace} value={namespace} className="border rounded-lg">
-              <AccordionTrigger className="p-4 hover:no-underline data-[state=open]:border-b">
-                <div className="flex items-center text-xl">
-                  <FolderOpen className="h-6 w-6 mr-3 text-primary" />
-                  <span className="font-semibold">{namespace}</span>
-                  <Badge variant="secondary" className="ml-3">{groupedModels[namespace].length} model(s)</Badge>
-                </div>
-              </AccordionTrigger>
-              <AccordionContent className="p-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {groupedModels[namespace].sort((a,b) => a.name.localeCompare(b.name)).map((model) => (
-                    <Card key={model.id} className="flex flex-col shadow-lg hover:shadow-xl transition-shadow duration-300">
-                      <CardHeader>
-                        <div className="flex justify-between items-start">
-                          <CardTitle className="text-xl text-primary">{model.name}</CardTitle>
-                          <DatabaseZap className="h-6 w-6 text-muted-foreground" />
-                        </div>
-                        <CardDescription className="h-10 overflow-hidden text-ellipsis">
-                          {model.description || 'No description provided.'}
-                        </CardDescription>
-                         {model.displayPropertyNames && model.displayPropertyNames.length > 0 && (
-                          <div className="text-xs text-muted-foreground pt-1 flex items-center">
-                            <StickyNote size={12} className="mr-1.5 text-primary/70" /> Display As: <span className="font-medium text-primary/90 ml-1 truncate">{model.displayPropertyNames.join(' ')}</span>
+        <TooltipProvider>
+          <Accordion
+            type="multiple"
+            value={openAccordionItems}
+            onValueChange={setOpenAccordionItems}
+            className="w-full space-y-4"
+          >
+            {sortedNamespaces.map((namespace) => (
+              <AccordionItem key={namespace} value={namespace} className="border rounded-lg">
+                <AccordionTrigger className="p-4 hover:no-underline data-[state=open]:border-b">
+                  <div className="flex items-center text-xl">
+                    <FolderOpen className="h-6 w-6 mr-3 text-primary" />
+                    <span className="font-semibold">{namespace}</span>
+                    <Badge variant="secondary" className="ml-3">{groupedModels[namespace].length} model(s)</Badge>
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent className="p-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {groupedModels[namespace].sort((a,b) => a.name.localeCompare(b.name)).map((model) => (
+                      <Card key={model.id} className="flex flex-col shadow-lg hover:shadow-xl transition-shadow duration-300">
+                        <CardHeader>
+                          <div className="flex justify-between items-start">
+                            <CardTitle className="text-xl text-primary">{model.name}</CardTitle>
+                            <DatabaseZap className="h-6 w-6 text-muted-foreground" />
                           </div>
-                        )}
-                      </CardHeader>
-                      <CardContent className="flex-grow">
-                        <h4 className="font-semibold mb-2 text-sm">Properties ({model.properties.length}):</h4>
-                        {model.properties.length > 0 ? (
-                          <ScrollArea className="h-24">
-                            <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
-                              {model.properties.sort((a,b) => a.orderIndex - b.orderIndex).slice(0, 5).map((prop) => (
-                                <li key={prop.id} className="truncate">
-                                  {prop.name} <span className="text-xs opacity-70">({prop.type}{prop.type === 'relationship' ? ` - ${prop.relationshipType}` : ''})</span>
-                                </li>
-                              ))}
-                              {model.properties.length > 5 && <li className="text-xs opacity-70">...and {model.properties.length - 5} more</li>}
-                            </ul>
-                          </ScrollArea>
-                        ) : (
-                          <p className="text-sm text-muted-foreground">No properties defined.</p>
-                        )}
-                      </CardContent>
-                      <CardFooter className="grid grid-cols-3 gap-2 pt-4">
-                        <Button variant="outline" size="sm" onClick={() => handleEdit(model)} className="w-full">
-                          <Edit className="mr-1 h-3 w-3" /> Edit
-                        </Button>
+                          <CardDescription className="h-10 overflow-hidden text-ellipsis">
+                            {model.description || 'No description provided.'}
+                          </CardDescription>
+                           {model.displayPropertyNames && model.displayPropertyNames.length > 0 && (
+                            <div className="text-xs text-muted-foreground pt-1 flex items-center">
+                              <StickyNote size={12} className="mr-1.5 text-primary/70" /> Display As: <span className="font-medium text-primary/90 ml-1 truncate">{model.displayPropertyNames.join(' ')}</span>
+                            </div>
+                          )}
+                        </CardHeader>
+                        <CardContent className="flex-grow">
+                          <h4 className="font-semibold mb-2 text-sm">Properties ({model.properties.length}):</h4>
+                          {model.properties.length > 0 ? (
+                            <ScrollArea className="h-24">
+                              <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
+                                {model.properties.sort((a,b) => a.orderIndex - b.orderIndex).slice(0, 5).map((prop) => {
+                                  let validationRuleName: string | undefined;
+                                  if (prop.type === 'string' && prop.validationRulesetId) {
+                                    const rule = validationRulesets.find(rs => rs.id === prop.validationRulesetId);
+                                    validationRuleName = rule?.name;
+                                  }
+                                  return (
+                                    <li key={prop.id} className="truncate flex items-center">
+                                      {prop.name}
+                                      <span className="text-xs opacity-70 ml-1">({prop.type}{prop.type === 'relationship' ? ` - ${prop.relationshipType}` : ''})</span>
+                                      {validationRuleName && (
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <ShieldCheck className="h-3.5 w-3.5 ml-1.5 text-blue-500 shrink-0" />
+                                          </TooltipTrigger>
+                                          <TooltipContent side="top" className="text-xs">
+                                            <p>Rule: {validationRuleName}</p>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      )}
+                                    </li>
+                                  );
+                                })}
+                                {model.properties.length > 5 && <li className="text-xs opacity-70">...and {model.properties.length - 5} more</li>}
+                              </ul>
+                            </ScrollArea>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">No properties defined.</p>
+                          )}
+                        </CardContent>
+                        <CardFooter className="grid grid-cols-3 gap-2 pt-4">
+                          <Button variant="outline" size="sm" onClick={() => handleEdit(model)} className="w-full">
+                            <Edit className="mr-1 h-3 w-3" /> Edit
+                          </Button>
 
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="destructive" size="sm" className="w-full">
-                              <Trash2 className="mr-1 h-3 w-3" /> Delete
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                This action cannot be undone. This will permanently delete the model
-                                "{model.name}" and all its associated data objects.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => handleDelete(model.id, model.name)}>
-                                Delete
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="destructive" size="sm" className="w-full">
+                                <Trash2 className="mr-1 h-3 w-3" /> Delete
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  This action cannot be undone. This will permanently delete the model
+                                  "{model.name}" and all its associated data objects.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleDelete(model.id, model.name)}>
+                                  Delete
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
 
-                        <Link href={`/data/${model.id}`} passHref legacyBehavior>
-                          <a className="w-full">
-                            <Button variant="default" size="sm" className="w-full">
-                              <Eye className="mr-1 h-3 w-3" /> View Data
-                            </Button>
-                          </a>
-                        </Link>
-                        <Link href={`/data/${model.id}/new`} passHref legacyBehavior>
-                          <a className="w-full col-span-3 mt-2">
-                            <Button variant="secondary" size="sm" className="w-full">
-                              <PlusCircle className="mr-1 h-3 w-3" /> Create New {model.name} Object
-                            </Button>
-                          </a>
-                        </Link>
-                      </CardFooter>
-                    </Card>
-                  ))}
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-          ))}
-        </Accordion>
+                          <Link href={`/data/${model.id}`} passHref legacyBehavior>
+                            <a className="w-full">
+                              <Button variant="default" size="sm" className="w-full">
+                                <Eye className="mr-1 h-3 w-3" /> View Data
+                              </Button>
+                            </a>
+                          </Link>
+                          <Link href={`/data/${model.id}/new`} passHref legacyBehavior>
+                            <a className="w-full col-span-3 mt-2">
+                              <Button variant="secondary" size="sm" className="w-full">
+                                <PlusCircle className="mr-1 h-3 w-3" /> Create New {model.name} Object
+                              </Button>
+                            </a>
+                          </Link>
+                        </CardFooter>
+                      </Card>
+                    ))}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            ))}
+          </Accordion>
+        </TooltipProvider>
       )}
     </div>
   );
 }
 
 export default withAuth(ModelsPageInternal, ['administrator']);
-
