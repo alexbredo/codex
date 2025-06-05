@@ -47,7 +47,7 @@ import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useData } from '@/contexts/data-context';
 import type { Model, DataObject, Property, WorkflowWithDetails, WorkflowStateWithSuccessors, DataContextType } from '@/lib/types';
-import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye, LayoutGrid, List as ListIcon, ExternalLink, Image as ImageIcon, CheckCircle2, FilterX, X as XIcon, Settings as SettingsIcon, Edit3, Workflow as WorkflowIconLucide, CalendarIcon as CalendarIconLucideLucide, Star, RefreshCw, Loader2 } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye, LayoutGrid, List as ListIcon, ExternalLink, Image as ImageIcon, CheckCircle2, FilterX, X as XIcon, Settings as SettingsIcon, Edit3, Workflow as WorkflowIconLucide, CalendarIcon as CalendarIconLucideLucide, Star, RefreshCw, Loader2, Kanban as KanbanIcon } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -68,10 +68,11 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import KanbanBoard from '@/components/objects/kanban-board';
 
 
 const ITEMS_PER_PAGE = 10;
-type ViewMode = 'table' | 'gallery';
+type ViewMode = 'table' | 'gallery' | 'kanban';
 
 type SortDirection = 'asc' | 'desc';
 interface SortConfig {
@@ -103,16 +104,16 @@ export default function DataObjectsPage() {
     getModelById,
     getObjectsByModelId,
     deleteObject,
+    updateObject, // Added updateObject for Kanban
     getAllObjects,
     getWorkflowById,
     isReady: dataContextIsReady,
     fetchData,
     lastChangedInfo,
-  }: DataContextType = dataContext; 
+  }: DataContextType = dataContext;
   const { toast } = useToast();
 
   const [currentModel, setCurrentModel] = useState<Model | null>(null);
-  // Local objects state specific to this model, initialized from context
   const [localObjects, setLocalObjects] = useState<DataObject[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -144,16 +145,25 @@ export default function DataObjectsPage() {
 
 
         if (foundModel.workflowId) {
-          setCurrentWorkflow(getWorkflowById(foundModel.workflowId) || null);
+          const wf = getWorkflowById(foundModel.workflowId);
+          setCurrentWorkflow(wf || null);
+          // If workflow exists and no specific view mode saved, default to Kanban for workflows
+          const savedViewMode = sessionStorage.getItem(`codexStructure-viewMode-${foundModel.id}`) as ViewMode | null;
+          if (savedViewMode && (['table', 'gallery', 'kanban'] as ViewMode[]).includes(savedViewMode)) {
+            setViewMode(savedViewMode);
+          } else if (wf) {
+             setViewMode('kanban'); // Default to Kanban if workflow is present and no specific mode saved
+          } else {
+             setViewMode('table');
+          }
         } else {
           setCurrentWorkflow(null);
-        }
-        
-        const savedViewMode = sessionStorage.getItem(`codexStructure-viewMode-${foundModel.id}`) as ViewMode | null;
-        if (savedViewMode && (savedViewMode === 'table' || savedViewMode === 'gallery')) {
-          setViewMode(savedViewMode);
-        } else {
-          setViewMode('table'); 
+          const savedViewMode = sessionStorage.getItem(`codexStructure-viewMode-${foundModel.id}`) as ViewMode | null;
+           if (savedViewMode && (['table', 'gallery'] as ViewMode[]).includes(savedViewMode)) { // Kanban not an option if no workflow
+            setViewMode(savedViewMode);
+          } else {
+            setViewMode('table');
+          }
         }
         
         if (isTrulyDifferentModel) {
@@ -243,7 +253,6 @@ export default function DataObjectsPage() {
   const relatedObjectsForBatchUpdateOptions = useMemo(() => {
     if (relatedModelForBatchUpdate && relatedModelForBatchUpdate.id) {
         const relatedObjects = getObjectsByModelId(relatedModelForBatchUpdate.id);
-        // const dbObjects = getAllObjects(); // Use allDbObjects from outer scope
         return relatedObjects.map(obj => ({
             value: obj.id,
             label: getObjectDisplayValue(obj, relatedModelForBatchUpdate, allModels, allDbObjects),
@@ -255,7 +264,6 @@ export default function DataObjectsPage() {
   const relatedObjectsForBatchUpdateGrouped = useMemo(() => {
     if (relatedModelForBatchUpdate && relatedModelForBatchUpdate.id) {
         const relatedObjects = getObjectsByModelId(relatedModelForBatchUpdate.id);
-        // const dbObjects = getAllObjects(); // Use allDbObjects from outer scope
         return relatedObjects.reduce((acc, obj) => {
             const namespace = allModels.find(m => m.id === relatedModelForBatchUpdate.id)?.namespace || 'Default';
             if (!acc[namespace]) {
@@ -833,6 +841,62 @@ export default function DataObjectsPage() {
     }
   };
 
+  const handleStateChangeViaDrag = useCallback(async (objectId: string, newPotentialStateId: string) => {
+    if (!currentModel || !currentWorkflow) {
+      toast({ variant: "destructive", title: "Error", description: "Model or workflow not available for state change." });
+      return;
+    }
+
+    const objectToUpdate = localObjects.find(obj => obj.id === objectId);
+    if (!objectToUpdate) {
+      toast({ variant: "destructive", title: "Error", description: `Object with ID ${objectId} not found.` });
+      return;
+    }
+
+    const currentObjectStateId = objectToUpdate.currentStateId;
+    const currentObjectStateDef = currentObjectStateId
+      ? currentWorkflow.states.find(s => s.id === currentObjectStateId)
+      : null;
+
+    const targetStateDef = currentWorkflow.states.find(s => s.id === newPotentialStateId);
+    if (!targetStateDef) {
+      toast({ variant: "destructive", title: "Error", description: `Target state ID "${newPotentialStateId}" not found in workflow "${currentWorkflow.name}".` });
+      return;
+    }
+
+    let isValidTransition = false;
+    if (!currentObjectStateDef) { // If object has no current state
+      if (targetStateDef.isInitial) {
+        isValidTransition = true;
+      } else {
+        toast({ variant: "warning", title: "Invalid Transition", description: `Cannot move object to non-initial state "${targetStateDef.name}" as it has no current state.` });
+      }
+    } else {
+      const validSuccessorIds = currentObjectStateDef.successorStateIds || [];
+      if (validSuccessorIds.includes(newPotentialStateId)) {
+        isValidTransition = true;
+      } else {
+        toast({ variant: "warning", title: "Invalid Transition", description: `Cannot move from "${currentObjectStateDef.name}" to "${targetStateDef.name}".` });
+      }
+    }
+
+    if (isValidTransition) {
+      try {
+        setIsRefreshing(true);
+        await updateObject(currentModel.id, objectId, { currentStateId: newPotentialStateId });
+        toast({ title: "State Updated", description: `Object moved to "${targetStateDef.name}".` });
+        // DataProvider's updateObject should trigger a fetchData, refreshing localObjects
+      } catch (error: any) {
+        toast({ variant: "destructive", title: "Error Updating State", description: error.message });
+        await fetchData('Error Reverting Kanban State Update'); // Re-fetch to revert optimistic UI changes if any
+      } finally {
+        setIsRefreshing(false);
+      }
+    } else {
+       await fetchData('Invalid Transition Revert'); // Re-fetch to revert optimistic UI changes
+    }
+  }, [currentModel, currentWorkflow, localObjects, updateObject, toast, fetchData]);
+
 
   if (!dataContextIsReady || !currentModel) return <div className="flex justify-center items-center h-screen"><Loader2 className="h-8 w-8 animate-spin text-primary mr-2" /><p className="text-lg text-muted-foreground">Loading data objects...</p></div>;
 
@@ -855,7 +919,10 @@ export default function DataObjectsPage() {
             </div>
             <div className="flex items-center border rounded-md">
               <Button variant={viewMode === 'table' ? 'secondary' : 'ghost'} size="sm" onClick={() => handleViewModeChange('table')} className="rounded-r-none" aria-label="Table View"><ListIcon className="h-5 w-5" /></Button>
-              <Button variant={viewMode === 'gallery' ? 'secondary' : 'ghost'} size="sm" onClick={() => handleViewModeChange('gallery')} className="rounded-l-none border-l" aria-label="Gallery View"><LayoutGrid className="h-5 w-5" /></Button>
+              <Button variant={viewMode === 'gallery' ? 'secondary' : 'ghost'} size="sm" onClick={() => handleViewModeChange('gallery')} className={cn("rounded-l-none border-l", currentWorkflow ? "" : "rounded-r-md")} aria-label="Gallery View"><LayoutGrid className="h-5 w-5" /></Button>
+              {currentWorkflow && (
+                 <Button variant={viewMode === 'kanban' ? 'secondary' : 'ghost'} size="sm" onClick={() => handleViewModeChange('kanban')} className="rounded-l-none border-l rounded-r-md" aria-label="Kanban View"><KanbanIcon className="h-5 w-5" /></Button>
+              )}
             </div>
             <Button onClick={handleRefreshData} variant="outline" disabled={isRefreshing}>
               {isRefreshing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
@@ -1150,12 +1217,22 @@ export default function DataObjectsPage() {
             </TableBody>
           </Table>
         </Card>
-      ) : (
+      ) : viewMode === 'gallery' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
           {paginatedObjects.map((obj) => ( <GalleryCard key={obj.id} obj={obj} model={currentModel} allModels={allModels} allObjects={allDbObjects} currentWorkflow={currentWorkflow} getWorkflowStateName={getWorkflowStateName} onView={handleView} onEdit={handleEdit} onDelete={handleDelete} lastChangedInfo={lastChangedInfo}/> ))}
         </div>
-      )}
-      {totalPages > 1 && (
+      ) : viewMode === 'kanban' && currentWorkflow ? (
+        <KanbanBoard 
+          model={currentModel} 
+          workflow={currentWorkflow} 
+          objects={sortedObjects} // Pass all sorted (and filtered) objects to Kanban
+          allModels={allModels}
+          allObjects={allDbObjects}
+          onObjectUpdate={handleStateChangeViaDrag}
+          onViewObject={handleView}
+        />
+      ) : null }
+      {(viewMode === 'table' || viewMode === 'gallery') && totalPages > 1 && (
         <div className="flex justify-center items-center space-x-2 mt-8">
           <Button variant="outline" size="sm" onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))} disabled={currentPage === 1}>Previous</Button>
           <span className="text-sm text-muted-foreground"> Page {currentPage} of {totalPages} </span>
@@ -1165,3 +1242,4 @@ export default function DataObjectsPage() {
     </div>
   );
 }
+
