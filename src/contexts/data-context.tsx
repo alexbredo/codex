@@ -88,7 +88,7 @@ const mapDbModelToClientModel = (dbModel: any): Model => {
       isUnique: p.type === 'string' ? (p.isUnique === 1 || p.isUnique === true) : false,
       orderIndex: p.orderIndex ?? 0,
       defaultValue: p.defaultValue ?? null,
-      validationRulesetId: p.validationRulesetId === undefined ? null : p.validationRulesetId,
+      validationRulesetId: p.validationRulesetId ?? null, // Ensure null if undefined or explicitly null
     })).sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0)),
   };
 };
@@ -290,7 +290,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       isUnique: !!p.isUnique,
       defaultValue: p.defaultValue ?? null,
       orderIndex: index,
-      validationRulesetId: p.validationRulesetId === undefined ? null : p.validationRulesetId,
+      validationRulesetId: p.validationRulesetId, // Already string or null from form
     }));
     const finalNamespace = (modelData.namespace && modelData.namespace.trim() !== '') ? modelData.namespace.trim() : 'Default';
     
@@ -327,7 +327,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       isUnique: !!p.isUnique,
       defaultValue: p.defaultValue ?? null,
       orderIndex: index,
-      validationRulesetId: p.validationRulesetId === undefined ? null : p.validationRulesetId,
+      validationRulesetId: p.validationRulesetId, // Already string or null from form
     }));
 
     const finalNamespace = (updates.namespace && updates.namespace.trim() !== '') ? updates.namespace.trim() : 'Default';
@@ -521,4 +521,3 @@ export function useData(): DataContextType {
   if (context === undefined) throw new Error('useData must be used within a DataProvider');
   return context;
 }
-

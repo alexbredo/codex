@@ -165,7 +165,10 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, vali
       form.setValue(`properties.${index}.autoSetOnCreate`, isDate ? !!form.getValues(`properties.${index}.autoSetOnCreate`) : false, { shouldValidate: true });
       form.setValue(`properties.${index}.autoSetOnUpdate`, isDate ? !!form.getValues(`properties.${index}.autoSetOnUpdate`) : false, { shouldValidate: true });
       form.setValue(`properties.${index}.isUnique`, isString ? !!form.getValues(`properties.${index}.isUnique`) : false, { shouldValidate: true });
-      form.setValue(validationRulesetIdPath, isString ? form.getValues(validationRulesetIdPath) : null, { shouldValidate: true });
+      
+      // Ensure validationRulesetId is null if type is not string
+      const currentValidationRuleId = form.getValues(validationRulesetIdPath);
+      form.setValue(validationRulesetIdPath, isString ? currentValidationRuleId : null, { shouldValidate: true });
 
 
       if (isRatingOrMarkdownOrImage) {
@@ -176,7 +179,7 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, vali
         form.setValue(`properties.${index}.autoSetOnCreate`, false, { shouldValidate: true });
         form.setValue(`properties.${index}.autoSetOnUpdate`, false, { shouldValidate: true });
         form.setValue(`properties.${index}.isUnique`, false, { shouldValidate: true });
-        form.setValue(validationRulesetIdPath, null, { shouldValidate: true });
+        form.setValue(validationRulesetIdPath, null, { shouldValidate: true }); // Also nullify here
       }
     }
 
@@ -803,7 +806,7 @@ function PropertyFieldsWithDnd({
             autoSetOnUpdate: false,
             isUnique: false,
             defaultValue: undefined,
-            validationRulesetId: null,
+            validationRulesetId: null, // Ensure new properties start with null
             orderIndex: fields.length,
         } as PropertyFormValues, {shouldFocus: false})}
         className="mt-4 w-full border-dashed hover:border-solid"
@@ -898,9 +901,15 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
 
       finalProp.orderIndex = index;
 
+      // The useEffect in PropertyAccordionContent should ensure prop.validationRulesetId
+      // is already null if prop.type is not 'string'.
+      // So, we can directly use prop.validationRulesetId here.
+      finalProp.validationRulesetId = prop.validationRulesetId;
+
+
       const isNumber = prop.type === 'number';
       const isDate = prop.type === 'date';
-      const isString = prop.type === 'string';
+      // const isString = prop.type === 'string'; // Already handled for validationRulesetId
       const isRelationship = prop.type === 'relationship';
       const isRatingOrMarkdownOrImage = ['rating', 'markdown', 'image'].includes(prop.type);
 
@@ -911,8 +920,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
       finalProp.autoSetOnCreate = isDate ? !!prop.autoSetOnCreate : false;
       finalProp.autoSetOnUpdate = isDate ? !!prop.autoSetOnUpdate : false;
 
-      finalProp.isUnique = isString ? !!prop.isUnique : false;
-      finalProp.validationRulesetId = isString ? prop.validationRulesetId : null;
+      finalProp.isUnique = prop.type === 'string' ? !!prop.isUnique : false; // Ensure isUnique is only for string
 
 
       finalProp.relatedModelId = isRelationship ? prop.relatedModelId : undefined;
@@ -926,7 +934,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
         finalProp.autoSetOnCreate = false;
         finalProp.autoSetOnUpdate = false;
         finalProp.isUnique = false;
-        finalProp.validationRulesetId = null;
+        // finalProp.validationRulesetId is already handled by the useEffect to be null for these types
       } else if (!isNumber) {
         finalProp.unit = undefined;
         finalProp.precision = undefined;
@@ -939,7 +947,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
         finalProp.autoSetOnCreate = false;
         finalProp.autoSetOnUpdate = false;
       }
-      if(!isString){
+      if(prop.type !== 'string'){ // If not string, ensure isUnique and validationRulesetId are false/null
         finalProp.isUnique = false;
         finalProp.validationRulesetId = null;
       }
@@ -1129,4 +1137,3 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     </Form>
   );
 }
-
