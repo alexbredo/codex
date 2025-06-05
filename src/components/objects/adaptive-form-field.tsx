@@ -128,6 +128,14 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
         fieldIsDisabled = true;
     }
 
+    const placeholderText = (relatedModel && relatedModel.name && relatedModel.name.trim() !== "")
+    ? `Search ${relatedModel.name.trim()}...`
+    : "Search items...";
+
+    const commandEmptyText = (relatedModel && relatedModel.name && relatedModel.name.trim() !== "")
+        ? `No ${relatedModel.name.trim().toLowerCase()} found.`
+        : "No items found.";
+
     switch (property.type) {
       case 'string':
         if (property.name.toLowerCase().includes('description') || property.name.toLowerCase().includes('notes')) {
@@ -276,21 +284,22 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
               </PopoverTrigger>
               <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
                 <Command
-                  key={relatedModel.id} // Key the Command component
-                  filter={(value, search) => { 
-                    const option = flatOptionsForMultiSelect.find(opt => opt.value === value);
-                    if (option && option.label.toLowerCase().includes(search.toLowerCase())) return 1;
-                    if (value === INTERNAL_NONE_SELECT_VALUE && "-- none --".includes(search.toLowerCase())) return 1; 
-                    return 0;
-                  }}
+                  key={relatedModel.id}
+                  // Temporarily remove custom filter for diagnosis
+                  // filter={(value, search) => { 
+                  //   const option = flatOptionsForMultiSelect.find(opt => opt.value === value);
+                  //   if (option && option.label.toLowerCase().includes(search.toLowerCase())) return 1;
+                  //   if (value === INTERNAL_NONE_SELECT_VALUE && "-- none --".includes(search.toLowerCase())) return 1; 
+                  //   return 0;
+                  // }}
                 >
                   <CommandInput
-                    placeholder={relatedModel.name ? `Search ${relatedModel.name}...` : "Search..."}
+                    placeholder={placeholderText}
                     value={comboboxInputValue}
                     onValueChange={setComboboxInputValue}
                   />
                   <CommandList>
-                    <CommandEmpty>{relatedModel.name ? `No ${relatedModel.name.toLowerCase()} found.` : "No items found."}</CommandEmpty>
+                    <CommandEmpty>{commandEmptyText}</CommandEmpty>
                     <ScrollArea className="max-h-60">
                       <CommandItem
                         key={INTERNAL_NONE_SELECT_VALUE}
@@ -322,7 +331,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
                                   currentSingleSelectionValue === option.value ? "opacity-100" : "opacity-0"
                                 )}
                               />
-                              <span className="truncate">{option.label}</span>
+                              <span className="truncate">{option.label ?? ""}</span>
                             </CommandItem>
                           ))}
                         </CommandGroup>
