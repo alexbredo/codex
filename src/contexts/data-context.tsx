@@ -283,8 +283,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const addModel = useCallback(async (modelData: Omit<Model, 'id' | 'namespace' | 'workflowId'> & { namespace?: string, workflowId?: string | null }): Promise<Model> => {
     const modelId = crypto.randomUUID();
+    
     const propertiesForApi = (modelData.properties || []).map((p, index) => ({
-      ...p,
+      ...p, // Spread all incoming property fields first
       id: p.id || crypto.randomUUID(),
       orderIndex: index,
       required: !!p.required,
@@ -297,8 +298,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       unit: p.type === 'number' ? p.unit : undefined,
       precision: p.type === 'number' ? (p.precision === undefined || p.precision === null || isNaN(Number(p.precision)) ? 2 : Number(p.precision)) : undefined,
       validationRulesetId: p.type === 'string' ? (p.validationRulesetId || null) : null,
-      min: p.type === 'number' ? (p.min === undefined || p.min === null || isNaN(Number(p.min)) ? null : Number(p.min)) : null,
-      max: p.type === 'number' ? (p.max === undefined || p.max === null || isNaN(Number(p.max)) ? null : Number(p.max)) : null,
+      min: p.type === 'number' ? (p.min ?? null) : null,
+      max: p.type === 'number' ? (p.max ?? null) : null,
     }));
 
     const finalNamespace = (modelData.namespace && modelData.namespace.trim() !== '') ? modelData.namespace.trim() : 'Default';
@@ -327,32 +328,43 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [fetchData]);
 
   const updateModel = useCallback(async (modelId: string, updates: Partial<Omit<Model, 'id' | 'properties' | 'displayPropertyNames' | 'namespace' | 'workflowId'>> & { properties?: Property[], displayPropertyNames?: string[], namespace?: string, workflowId?: string | null }): Promise<Model | undefined> => {
+    const existingModel = models.find(m => m.id === modelId);
+    if (!existingModel) throw new Error(`Model with ID ${modelId} not found for update.`);
+
     const propertiesForApi = (updates.properties || []).map((p, index) => ({
-      ...p,
-      id: p.id || crypto.randomUUID(),
-      orderIndex: index,
+      ...p, // Spread all fields from the Property object `p` (which came from the form/page)
+      id: p.id || crypto.randomUUID(), // Ensure ID exists
+      orderIndex: index, // Override orderIndex based on current array order
+      // Coerce boolean fields to ensure they are booleans for the API/DB
       required: !!p.required,
       autoSetOnCreate: !!p.autoSetOnCreate,
       autoSetOnUpdate: !!p.autoSetOnUpdate,
       isUnique: !!p.isUnique,
+      // Ensure defaultValue is null if undefined/empty, otherwise use provided value
       defaultValue: p.defaultValue ?? null,
+      // Conditionally set fields based on property type, nullifying if not applicable
       relatedModelId: p.type === 'relationship' ? p.relatedModelId : undefined,
       relationshipType: p.type === 'relationship' ? (p.relationshipType || 'one') : undefined,
       unit: p.type === 'number' ? p.unit : undefined,
       precision: p.type === 'number' ? (p.precision === undefined || p.precision === null || isNaN(Number(p.precision)) ? 2 : Number(p.precision)) : undefined,
       validationRulesetId: p.type === 'string' ? (p.validationRulesetId || null) : null,
-      min: p.type === 'number' ? (p.min === undefined || p.min === null || isNaN(Number(p.min)) ? null : Number(p.min)) : null,
-      max: p.type === 'number' ? (p.max === undefined || p.max === null || isNaN(Number(p.max)) ? null : Number(p.max)) : null,
+      min: p.type === 'number' ? (p.min ?? null) : null, // Use p.min (should be number or null from form) if type is number
+      max: p.type === 'number' ? (p.max ?? null) : null, // Use p.max (should be number or null from form) if type is number
     }));
-
+    
     const finalNamespace = (updates.namespace && updates.namespace.trim() !== '') ? updates.namespace.trim() : 'Default';
 
     const payload = {
-      ...updates,
+      name: updates.name ?? existingModel.name,
+      description: updates.description ?? existingModel.description,
       namespace: finalNamespace, 
-      workflowId: updates.workflowId,
+      displayPropertyNames: updates.displayPropertyNames ?? existingModel.displayPropertyNames,
+      workflowId: Object.prototype.hasOwnProperty.call(updates, 'workflowId') ? updates.workflowId : existingModel.workflowId,
       properties: propertiesForApi,
     };
+    
+    console.log("[DataContext] updateModel - Payload to API:", JSON.stringify(payload, null, 2));
+
 
     const response = await fetch(`/api/codex-structure/models/${modelId}`, {
       method: 'PUT',
@@ -366,7 +378,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const updatedModelFromApi: Model = await response.json();
     await fetchData('After Update Model'); 
     return mapDbModelToClientModel(updatedModelFromApi);
-  }, [fetchData]);
+  }, [fetchData, models]);
 
   const deleteModel = useCallback(async (modelId: string) => {
     const response = await fetch(`/api/codex-structure/models/${modelId}`, { method: 'DELETE' });
