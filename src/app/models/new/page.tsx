@@ -15,9 +15,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ArrowLeft } from 'lucide-react';
 import type { Property } from '@/lib/types';
 
+const INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE = "__DEFAULT_DISPLAY_PROPERTY__";
+const INTERNAL_NO_WORKFLOW_VALUE = "__NO_WORKFLOW_SELECTED__";
+
 export default function CreateModelPage() {
   const router = useRouter();
-  const { addModel, getModelByName, isReady } = useData(); // Removed pause/resumePolling
+  const { addModel, getModelByName, isReady } = useData();
   const { toast } = useToast();
 
   const form = useForm<ModelFormValues>({
@@ -27,7 +30,7 @@ export default function CreateModelPage() {
       description: '',
       namespace: 'Default',
       displayPropertyNames: [],
-      workflowId: null, 
+      workflowId: null,
       properties: [{
         id: crypto.randomUUID(),
         name: '',
@@ -40,12 +43,12 @@ export default function CreateModelPage() {
         autoSetOnUpdate: false,
         isUnique: false,
         defaultValue: undefined,
+        validationRulesetId: null,
         orderIndex: 0,
       } as PropertyFormValues],
     },
   });
 
-  // Removed useEffect for pause/resumePolling
 
   const onSubmit = async (values: ModelFormValues) => {
     console.log("[CreateModelPage] onSubmit - received values from ModelForm:", JSON.stringify(values, null, 2));
@@ -58,24 +61,27 @@ export default function CreateModelPage() {
     const modelData = {
       name: values.name,
       description: values.description,
-      namespace: (values.namespace && values.namespace.trim() !== '') ? values.namespace.trim() : 'Default',
-      displayPropertyNames: values.displayPropertyNames, 
-      workflowId: values.workflowId, 
-      properties: values.properties.map((p, index) => ({
-        id: p.id || crypto.randomUUID(),
-        name: p.name,
-        type: p.type,
-        relatedModelId: p.relatedModelId,
-        required: p.required,
-        relationshipType: p.relationshipType,
-        unit: p.unit,
-        precision: p.precision,
-        autoSetOnCreate: p.autoSetOnCreate,
-        autoSetOnUpdate: p.autoSetOnUpdate,
-        isUnique: p.isUnique,
-        defaultValue: p.defaultValue,
-        orderIndex: index,
-      } as Property)),
+      namespace: (values.namespace && values.namespace.trim() !== '' && values.namespace !== '__DEFAULT_NAMESPACE_VALUE__') ? values.namespace.trim() : 'Default',
+      displayPropertyNames: values.displayPropertyNames?.filter(name => name !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE),
+      workflowId: values.workflowId === INTERNAL_NO_WORKFLOW_VALUE ? null : values.workflowId,
+      properties: values.properties.map((p_form_value, index) => {
+        const propertyForApi: Property = {
+          ...p_form_value, // Spread all fields from form
+          id: p_form_value.id || crypto.randomUUID(),
+          orderIndex: index,
+          required: !!p_form_value.required,
+          autoSetOnCreate: !!p_form_value.autoSetOnCreate,
+          autoSetOnUpdate: !!p_form_value.autoSetOnUpdate,
+          isUnique: !!p_form_value.isUnique,
+          defaultValue: p_form_value.defaultValue ?? undefined,
+          relatedModelId: p_form_value.type === 'relationship' ? p_form_value.relatedModelId : undefined,
+          relationshipType: p_form_value.type === 'relationship' ? (p_form_value.relationshipType || 'one') : undefined,
+          unit: p_form_value.type === 'number' ? p_form_value.unit : undefined,
+          precision: p_form_value.type === 'number' ? (p_form_value.precision === undefined || p_form_value.precision === null ? 2 : Number(p_form_value.precision)) : undefined,
+          validationRulesetId: p_form_value.type === 'string' ? (p_form_value.validationRulesetId) : null,
+        };
+        return propertyForApi;
+      }),
     };
     console.log("[CreateModelPage] onSubmit - modelData to be sent to addModel:", JSON.stringify(modelData, null, 2));
 
