@@ -89,8 +89,8 @@ const mapDbModelToClientModel = (dbModel: any): Model => {
       orderIndex: p.orderIndex ?? 0,
       defaultValue: p.defaultValue ?? null,
       validationRulesetId: p.validationRulesetId ?? null,
-      min: p.min ?? null, // Ensure min is number or null
-      max: p.max ?? null, // Ensure max is number or null
+      min: p.min ?? null,
+      max: p.max ?? null,
     })).sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0)),
   };
 };
@@ -284,7 +284,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const addModel = useCallback(async (modelData: Omit<Model, 'id' | 'namespace' | 'workflowId'> & { namespace?: string, workflowId?: string | null }): Promise<Model> => {
     const modelId = crypto.randomUUID();
     const propertiesForApi = (modelData.properties || []).map((p, index) => ({
-      ...p, // Spread all incoming property fields first
+      ...p,
       id: p.id || crypto.randomUUID(),
       orderIndex: index,
       required: !!p.required,
@@ -297,8 +297,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       unit: p.type === 'number' ? p.unit : undefined,
       precision: p.type === 'number' ? (p.precision === undefined || p.precision === null || isNaN(Number(p.precision)) ? 2 : Number(p.precision)) : undefined,
       validationRulesetId: p.type === 'string' ? (p.validationRulesetId || null) : null,
-      min: p.type === 'number' ? (p.min ?? null) : null,
-      max: p.type === 'number' ? (p.max ?? null) : null,
+      min: p.type === 'number' ? (p.min === undefined || p.min === null || isNaN(Number(p.min)) ? null : Number(p.min)) : null,
+      max: p.type === 'number' ? (p.max === undefined || p.max === null || isNaN(Number(p.max)) ? null : Number(p.max)) : null,
     }));
 
     const finalNamespace = (modelData.namespace && modelData.namespace.trim() !== '') ? modelData.namespace.trim() : 'Default';
@@ -328,7 +328,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const updateModel = useCallback(async (modelId: string, updates: Partial<Omit<Model, 'id' | 'properties' | 'displayPropertyNames' | 'namespace' | 'workflowId'>> & { properties?: Property[], displayPropertyNames?: string[], namespace?: string, workflowId?: string | null }): Promise<Model | undefined> => {
     const propertiesForApi = (updates.properties || []).map((p, index) => ({
-      ...p, // Spread all incoming property fields first
+      ...p,
       id: p.id || crypto.randomUUID(),
       orderIndex: index,
       required: !!p.required,
@@ -341,8 +341,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       unit: p.type === 'number' ? p.unit : undefined,
       precision: p.type === 'number' ? (p.precision === undefined || p.precision === null || isNaN(Number(p.precision)) ? 2 : Number(p.precision)) : undefined,
       validationRulesetId: p.type === 'string' ? (p.validationRulesetId || null) : null,
-      min: p.type === 'number' ? (p.min ?? null) : null,
-      max: p.type === 'number' ? (p.max ?? null) : null,
+      min: p.type === 'number' ? (p.min === undefined || p.min === null || isNaN(Number(p.min)) ? null : Number(p.min)) : null,
+      max: p.type === 'number' ? (p.max === undefined || p.max === null || isNaN(Number(p.max)) ? null : Number(p.max)) : null,
     }));
 
     const finalNamespace = (updates.namespace && updates.namespace.trim() !== '') ? updates.namespace.trim() : 'Default';
@@ -536,3 +536,5 @@ export function useData(): DataContextType {
   if (context === undefined) throw new Error('useData must be used within a DataProvider');
   return context;
 }
+
+    
