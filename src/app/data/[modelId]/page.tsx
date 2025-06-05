@@ -853,47 +853,68 @@ export default function DataObjectsPage() {
       return;
     }
 
+    console.log(`[DataObjectsPage] handleStateChangeViaDrag: objectId=${objectId}, newPotentialStateId=${newPotentialStateId}`);
+    console.log(`[DataObjectsPage] Current Workflow (captured):`, currentWorkflow ? { id: currentWorkflow.id, name: currentWorkflow.name, states: currentWorkflow.states.map(s => ({id: s.id, name: s.name, successors: s.successorStateIds})) } : 'null');
+    console.log(`[DataObjectsPage] Object to Update (captured):`, objectToUpdate);
+
+
     const currentObjectStateId = objectToUpdate.currentStateId;
     const currentObjectStateDef = currentObjectStateId
       ? currentWorkflow.states.find(s => s.id === currentObjectStateId)
       : null;
+    console.log(`[DataObjectsPage] Current Object State Definition (captured):`, currentObjectStateDef ? { id: currentObjectStateDef.id, name: currentObjectStateDef.name, successors: currentObjectStateDef.successorStateIds } : 'null');
+
 
     const targetStateDef = currentWorkflow.states.find(s => s.id === newPotentialStateId);
     if (!targetStateDef) {
       toast({ variant: "destructive", title: "Error", description: `Target state ID "${newPotentialStateId}" not found in workflow "${currentWorkflow.name}".` });
+      console.error(`[DataObjectsPage] Target state ID "${newPotentialStateId}" not found in workflow "${currentWorkflow.name}". Workflow states:`, currentWorkflow.states);
+      setIsRefreshing(false);
       return;
     }
+    console.log(`[DataObjectsPage] Target State Definition (captured):`, { id: targetStateDef.id, name: targetStateDef.name, isInitial: targetStateDef.isInitial });
+
 
     let isValidTransition = false;
-    if (!currentObjectStateDef) { // If object has no current state
+    if (!currentObjectStateDef) {
+      console.log(`[DataObjectsPage] Object has no current state.`);
       if (targetStateDef.isInitial) {
         isValidTransition = true;
+        console.log(`[DataObjectsPage] Transition to initial state "${targetStateDef.name}" is valid.`);
       } else {
         toast({ variant: "warning", title: "Invalid Transition", description: `Cannot move object to non-initial state "${targetStateDef.name}" as it has no current state.` });
+        console.warn(`[DataObjectsPage] Invalid: Cannot move object to non-initial state "${targetStateDef.name}" (ID: ${targetStateDef.id}) as it has no current state.`);
       }
     } else {
       const validSuccessorIds = currentObjectStateDef.successorStateIds || [];
+      console.log(`[DataObjectsPage] Valid successor IDs for state "${currentObjectStateDef.name}" (ID: ${currentObjectStateDef.id}):`, validSuccessorIds);
+      console.log(`[DataObjectsPage] Checking if target state ID "${newPotentialStateId}" is in validSuccessorIds.`);
       if (validSuccessorIds.includes(newPotentialStateId)) {
         isValidTransition = true;
+        console.log(`[DataObjectsPage] Transition from "${currentObjectStateDef.name}" to "${targetStateDef.name}" is valid.`);
       } else {
-        toast({ variant: "warning", title: "Invalid Transition", description: `Cannot move from "${currentObjectStateDef.name}" to "${targetStateDef.name}".` });
+        toast({ variant: "warning", title: "Invalid Transition", description: `Cannot move from "${currentObjectStateDef.name}" to "${targetStateDef.name}". Not a valid successor.` });
+        console.warn(`[DataObjectsPage] Invalid: Cannot move from "${currentObjectStateDef.name}" (ID: ${currentObjectStateDef.id}) to "${targetStateDef.name}" (ID: ${targetStateDef.id}). Not in successors:`, validSuccessorIds);
       }
     }
 
     if (isValidTransition) {
       try {
-        setIsRefreshing(true);
+        setIsRefreshing(true); // Indicate loading before API call
         await updateObject(currentModel.id, objectId, { currentStateId: newPotentialStateId });
         toast({ title: "State Updated", description: `Object moved to "${targetStateDef.name}".` });
-        // DataProvider's updateObject should trigger a fetchData, refreshing localObjects
+        // DataProvider's updateObject should trigger a fetchData, which will update localObjects via useEffect
       } catch (error: any) {
         toast({ variant: "destructive", title: "Error Updating State", description: error.message });
-        await fetchData('Error Reverting Kanban State Update'); // Re-fetch to revert optimistic UI changes if any
+        // If API update fails, the UI will eventually revert on next full data sync if optimistic update was done.
+        // Or, explicitly call fetchData here to ensure UI consistency with backend.
+        await fetchData('Error Reverting Kanban State Update');
       } finally {
-        setIsRefreshing(false);
+        setIsRefreshing(false); // Clear loading indicator
       }
     } else {
-       await fetchData('Invalid Transition Revert'); // Re-fetch to revert optimistic UI changes
+       console.log(`[DataObjectsPage] Invalid transition detected. Calling fetchData('Invalid Transition Revert').`);
+       await fetchData('Invalid Transition Revert'); // Re-fetch to revert optimistic UI changes if any
     }
   }, [currentModel, currentWorkflow, localObjects, updateObject, toast, fetchData]);
 
