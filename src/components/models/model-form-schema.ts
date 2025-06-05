@@ -11,7 +11,7 @@ export const propertyFormSchema = z.object({
   relatedModelId: z.string().optional(),
   required: z.boolean().optional().default(false),
   relationshipType: z.enum(relationshipTypes).optional().default('one'),
-  unit: z.string().optional(),
+  unit: z.string().nullable().optional(), // Changed to allow null
   precision: z.coerce.number().int().min(0).max(10).optional(),
   autoSetOnCreate: z.boolean().optional().default(false),
   autoSetOnUpdate: z.boolean().optional().default(false),
@@ -38,7 +38,7 @@ export const propertyFormSchema = z.object({
   message: "Relationship type can only be 'many' if property type is 'relationship'.",
   path: ["relationshipType"],
 }).refine(data => {
-  if (data.type !== 'number' && (data.unit !== undefined && data.unit !== '')) {
+  if (data.type !== 'number' && (data.unit !== undefined && data.unit !== null && data.unit !== '')) {
     return false;
   }
   return true;
@@ -70,7 +70,7 @@ export const propertyFormSchema = z.object({
   message: "Unique constraint can only be set for string type properties.",
   path: ["isUnique"],
 })
-.refine(data => ['rating', 'markdown', 'image'].includes(data.type) ? (data.unit === undefined || data.unit === '') : true, {
+.refine(data => ['rating', 'markdown', 'image'].includes(data.type) ? (data.unit === undefined || data.unit === null || data.unit === '') : true, {
     message: "Unit cannot be set for this property type.", path: ["unit"],
 })
 .refine(data => ['rating', 'markdown', 'image'].includes(data.type) ? data.precision === undefined : true, {
