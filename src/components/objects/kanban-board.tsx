@@ -3,13 +3,14 @@
 
 import * as React from 'react';
 import type { DataObject, Model, WorkflowWithDetails, WorkflowStateWithSuccessors } from '@/lib/types';
-import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragOverEvent, DragOverlay, type UniqueIdentifier, MeasuringStrategy, pointerWithin } from '@dnd-kit/core';
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragOverEvent, DragOverlay, type UniqueIdentifier, MeasuringStrategy } from '@dnd-kit/core';
 import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { SortableKanbanItem, KanbanCard } from './kanban-card';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
 
 interface KanbanBoardProps {
   model: Model;
@@ -57,6 +58,7 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
       id: state.id,
       title: state.name,
       objects: objects.filter(obj => obj.currentStateId === state.id).sort((a,b) => {
+        // Simple sort, can be made more sophisticated if needed (e.g., by orderIndex if available)
         const aName = String(a.id || '');
         const bName = String(b.id || '');
         return aName.localeCompare(bName);
@@ -66,7 +68,7 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
   }, [workflow, objects]);
 
   const sensors = useSensors(
-    useSensor(PointerSensor) 
+    useSensor(PointerSensor)
   ); 
 
   const findColumn = (id: UniqueIdentifier | undefined | null): KanbanColumn | null => {
@@ -74,6 +76,7 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
     const column = columns.find(col => col.id === id);
     if (column) return column;
 
+    // Fallback: if id is an objectId, find its column
     for (const col of columns) {
         if (col.objects.some(obj => obj.id === id)) {
             return col;
@@ -97,7 +100,8 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
   };
 
   const handleDragOver = (event: DragOverEvent) => {
-    // No-op for now to simplify and ensure data-driven updates
+    // No-op: We'll handle all state changes and reordering in handleDragEnd
+    // This simplifies logic and relies on final data update for UI changes.
   };
 
   async function handleDragEnd(event: DragEndEvent) {
@@ -111,26 +115,23 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
     }
 
     const activeObjectId = String(active.id);
-    const originalColumn = findColumn(activeObjectId);
+    const originalColumn = findColumn(active.data.current?.sortable?.containerId || activeObjectId);
 
     if (!originalColumn) {
-      console.warn("[KanbanBoard] handleDragEnd: Could not find original column for active item:", activeObjectId);
+      console.warn("[KanbanBoard] handleDragEnd: Could not find original column for active item:", activeObjectId, "Active Data:", active.data.current);
       return;
     }
     console.log(`[KanbanBoard] handleDragEnd: Original column ID:`, originalColumn.id);
 
     let targetColumnId: string | null = null;
     
-    // Check if over.id is a column ID (SortableContext ID)
-    if (columns.some(col => col.id === over.id)) {
+    if (columns.some(col => col.id === over.id)) { // Dropped directly on a column (SortableContext area)
         targetColumnId = String(over.id);
         console.log(`[KanbanBoard] handleDragEnd: Target column ID from over.id (direct column drop):`, targetColumnId);
-    // Check if over.id is an item and get its containerId from sortable data
-    } else if (over.data.current?.sortable?.containerId) {
+    } else if (over.data.current?.sortable?.containerId) { // Dropped on an item or its SortableContext wrapper
         targetColumnId = String(over.data.current.sortable.containerId);
         console.log(`[KanbanBoard] handleDragEnd: Target column ID from over.data.current.sortable.containerId:`, targetColumnId);
-    } else {
-        // Fallback: try to find if over.id is an object and get its parent column (less reliable)
+    } else { // Fallback if over.id is an objectId and containerId isn't available
         const columnContainingOverItem = findColumn(over.id);
         if (columnContainingOverItem) {
             targetColumnId = columnContainingOverItem.id;
@@ -164,16 +165,15 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
             setIsLoading(false);
         }
     } else {
-      // Handle reordering within the same column (client-side only for now)
+      // Handle reordering within the same column (optimistic client-side update)
       const columnIndex = columns.findIndex(col => col.id === originalColumn.id);
       if (columnIndex !== -1) {
         const itemsInColumn = columns[columnIndex].objects;
         const oldIndex = itemsInColumn.findIndex(item => item.id === active.id);
         
         let newIndex = -1;
-        // If over.id is the column itself (dropped on empty space or column header area)
-        if (over.id === originalColumn.id) {
-            newIndex = itemsInColumn.length -1; // Move to end of the list in the column
+        if (over.id === originalColumn.id) { // Dropped on empty space in the same column
+            newIndex = itemsInColumn.length -1; 
         } else { // Dropped on another item in the same column
             newIndex = itemsInColumn.findIndex(item => item.id === over.id);
         }
@@ -200,7 +200,7 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
   if (!workflow.states || workflow.states.length === 0) {
     return <div className="p-4 text-center text-muted-foreground">This workflow has no states defined.</div>;
   }
-  if (isLoading) {
+  if (isLoading) { // Global loading state for API calls
     return (
       <div className="flex w-full justify-center items-center p-10">
         <Skeleton className="h-10 w-10 rounded-full animate-spin" />
@@ -212,14 +212,14 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
   return (
     <DndContext
         sensors={sensors}
-        collisionDetection={pointerWithin} // Changed from rectIntersection based on log
+        collisionDetection={closestCenter} // Reverted to closestCenter
         onDragStart={handleDragStart}
         onDragOver={handleDragOver} 
         onDragEnd={handleDragEnd}
         measuring={{ droppable: { strategy: MeasuringStrategy.Always }}}
     >
       <ScrollArea className="w-full rounded-md border">
-        <div className="flex gap-4 p-4 min-h-[calc(100vh-20rem)]">
+        <div className="flex gap-4 p-4 min-h-[calc(100vh-20rem)]"> {/* Ensure overall board has min height */}
           {columns.map(column => (
             <Card key={column.id} className="w-80 flex-shrink-0 h-full flex flex-col bg-muted/50">
               <CardHeader className="p-3 border-b sticky top-0 bg-muted/80 backdrop-blur-sm z-10">
@@ -228,9 +228,13 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
                   <Badge variant="secondary">{column.objects.length}</Badge>
                 </CardTitle>
               </CardHeader>
+              {/* SortableContext ID should be the column.id */}
               <SortableContext id={column.id} items={column.objects.map(obj => obj.id)} strategy={verticalListSortingStrategy}>
-                {/* Removed nested ScrollArea. CardContent will handle its own scroll if needed. */}
-                <CardContent className="p-3 space-y-2 min-h-[150px] flex-grow overflow-y-auto">
+                <CardContent className={cn(
+                    "p-3 space-y-2 flex-grow overflow-y-auto",
+                    "min-h-[200px]", // Ensure CardContent has a minimum height
+                    "flex flex-col" // Allow placeholder to fill space
+                  )}>
                   {column.objects.length > 0 ? (
                     column.objects.map(object => (
                       <SortableKanbanItem
@@ -244,7 +248,7 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
                       />
                     ))
                   ) : (
-                    <div className="flex items-center justify-center h-full text-sm text-muted-foreground p-4 border-2 border-dashed border-gray-300 rounded-md min-h-[100px]">
+                    <div className="flex-grow flex items-center justify-center text-sm text-muted-foreground p-4 border-2 border-dashed border-gray-300 rounded-md">
                         Drag items here
                     </div>
                   )}
