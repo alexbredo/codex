@@ -126,30 +126,27 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, vali
   const relatedModelIdPath = `properties.${index}.relatedModelId` as const;
   const relationshipTypePath = `properties.${index}.relationshipType` as const;
   const validationRulesetIdPath = `properties.${index}.validationRulesetId` as const;
+  const minPath = `properties.${index}.min` as const;
+  const maxPath = `properties.${index}.max` as const;
+
 
   const currentPropertyType = useWatch({ control, name: propertyTypePath });
   const currentRelatedModelId = useWatch({ control, name: relatedModelIdPath });
   const currentRelationshipType = useWatch({ control, name: relationshipTypePath });
 
   const previousPropertyTypeRef = useRef<PropertyFormValues['type']>();
-  const previousRelatedModelIdRef = useRef<string | undefined>();
-  const previousRelationshipTypeRef = useRef<PropertyFormValues['relationshipType']>();
 
 
  useEffect(() => {
     const initialRender = previousPropertyTypeRef.current === undefined;
     const typeChanged = !initialRender && currentPropertyType !== previousPropertyTypeRef.current;
-    const relatedModelChanged = !initialRender && currentPropertyType === 'relationship' && currentRelatedModelId !== previousRelatedModelIdRef.current;
-    const relationshipTypeChanged = !initialRender && currentPropertyType === 'relationship' && currentRelationshipType !== previousRelationshipTypeRef.current;
 
     if (initialRender) {
       previousPropertyTypeRef.current = currentPropertyType;
-      previousRelatedModelIdRef.current = currentRelatedModelId;
-      previousRelationshipTypeRef.current = currentRelationshipType;
       return;
     }
     
-    if (typeChanged || relatedModelChanged || relationshipTypeChanged) {
+    if (typeChanged) {
       form.setValue(`properties.${index}.defaultValue`, undefined, { shouldValidate: true });
 
       const isRelationship = currentPropertyType === 'relationship';
@@ -157,10 +154,9 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, vali
       const isDate = currentPropertyType === 'date';
       const isString = currentPropertyType === 'string';
 
-      // Reset fields not applicable to the new type or if critical relationship aspects changed
       if (!isRelationship) {
-        form.setValue(relatedModelIdPath, undefined, { shouldValidate: true });
-        form.setValue(relationshipTypePath, undefined, { shouldValidate: true });
+        form.setValue(relatedModelIdPath, undefined, { shouldValidate: false }); // No validation if type changes
+        form.setValue(relationshipTypePath, undefined, { shouldValidate: false });
       } else {
          if (form.getValues(relationshipTypePath) === undefined) {
             form.setValue(relationshipTypePath, 'one', {shouldValidate: true});
@@ -168,8 +164,10 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, vali
       }
 
       if (!isNumber) {
-        form.setValue(`properties.${index}.unit`, undefined, { shouldValidate: true });
-        form.setValue(`properties.${index}.precision`, undefined, { shouldValidate: true });
+        form.setValue(`properties.${index}.unit`, undefined, { shouldValidate: false });
+        form.setValue(`properties.${index}.precision`, undefined, { shouldValidate: false });
+        form.setValue(minPath, null, { shouldValidate: true }); // Reset min/max if not number
+        form.setValue(maxPath, null, { shouldValidate: true });
       } else {
         if (form.getValues(`properties.${index}.precision`) === undefined) {
             form.setValue(`properties.${index}.precision`, 2, {shouldValidate: true});
@@ -177,31 +175,21 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, vali
       }
       
       if (!isDate) {
-        form.setValue(`properties.${index}.autoSetOnCreate`, false, { shouldValidate: true });
-        form.setValue(`properties.${index}.autoSetOnUpdate`, false, { shouldValidate: true });
+        form.setValue(`properties.${index}.autoSetOnCreate`, false, { shouldValidate: false });
+        form.setValue(`properties.${index}.autoSetOnUpdate`, false, { shouldValidate: false });
       }
       
       if (!isString) {
-        form.setValue(`properties.${index}.isUnique`, false, { shouldValidate: true });
+        form.setValue(`properties.${index}.isUnique`, false, { shouldValidate: false });
         form.setValue(validationRulesetIdPath, null, { shouldValidate: true });
       } else {
-        // If type changed TO string, ensure validationRulesetId is (re)set to null
-        // to allow fresh selection, unless it's already explicitly set (e.g. by form load)
-        if (typeChanged) {
-           const currentVal = form.getValues(validationRulesetIdPath);
-           // If type changed to string, and it's not already something (e.g. from initial load), set to null
-           // This helps if it was previously non-string, its validationRulesetId was null.
-           // If a user changes type string -> number -> string, it should reset to null.
-           form.setValue(validationRulesetIdPath, null, { shouldValidate: true });
-        }
+        const currentVal = form.getValues(validationRulesetIdPath);
+        form.setValue(validationRulesetIdPath, currentVal, { shouldValidate: true });
       }
     }
-
     previousPropertyTypeRef.current = currentPropertyType;
-    previousRelatedModelIdRef.current = currentRelatedModelId;
-    previousRelationshipTypeRef.current = currentRelationshipType;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPropertyType, currentRelatedModelId, currentRelationshipType, index, form]);
+  }, [currentPropertyType, index, form]);
 
 
   const getDefaultValuePlaceholder = (type: PropertyFormValues['type']) => {
@@ -413,6 +401,44 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, vali
                             field.onChange(isNaN(num) ? undefined : num);
                           }
                         }}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+               <FormField
+                control={control}
+                name={minPath}
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Minimum Value (Optional)</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        placeholder="e.g., 0"
+                        {...field}
+                        value={field.value === null || field.value === undefined ? '' : String(field.value)}
+                        onChange={e => field.onChange(e.target.value === '' ? null : parseFloat(e.target.value))}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={control}
+                name={maxPath}
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Maximum Value (Optional)</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        placeholder="e.g., 100"
+                        {...field}
+                        value={field.value === null || field.value === undefined ? '' : String(field.value)}
+                        onChange={e => field.onChange(e.target.value === '' ? null : parseFloat(e.target.value))}
                       />
                     </FormControl>
                     <FormMessage />
@@ -650,7 +676,7 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, vali
                   {currentPropertyType === 'rating' && "Default star rating (0 for none)."}
                   {currentPropertyType === 'relationship' && currentRelationshipType === 'many' && "Select multiple default related items."}
                   {currentPropertyType === 'relationship' && currentRelationshipType !== 'many' && "Select a single default related item."}
-                  {currentPropertyType === 'number' && "Default numeric value."}
+                  {currentPropertyType === 'number' && "Default numeric value. Min/Max applies if set."}
                   {currentPropertyType === 'string' && "Default text value."}
                   {currentPropertyType === 'markdown' && "Default Markdown text."}
                   {currentPropertyType === 'image' && "Default image URL."}
@@ -820,6 +846,8 @@ function PropertyFieldsWithDnd({
             isUnique: false,
             defaultValue: undefined,
             validationRulesetId: null,
+            min: null,
+            max: null,
             orderIndex: fields.length,
         } as PropertyFormValues, {shouldFocus: false})}
         className="mt-4 w-full border-dashed hover:border-solid"
@@ -906,22 +934,24 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     processedValues.workflowId = values.workflowId;
 
     processedValues.properties = (values.properties || []).map((formProperty, index) => {
-      return {
+      const propForApi: PropertyFormValues = {
+        ...formProperty,
         id: formProperty.id || crypto.randomUUID(),
-        name: formProperty.name,
-        type: formProperty.type,
         orderIndex: index,
         required: !!formProperty.required,
-        defaultValue: formProperty.defaultValue ?? null,
+        autoSetOnCreate: !!formProperty.autoSetOnCreate,
+        autoSetOnUpdate: !!formProperty.autoSetOnUpdate,
+        isUnique: !!formProperty.isUnique,
+        defaultValue: formProperty.defaultValue ?? undefined,
         relatedModelId: formProperty.type === 'relationship' ? formProperty.relatedModelId : undefined,
-        relationshipType: formProperty.type === 'relationship' ? formProperty.relationshipType : undefined,
+        relationshipType: formProperty.type === 'relationship' ? (formProperty.relationshipType || 'one') : undefined,
         unit: formProperty.type === 'number' ? formProperty.unit : undefined,
         precision: formProperty.type === 'number' ? (formProperty.precision === undefined || formProperty.precision === null ? 2 : Number(formProperty.precision)) : undefined,
-        autoSetOnCreate: formProperty.type === 'date' ? !!formProperty.autoSetOnCreate : false,
-        autoSetOnUpdate: formProperty.type === 'date' ? !!formProperty.autoSetOnUpdate : false,
-        isUnique: formProperty.type === 'string' ? !!formProperty.isUnique : false,
         validationRulesetId: formProperty.type === 'string' ? (formProperty.validationRulesetId || null) : null,
-      } as PropertyFormValues;
+        min: formProperty.type === 'number' ? (formProperty.min === undefined || formProperty.min === null || isNaN(Number(formProperty.min)) ? null : Number(formProperty.min)) : null,
+        max: formProperty.type === 'number' ? (formProperty.max === undefined || formProperty.max === null || isNaN(Number(formProperty.max)) ? null : Number(formProperty.max)) : null,
+      };
+      return propForApi;
     });
     onSubmit(processedValues);
   };

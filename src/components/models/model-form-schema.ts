@@ -18,7 +18,9 @@ export const propertyFormSchema = z.object({
   isUnique: z.boolean().optional().default(false),
   orderIndex: z.number().optional(), // Will be set programmatically
   defaultValue: z.string().optional(), // Stored as string, parsed based on 'type' when used
-  validationRulesetId: z.string().nullable().default(null), // Explicitly default to null
+  validationRulesetId: z.string().nullable().default(null),
+  min: z.coerce.number().nullable().optional(), // Allow null or number
+  max: z.coerce.number().nullable().optional(), // Allow null or number
 }).refine(data => {
   if (data.type === 'relationship' && !data.relatedModelId) {
     return false;
@@ -68,7 +70,6 @@ export const propertyFormSchema = z.object({
   message: "Unique constraint can only be set for string type properties.",
   path: ["isUnique"],
 })
-// Refinements for 'rating', 'markdown', or 'image' types - cannot have certain fields
 .refine(data => ['rating', 'markdown', 'image'].includes(data.type) ? (data.unit === undefined || data.unit === '') : true, {
     message: "Unit cannot be set for this property type.", path: ["unit"],
 })
@@ -78,29 +79,46 @@ export const propertyFormSchema = z.object({
 .refine(data => ['rating', 'markdown', 'image'].includes(data.type) ? data.relatedModelId === undefined : true, {
     message: "Related Model ID cannot be set for this property type.", path: ["relatedModelId"],
 })
-.refine(data => ['rating', 'markdown', 'image'].includes(data.type) ? (data.relationshipType === undefined || data.relationshipType === 'one') : true, { // Allow default 'one' to not trigger error if relationship fields are hidden but still in form state
+.refine(data => ['rating', 'markdown', 'image'].includes(data.type) ? (data.relationshipType === undefined || data.relationshipType === 'one') : true, {
     message: "Relationship Type cannot be set for this property type.", path: ["relationshipType"],
 })
 .refine(data => ['rating', 'markdown', 'image'].includes(data.type) ? (!data.autoSetOnCreate && !data.autoSetOnUpdate) : true, {
-    message: "Auto-set options are not available for this property type.", path: ["autoSetOnCreate"], // Path can be any of the two, or 'type'
+    message: "Auto-set options are not available for this property type.", path: ["autoSetOnCreate"],
 })
 .refine(data => ['rating', 'markdown', 'image'].includes(data.type) ? !data.isUnique : true, {
     message: "Unique constraint cannot be set for this property type.", path: ["isUnique"],
 })
-// Refinement for validationRulesetId: only allowed for 'string' type
-.refine(data => data.type === 'string' || data.validationRulesetId === null, { // check against null due to default(null)
+.refine(data => data.type === 'string' || data.validationRulesetId === null, {
   message: "Validation ruleset can only be applied to 'string' type properties.",
   path: ["validationRulesetId"],
-});
+})
+.refine(data => { // Min/Max only for number type
+  if (data.type !== 'number') {
+    return data.min === null || data.min === undefined;
+  }
+  return true;
+}, { message: "Minimum value can only be set for number type properties.", path: ["min"] })
+.refine(data => {
+  if (data.type !== 'number') {
+    return data.max === null || data.max === undefined;
+  }
+  return true;
+}, { message: "Maximum value can only be set for number type properties.", path: ["max"] })
+.refine(data => { // If both min and max are set, min must be <= max
+  if (typeof data.min === 'number' && typeof data.max === 'number') {
+    return data.min <= data.max;
+  }
+  return true;
+}, { message: "Minimum value cannot be greater than maximum value.", path: ["min"] });
 
 
 export const modelFormSchema = z.object({
   name: z.string().min(1, "Model name is required."),
   description: z.string().optional(),
-  namespace: z.string().optional(), // Will default to 'Default' if empty or special value
+  namespace: z.string().optional(),
   displayPropertyNames: z.array(z.string()).optional(),
   properties: z.array(propertyFormSchema).min(1, "At least one property is required."),
-  workflowId: z.string().nullable().optional(), // Ensures workflowId is part of the form's shape
+  workflowId: z.string().nullable().optional(),
 });
 
 export type ModelFormValues = z.infer<typeof modelFormSchema>;
