@@ -137,17 +137,18 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, vali
 
 
  useEffect(() => {
-    if (previousPropertyTypeRef.current === undefined && previousRelatedModelIdRef.current === undefined && previousRelationshipTypeRef.current === undefined) {
+    const initialRender = previousPropertyTypeRef.current === undefined;
+    const typeChanged = !initialRender && currentPropertyType !== previousPropertyTypeRef.current;
+    const relatedModelChanged = !initialRender && currentPropertyType === 'relationship' && currentRelatedModelId !== previousRelatedModelIdRef.current;
+    const relationshipTypeChanged = !initialRender && currentPropertyType === 'relationship' && currentRelationshipType !== previousRelationshipTypeRef.current;
+
+    if (initialRender) {
       previousPropertyTypeRef.current = currentPropertyType;
       previousRelatedModelIdRef.current = currentRelatedModelId;
       previousRelationshipTypeRef.current = currentRelationshipType;
       return;
     }
-
-    let typeChanged = currentPropertyType !== previousPropertyTypeRef.current;
-    let relatedModelChanged = currentPropertyType === 'relationship' && currentRelatedModelId !== previousRelatedModelIdRef.current;
-    let relationshipTypeChanged = currentPropertyType === 'relationship' && currentRelationshipType !== previousRelationshipTypeRef.current;
-
+    
     if (typeChanged || relatedModelChanged || relationshipTypeChanged) {
       form.setValue(`properties.${index}.defaultValue`, undefined, { shouldValidate: true });
 
@@ -155,31 +156,44 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, vali
       const isNumber = currentPropertyType === 'number';
       const isDate = currentPropertyType === 'date';
       const isString = currentPropertyType === 'string';
-      const isRatingOrMarkdownOrImage = ['rating', 'markdown', 'image'].includes(currentPropertyType);
 
+      // Reset fields not applicable to the new type or if critical relationship aspects changed
+      if (!isRelationship) {
+        form.setValue(relatedModelIdPath, undefined, { shouldValidate: true });
+        form.setValue(relationshipTypePath, undefined, { shouldValidate: true });
+      } else {
+         if (form.getValues(relationshipTypePath) === undefined) {
+            form.setValue(relationshipTypePath, 'one', {shouldValidate: true});
+        }
+      }
 
-      form.setValue(`properties.${index}.relationshipType`, isRelationship ? (form.getValues(relationshipTypePath) || 'one') : undefined, { shouldValidate: true });
-      form.setValue(`properties.${index}.relatedModelId`, isRelationship ? form.getValues(relatedModelIdPath) : undefined, { shouldValidate: true });
-      form.setValue(`properties.${index}.unit`, isNumber ? form.getValues(`properties.${index}.unit`) : undefined, { shouldValidate: true });
-      form.setValue(`properties.${index}.precision`, isNumber ? (form.getValues(`properties.${index}.precision`) ?? 2) : undefined, { shouldValidate: true });
-      form.setValue(`properties.${index}.autoSetOnCreate`, isDate ? !!form.getValues(`properties.${index}.autoSetOnCreate`) : false, { shouldValidate: true });
-      form.setValue(`properties.${index}.autoSetOnUpdate`, isDate ? !!form.getValues(`properties.${index}.autoSetOnUpdate`) : false, { shouldValidate: true });
-      form.setValue(`properties.${index}.isUnique`, isString ? !!form.getValues(`properties.${index}.isUnique`) : false, { shouldValidate: true });
-      
-      // Ensure validationRulesetId is null if type is not string
-      const currentValidationRuleId = form.getValues(validationRulesetIdPath);
-      form.setValue(validationRulesetIdPath, isString ? currentValidationRuleId : null, { shouldValidate: true });
-
-
-      if (isRatingOrMarkdownOrImage) {
+      if (!isNumber) {
         form.setValue(`properties.${index}.unit`, undefined, { shouldValidate: true });
         form.setValue(`properties.${index}.precision`, undefined, { shouldValidate: true });
-        form.setValue(`properties.${index}.relatedModelId`, undefined, { shouldValidate: true });
-        form.setValue(`properties.${index}.relationshipType`, undefined, { shouldValidate: true });
+      } else {
+        if (form.getValues(`properties.${index}.precision`) === undefined) {
+            form.setValue(`properties.${index}.precision`, 2, {shouldValidate: true});
+        }
+      }
+      
+      if (!isDate) {
         form.setValue(`properties.${index}.autoSetOnCreate`, false, { shouldValidate: true });
         form.setValue(`properties.${index}.autoSetOnUpdate`, false, { shouldValidate: true });
+      }
+      
+      if (!isString) {
         form.setValue(`properties.${index}.isUnique`, false, { shouldValidate: true });
-        form.setValue(validationRulesetIdPath, null, { shouldValidate: true }); // Also nullify here
+        form.setValue(validationRulesetIdPath, null, { shouldValidate: true });
+      } else {
+        // If type changed TO string, ensure validationRulesetId is (re)set to null
+        // to allow fresh selection, unless it's already explicitly set (e.g. by form load)
+        if (typeChanged) {
+           const currentVal = form.getValues(validationRulesetIdPath);
+           // If type changed to string, and it's not already something (e.g. from initial load), set to null
+           // This helps if it was previously non-string, its validationRulesetId was null.
+           // If a user changes type string -> number -> string, it should reset to null.
+           form.setValue(validationRulesetIdPath, null, { shouldValidate: true });
+        }
       }
     }
 
@@ -587,13 +601,13 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, vali
                             selected={(() => {
                               try {
                                 if (field.value && typeof field.value === 'string') {
-                                  const parsed = JSON.parse(field.value); 
+                                  const parsed = JSON.parse(field.value);
                                   return Array.isArray(parsed) ? parsed.filter(id => typeof id === 'string') : [];
                                 }
                               } catch (e) { /* ignore parse error, return empty */ }
                               return [];
                             })()}
-                            onChange={(selectedIds) => field.onChange(JSON.stringify(selectedIds))} 
+                            onChange={(selectedIds) => field.onChange(JSON.stringify(selectedIds))}
                             placeholder={`Select default ${relatedModelForDefault?.name || 'items'}...`}
                             emptyIndicator={`No ${relatedModelForDefault?.name?.toLowerCase() || 'items'} found.`}
                           />
@@ -715,7 +729,6 @@ function PropertyFieldsWithDnd({
     }
   }, [form.formState.errors.properties, fields]);
 
-  // Log to see if fields are empty
   useEffect(() => {
     if (fields.length === 0 && form.getValues('properties')?.length > 0) {
       console.warn("[ModelForm PropertyFieldsWithDnd] RHF useFieldArray 'fields' is empty, but form.getValues('properties') has items. This indicates a potential issue with keyName or how useFieldArray is initialized/updated.");
@@ -806,7 +819,7 @@ function PropertyFieldsWithDnd({
             autoSetOnUpdate: false,
             isUnique: false,
             defaultValue: undefined,
-            validationRulesetId: null, // Ensure new properties start with null
+            validationRulesetId: null,
             orderIndex: fields.length,
         } as PropertyFormValues, {shouldFocus: false})}
         className="mt-4 w-full border-dashed hover:border-solid"
@@ -877,7 +890,6 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
 
 
   const handleFormSubmit = (values: ModelFormValues) => {
-    console.log("[ModelForm] handleFormSubmit - received values from RHF:", JSON.stringify(values, null, 2));
     const processedValues = { ...values };
 
     if (processedValues.displayPropertyNames && processedValues.displayPropertyNames.includes(INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE)) {
@@ -891,69 +903,26 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
       processedValues.namespace = 'Default';
     }
     
-    processedValues.workflowId = values.workflowId; 
-    console.log("[ModelForm] handleFormSubmit - processedValues.workflowId before passing to page onSubmit:", processedValues.workflowId);
+    processedValues.workflowId = values.workflowId;
 
-
-    processedValues.properties = processedValues.properties.map((prop, index) => {
-      const { workflowId: _removed, ...restOfProp } = prop as any; 
-      const finalProp: PropertyFormValues = { ...restOfProp } as PropertyFormValues;
-
-      finalProp.orderIndex = index;
-
-      // The useEffect in PropertyAccordionContent should ensure prop.validationRulesetId
-      // is already null if prop.type is not 'string'.
-      // So, we can directly use prop.validationRulesetId here.
-      finalProp.validationRulesetId = prop.validationRulesetId;
-
-
-      const isNumber = prop.type === 'number';
-      const isDate = prop.type === 'date';
-      // const isString = prop.type === 'string'; // Already handled for validationRulesetId
-      const isRelationship = prop.type === 'relationship';
-      const isRatingOrMarkdownOrImage = ['rating', 'markdown', 'image'].includes(prop.type);
-
-
-      finalProp.unit = isNumber ? prop.unit : undefined;
-      finalProp.precision = isNumber ? (prop.precision === undefined || prop.precision === null || isNaN(Number(prop.precision)) ? 2 : Number(prop.precision)) : undefined;
-
-      finalProp.autoSetOnCreate = isDate ? !!prop.autoSetOnCreate : false;
-      finalProp.autoSetOnUpdate = isDate ? !!prop.autoSetOnUpdate : false;
-
-      finalProp.isUnique = prop.type === 'string' ? !!prop.isUnique : false; // Ensure isUnique is only for string
-
-
-      finalProp.relatedModelId = isRelationship ? prop.relatedModelId : undefined;
-      finalProp.relationshipType = isRelationship ? prop.relationshipType : undefined;
-
-      if (isRatingOrMarkdownOrImage) {
-        finalProp.unit = undefined;
-        finalProp.precision = undefined;
-        finalProp.relatedModelId = undefined;
-        finalProp.relationshipType = undefined;
-        finalProp.autoSetOnCreate = false;
-        finalProp.autoSetOnUpdate = false;
-        finalProp.isUnique = false;
-        // finalProp.validationRulesetId is already handled by the useEffect to be null for these types
-      } else if (!isNumber) {
-        finalProp.unit = undefined;
-        finalProp.precision = undefined;
-      }
-      if(!isRelationship){
-        finalProp.relatedModelId = undefined;
-        finalProp.relationshipType = undefined;
-      }
-      if(!isDate){
-        finalProp.autoSetOnCreate = false;
-        finalProp.autoSetOnUpdate = false;
-      }
-      if(prop.type !== 'string'){ // If not string, ensure isUnique and validationRulesetId are false/null
-        finalProp.isUnique = false;
-        finalProp.validationRulesetId = null;
-      }
-      return finalProp;
+    processedValues.properties = (values.properties || []).map((formProperty, index) => {
+      return {
+        id: formProperty.id || crypto.randomUUID(),
+        name: formProperty.name,
+        type: formProperty.type,
+        orderIndex: index,
+        required: !!formProperty.required,
+        defaultValue: formProperty.defaultValue ?? null,
+        relatedModelId: formProperty.type === 'relationship' ? formProperty.relatedModelId : undefined,
+        relationshipType: formProperty.type === 'relationship' ? formProperty.relationshipType : undefined,
+        unit: formProperty.type === 'number' ? formProperty.unit : undefined,
+        precision: formProperty.type === 'number' ? (formProperty.precision === undefined || formProperty.precision === null ? 2 : Number(formProperty.precision)) : undefined,
+        autoSetOnCreate: formProperty.type === 'date' ? !!formProperty.autoSetOnCreate : false,
+        autoSetOnUpdate: formProperty.type === 'date' ? !!formProperty.autoSetOnUpdate : false,
+        isUnique: formProperty.type === 'string' ? !!formProperty.isUnique : false,
+        validationRulesetId: formProperty.type === 'string' ? (formProperty.validationRulesetId || null) : null,
+      } as PropertyFormValues;
     });
-    console.log("[ModelForm] handleFormSubmit - final processedValues passed to page onSubmit:", JSON.stringify(processedValues, null, 2));
     onSubmit(processedValues);
   };
 
@@ -1075,16 +1044,13 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                   control={form.control}
                   name="workflowId"
                   render={({ field }) => {
-                    console.log(`[ModelForm Render] workflowId Select field.value from RHF:`, field.value);
                     const selectValue = field.value === null || field.value === undefined ? INTERNAL_NO_WORKFLOW_VALUE : field.value;
                     return (
                     <FormItem>
                       <FormLabel>Workflow (Optional)</FormLabel>
                       <Select
                         onValueChange={(valueFromSelect: string) => {
-                          console.log(`[ModelForm] Workflow Select onValueChange - valueFromSelect:`, valueFromSelect);
                           const newValueForRHF = valueFromSelect === INTERNAL_NO_WORKFLOW_VALUE ? null : valueFromSelect;
-                          console.log(`[ModelForm] Workflow Select onValueChange - newValueForRHF for field.onChange:`, newValueForRHF);
                           field.onChange(newValueForRHF);
                         }}
                         value={selectValue}
@@ -1137,3 +1103,4 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     </Form>
   );
 }
+
