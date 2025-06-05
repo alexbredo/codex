@@ -116,7 +116,7 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
     }
 
     const activeObjectId = String(active.id);
-    const originalColumn = findColumn(activeObjectId);
+    const originalColumn = findColumn(activeObjectId); // Original column of the dragged item
 
     if (!originalColumn) {
       console.warn("DragEnd: Could not find original column for active item:", activeObjectId);
@@ -126,16 +126,16 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
     // Determine target column
     let targetColumnId: string | null = null;
     // Case 1: Dropped directly onto a column Card (which is a droppable target)
-    if (columns.some(col => col.id === over.id)) {
+    if (columns.some(col => col.id === over.id)) { // over.id is a column id
         targetColumnId = String(over.id);
     } 
-    // Case 2: Dropped onto an item within a column (SortableKanbanItem)
-    // The containerId of the sortable item is the column's ID.
+    // Case 2: Dropped onto an item within a column (SortableKanbanItem) or empty space in a sortable container
+    // The containerId of the sortable item/context is the column's ID.
     else if (over.data.current?.sortable?.containerId) {
         targetColumnId = String(over.data.current.sortable.containerId);
     } 
-    // Case 3: Fallback - if 'over.id' is an item id but not caught by sortable.containerId (e.g. dragged to an empty part of a column)
-    // We try to find which column this 'over.id' (as an item) belongs to.
+    // Case 3: Fallback - if 'over.id' is an item id but not caught by sortable.containerId
+    // This case might be less common if items are always within a sortable context that provides containerId.
     else {
         const columnContainingOverItem = findColumn(over.id);
         if (columnContainingOverItem) {
@@ -155,6 +155,7 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
         return;
     }
     
+    // Logic for handling the drop
     if (originalColumn.id !== targetColumn.id) {
         // Item moved to a different column (state change)
         setIsLoading(true);
@@ -177,8 +178,9 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
         const oldIndex = itemsInColumn.findIndex(item => item.id === active.id);
         
         let newIndex;
-        if (over.id === originalColumn.id) { // Dropped onto the column itself (empty space)
-            newIndex = itemsInColumn.length - 1; 
+        // If 'over.id' is the column id itself, it means item was dropped in empty space of column
+        if (over.id === originalColumn.id) {
+            newIndex = itemsInColumn.length - 1; // Place at the end of the column
         } else { // Dropped onto another item in the same column
             newIndex = itemsInColumn.findIndex(item => item.id === over.id);
         }
@@ -218,7 +220,7 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
         onDragStart={handleDragStart} 
         onDragOver={handleDragOver} 
         onDragEnd={handleDragEnd}
-        measuring={{ droppable: { strategy: MeasuringStrategy.Always } }} // Might need adjustment
+        measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
     >
       <ScrollArea className="w-full rounded-md border">
         <div className="flex gap-4 p-4 min-h-[calc(100vh-20rem)]"> {/* Ensure columns have space */}
@@ -271,3 +273,4 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
     </DndContext>
   );
 }
+
