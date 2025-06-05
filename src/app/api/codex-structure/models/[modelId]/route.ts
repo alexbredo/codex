@@ -241,8 +241,8 @@ export async function PUT(request: Request, { params }: Params) {
           prop.autoSetOnCreate ? 1 : 0, prop.autoSetOnUpdate ? 1 : 0,
           prop.isUnique ? 1 : 0, prop.orderIndex, prop.defaultValue ?? null,
           prop.validationRulesetId ?? null,
-          prop.type === 'number' && typeof prop.min === 'number' && !isNaN(prop.min) ? Number(prop.min) : null,
-          prop.type === 'number' && typeof prop.max === 'number' && !isNaN(prop.max) ? Number(prop.max) : null
+          prop.min ?? null,
+          prop.max ?? null
         );
 
         // Identify genuinely new properties (by ID) that have a meaningful default value
@@ -369,4 +369,3 @@ export async function DELETE(request: Request, { params }: Params) {
   }
 }
     
-

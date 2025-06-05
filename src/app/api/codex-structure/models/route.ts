@@ -143,8 +143,8 @@ export async function POST(request: Request) {
         prop.orderIndex,
         prop.defaultValue ?? null,
         prop.validationRulesetId ?? null,
-        prop.type === 'number' && typeof prop.min === 'number' && !isNaN(prop.min) ? Number(prop.min) : null,
-        prop.type === 'number' && typeof prop.max === 'number' && !isNaN(prop.max) ? Number(prop.max) : null
+        prop.min ?? null,
+        prop.max ?? null
       );
     }
 
