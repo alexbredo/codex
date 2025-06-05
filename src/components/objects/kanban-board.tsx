@@ -2,7 +2,7 @@
 'use client';
 
 import * as React from 'react';
-import type { DataObject, Model, WorkflowWithDetails } from '@/lib/types';
+import type { DataObject, Model, WorkflowWithDetails, WorkflowStateWithSuccessors } from '@/lib/types';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragOverEvent, DragOverlay, type UniqueIdentifier, MeasuringStrategy } from '@dnd-kit/core';
 import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { SortableKanbanItem, KanbanCard } from './kanban-card';
@@ -33,9 +33,28 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
   const [isLoading, setIsLoading] = React.useState(false); // For optimistic updates
 
   React.useEffect(() => {
-    const initialStates = workflow.states.filter(s => s.isInitial);
-    const otherStates = workflow.states.filter(s => !s.isInitial).sort((a, b) => a.name.localeCompare(b.name)); // Basic sort
-    const orderedWorkflowStates = [...initialStates, ...otherStates];
+    const allWorkflowStates = workflow.states;
+
+    const initialStates: WorkflowStateWithSuccessors[] = [];
+    const terminalStates: WorkflowStateWithSuccessors[] = [];
+    const intermediateStates: WorkflowStateWithSuccessors[] = [];
+
+    allWorkflowStates.forEach(state => {
+      if (state.isInitial) {
+        initialStates.push(state);
+      } else if (!state.successorStateIds || state.successorStateIds.length === 0) {
+        terminalStates.push(state);
+      } else {
+        intermediateStates.push(state);
+      }
+    });
+
+    // Sort intermediate and terminal states alphabetically by name for consistent ordering among themselves
+    intermediateStates.sort((a, b) => a.name.localeCompare(b.name));
+    terminalStates.sort((a, b) => a.name.localeCompare(b.name));
+
+    // Combine them in the desired order: Initial -> Intermediate -> Terminal
+    const orderedWorkflowStates = [...initialStates, ...intermediateStates, ...terminalStates];
 
     const newColumns = orderedWorkflowStates.map(state => ({
       id: state.id,
@@ -256,4 +275,3 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
     </DndContext>
   );
 }
-
