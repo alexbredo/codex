@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import type { DataObject, Model, WorkflowWithDetails, WorkflowStateWithSuccessors } from '@/lib/types';
-import { DndContext, closestCorners, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragOverEvent, DragOverlay, type UniqueIdentifier, MeasuringStrategy, rectIntersection } from '@dnd-kit/core';
+import { DndContext, closestCorners, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragOverEvent, DragOverlay, type UniqueIdentifier } from '@dnd-kit/core';
 import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { SortableKanbanItem, KanbanCard } from './kanban-card';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
@@ -73,10 +73,16 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
     useSensor(PointerSensor)
   );
 
-  const findColumn = (id: UniqueIdentifier | undefined | null): KanbanColumn | null => {
-    if (!id) return null;
-    return columns.find(col => col.id === id || col.objects.some(obj => obj.id === id)) || null;
+  const findColumnByObjectId = (objectId: UniqueIdentifier | undefined | null): KanbanColumn | null => {
+    if (!objectId) return null;
+    return columns.find(col => col.objects.some(obj => obj.id === objectId)) || null;
   };
+  
+  const findColumnById = (columnId: UniqueIdentifier | undefined | null): KanbanColumn | null => {
+    if (!columnId) return null;
+    return columns.find(col => col.id === columnId) || null;
+  };
+
 
   const findObjectById = (id: UniqueIdentifier | undefined | null): DataObject | null => {
      if (!id) return null;
@@ -90,9 +96,9 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
   const handleDragStart = (event: any) => {
     console.log("[KanbanBoard] handleDragStart. Active:", event.active);
     setActiveId(event.active.id);
-    const originalCol = findColumn(event.active.id);
+    const originalCol = findColumnByObjectId(event.active.id);
     setActiveItemOriginalColumnId(originalCol ? originalCol.id : null);
-    setTentativeOverColumnId(null);
+    setTentativeOverColumnId(null); // Reset on new drag start
   };
 
   const handleDragOver = (event: DragOverEvent) => {
@@ -101,9 +107,7 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
       console.log("[KanbanBoard] handleDragOver: Bailing early - no over, active.id, or originalColId.");
       return;
     }
-
-    let potentialTargetColumnId: string | null = null;
-
+    
     console.log(`[KanbanBoard] handleDragOver RAW: event.over.id = ${over.id}`);
     if (over.data.current?.sortable?.containerId) {
       console.log(`[KanbanBoard] handleDragOver RAW: event.over.data.current.sortable.containerId = ${over.data.current.sortable.containerId}`);
@@ -111,38 +115,38 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
       console.log("[KanbanBoard] handleDragOver RAW: event.over.data.current.sortable.containerId is UNDEFINED");
     }
 
-    if (columns.some(col => col.id === over.id)) {
-      potentialTargetColumnId = String(over.id);
-      console.log(`[KanbanBoard] handleDragOver: Derived potentialTargetColumnId = ${potentialTargetColumnId} (from over.id being a column)`);
-    } else if (over.data.current?.sortable?.containerId && columns.some(col => col.id === over.data.current.sortable.containerId)) {
-      potentialTargetColumnId = String(over.data.current.sortable.containerId);
-      console.log(`[KanbanBoard] handleDragOver: Derived potentialTargetColumnId = ${potentialTargetColumnId} (from over.data.current.sortable.containerId)`);
-    } else {
-      const parentCol = findColumn(over.id);
-      if (parentCol) {
-        potentialTargetColumnId = parentCol.id;
-        console.log(`[KanbanBoard] handleDragOver: Derived potentialTargetColumnId = ${potentialTargetColumnId} (from parentCol of item ${over.id})`);
-      } else {
-         console.log(`[KanbanBoard] handleDragOver: Could not derive potentialTargetColumnId. over.id=${over.id}, over.data:`, JSON.stringify(over.data.current));
-      }
+    let potentialTargetColumnId: string | null = null;
+
+    // Scenario 1: Dropping directly onto a column's SortableContext area (e.g., empty column, or padding)
+    if (findColumnById(over.id)) {
+        potentialTargetColumnId = String(over.id);
+        console.log(`[KanbanBoard] handleDragOver: Derived potentialTargetColumnId = ${potentialTargetColumnId} (from over.id being a column's SortableContext)`);
+    } 
+    // Scenario 2: Dropping onto an item, get its container ID
+    else if (over.data.current?.sortable?.containerId && findColumnById(over.data.current.sortable.containerId)) {
+        potentialTargetColumnId = String(over.data.current.sortable.containerId);
+        console.log(`[KanbanBoard] handleDragOver: Derived potentialTargetColumnId = ${potentialTargetColumnId} (from over.data.current.sortable.containerId)`);
+    } 
+    // Scenario 3: Fallback if over.id is an item but containerId wasn't picked up directly (should be rare with SortableContext)
+    else {
+        const parentColOfOverItem = findColumnByObjectId(over.id);
+        if (parentColOfOverItem) {
+            potentialTargetColumnId = parentColOfOverItem.id;
+            console.log(`[KanbanBoard] handleDragOver: Derived potentialTargetColumnId = ${potentialTargetColumnId} (from parentCol of item ${over.id})`);
+        }
     }
 
+
     if (potentialTargetColumnId && potentialTargetColumnId !== activeItemOriginalColumnId) {
-      // Only update if it's a new different column being hovered over
-      if (potentialTargetColumnId !== tentativeOverColumnId) {
-        console.log(`[KanbanBoard] handleDragOver: Tentative target column updated to: ${potentialTargetColumnId} (was ${tentativeOverColumnId || 'null'}). Original active column: ${activeItemOriginalColumnId}`);
-        setTentativeOverColumnId(potentialTargetColumnId);
-      }
+        if (tentativeOverColumnId !== potentialTargetColumnId) {
+            console.log(`[KanbanBoard] handleDragOver: Tentative target column updated to: ${potentialTargetColumnId} (was ${tentativeOverColumnId || 'null'}). Original active column: ${activeItemOriginalColumnId}`);
+            setTentativeOverColumnId(potentialTargetColumnId);
+        }
     } else if (potentialTargetColumnId && potentialTargetColumnId === activeItemOriginalColumnId) {
-      // Dragged back over the original column
-      if (tentativeOverColumnId !== null) { // If we were previously over a *new* column
-        console.log(`[KanbanBoard] handleDragOver: Dragged back to original column ${activeItemOriginalColumnId}. Clearing tentativeOverColumnId (was ${tentativeOverColumnId}).`);
-        setTentativeOverColumnId(null);
-      }
-    } else if (!potentialTargetColumnId && tentativeOverColumnId !== null) {
-      // Dragged off any valid column target after being over one
-      console.log(`[KanbanBoard] handleDragOver: Dragged off any valid column. Clearing tentativeOverColumnId (was ${tentativeOverColumnId}).`);
-      setTentativeOverColumnId(null);
+        if (tentativeOverColumnId !== null) { // Only reset if we were previously over a *new* column
+            console.log(`[KanbanBoard] handleDragOver: Dragged back to original column ${activeItemOriginalColumnId}. Clearing tentativeOverColumnId (was ${tentativeOverColumnId}).`);
+            setTentativeOverColumnId(null);
+        }
     }
   };
 
@@ -151,6 +155,8 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
     console.log("[KanbanBoard] handleDragEnd triggered. Active:", event.active, "Over:", event.over);
     const { active, over } = event;
 
+    const originalColumnId = activeItemOriginalColumnId;
+    
     if (!active?.id) {
         console.warn("[KanbanBoard] handleDragEnd: No 'active' item.");
         setActiveId(null);
@@ -158,12 +164,8 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
         setActiveItemOriginalColumnId(null);
         return;
     }
-    
-    const activeObjectId = String(active.id);
-    const originalColumnId = activeItemOriginalColumnId;
-
     if (!originalColumnId) {
-      console.warn("[KanbanBoard] handleDragEnd: Could not determine original column for active item:", activeObjectId);
+      console.warn("[KanbanBoard] handleDragEnd: Could not determine original column for active item:", active.id);
       setActiveId(null);
       setTentativeOverColumnId(null);
       setActiveItemOriginalColumnId(null);
@@ -171,21 +173,22 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
     }
     console.log(`[KanbanBoard] handleDragEnd: Original column ID: ${originalColumnId}`);
     console.log(`[KanbanBoard] handleDragEnd: Tentative target from onDragOver: ${tentativeOverColumnId}`);
-    
+
     let targetColumnId: string | null = null;
 
     if (tentativeOverColumnId && tentativeOverColumnId !== originalColumnId) {
       targetColumnId = tentativeOverColumnId;
       console.log(`[KanbanBoard] handleDragEnd: Using tentativeOverColumnId (a NEW column) as target: ${targetColumnId}`);
     } else if (over) {
-        if (columns.some(col => col.id === over.id)) {
+        // Try to determine target from `over` if tentative logic didn't yield a *new* column
+        if (findColumnById(over.id)) {
             targetColumnId = String(over.id);
             console.log(`[KanbanBoard] handleDragEnd: Target column ID from over.id (direct column drop): ${targetColumnId}`);
-        } else if (over.data.current?.sortable?.containerId && columns.some(col => col.id === over.data.current.sortable.containerId)) {
+        } else if (over.data.current?.sortable?.containerId && findColumnById(over.data.current.sortable.containerId)) {
             targetColumnId = String(over.data.current.sortable.containerId);
             console.log(`[KanbanBoard] handleDragEnd: Target column ID from over.data.current.sortable.containerId: ${targetColumnId}`);
         } else {
-            const columnContainingOverItem = findColumn(over.id);
+            const columnContainingOverItem = findColumnByObjectId(over.id);
             if (columnContainingOverItem) {
               targetColumnId = columnContainingOverItem.id;
               console.log(`[KanbanBoard] handleDragEnd: Target column ID by finding parent of over.id: ${targetColumnId}`);
@@ -212,6 +215,8 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
         setActiveItemOriginalColumnId(null);
         return;
     }
+    
+    const activeObjectId = String(active.id);
 
     if (originalColumnId !== targetColumn.id) {
         console.log(`[KanbanBoard] handleDragEnd: Attempting to move object ${activeObjectId} from ${originalColumnId} to ${targetColumn.id}`);
@@ -224,16 +229,17 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
         } finally {
             setIsLoading(false);
         }
-    } else if (over) { 
+    } else if (over) { // Item dropped in the same column, handle reordering
       const columnIndex = columns.findIndex(col => col.id === originalColumnId);
       if (columnIndex !== -1) {
         const itemsInColumn = columns[columnIndex].objects;
         const oldIndex = itemsInColumn.findIndex(item => item.id === active.id);
-
+        
         let newIndex = -1;
+        // If dropped on the SortableContext of the column (empty space) or if over.id is not an item in this column
         if (over.id === originalColumnId || !itemsInColumn.some(item => item.id === over.id)) {
-            newIndex = itemsInColumn.length -1; 
-        } else { 
+            newIndex = itemsInColumn.length -1; // Move to the end
+        } else { // Dropped on another item in the same column
             newIndex = itemsInColumn.findIndex(item => item.id === over.id);
         }
 
@@ -277,36 +283,36 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
   return (
     <DndContext
         sensors={sensors}
-        collisionDetection={rectIntersection} 
+        collisionDetection={closestCorners} // Reverted to closestCorners as rectIntersection gave Over:null
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
-        measuring={{ droppable: { strategy: MeasuringStrategy.Always }}}
     >
       <ScrollArea className="w-full rounded-md border">
         <div className="flex gap-4 p-4 min-h-[calc(100vh-20rem)]">
           {columns.map(column => (
             <Card 
                 key={column.id}
-                // The Card itself is not the droppable context ID; SortableContext is.
                 className="w-80 flex-shrink-0 h-full flex flex-col bg-muted/50"
+                // No id here, SortableContext below is the droppable container for this column.id
             >
+              <CardHeader className="p-3 border-b sticky top-0 bg-muted/80 backdrop-blur-sm z-10">
+                <CardTitle className="text-base flex justify-between items-center">
+                  {column.title}
+                  <Badge variant="secondary">{column.objects.length}</Badge>
+                </CardTitle>
+              </CardHeader>
+              {/* SortableContext makes this CardContent area droppable with id=column.id */}
               <SortableContext id={column.id} items={column.objects.map(obj => obj.id)} strategy={verticalListSortingStrategy}>
-                <CardHeader className="p-3 border-b sticky top-0 bg-muted/80 backdrop-blur-sm z-10">
-                  <CardTitle className="text-base flex justify-between items-center">
-                    {column.title}
-                    <Badge variant="secondary">{column.objects.length}</Badge>
-                  </CardTitle>
-                </CardHeader>
                 <CardContent className={cn(
-                    "p-3 space-y-2 flex-grow overflow-y-auto min-h-[200px]", // Ensure min-height for empty columns
+                    "p-3 space-y-2 flex-grow overflow-y-auto min-h-[200px]", 
                     "flex flex-col" 
                   )}>
                   {column.objects.length > 0 ? (
                     column.objects.map(object => (
                       <SortableKanbanItem
                         key={object.id}
-                        id={object.id}
+                        id={object.id} // This ID is for the sortable item
                         object={object}
                         model={model}
                         allModels={allModels}
@@ -341,4 +347,4 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
     </DndContext>
   );
 }
-    
+
