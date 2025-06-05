@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import type { DataObject, Model, WorkflowWithDetails, WorkflowStateWithSuccessors } from '@/lib/types';
-import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragOverEvent, DragOverlay, type UniqueIdentifier } from '@dnd-kit/core';
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragOverEvent, DragOverlay, type UniqueIdentifier, MeasuringStrategy } from '@dnd-kit/core';
 import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { SortableKanbanItem, KanbanCard } from './kanban-card';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
@@ -70,9 +70,7 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
   }, [workflow, objects]);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      // activationConstraint: { distance: 5 }, // Removed for simplicity, defaults are usually fine
-    })
+    useSensor(PointerSensor)
   );
 
   const findColumn = (id: UniqueIdentifier | undefined | null): KanbanColumn | null => {
@@ -94,18 +92,12 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
     setActiveId(event.active.id);
     const originalCol = findColumn(event.active.id);
     setActiveItemOriginalColumnId(originalCol ? originalCol.id : null);
-    setTentativeOverColumnId(null); // Reset tentative target on new drag start
+    setTentativeOverColumnId(null); 
   };
 
   const handleDragOver = (event: DragOverEvent) => {
-    const { active, over } = event;
-    if (!over || !active) {
-        if (tentativeOverColumnId !== null) {
-             // console.log(`[KanbanBoard] handleDragOver: Dragged out of any known column area. Resetting tentativeOverColumnId.`);
-             // Do not reset here, let onDragEnd handle the final state or if it goes over nothing.
-        }
-      return;
-    }
+    const { over } = event;
+    if (!over || !activeId || !activeItemOriginalColumnId) return;
 
     let potentialTargetColumnId: string | null = null;
 
@@ -119,10 +111,23 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
             potentialTargetColumnId = columnContainingOverItem.id;
         }
     }
-
-    if (potentialTargetColumnId && potentialTargetColumnId !== tentativeOverColumnId) {
-      console.log(`[KanbanBoard] handleDragOver: Tentative target column updated to: ${potentialTargetColumnId} (was ${tentativeOverColumnId}). Original active column: ${activeItemOriginalColumnId}`);
-      setTentativeOverColumnId(potentialTargetColumnId);
+    
+    if (potentialTargetColumnId && potentialTargetColumnId !== activeItemOriginalColumnId) {
+        // If it's a new valid column, set it as tentative
+        if (potentialTargetColumnId !== tentativeOverColumnId) {
+             console.log(`[KanbanBoard] handleDragOver: Tentative target column updated to: ${potentialTargetColumnId} (was ${tentativeOverColumnId}). Original active column: ${activeItemOriginalColumnId}`);
+            setTentativeOverColumnId(potentialTargetColumnId);
+        }
+    } else if (potentialTargetColumnId && potentialTargetColumnId === activeItemOriginalColumnId) {
+        // If dragged back to the original column, and we had a different tentative target, clear the tentative target.
+        if (tentativeOverColumnId !== null && tentativeOverColumnId !== activeItemOriginalColumnId) {
+            console.log(`[KanbanBoard] handleDragOver: Dragged back to original column ${activeItemOriginalColumnId} after being over ${tentativeOverColumnId}. Clearing tentative target.`);
+            setTentativeOverColumnId(null);
+        }
+    } else if (!potentialTargetColumnId && tentativeOverColumnId !== null) {
+        // If dragged over no valid column, clear tentative target
+        console.log(`[KanbanBoard] handleDragOver: Dragged over no valid column. Clearing tentative target ${tentativeOverColumnId}.`);
+        setTentativeOverColumnId(null);
     }
   };
 
@@ -132,10 +137,10 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
     const { active, over } = event;
 
     if (!active) {
+        console.warn("[KanbanBoard] handleDragEnd: No 'active' item.");
         setActiveId(null);
         setTentativeOverColumnId(null);
         setActiveItemOriginalColumnId(null);
-        console.warn("[KanbanBoard] handleDragEnd: No 'active' item. Bailing.");
         return;
     }
     
@@ -151,38 +156,30 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
     }
     console.log(`[KanbanBoard] handleDragEnd: Original column ID: ${originalColumnId}`);
     console.log(`[KanbanBoard] handleDragEnd: Tentative target from onDragOver: ${tentativeOverColumnId}`);
-
+    
     let targetColumnId: string | null = null;
 
-    // Strategy:
-    // 1. Use tentativeOverColumnId if it's valid and different from original. This captures intentional moves over other columns.
-    // 2. If not, or if it's the same, then analyze 'over' from onDragEnd to determine the target.
-    
     if (tentativeOverColumnId && tentativeOverColumnId !== originalColumnId) {
         targetColumnId = tentativeOverColumnId;
-        console.log(`[KanbanBoard] handleDragEnd: Using tentativeOverColumnId as target: ${targetColumnId}`);
-    } else if (over) {
+        console.log(`[KanbanBoard] handleDragEnd: Using tentativeOverColumnId (a NEW column) as target: ${targetColumnId}`);
+    } else if (over) { // Fallback if no new tentative target or if tentative was cleared (meaning return to original)
         if (columns.some(col => col.id === over.id)) {
             targetColumnId = String(over.id);
-            console.log(`[KanbanBoard] handleDragEnd: Target column ID from over.id (direct column drop): ${targetColumnId}`);
+            console.log(`[KanbanBoard] handleDragEnd: Fallback - Target column ID from over.id (direct column drop): ${targetColumnId}`);
         } else if (over.data.current?.sortable?.containerId && columns.some(col => col.id === over.data.current.sortable.containerId)) {
             targetColumnId = String(over.data.current.sortable.containerId);
-            console.log(`[KanbanBoard] handleDragEnd: Target column ID from over.data.current.sortable.containerId: ${targetColumnId}`);
+            console.log(`[KanbanBoard] handleDragEnd: Fallback - Target column ID from over.data.current.sortable.containerId: ${targetColumnId}`);
         } else {
             const columnContainingOverItem = findColumn(over.id);
             if (columnContainingOverItem) {
                 targetColumnId = columnContainingOverItem.id;
-                console.log(`[KanbanBoard] handleDragEnd: Target column ID by finding parent of over.id (item drop fallback): ${targetColumnId}`);
+                console.log(`[KanbanBoard] handleDragEnd: Fallback - Target column ID by finding parent of over.id: ${targetColumnId}`);
             }
         }
-    } else { // if over is null, but tentativeOverColumnId was set (and potentially to original column)
-         targetColumnId = tentativeOverColumnId; // Could be null or original column
-         console.log(`[KanbanBoard] handleDragEnd: 'over' is null, using tentativeOverColumnId: ${targetColumnId}`);
     }
 
-
     if (!targetColumnId) {
-        console.warn(`[KanbanBoard] handleDragEnd: Final target column could not be determined. Over.id: ${over?.id}, Over.data:`, JSON.stringify(over?.data.current));
+        console.warn(`[KanbanBoard] handleDragEnd: Final target column could not be determined. Tentative: ${tentativeOverColumnId}, Over.id: ${over?.id}, Over.data:`, JSON.stringify(over?.data.current));
         setActiveId(null);
         setTentativeOverColumnId(null);
         setActiveItemOriginalColumnId(null);
@@ -211,17 +208,16 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
         } finally {
             setIsLoading(false);
         }
-    } else if (over) { // Only attempt reorder if 'over' is defined (i.e., dropped on a valid target)
+    } else if (over) { 
       const columnIndex = columns.findIndex(col => col.id === originalColumnId);
       if (columnIndex !== -1) {
         const itemsInColumn = columns[columnIndex].objects;
         const oldIndex = itemsInColumn.findIndex(item => item.id === active.id);
 
         let newIndex = -1;
-        // If dropped directly on the column (SortableContext) or if over.id isn't an item in this column, place at end.
         if (over.id === originalColumnId || !itemsInColumn.some(item => item.id === over.id)) {
-            newIndex = itemsInColumn.length -1; // Place at the end if dropped on column itself or unknown item
-        } else { // Dropped on another item in the same column
+            newIndex = itemsInColumn.length -1; 
+        } else { 
             newIndex = itemsInColumn.findIndex(item => item.id === over.id);
         }
 
@@ -265,10 +261,11 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
   return (
     <DndContext
         sensors={sensors}
-        collisionDetection={closestCenter}
+        collisionDetection={closestCenter} 
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
+        measuring={{ droppable: { strategy: MeasuringStrategy.Always }}}
     >
       <ScrollArea className="w-full rounded-md border">
         <div className="flex gap-4 p-4 min-h-[calc(100vh-20rem)]">
@@ -282,8 +279,8 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
                   </CardTitle>
                 </CardHeader>
                 <CardContent className={cn(
-                    "p-3 space-y-2 flex-grow overflow-y-auto min-h-[200px]",
-                    "flex flex-col"
+                    "p-3 space-y-2 flex-grow overflow-y-auto min-h-[200px]", // Ensure min-height for drop target
+                    "flex flex-col" // Added for flex-grow to work on placeholder
                   )}>
                   {column.objects.length > 0 ? (
                     column.objects.map(object => (
