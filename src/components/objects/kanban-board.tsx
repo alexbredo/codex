@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import type { DataObject, Model, WorkflowWithDetails, WorkflowStateWithSuccessors } from '@/lib/types';
-import { DndContext, closestCorners, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragOverEvent, DragOverlay, type UniqueIdentifier, MeasuringStrategy } from '@dnd-kit/core'; // Changed to closestCorners
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragOverEvent, DragOverlay, type UniqueIdentifier, MeasuringStrategy } from '@dnd-kit/core';
 import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { SortableKanbanItem, KanbanCard } from './kanban-card';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
@@ -67,7 +67,7 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
   }, [workflow, objects]);
 
   const sensors = useSensors(
-    useSensor(PointerSensor) // Removed explicit activationConstraint
+    useSensor(PointerSensor) 
   ); 
 
   const findColumn = (id: UniqueIdentifier | undefined | null): KanbanColumn | null => {
@@ -90,7 +90,7 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
   };
 
   const handleDragOver = (event: DragOverEvent) => {
-    // No-op to prevent optimistic updates during drag over, relying on handleDragEnd
+    // No-op
   };
 
   async function handleDragEnd(event: DragEndEvent) {
@@ -114,21 +114,25 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
     }
 
     if (!originalColumnId) {
-      console.warn("[KanbanBoard] handleDragEnd: Could not determine original column for active item:", activeObjectId, "Active Data:", active.data.current);
+      console.warn("[KanbanBoard] handleDragEnd: Could not determine original column for active item:", activeObjectId, "Active Data:", JSON.stringify(active.data.current));
       return;
     }
     console.log(`[KanbanBoard] handleDragEnd: Original column ID:`, originalColumnId);
 
-
     let targetColumnId: string | null = null;
 
+    // Priority 1: If 'over.id' is a direct column ID
     if (columns.some(col => col.id === over.id)) {
         targetColumnId = String(over.id);
         console.log(`[KanbanBoard] handleDragEnd: Target column ID from over.id (direct column drop):`, targetColumnId);
-    } else if (over.data.current?.sortable?.containerId && columns.some(col => col.id === over.data.current.sortable.containerId)) {
+    } 
+    // Priority 2: If 'over.data.current.sortable.containerId' is a column ID (item dropped into another item's sortable context)
+    else if (over.data.current?.sortable?.containerId && columns.some(col => col.id === over.data.current.sortable.containerId)) {
         targetColumnId = String(over.data.current.sortable.containerId);
         console.log(`[KanbanBoard] handleDragEnd: Target column ID from over.data.current.sortable.containerId:`, targetColumnId);
-    } else {
+    }
+    // Priority 3: Fallback - if over.id is an item, find its column (less likely to be the primary for inter-column)
+    else {
         const columnContainingOverItem = findColumn(over.id);
         if (columnContainingOverItem) {
             targetColumnId = columnContainingOverItem.id;
@@ -141,14 +145,13 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
         return;
     }
     
-    const targetColumn = columns.find(col => col.id === targetColumnId); // Ensure targetColumn object is retrieved
+    const targetColumn = columns.find(col => col.id === targetColumnId); 
     
     if (!targetColumn) {
         console.warn("[KanbanBoard] handleDragEnd: Target column definition not found for ID:", targetColumnId);
         return;
     }
     console.log(`[KanbanBoard] handleDragEnd: Final Target column ID:`, targetColumn.id);
-
 
     if (originalColumnId !== targetColumn.id) {
         console.log(`[KanbanBoard] handleDragEnd: Attempting to move object ${activeObjectId} from ${originalColumnId} to ${targetColumn.id}`);
@@ -168,8 +171,9 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
         const oldIndex = itemsInColumn.findIndex(item => item.id === active.id);
         
         let newIndex = -1;
-        if (over.id === originalColumnId) { 
-            newIndex = itemsInColumn.length -1; 
+        // If dropped directly on the column container (not on an item), or if over.id is not an item in this column
+        if (over.id === originalColumnId || !itemsInColumn.some(item => item.id === over.id)) { 
+            newIndex = itemsInColumn.length -1; // Move to the end of the list
         } else { 
             newIndex = itemsInColumn.findIndex(item => item.id === over.id);
         }
@@ -208,7 +212,7 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
   return (
     <DndContext
         sensors={sensors}
-        collisionDetection={closestCorners} // Changed to closestCorners
+        collisionDetection={closestCenter} // Reverted to closestCenter as a stable default
         onDragStart={handleDragStart}
         onDragOver={handleDragOver} 
         onDragEnd={handleDragEnd}
@@ -217,38 +221,38 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
       <ScrollArea className="w-full rounded-md border">
         <div className="flex gap-4 p-4 min-h-[calc(100vh-20rem)]"> 
           {columns.map(column => (
-            <Card key={column.id} className="w-80 flex-shrink-0 h-full flex flex-col bg-muted/50"> {/* Removed id prop from Card */}
-              <CardHeader className="p-3 border-b sticky top-0 bg-muted/80 backdrop-blur-sm z-10">
-                <CardTitle className="text-base flex justify-between items-center">
-                  {column.title}
-                  <Badge variant="secondary">{column.objects.length}</Badge>
-                </CardTitle>
-              </CardHeader>
-              <SortableContext id={column.id} items={column.objects.map(obj => obj.id)} strategy={verticalListSortingStrategy}>
-                <CardContent className={cn(
-                    "p-3 space-y-2 flex-grow overflow-y-auto min-h-[200px]", // Ensure min-height
-                    "flex flex-col" // Allow placeholder to fill space
-                  )}>
-                  {column.objects.length > 0 ? (
-                    column.objects.map(object => (
-                      <SortableKanbanItem
-                        key={object.id}
-                        id={object.id} 
-                        object={object}
-                        model={model}
-                        allModels={allModels}
-                        allObjects={allObjects}
-                        onViewObject={onViewObject}
-                      />
-                    ))
-                  ) : (
-                    <div className="flex-grow flex items-center justify-center text-sm text-muted-foreground p-4 border-2 border-dashed border-gray-300 rounded-md min-h-[100px]">
-                        Drag items here
-                    </div>
-                  )}
-                </CardContent>
-              </SortableContext>
-            </Card>
+            <SortableContext key={column.id} id={column.id} items={column.objects.map(obj => obj.id)} strategy={verticalListSortingStrategy}>
+              <Card className="w-80 flex-shrink-0 h-full flex flex-col bg-muted/50">
+                <CardHeader className="p-3 border-b sticky top-0 bg-muted/80 backdrop-blur-sm z-10">
+                  <CardTitle className="text-base flex justify-between items-center">
+                    {column.title}
+                    <Badge variant="secondary">{column.objects.length}</Badge>
+                  </CardTitle>
+                </CardHeader>
+                  <CardContent className={cn(
+                      "p-3 space-y-2 flex-grow overflow-y-auto min-h-[200px]", 
+                      "flex flex-col"
+                    )}>
+                    {column.objects.length > 0 ? (
+                      column.objects.map(object => (
+                        <SortableKanbanItem
+                          key={object.id}
+                          id={object.id} 
+                          object={object}
+                          model={model}
+                          allModels={allModels}
+                          allObjects={allObjects}
+                          onViewObject={onViewObject}
+                        />
+                      ))
+                    ) : (
+                      <div className="flex-grow flex items-center justify-center text-sm text-muted-foreground p-4 border-2 border-dashed border-gray-300 rounded-md min-h-[100px]">
+                          Drag items here
+                      </div>
+                    )}
+                  </CardContent>
+              </Card>
+            </SortableContext>
           ))}
         </div>
         <ScrollBar orientation="horizontal" />
@@ -268,3 +272,5 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
     </DndContext>
   );
 }
+
+    
