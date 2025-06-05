@@ -46,6 +46,8 @@ export async function GET(request: Request) {
                   orderIndex: p_row?.orderIndex ?? 0,
                   defaultValue: p_row?.defaultValue,
                   validationRulesetId: p_row?.validationRulesetId ?? null,
+                  min: p_row?.min ?? null,
+                  max: p_row?.max ?? null,
               } as Property;
             }
             return {
@@ -64,6 +66,8 @@ export async function GET(request: Request) {
               orderIndex: p_row.orderIndex,
               defaultValue: p_row.defaultValue,
               validationRulesetId: p_row.validationRulesetId ?? null,
+              min: p_row.min ?? null,
+              max: p_row.max ?? null,
             } as Property;
           });
 
@@ -122,7 +126,7 @@ export async function POST(request: Request) {
 
     for (const prop of newProperties) {
       await db.run(
-        'INSERT INTO properties (id, model_id, name, type, relatedModelId, required, relationshipType, unit, precision, autoSetOnCreate, autoSetOnUpdate, isUnique, orderIndex, defaultValue, validationRulesetId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO properties (id, model_id, name, type, relatedModelId, required, relationshipType, unit, precision, autoSetOnCreate, autoSetOnUpdate, isUnique, orderIndex, defaultValue, validationRulesetId, min, max) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         prop.id || crypto.randomUUID(),
         modelId,
         prop.name,
@@ -137,7 +141,9 @@ export async function POST(request: Request) {
         prop.isUnique ? 1 : 0,
         prop.orderIndex,
         prop.defaultValue ?? null,
-        prop.validationRulesetId ?? null // Ensure validationRulesetId is saved
+        prop.validationRulesetId ?? null,
+        prop.min ?? null,
+        prop.max ?? null
       );
     }
 
@@ -157,6 +163,8 @@ export async function POST(request: Request) {
             isUnique: !!p.isUnique,
             defaultValue: p.defaultValue,
             validationRulesetId: p.validationRulesetId ?? null,
+            min: p.min ?? null,
+            max: p.max ?? null,
         })),
         workflowId: workflowId === undefined ? null : workflowId,
     };

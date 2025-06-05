@@ -16,6 +16,8 @@ export interface Property {
   orderIndex: number; // For property display order
   defaultValue?: string; // Stored as string, parsed based on 'type' when used
   validationRulesetId?: string | null; // ID of the assigned validation ruleset
+  min?: number | null; // For number type: minimum value
+  max?: number | null; // For number type: maximum value
 }
 
 export interface Model {
@@ -95,6 +97,8 @@ export type PropertyFormData = Omit<Property, 'id' | 'orderIndex'> & {
   isUnique?: boolean,
   defaultValue?: string;
   validationRulesetId?: string | null;
+  min?: number | null;
+  max?: number | null;
 };
 export type ObjectFormData = Omit<DataObject, 'id' | 'currentStateId'> & { // Allow currentStateId to be part of form data
   currentStateId?: string | null;

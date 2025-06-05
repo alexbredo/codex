@@ -88,7 +88,9 @@ const mapDbModelToClientModel = (dbModel: any): Model => {
       isUnique: p.type === 'string' ? (p.isUnique === 1 || p.isUnique === true) : false,
       orderIndex: p.orderIndex ?? 0,
       defaultValue: p.defaultValue ?? null,
-      validationRulesetId: p.validationRulesetId ?? null, // Ensure null if undefined or explicitly null
+      validationRulesetId: p.validationRulesetId ?? null,
+      min: p.min ?? null, // Ensure min is number or null
+      max: p.max ?? null, // Ensure max is number or null
     })).sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0)),
   };
 };
@@ -281,17 +283,24 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const addModel = useCallback(async (modelData: Omit<Model, 'id' | 'namespace' | 'workflowId'> & { namespace?: string, workflowId?: string | null }): Promise<Model> => {
     const modelId = crypto.randomUUID();
-    const propertiesWithIdsAndOrder = modelData.properties.map((p, index) => ({ 
-      ...p, 
+    const propertiesForApi = (modelData.properties || []).map((p, index) => ({
+      ...p, // Spread all incoming property fields first
       id: p.id || crypto.randomUUID(),
+      orderIndex: index,
       required: !!p.required,
       autoSetOnCreate: !!p.autoSetOnCreate,
       autoSetOnUpdate: !!p.autoSetOnUpdate,
       isUnique: !!p.isUnique,
       defaultValue: p.defaultValue ?? null,
-      orderIndex: index,
-      validationRulesetId: p.validationRulesetId, // Already string or null from form
+      relatedModelId: p.type === 'relationship' ? p.relatedModelId : undefined,
+      relationshipType: p.type === 'relationship' ? (p.relationshipType || 'one') : undefined,
+      unit: p.type === 'number' ? p.unit : undefined,
+      precision: p.type === 'number' ? (p.precision === undefined || p.precision === null || isNaN(Number(p.precision)) ? 2 : Number(p.precision)) : undefined,
+      validationRulesetId: p.type === 'string' ? (p.validationRulesetId || null) : null,
+      min: p.type === 'number' ? (p.min ?? null) : null,
+      max: p.type === 'number' ? (p.max ?? null) : null,
     }));
+
     const finalNamespace = (modelData.namespace && modelData.namespace.trim() !== '') ? modelData.namespace.trim() : 'Default';
     
     const payload = { 
@@ -299,7 +308,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         id: modelId, 
         namespace: finalNamespace, 
         workflowId: modelData.workflowId,
-        properties: propertiesWithIdsAndOrder 
+        properties: propertiesForApi 
     };
 
     const response = await fetch('/api/codex-structure/models', {
@@ -318,16 +327,22 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [fetchData]);
 
   const updateModel = useCallback(async (modelId: string, updates: Partial<Omit<Model, 'id' | 'properties' | 'displayPropertyNames' | 'namespace' | 'workflowId'>> & { properties?: Property[], displayPropertyNames?: string[], namespace?: string, workflowId?: string | null }): Promise<Model | undefined> => {
-    const propertiesWithEnsuredIdsAndOrder = updates.properties?.map((p, index) => ({
-      ...p,
+    const propertiesForApi = (updates.properties || []).map((p, index) => ({
+      ...p, // Spread all incoming property fields first
       id: p.id || crypto.randomUUID(),
+      orderIndex: index,
       required: !!p.required,
       autoSetOnCreate: !!p.autoSetOnCreate,
       autoSetOnUpdate: !!p.autoSetOnUpdate,
       isUnique: !!p.isUnique,
       defaultValue: p.defaultValue ?? null,
-      orderIndex: index,
-      validationRulesetId: p.validationRulesetId, // Already string or null from form
+      relatedModelId: p.type === 'relationship' ? p.relatedModelId : undefined,
+      relationshipType: p.type === 'relationship' ? (p.relationshipType || 'one') : undefined,
+      unit: p.type === 'number' ? p.unit : undefined,
+      precision: p.type === 'number' ? (p.precision === undefined || p.precision === null || isNaN(Number(p.precision)) ? 2 : Number(p.precision)) : undefined,
+      validationRulesetId: p.type === 'string' ? (p.validationRulesetId || null) : null,
+      min: p.type === 'number' ? (p.min ?? null) : null,
+      max: p.type === 'number' ? (p.max ?? null) : null,
     }));
 
     const finalNamespace = (updates.namespace && updates.namespace.trim() !== '') ? updates.namespace.trim() : 'Default';
@@ -336,7 +351,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       ...updates,
       namespace: finalNamespace, 
       workflowId: updates.workflowId,
-      properties: propertiesWithEnsuredIdsAndOrder,
+      properties: propertiesForApi,
     };
 
     const response = await fetch(`/api/codex-structure/models/${modelId}`, {
