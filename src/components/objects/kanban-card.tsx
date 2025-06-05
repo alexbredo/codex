@@ -9,6 +9,7 @@ import { getObjectDisplayValue, cn } from '@/lib/utils'; // Ensure cn is importe
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import Image from 'next/image'; // For image display
+import { useDroppable } from '@dnd-kit/core'; // Added for DroppablePlaceholder
 
 interface KanbanCardProps {
   object: DataObject;
@@ -110,6 +111,35 @@ export function SortableKanbanItem(props: SortableKanbanItemProps) {
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
       <KanbanCard {...props} className={isDragging ? 'ring-2 ring-primary' : ''} />
+    </div>
+  );
+}
+
+
+interface DroppablePlaceholderProps {
+  id: string; // This ID will be column.id, making this part of the column's droppable area
+  className?: string;
+}
+
+export function DroppablePlaceholder({ id, className }: DroppablePlaceholderProps) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: id, // The ID for this droppable area is the column's ID
+    data: {
+      isPlaceholder: true, // Custom data to identify this as a placeholder droppable
+      columnId: id,
+    }
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        "flex-grow flex items-center justify-center text-sm text-muted-foreground p-4 border-2 border-dashed rounded-md min-h-[100px]",
+        isOver && "bg-accent/20 border-accent-foreground/20 border-accent", // Highlight when dragged over
+        className
+      )}
+    >
+      Drag items here
     </div>
   );
 }
