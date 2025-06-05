@@ -17,7 +17,7 @@ import type { Property, ValidationRuleset, Model } from '@/lib/types'; // Added 
 import { useData } from '@/contexts/data-context';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
-import { CalendarIcon, ShieldCheck, ChevronsUpDown, Check, Search } from 'lucide-react'; // Added Search
+import { CalendarIcon, ShieldCheck, ChevronsUpDown, Check, Search } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { cn, getObjectDisplayValue } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -284,7 +284,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                <Command key={relatedModel.id}>
+                <Command key={relatedModel.id} >
                   <CommandInput
                     placeholder={placeholderText}
                     value={comboboxInputValue}
@@ -295,35 +295,31 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
                     <ScrollArea className="max-h-60">
                       <CommandItem
                         key={INTERNAL_NONE_SELECT_VALUE}
-                        value={INTERNAL_NONE_SELECT_VALUE}
+                        value={INTERNAL_NONE_SELECT_VALUE} 
                         onSelect={() => {
                           controllerField.onChange(""); 
                           setComboboxInputValue("");
                           setPopoverOpen(false);
                         }}
                       >
-                        {/* <Check className={cn("mr-2 h-4 w-4", currentSingleSelectionValue === "" ? "opacity-100" : "opacity-0")} /> */}
-                        -- None --
+                        {"-- None --"}
                       </CommandItem>
                       {Object.entries(relatedObjectsGrouped).map(([namespace, optionsInNamespace]) => (
-                        <CommandGroup key={namespace} heading={optionsInNamespace.length > 0 ? namespace : undefined}>
+                        <CommandGroup 
+                          key={namespace} 
+                          heading={optionsInNamespace.length > 0 ? namespace : undefined}
+                        >
                           {optionsInNamespace.map((option) => (
                             <CommandItem
                               key={option.value}
-                              value={option.value}
+                              value={String(option.value)} 
                               onSelect={() => {
                                 controllerField.onChange(option.value === currentSingleSelectionValue ? "" : option.value);
                                 setComboboxInputValue("");
                                 setPopoverOpen(false);
                               }}
                             >
-                              {/* <Check
-                                className={cn(
-                                  "mr-2 h-4 w-4",
-                                  currentSingleSelectionValue === option.value ? "opacity-100" : "opacity-0"
-                                )}
-                              /> */}
-                              {option.label ?? ""}
+                              {String(option.label ?? "")}
                             </CommandItem>
                           ))}
                         </CommandGroup>
@@ -425,3 +421,4 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
   );
 }
 
+    
