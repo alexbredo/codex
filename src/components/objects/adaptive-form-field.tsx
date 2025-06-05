@@ -13,11 +13,11 @@ import {
   FormMessage,
   FormDescription
 } from '@/components/ui/form';
-import type { Property, ValidationRuleset } from '@/lib/types';
+import type { Property, ValidationRuleset, Model } from '@/lib/types'; // Added Model here
 import { useData } from '@/contexts/data-context';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
-import { CalendarIcon, ShieldCheck, ChevronsUpDown, Check } from 'lucide-react';
+import { CalendarIcon, ShieldCheck, ChevronsUpDown, Check, Search } from 'lucide-react'; // Added Search
 import { Calendar } from '@/components/ui/calendar';
 import { cn, getObjectDisplayValue } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -57,7 +57,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
   const fieldName = property.name as FieldPath<TFieldValues>;
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [currentFile, setCurrentFile] = useState<File | null>(null);
-  const [comboboxInputValue, setComboboxInputValue] = React.useState("");
+  const [comboboxInputValue, setComboboxInputValue] = React.useState<string>("");
 
   const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects, property.type, property.relatedModelId]);
 
@@ -127,7 +127,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
     if (property.type === 'date' && formContext === 'create' && property.autoSetOnCreate) {
         fieldIsDisabled = true;
     }
-
+    
     const placeholderText = (relatedModel && relatedModel.name && relatedModel.name.trim() !== "")
     ? `Search ${relatedModel.name.trim()}...`
     : "Search items...";
@@ -135,6 +135,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
     const commandEmptyText = (relatedModel && relatedModel.name && relatedModel.name.trim() !== "")
         ? `No ${relatedModel.name.trim().toLowerCase()} found.`
         : "No items found.";
+
 
     switch (property.type) {
       case 'string':
@@ -283,16 +284,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                <Command
-                  key={relatedModel.id}
-                  // Temporarily remove custom filter for diagnosis
-                  // filter={(value, search) => { 
-                  //   const option = flatOptionsForMultiSelect.find(opt => opt.value === value);
-                  //   if (option && option.label.toLowerCase().includes(search.toLowerCase())) return 1;
-                  //   if (value === INTERNAL_NONE_SELECT_VALUE && "-- none --".includes(search.toLowerCase())) return 1; 
-                  //   return 0;
-                  // }}
-                >
+                <Command key={relatedModel.id}>
                   <CommandInput
                     placeholder={placeholderText}
                     value={comboboxInputValue}
@@ -310,7 +302,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
                           setPopoverOpen(false);
                         }}
                       >
-                        <Check className={cn("mr-2 h-4 w-4", currentSingleSelectionValue === "" ? "opacity-100" : "opacity-0")} />
+                        {/* <Check className={cn("mr-2 h-4 w-4", currentSingleSelectionValue === "" ? "opacity-100" : "opacity-0")} /> */}
                         -- None --
                       </CommandItem>
                       {Object.entries(relatedObjectsGrouped).map(([namespace, optionsInNamespace]) => (
@@ -325,13 +317,13 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
                                 setPopoverOpen(false);
                               }}
                             >
-                              <Check
+                              {/* <Check
                                 className={cn(
                                   "mr-2 h-4 w-4",
                                   currentSingleSelectionValue === option.value ? "opacity-100" : "opacity-0"
                                 )}
-                              />
-                              <span className="truncate">{option.label ?? ""}</span>
+                              /> */}
+                              {option.label ?? ""}
                             </CommandItem>
                           ))}
                         </CommandGroup>
