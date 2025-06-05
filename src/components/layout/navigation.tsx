@@ -9,11 +9,11 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarSeparator,
-  SidebarGroup, 
+  SidebarGroup,
   SidebarGroupLabel,
 } from '@/components/ui/sidebar';
-import { LayoutDashboard, DatabaseZap, ListChecks, FolderOpen, FolderKanban, Users, Workflow as WorkflowIcon } from 'lucide-react';
-import { useData } from '@/contexts/data-context'; 
+import { LayoutDashboard, DatabaseZap, ListChecks, FolderOpen, FolderKanban, Users, Workflow as WorkflowIcon, ShieldCheck } from 'lucide-react';
+import { useData } from '@/contexts/data-context';
 import { useAuth } from '@/contexts/auth-context';
 import type { Model } from '@/lib/types';
 
@@ -25,16 +25,17 @@ const adminNavItems = [
   { href: '/models', label: 'Model Admin', icon: DatabaseZap, roles: ['administrator'] },
   { href: '/model-groups', label: 'Group Admin', icon: FolderKanban, roles: ['administrator'] },
   { href: '/admin/workflows', label: 'Workflow Admin', icon: WorkflowIcon, roles: ['administrator'] },
+  { href: '/admin/validation-rules', label: 'Validation Rules', icon: ShieldCheck, roles: ['administrator'] },
   { href: '/admin/users', label: 'User Admin', icon: Users, roles: ['administrator'] },
 ];
 
 export default function Navigation() {
   const pathname = usePathname();
-  const { models, isReady: dataIsReady } = useData(); 
+  const { models, isReady: dataIsReady } = useData();
   const { user, isLoading: authIsLoading } = useAuth();
 
   const visibleStaticNavItems = React.useMemo(() => {
-    if (authIsLoading || !user) return staticNavItemsBase.filter(item => !item.roles || item.roles.length === 0); 
+    if (authIsLoading || !user) return staticNavItemsBase.filter(item => !item.roles || item.roles.length === 0);
     return [...staticNavItemsBase, ...adminNavItems].filter(item => item.roles.includes(user.role)).sort((a,b) => a.label.localeCompare(b.label));
   }, [user, authIsLoading]);
 
@@ -49,7 +50,7 @@ export default function Navigation() {
       }
       groups[namespace].push(model);
     });
-    
+
     for (const namespace in groups) {
       groups[namespace].sort((a, b) => a.name.localeCompare(b.name));
     }
@@ -58,7 +59,7 @@ export default function Navigation() {
 
   const sortedNamespaces = React.useMemo(() => {
     return Object.keys(groupedModels).sort((a, b) => {
-        if (a === 'Default') return -1; 
+        if (a === 'Default') return -1;
         if (b === 'Default') return 1;
         return a.localeCompare(b);
     });
@@ -105,9 +106,9 @@ export default function Navigation() {
                       isActive={pathname.startsWith(`/data/${model.id}`)}
                       tooltip={{ children: `View ${model.name} Data (${namespace})`, side: 'right', align: 'center' }}
                       aria-label={`${model.name} (${namespace})`}
-                      className="ml-2" 
+                      className="ml-2"
                     >
-                      <ListChecks size={18} /> 
+                      <ListChecks size={18} />
                       <span className="truncate">{model.name}</span>
                     </SidebarMenuButton>
                   </Link>
