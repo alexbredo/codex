@@ -881,7 +881,7 @@ export default function DataObjectsPage() {
         isValidTransition = true;
         console.log(`[DataObjectsPage] Transition to initial state "${targetStateDef.name}" is valid.`);
       } else {
-        toast({ variant: "warning", title: "Invalid Transition", description: `Cannot move object to non-initial state "${targetStateDef.name}" as it has no current state.` });
+        toast({ variant: "destructive", title: "Invalid Transition", description: `Cannot move object to non-initial state "${targetStateDef.name}" as it has no current state.` });
         console.warn(`[DataObjectsPage] Invalid: Cannot move object to non-initial state "${targetStateDef.name}" (ID: ${targetStateDef.id}) as it has no current state.`);
       }
     } else {
@@ -892,7 +892,7 @@ export default function DataObjectsPage() {
         isValidTransition = true;
         console.log(`[DataObjectsPage] Transition from "${currentObjectStateDef.name}" to "${targetStateDef.name}" is valid.`);
       } else {
-        toast({ variant: "warning", title: "Invalid Transition", description: `Cannot move from "${currentObjectStateDef.name}" to "${targetStateDef.name}". Not a valid successor.` });
+        toast({ variant: "destructive", title: "Invalid Transition", description: `Cannot move from "${currentObjectStateDef.name}" to "${targetStateDef.name}". Not a valid successor.` });
         console.warn(`[DataObjectsPage] Invalid: Cannot move from "${currentObjectStateDef.name}" (ID: ${currentObjectStateDef.id}) to "${targetStateDef.name}" (ID: ${targetStateDef.id}). Not in successors:`, validSuccessorIds);
       }
     }
