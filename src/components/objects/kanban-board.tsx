@@ -66,16 +66,14 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
   }, [workflow, objects]);
 
   const sensors = useSensors(
-    useSensor(PointerSensor) // Simplified: remove explicit activationConstraint for now
+    useSensor(PointerSensor) 
   ); 
 
   const findColumn = (id: UniqueIdentifier | undefined | null): KanbanColumn | null => {
     if (!id) return null;
-    // Check if the ID is a column ID first
     const column = columns.find(col => col.id === id);
     if (column) return column;
 
-    // If not a column ID, check if it's an object_id and find its parent column
     for (const col of columns) {
         if (col.objects.some(obj => obj.id === id)) {
             return col;
@@ -99,8 +97,7 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
   };
 
   const handleDragOver = (event: DragOverEvent) => {
-    // No-op: Let DragOverlay handle visual movement.
-    // Optimistic updates here can be complex and might conflict.
+    // No-op for now to simplify and ensure data-driven updates
   };
 
   async function handleDragEnd(event: DragEndEvent) {
@@ -122,20 +119,18 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
     }
     console.log(`[KanbanBoard] handleDragEnd: Original column ID:`, originalColumn.id);
 
-
     let targetColumnId: string | null = null;
     
-    // Priority 1: Dropped directly onto a column (SortableContext with column.id)
-    if (over.id && columns.some(col => col.id === over.id)) {
+    // Check if over.id is a column ID (SortableContext ID)
+    if (columns.some(col => col.id === over.id)) {
         targetColumnId = String(over.id);
         console.log(`[KanbanBoard] handleDragEnd: Target column ID from over.id (direct column drop):`, targetColumnId);
-    // Priority 2: Dropped onto an item or empty space within a column, use sortable.containerId
+    // Check if over.id is an item and get its containerId from sortable data
     } else if (over.data.current?.sortable?.containerId) {
         targetColumnId = String(over.data.current.sortable.containerId);
         console.log(`[KanbanBoard] handleDragEnd: Target column ID from over.data.current.sortable.containerId:`, targetColumnId);
     } else {
-        // Fallback: try to find if over.id is an object and get its parent column
-        // This is less reliable if over.id isn't an object ID directly
+        // Fallback: try to find if over.id is an object and get its parent column (less reliable)
         const columnContainingOverItem = findColumn(over.id);
         if (columnContainingOverItem) {
             targetColumnId = columnContainingOverItem.id;
@@ -143,7 +138,6 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
         }
     }
     
-
     if (!targetColumnId) {
         console.warn(`[KanbanBoard] handleDragEnd: Target column not found. Over.id: ${over.id}, Over.data:`, JSON.stringify(over.data.current));
         return;
@@ -170,14 +164,16 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
             setIsLoading(false);
         }
     } else {
+      // Handle reordering within the same column (client-side only for now)
       const columnIndex = columns.findIndex(col => col.id === originalColumn.id);
       if (columnIndex !== -1) {
         const itemsInColumn = columns[columnIndex].objects;
         const oldIndex = itemsInColumn.findIndex(item => item.id === active.id);
         
         let newIndex = -1;
-        if (over.id === originalColumn.id) { // Dropped on the column itself
-            newIndex = itemsInColumn.length -1; // Move to end
+        // If over.id is the column itself (dropped on empty space or column header area)
+        if (over.id === originalColumn.id) {
+            newIndex = itemsInColumn.length -1; // Move to end of the list in the column
         } else { // Dropped on another item in the same column
             newIndex = itemsInColumn.findIndex(item => item.id === over.id);
         }
@@ -216,7 +212,7 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
   return (
     <DndContext
         sensors={sensors}
-        collisionDetection={pointerWithin} 
+        collisionDetection={pointerWithin} // Changed from rectIntersection based on log
         onDragStart={handleDragStart}
         onDragOver={handleDragOver} 
         onDragEnd={handleDragEnd}
@@ -233,9 +229,10 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
                 </CardTitle>
               </CardHeader>
               <SortableContext id={column.id} items={column.objects.map(obj => obj.id)} strategy={verticalListSortingStrategy}>
-                <ScrollArea className="flex-grow">
-                   <CardContent className="p-3 space-y-2 min-h-[150px]"> {/* Ensure CardContent can receive drops if empty */}
-                    {column.objects.length > 0 ? column.objects.map(object => (
+                {/* Removed nested ScrollArea. CardContent will handle its own scroll if needed. */}
+                <CardContent className="p-3 space-y-2 min-h-[150px] flex-grow overflow-y-auto">
+                  {column.objects.length > 0 ? (
+                    column.objects.map(object => (
                       <SortableKanbanItem
                         key={object.id}
                         id={object.id} 
@@ -245,13 +242,13 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
                         allObjects={allObjects}
                         onViewObject={onViewObject}
                       />
-                    )) : (
-                        <div className="text-center text-sm text-muted-foreground py-10 h-full flex items-center justify-center">
-                            No items in this state.
-                        </div>
-                    )}
-                  </CardContent>
-                </ScrollArea>
+                    ))
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-sm text-muted-foreground p-4 border-2 border-dashed border-gray-300 rounded-md min-h-[100px]">
+                        Drag items here
+                    </div>
+                  )}
+                </CardContent>
               </SortableContext>
             </Card>
           ))}
