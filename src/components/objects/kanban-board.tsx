@@ -148,21 +148,22 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
 
     let targetColumnId: string | null = null;
 
-    // Determine target column ID
+    // Priority 1: Check if 'over.id' is a direct column ID
     if (over.id && columns.some(col => col.id === over.id)) {
-      // Dropped directly onto a column container
       targetColumnId = String(over.id);
-      console.log(`[KanbanBoard] handleDragEnd: Target column ID from over.id (column direct):`, targetColumnId);
-    } else if (over.data.current?.sortable?.containerId) {
-      // Dropped onto an item or sortable area within a column
+      console.log(`[KanbanBoard] handleDragEnd: Target column ID from over.id (direct column drop):`, targetColumnId);
+    } 
+    // Priority 2: Check data from sortable context (often when dropping on an item or empty space in sortable)
+    else if (over.data.current?.sortable?.containerId) {
       targetColumnId = String(over.data.current.sortable.containerId);
       console.log(`[KanbanBoard] handleDragEnd: Target column ID from over.data.current.sortable.containerId:`, targetColumnId);
-    } else {
-      // Fallback: if over.id is an object, find its column
+    }
+    // Fallback: If over.id is an object ID, find its parent column
+    else {
       const columnContainingOverItem = findColumn(over.id);
       if (columnContainingOverItem) {
         targetColumnId = columnContainingOverItem.id;
-        console.log(`[KanbanBoard] handleDragEnd: Target column ID from over.id (item in column - fallback):`, targetColumnId);
+        console.log(`[KanbanBoard] handleDragEnd: Target column ID by finding parent of over.id (item drop):`, targetColumnId);
       }
     }
 
@@ -193,17 +194,15 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
             setIsLoading(false);
         }
     } else {
-      // Handle reordering within the same column (optional, for now just visual update)
+      // Handle reordering within the same column
       const columnIndex = columns.findIndex(col => col.id === originalColumn.id);
       if (columnIndex !== -1) {
         const itemsInColumn = columns[columnIndex].objects;
         const oldIndex = itemsInColumn.findIndex(item => item.id === active.id);
 
         let newIndex;
-        // If dropping on the column itself (e.g., empty space), over.id is the column id.
-        // If dropping on an item, over.id is the item id.
         if (over.id === originalColumn.id) { 
-            newIndex = itemsInColumn.length -1; // Move to end
+            newIndex = itemsInColumn.length -1; // Move to end if dropped on column itself
         } else { 
             newIndex = itemsInColumn.findIndex(item => item.id === over.id);
         }
@@ -251,7 +250,7 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
       <ScrollArea className="w-full rounded-md border">
         <div className="flex gap-4 p-4 min-h-[calc(100vh-20rem)]">
           {columns.map(column => (
-            <Card key={column.id} id={column.id} className="w-80 flex-shrink-0 h-full flex flex-col bg-muted/50">
+            <Card key={column.id} /* Removed id={column.id} from here */ className="w-80 flex-shrink-0 h-full flex flex-col bg-muted/50">
               <CardHeader className="p-3 border-b sticky top-0 bg-muted/80 backdrop-blur-sm z-10">
                 <CardTitle className="text-base flex justify-between items-center">
                   {column.title}
