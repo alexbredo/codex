@@ -20,7 +20,7 @@ interface KanbanBoardProps {
   onObjectUpdate: (objectId: string, newStateId: string) => Promise<void>;
   onViewObject: (object: DataObject) => void;
 }
-
+ 
 interface KanbanColumn {
   id: string; // state.id
   title: string; // state.name
@@ -71,7 +71,7 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
         distance: 10,
       },
     })
-  );
+  ); 
 
   const findColumn = (id: UniqueIdentifier | undefined | null): KanbanColumn | null => {
     if (!id) return null;
@@ -92,8 +92,37 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
   };
 
   const handleDragOver = (event: DragOverEvent) => {
-    // No-op. Visual updates are handled by DragOverlay.
+    // No-op for inter-column. Visual updates are handled by DragOverlay.
     // Final state update and re-render happens after handleDragEnd completes.
+    const { active, over } = event;
+    if (!over || active.id === over.id) {
+      return;
+    }
+
+    // Optimistic reordering within the same column
+    const activeColumn = findColumn(active.id);
+    const overColumn = findColumn(over.id);
+
+    if (activeColumn && overColumn && activeColumn.id === overColumn.id) {
+      setColumns(prev => {
+        const activeColumnIndex = prev.findIndex(col => col.id === activeColumn.id);
+        if (activeColumnIndex === -1) return prev;
+
+        const activeItems = prev[activeColumnIndex].objects;
+        const oldIndex = activeItems.findIndex(item => item.id === active.id);
+        const newIndex = activeItems.findIndex(item => item.id === over.id);
+
+        if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
+          const newCols = [...prev];
+          newCols[activeColumnIndex] = {
+            ...newCols[activeColumnIndex],
+            objects: arrayMove(activeItems, oldIndex, newIndex),
+          };
+          return newCols;
+        }
+        return prev;
+      });
+    }
   };
 
   async function handleDragEnd(event: DragEndEvent) {
@@ -114,28 +143,27 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
       console.warn("[KanbanBoard] handleDragEnd: Could not find original column for active item:", activeObjectId);
       return;
     }
-    console.log("[KanbanBoard] handleDragEnd: Original column ID:", originalColumn.id);
+    console.log(`[KanbanBoard] handleDragEnd: Original column ID:`, originalColumn.id);
 
 
     let targetColumnId: string | null = null;
 
-    // Prioritize containerId if dropping on sortable context (empty space or column itself)
-    if (over.data.current?.sortable?.containerId) {
-        targetColumnId = String(over.data.current.sortable.containerId);
-        console.log("[KanbanBoard] handleDragEnd: Target column ID from over.data.current.sortable.containerId:", targetColumnId);
-    }
-    // Check if 'over.id' is a column ID directly
-    else if (columns.some(col => col.id === over.id)) {
-        targetColumnId = String(over.id);
-        console.log("[KanbanBoard] handleDragEnd: Target column ID from over.id (column direct):", targetColumnId);
-    }
-    // Check if 'over.id' is an object ID, then find its column
-    else {
-        const columnContainingOverItem = findColumn(over.id);
-        if (columnContainingOverItem) {
-            targetColumnId = columnContainingOverItem.id;
-            console.log("[KanbanBoard] handleDragEnd: Target column ID from over.id (item in column):", targetColumnId);
-        }
+    // Determine target column ID
+    if (over.id && columns.some(col => col.id === over.id)) {
+      // Dropped directly onto a column container
+      targetColumnId = String(over.id);
+      console.log(`[KanbanBoard] handleDragEnd: Target column ID from over.id (column direct):`, targetColumnId);
+    } else if (over.data.current?.sortable?.containerId) {
+      // Dropped onto an item or sortable area within a column
+      targetColumnId = String(over.data.current.sortable.containerId);
+      console.log(`[KanbanBoard] handleDragEnd: Target column ID from over.data.current.sortable.containerId:`, targetColumnId);
+    } else {
+      // Fallback: if over.id is an object, find its column
+      const columnContainingOverItem = findColumn(over.id);
+      if (columnContainingOverItem) {
+        targetColumnId = columnContainingOverItem.id;
+        console.log(`[KanbanBoard] handleDragEnd: Target column ID from over.id (item in column - fallback):`, targetColumnId);
+      }
     }
 
 
@@ -150,7 +178,7 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
         console.warn("[KanbanBoard] handleDragEnd: Target column definition not found for ID:", targetColumnId);
         return;
     }
-    console.log("[KanbanBoard] handleDragEnd: Final Target column ID:", targetColumn.id);
+    console.log(`[KanbanBoard] handleDragEnd: Final Target column ID:`, targetColumn.id);
 
 
     if (originalColumn.id !== targetColumn.id) {
@@ -172,9 +200,11 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
         const oldIndex = itemsInColumn.findIndex(item => item.id === active.id);
 
         let newIndex;
-        if (over.id === originalColumn.id) { // Dropped onto column itself
-            newIndex = itemsInColumn.length -1;
-        } else { // Dropped onto another item in the same column
+        // If dropping on the column itself (e.g., empty space), over.id is the column id.
+        // If dropping on an item, over.id is the item id.
+        if (over.id === originalColumn.id) { 
+            newIndex = itemsInColumn.length -1; // Move to end
+        } else { 
             newIndex = itemsInColumn.findIndex(item => item.id === over.id);
         }
 
@@ -216,7 +246,7 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
-        measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
+        measuring={{ droppable: { strategy: MeasuringStrategy.Always }}}
     >
       <ScrollArea className="w-full rounded-md border">
         <div className="flex gap-4 p-4 min-h-[calc(100vh-20rem)]">
@@ -269,3 +299,4 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
     </DndContext>
   );
 }
+
