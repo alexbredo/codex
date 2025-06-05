@@ -64,6 +64,8 @@ export default function EditModelPage() {
               defaultValue: p.defaultValue ?? '',
               orderIndex: p.orderIndex,
               validationRulesetId: p.validationRulesetId ?? null,
+              minValue: p.type === 'number' ? (p.minValue === undefined || p.minValue === null ? null : Number(p.minValue)) : null,
+              maxValue: p.type === 'number' ? (p.maxValue === undefined || p.maxValue === null ? null : Number(p.maxValue)) : null,
             } as PropertyFormValues)),
         });
       } else {
@@ -92,7 +94,7 @@ export default function EditModelPage() {
       workflowId: values.workflowId === INTERNAL_NO_WORKFLOW_VALUE ? null : values.workflowId,
       properties: values.properties.map((p_form_value, index) => {
         const propertyForApi: Property = {
-          ...p_form_value, // Spread all fields from form
+          ...p_form_value, 
           id: p_form_value.id || crypto.randomUUID(),
           orderIndex: index,
           required: !!p_form_value.required,
@@ -104,7 +106,9 @@ export default function EditModelPage() {
           relationshipType: p_form_value.type === 'relationship' ? (p_form_value.relationshipType || 'one') : undefined,
           unit: p_form_value.type === 'number' ? p_form_value.unit : undefined,
           precision: p_form_value.type === 'number' ? (p_form_value.precision === undefined || p_form_value.precision === null ? 2 : Number(p_form_value.precision)) : undefined,
-          validationRulesetId: p_form_value.type === 'string' ? (p_form_value.validationRulesetId) : null,
+          validationRulesetId: p_form_value.type === 'string' ? (p_form_value.validationRulesetId || null) : null,
+          minValue: p_form_value.type === 'number' ? (p_form_value.minValue === undefined || p_form_value.minValue === null || isNaN(Number(p_form_value.minValue)) ? null : Number(p_form_value.minValue)) : null,
+          maxValue: p_form_value.type === 'number' ? (p_form_value.maxValue === undefined || p_form_value.maxValue === null || isNaN(Number(p_form_value.maxValue)) ? null : Number(p_form_value.maxValue)) : null,
         };
         return propertyForApi;
       }),
