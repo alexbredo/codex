@@ -1,7 +1,7 @@
 
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import type { DataObject, Property, Model, WorkflowWithDetails, WorkflowStateWithSuccessors } from '@/lib/types';
+import type { DataObject, Property, Model, WorkflowWithDetails, WorkflowStateWithSuccessors, ValidationRuleset } from '@/lib/types';
 import { getCurrentUserFromCookie } from '@/lib/auth'; // Auth helper
 
 interface Params {
@@ -36,7 +36,7 @@ export async function PUT(request: Request, { params }: Params) {
     return NextResponse.json({ error: 'Unauthorized to update object' }, { status: 403 });
   }
   try {
-    const requestBody = await request.clone().json(); // Clone to re-read body for checks
+    const requestBody = await request.clone().json(); 
     const { id: _id, model_id: _model_id, currentStateId: newCurrentStateIdFromRequest, ...updates }: Partial<DataObject> & {id?: string, model_id?:string} = requestBody;
 
     const db = await getDb();
@@ -47,24 +47,75 @@ export async function PUT(request: Request, { params }: Params) {
     }
     const currentObjectStateId = existingObjectRecord.currentStateId;
     
-    const properties: Property[] = await db.all('SELECT name, type, isUnique FROM properties WHERE model_id = ?', params.modelId);
+    const properties: Property[] = await db.all('SELECT * FROM properties WHERE model_id = ?', params.modelId); // Fetch all property details
     const currentData = JSON.parse(existingObjectRecord.data);
+    const validationRulesets: ValidationRuleset[] = await db.all('SELECT * FROM validation_rulesets');
 
+
+    // Validation loop (Uniqueness, Regex, Min/Max)
     for (const prop of properties) {
-      if (prop.type === 'string' && prop.isUnique && updates.hasOwnProperty(prop.name)) {
+      if (updates.hasOwnProperty(prop.name)) { // Only validate if the property is being updated
         const newValue = updates[prop.name];
-        if (newValue !== currentData[prop.name] && newValue !== null && typeof newValue !== 'undefined' && String(newValue).trim() !== '') {
-          const conflictingObject = await db.get(
-            `SELECT id FROM data_objects WHERE model_id = ? AND id != ? AND json_extract(data, '$.${prop.name}') = ?`,
-            params.modelId,
-            params.objectId,
-            newValue
-          );
-          if (conflictingObject) {
-            return NextResponse.json({ 
-              error: `Value '${newValue}' for property '${prop.name}' must be unique. It already exists.`,
-              field: prop.name
-            }, { status: 409 }); 
+
+        // Regex validation for strings
+        if (prop.type === 'string' && prop.validationRulesetId && (newValue !== null && typeof newValue !== 'undefined' && String(newValue).trim() !== '')) {
+            const ruleset = validationRulesets.find(rs => rs.id === prop.validationRulesetId);
+            if (ruleset) {
+                try {
+                    const regex = new RegExp(ruleset.regexPattern);
+                    if (!regex.test(String(newValue))) {
+                        return NextResponse.json({ 
+                            error: `Value for '${prop.name}' does not match the required format: ${ruleset.name}. (Pattern: ${ruleset.regexPattern})`,
+                            field: prop.name 
+                        }, { status: 400 });
+                    }
+                } catch (e: any) {
+                    console.warn(`API PUT Object: Invalid regex pattern for ruleset ${ruleset.name} (ID: ${ruleset.id}): ${ruleset.regexPattern}. Skipping validation for this rule.`);
+                }
+            }
+        }
+        
+        // Uniqueness check for strings
+        if (prop.type === 'string' && prop.isUnique && newValue !== currentData[prop.name]) {
+          if (newValue !== null && typeof newValue !== 'undefined' && String(newValue).trim() !== '') {
+            const conflictingObject = await db.get(
+              `SELECT id FROM data_objects WHERE model_id = ? AND id != ? AND json_extract(data, '$.${prop.name}') = ?`,
+              params.modelId,
+              params.objectId,
+              newValue
+            );
+            if (conflictingObject) {
+              return NextResponse.json({ 
+                error: `Value '${newValue}' for property '${prop.name}' must be unique. It already exists.`,
+                field: prop.name
+              }, { status: 409 }); 
+            }
+          }
+        }
+
+        // Min/Max check for numbers
+        if (prop.type === 'number' && (newValue !== null && typeof newValue !== 'undefined')) {
+          const numericValue = Number(newValue);
+          if (isNaN(numericValue) && prop.required) { // If required and not a number, it's an error
+             return NextResponse.json({ 
+                error: `Property '${prop.name}' requires a valid number. Received: '${newValue}'.`,
+                field: prop.name 
+            }, { status: 400 });
+          }
+
+          if (!isNaN(numericValue)) { // Only validate if it's a number
+            if (prop.min !== null && typeof prop.min === 'number' && numericValue < prop.min) {
+                return NextResponse.json({ 
+                    error: `Value '${numericValue}' for property '${prop.name}' is less than the minimum allowed value of ${prop.min}.`,
+                    field: prop.name 
+                }, { status: 400 });
+            }
+            if (prop.max !== null && typeof prop.max === 'number' && numericValue > prop.max) {
+                return NextResponse.json({ 
+                    error: `Value '${numericValue}' for property '${prop.name}' is greater than the maximum allowed value of ${prop.max}.`,
+                    field: prop.name 
+                }, { status: 400 });
+            }
           }
         }
       }
@@ -111,12 +162,10 @@ export async function PUT(request: Request, { params }: Params) {
         }
     }
 
-
     const newData = { ...currentData, ...updates };
     if (Object.prototype.hasOwnProperty.call(requestBody, 'currentStateId')) {
       delete newData.currentStateId; 
     }
-
 
     await db.run(
       'UPDATE data_objects SET data = ?, currentStateId = ? WHERE id = ? AND model_id = ?',

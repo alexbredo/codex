@@ -22,14 +22,13 @@ export function createObjectFormSchema(model: Model | undefined, validationRules
         } else {
           fieldSchema = fieldSchema.optional().or(z.literal(''));
         }
-        // Apply regex validation if a ruleset is assigned
         if (prop.validationRulesetId) {
           const ruleset = validationRulesets.find(rs => rs.id === prop.validationRulesetId);
           if (ruleset) {
             try {
               const regex = new RegExp(ruleset.regexPattern);
               fieldSchema = fieldSchema.refine(val => {
-                if (val === null || val === undefined || val === '') return true; // Allow empty if not required
+                if (val === null || val === undefined || val === '') return true; 
                 return regex.test(String(val));
               }, {
                 message: `${prop.name} must match the format: ${ruleset.name}. (Pattern: ${ruleset.regexPattern})`,
@@ -61,8 +60,33 @@ export function createObjectFormSchema(model: Model | undefined, validationRules
         break;
       case 'number':
         fieldSchema = z.coerce.number();
+        if (prop.min !== null && typeof prop.min === 'number') {
+          fieldSchema = fieldSchema.min(prop.min, { message: `${prop.name} must be at least ${prop.min}.` });
+        }
+        if (prop.max !== null && typeof prop.max === 'number') {
+          fieldSchema = fieldSchema.max(prop.max, { message: `${prop.name} must be no more than ${prop.max}.` });
+        }
         if (!prop.required) {
-          fieldSchema = fieldSchema.optional().nullable();
+          // Allow empty string for optional numbers, which coerce.number handles by turning into NaN.
+          // Zod's .optional() makes it so that if the key is missing or undefined, it's okay.
+          // .nullable() allows explicit null.
+          // We need to ensure that if it's not required, an empty input or null is valid *before* min/max checks.
+           fieldSchema = z.union([fieldSchema, z.literal(null), z.literal(undefined), z.literal('')])
+             .transform(val => (val === '' || val === null || val === undefined) ? null : Number(val))
+             .refine(val => {
+                if (val === null) return true; // Null is fine if not required
+                if (prop.min !== null && typeof prop.min === 'number' && val < prop.min) return false;
+                if (prop.max !== null && typeof prop.max === 'number' && val > prop.max) return false;
+                return true;
+             }, val => ({ // Custom error messages for the refine after transform
+                message: (prop.min !== null && typeof prop.min === 'number' && val !== null && val < prop.min) 
+                            ? `${prop.name} must be at least ${prop.min}.` 
+                            : (prop.max !== null && typeof prop.max === 'number' && val !== null && val > prop.max)
+                            ? `${prop.name} must be no more than ${prop.max}.`
+                            : `${prop.name} is invalid.`
+             }));
+        } else { // If required, it must be a number satisfying min/max directly
+            fieldSchema = fieldSchema.refine(val => val !== null && val !== undefined && !isNaN(val), {message: `${prop.name} is required.`});
         }
         break;
       case 'boolean':

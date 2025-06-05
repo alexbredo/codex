@@ -26,7 +26,7 @@ import type { Property, ValidationRuleset } from '@/lib/types';
 import { useData } from '@/contexts/data-context';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
-import { CalendarIcon, ShieldCheck } from 'lucide-react'; // Added ShieldCheck
+import { CalendarIcon, ShieldCheck } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { cn, getObjectDisplayValue } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -39,7 +39,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip"; // Added Tooltip components
+} from "@/components/ui/tooltip";
 
 interface AdaptiveFormFieldProps<TFieldValues extends FieldValues = FieldValues> {
   form: UseFormReturn<TFieldValues>;
@@ -58,11 +58,10 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
   modelId,
   objectId,
 }: AdaptiveFormFieldProps<TFieldValues>) {
-  const { models: allModels, getModelById, getObjectsByModelId, getAllObjects, validationRulesets } = useData(); // Added validationRulesets
+  const { models: allModels, getModelById, getObjectsByModelId, getAllObjects, validationRulesets } = useData();
   const fieldName = property.name as FieldPath<TFieldValues>;
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [currentFile, setCurrentFile] = useState<File | null>(null);
-
 
   const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects, property.type, property.relatedModelId]);
 
@@ -99,9 +98,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
         setImagePreviewUrl(fieldValue);
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formContext, property.type, fieldName, form.getValues]);
-
+  }, [formContext, property.type, fieldName, form.getValues, form]);
 
   if (formContext === 'create' && property.type === 'date' && property.autoSetOnCreate) {
     return null;
@@ -117,7 +114,6 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
     if (property.type === 'date' && formContext === 'create' && property.autoSetOnCreate) {
         fieldIsDisabled = true;
     }
-
 
     switch (property.type) {
       case 'string':
@@ -161,7 +157,18 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
           </div>
         );
       case 'number':
-        return <Input type="number" placeholder={`Enter ${property.name}`} {...controllerField}  value={controllerField.value ?? ''} onChange={e => controllerField.onChange(parseFloat(e.target.value) || null)} />;
+        return (
+          <Input
+            type="number"
+            placeholder={`Enter ${property.name}`}
+            {...controllerField}
+            value={controllerField.value ?? ''}
+            onChange={e => {
+              const val = e.target.value;
+              controllerField.onChange(val === '' ? null : parseFloat(val)); // Send null if empty, else parsed float
+            }}
+          />
+        );
       case 'boolean':
         return <Switch checked={controllerField.value ?? false} onCheckedChange={controllerField.onChange} />;
       case 'date':
@@ -212,10 +219,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
         if (!property.relatedModelId || !relatedModel) {
           return <p className="text-destructive">Configuration error: Related model info missing.</p>;
         }
-
         const flatOptions: MultiSelectOption[] = Object.values(relatedObjectsGrouped).flat();
-
-
         if (property.relationshipType === 'many') {
           return (
             <MultiSelectAutocomplete
@@ -286,14 +290,27 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
     case 'image':
       defaultValueForController = null;
       break;
+    case 'number':
+      defaultValueForController = null; // Explicitly null for optional numbers
+      break;
     default:
       defaultValueForController = undefined;
   }
 
   let appliedRule: ValidationRuleset | undefined;
+  let descriptionText: string | undefined;
+
   if (property.type === 'string' && property.validationRulesetId) {
     appliedRule = validationRulesets.find(rs => rs.id === property.validationRulesetId);
   }
+  if (property.type === 'number') {
+    const minText = (property.min !== null && typeof property.min === 'number') ? `Min: ${property.min}` : null;
+    const maxText = (property.max !== null && typeof property.max === 'number') ? `Max: ${property.max}` : null;
+    if (minText && maxText) descriptionText = `${minText}, ${maxText}.`;
+    else if (minText) descriptionText = `${minText}.`;
+    else if (maxText) descriptionText = `${maxText}.`;
+  }
+
 
   return (
     <Controller
@@ -311,7 +328,9 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <ShieldCheck className="h-4 w-4 ml-2 text-blue-500" />
+                    <Button variant="ghost" size="icon" className="ml-1 h-auto w-auto p-0.5 text-blue-500 hover:bg-blue-500/10">
+                        <ShieldCheck className="h-4 w-4" />
+                    </Button>
                   </TooltipTrigger>
                   <TooltipContent>
                     <p className="font-semibold">Validation Rule: {appliedRule.name}</p>
@@ -323,6 +342,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
             )}
           </div>
           <FormControl>{renderField(field)}</FormControl>
+          {descriptionText && <FormDescription>{descriptionText}</FormDescription>}
           {error && <FormMessage>{error.message}</FormMessage>}
         </FormItem>
       )}
