@@ -7,11 +7,11 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import {
-  Select,
+  Select, // Still needed for non-relationship selects (if any in future)
   SelectContent,
   SelectGroup,
   SelectItem,
-  SelectLabel as UiSelectLabel,
+  SelectLabel as UiSelectLabel, // Keep alias
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -26,7 +26,7 @@ import type { Property, ValidationRuleset } from '@/lib/types';
 import { useData } from '@/contexts/data-context';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
-import { CalendarIcon, ShieldCheck } from 'lucide-react';
+import { CalendarIcon, ShieldCheck, ChevronsUpDown, Check } from 'lucide-react'; // Added ChevronsUpDown, Check
 import { Calendar } from '@/components/ui/calendar';
 import { cn, getObjectDisplayValue } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -40,6 +40,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import * as React from 'react';
+
 
 interface AdaptiveFormFieldProps<TFieldValues extends FieldValues = FieldValues> {
   form: UseFormReturn<TFieldValues>;
@@ -75,7 +79,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
   const relatedObjectsGrouped = useMemo(() => {
     if (relatedModel && property.relatedModelId) {
       const objects = getObjectsByModelId(property.relatedModelId);
-      return objects.reduce((acc, obj) => {
+      const grouped = objects.reduce((acc, obj) => {
         const relatedM = allModels.find(m => m.id === property.relatedModelId);
         const namespace = relatedM?.namespace || 'Default';
         if (!acc[namespace]) {
@@ -87,9 +91,27 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
         });
         return acc;
       }, {} as Record<string, MultiSelectOption[]>);
+
+      // Sort namespaces (Default first, then alphabetically)
+      const sortedNamespaces = Object.keys(grouped).sort((a, b) => {
+        if (a === 'Default') return -1;
+        if (b === 'Default') return 1;
+        return a.localeCompare(b);
+      });
+      
+      const sortedGrouped: Record<string, MultiSelectOption[]> = {};
+      for (const ns of sortedNamespaces) {
+        sortedGrouped[ns] = (grouped[ns] || []).sort((a,b) => a.label.localeCompare(b.label));
+      }
+      return sortedGrouped;
     }
     return {};
   }, [relatedModel, property.relatedModelId, getObjectsByModelId, allModels, allDbObjects]);
+
+  const flatOptionsForMultiSelect = useMemo(() => {
+    return Object.values(relatedObjectsGrouped).flat();
+  }, [relatedObjectsGrouped]);
+
 
   useEffect(() => {
     const fieldValue = form.getValues(fieldName);
@@ -98,7 +120,8 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
         setImagePreviewUrl(fieldValue);
       }
     }
-  }, [formContext, property.type, fieldName, form.getValues, form]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formContext, property.type, fieldName, form.getValues /*, form */]); // form was causing too many rerenders
 
   if (formContext === 'create' && property.type === 'date' && property.autoSetOnCreate) {
     return null;
@@ -160,12 +183,13 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
         return (
           <Input
             type="number"
+            step={property?.precision ? (1 / Math.pow(10, property.precision)) : "any"}
             placeholder={`Enter ${property.name}`}
             {...controllerField}
             value={controllerField.value ?? ''}
             onChange={e => {
               const val = e.target.value;
-              controllerField.onChange(val === '' ? null : parseFloat(val)); // Send null if empty, else parsed float
+              controllerField.onChange(val === '' ? null : parseFloat(val));
             }}
           />
         );
@@ -219,45 +243,99 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
         if (!property.relatedModelId || !relatedModel) {
           return <p className="text-destructive">Configuration error: Related model info missing.</p>;
         }
-        const flatOptions: MultiSelectOption[] = Object.values(relatedObjectsGrouped).flat();
+        
         if (property.relationshipType === 'many') {
           return (
             <MultiSelectAutocomplete
-              options={flatOptions}
-              selected={controllerField.value || []}
+              options={flatOptionsForMultiSelect} 
+              selected={Array.isArray(controllerField.value) ? controllerField.value : []}
               onChange={controllerField.onChange}
               placeholder={`Select ${relatedModel.name}(s)...`}
               emptyIndicator={`No ${relatedModel.name.toLowerCase()}s found.`}
             />
           );
-        } else {
-          const currentSelectValue = controllerField.value === "" || controllerField.value === null || typeof controllerField.value === 'undefined'
-                                     ? INTERNAL_NONE_SELECT_VALUE
-                                     : controllerField.value;
+        } else { // 'one' relationship - Replaced with Combobox
+          // eslint-disable-next-line react-hooks/rules-of-hooks -- conditionally calling hook, but in same position
+          const [popoverOpen, setPopoverOpen] = React.useState(false);
+          const currentSingleSelectionValue = controllerField.value === "" || controllerField.value === null || typeof controllerField.value === 'undefined'
+            ? ""
+            : String(controllerField.value);
+
+          let selectedLabel = `Select ${relatedModel.name}...`;
+          if (currentSingleSelectionValue) {
+            const foundOption = flatOptionsForMultiSelect.find(opt => opt.value === currentSingleSelectionValue);
+            if (foundOption) {
+              selectedLabel = foundOption.label;
+            } else if (currentSingleSelectionValue) {
+                selectedLabel = `ID: ...${currentSingleSelectionValue.slice(-6)}`;
+            }
+          }
+
           return (
-            <Select
-              onValueChange={(value) => {
-                controllerField.onChange(value === INTERNAL_NONE_SELECT_VALUE ? "" : value);
-              }}
-              value={currentSelectValue}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder={`Select ${relatedModel.name}`} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={INTERNAL_NONE_SELECT_VALUE}>-- None --</SelectItem>
-                {Object.entries(relatedObjectsGrouped).map(([namespace, optionsInNamespace]) => (
-                  <SelectGroup key={namespace}>
-                    <UiSelectLabel>{namespace}</UiSelectLabel>
-                    {optionsInNamespace.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                ))}
-              </SelectContent>
-            </Select>
+            <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={popoverOpen}
+                  className="w-full justify-between font-normal" // Ensure button text doesn't bold
+                  disabled={fieldIsDisabled}
+                >
+                  <span className="truncate">{selectedLabel}</span>
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                <Command
+                  filter={(value, search) => { // value is option.value (ID)
+                    const option = flatOptionsForMultiSelect.find(opt => opt.value === value);
+                    if (option && option.label.toLowerCase().includes(search.toLowerCase())) return 1;
+                    if (value === INTERNAL_NONE_SELECT_VALUE && "-- none --".includes(search.toLowerCase())) return 1; // Allow searching for "none"
+                    return 0;
+                  }}
+                >
+                  <CommandInput placeholder={`Search ${relatedModel.name}...`} />
+                  <CommandList>
+                    <CommandEmpty>No {relatedModel.name.toLowerCase()} found.</CommandEmpty>
+                    <ScrollArea className="max-h-60">
+                      <CommandItem
+                        key={INTERNAL_NONE_SELECT_VALUE}
+                        value={INTERNAL_NONE_SELECT_VALUE}
+                        onSelect={() => {
+                          controllerField.onChange(""); 
+                          setPopoverOpen(false);
+                        }}
+                      >
+                        <Check className={cn("mr-2 h-4 w-4", currentSingleSelectionValue === "" ? "opacity-100" : "opacity-0")} />
+                        -- None --
+                      </CommandItem>
+                      {Object.entries(relatedObjectsGrouped).map(([namespace, optionsInNamespace]) => (
+                        <CommandGroup key={namespace} heading={optionsInNamespace.length > 0 ? namespace : undefined}>
+                          {optionsInNamespace.map((option) => (
+                            <CommandItem
+                              key={option.value}
+                              value={option.value}
+                              onSelect={() => {
+                                controllerField.onChange(option.value === currentSingleSelectionValue ? "" : option.value);
+                                setPopoverOpen(false);
+                              }}
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  currentSingleSelectionValue === option.value ? "opacity-100" : "opacity-0"
+                                )}
+                              />
+                              <span className="truncate">{option.label}</span>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      ))}
+                    </ScrollArea>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
           );
         }
       case 'rating':

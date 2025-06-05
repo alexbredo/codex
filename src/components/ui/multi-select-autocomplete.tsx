@@ -2,7 +2,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, X, ChevronsUpDown } from "lucide-react"; // Removed PlusCircle as it's not used
+import { Check, X, ChevronsUpDown } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,6 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-  // CommandSeparator, // Removed as it's not used
 } from "@/components/ui/command";
 import {
   Popover,
@@ -80,12 +79,12 @@ export function MultiSelectAutocomplete({
                   key={item.value}
                   className="mr-1 mb-1"
                   onClick={(e) => {
-                    e.stopPropagation();
+                    e.stopPropagation(); // Prevent popover from closing
                     handleDeselect(item.value);
                   }}
                 >
                   {item.label}
-                  <X className="ml-1 h-3 w-3 cursor-pointer" />
+                  <X className="ml-1 h-3 w-3 cursor-pointer hover:text-destructive" />
                 </Badge>
               ))
             ) : (
@@ -96,7 +95,15 @@ export function MultiSelectAutocomplete({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-        <Command>
+        <Command
+          filter={(value, search) => {
+            // 'value' is option.value (the ID) from CommandItem
+            // 'search' is the input query
+            const option = options.find(opt => opt.value === value);
+            if (option && option.label.toLowerCase().includes(search.toLowerCase())) return 1;
+            return 0;
+          }}
+        >
           <CommandInput
             placeholder="Search items..."
             value={inputValue}
@@ -111,21 +118,22 @@ export function MultiSelectAutocomplete({
                   return (
                     <CommandItem
                       key={option.value}
-                      value={option.value} // Changed from option.label to option.value
-                      onSelect={() => {
+                      value={option.value} // Value for filtering/selection is the ID
+                      onSelect={() => { // onSelect callback gets the value (ID)
                         if (isSelected) {
                           handleDeselect(option.value);
                         } else {
                           handleSelect(option.value);
                         }
-                        setInputValue("");
+                        // Do not clear inputValue here to allow multiple selections without retyping search
+                        // setInputValue(""); 
                       }}
                       className="flex items-center justify-between"
                     >
-                      {option.label}
+                      <span className="truncate">{option.label}</span>
                       <Check
                         className={cn(
-                          "mr-2 h-4 w-4",
+                          "ml-2 h-4 w-4",
                           isSelected ? "opacity-100" : "opacity-0"
                         )}
                       />
