@@ -57,7 +57,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
   const fieldName = property.name as FieldPath<TFieldValues>;
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [currentFile, setCurrentFile] = useState<File | null>(null);
-  const [comboboxInputValue, setComboboxInputValue] = React.useState<string>("");
+  // const [comboboxInputValue, setComboboxInputValue] = React.useState<string>(""); // No longer needed for HTML select
 
   const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects, property.type, property.relatedModelId]);
 
@@ -129,8 +129,8 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
     }
     
     const placeholderText = (relatedModel && relatedModel.name && relatedModel.name.trim() !== "")
-    ? `Search ${relatedModel.name.trim()}...`
-    : "Search items...";
+      ? `Search ${relatedModel.name.trim()}...`
+      : "Search items...";
 
     const commandEmptyText = (relatedModel && relatedModel.name && relatedModel.name.trim() !== "")
         ? `No ${relatedModel.name.trim().toLowerCase()} found.`
@@ -253,82 +253,32 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
               emptyIndicator={`No ${relatedModel.name.toLowerCase()}s found.`}
             />
           );
-        } else { 
-          const [popoverOpen, setPopoverOpen] = React.useState(false);
+        } else { // 'one' relationship - TEMPORARILY REPLACED WITH HTML SELECT
           const currentSingleSelectionValue = controllerField.value === "" || controllerField.value === null || typeof controllerField.value === 'undefined'
-            ? ""
+            ? INTERNAL_NONE_SELECT_VALUE
             : String(controllerField.value);
 
-          let selectedLabel = `Select ${relatedModel.name || 'item'}...`;
-          if (currentSingleSelectionValue) {
-            const foundOption = flatOptionsForMultiSelect.find(opt => opt.value === currentSingleSelectionValue);
-            if (foundOption) {
-              selectedLabel = foundOption.label;
-            } else if (currentSingleSelectionValue) {
-                selectedLabel = `ID: ...${currentSingleSelectionValue.slice(-6)}`;
-            }
-          }
-
           return (
-            <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  role="combobox"
-                  aria-expanded={popoverOpen}
-                  className="w-full justify-between font-normal" 
-                  disabled={fieldIsDisabled}
-                >
-                  <span className="truncate">{selectedLabel}</span>
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                <Command key={relatedModel.id} >
-                  <CommandInput
-                    placeholder={placeholderText}
-                    value={comboboxInputValue}
-                    onValueChange={setComboboxInputValue}
-                  />
-                  <CommandList>
-                    <CommandEmpty>{commandEmptyText}</CommandEmpty>
-                    <ScrollArea className="max-h-60">
-                      <CommandItem
-                        key={INTERNAL_NONE_SELECT_VALUE}
-                        value={INTERNAL_NONE_SELECT_VALUE} 
-                        onSelect={() => {
-                          controllerField.onChange(""); 
-                          setComboboxInputValue("");
-                          setPopoverOpen(false);
-                        }}
-                      >
-                        {"-- None --"}
-                      </CommandItem>
-                      {Object.entries(relatedObjectsGrouped).map(([namespace, optionsInNamespace]) => (
-                        <CommandGroup 
-                          key={namespace} 
-                          heading={optionsInNamespace.length > 0 ? namespace : undefined}
-                        >
-                          {optionsInNamespace.map((option) => (
-                            <CommandItem
-                              key={option.value}
-                              value={String(option.value)} 
-                              onSelect={() => {
-                                controllerField.onChange(option.value === currentSingleSelectionValue ? "" : option.value);
-                                setComboboxInputValue("");
-                                setPopoverOpen(false);
-                              }}
-                            >
-                              {String(option.label ?? "")}
-                            </CommandItem>
-                          ))}
-                        </CommandGroup>
-                      ))}
-                    </ScrollArea>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
+            <select
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              value={currentSingleSelectionValue}
+              onChange={(e) => {
+                controllerField.onChange(e.target.value === INTERNAL_NONE_SELECT_VALUE ? "" : e.target.value);
+              }}
+              disabled={fieldIsDisabled}
+              ref={controllerField.ref} // Ensure ref is passed for React Hook Form
+            >
+              <option value={INTERNAL_NONE_SELECT_VALUE}>-- None --</option>
+              {Object.entries(relatedObjectsGrouped).map(([namespace, optionsInNamespace]) => (
+                <optgroup key={namespace} label={namespace}>
+                  {optionsInNamespace.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
           );
         }
       case 'rating':
