@@ -6,8 +6,6 @@ import { Controller } from 'react-hook-form';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-// Select import is no longer needed for the "one" relationship
-// import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel as UiSelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   FormControl,
   FormItem,
@@ -59,7 +57,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
   const fieldName = property.name as FieldPath<TFieldValues>;
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [currentFile, setCurrentFile] = useState<File | null>(null);
-  const [comboboxInputValue, setComboboxInputValue] = React.useState(""); // State for Combobox input
+  const [comboboxInputValue, setComboboxInputValue] = React.useState("");
 
   const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects, property.type, property.relatedModelId]);
 
@@ -86,7 +84,6 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
         return acc;
       }, {} as Record<string, MultiSelectOption[]>);
 
-      // Sort namespaces (Default first, then alphabetically)
       const sortedNamespaces = Object.keys(grouped).sort((a, b) => {
         if (a === 'Default') return -1;
         if (b === 'Default') return 1;
@@ -114,8 +111,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
         setImagePreviewUrl(fieldValue);
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formContext, property.type, fieldName, form.getValues /*, form */]); // form was causing too many rerenders
+  }, [formContext, property.type, fieldName, form]);
 
   if (formContext === 'create' && property.type === 'date' && property.autoSetOnCreate) {
     return null;
@@ -248,14 +244,13 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
               emptyIndicator={`No ${relatedModel.name.toLowerCase()}s found.`}
             />
           );
-        } else { // 'one' relationship - Replaced with Combobox
-          // eslint-disable-next-line react-hooks/rules-of-hooks -- conditionally calling hook, but in same position
+        } else { 
           const [popoverOpen, setPopoverOpen] = React.useState(false);
           const currentSingleSelectionValue = controllerField.value === "" || controllerField.value === null || typeof controllerField.value === 'undefined'
             ? ""
             : String(controllerField.value);
 
-          let selectedLabel = `Select ${relatedModel.name}...`;
+          let selectedLabel = `Select ${relatedModel.name || 'item'}...`;
           if (currentSingleSelectionValue) {
             const foundOption = flatOptionsForMultiSelect.find(opt => opt.value === currentSingleSelectionValue);
             if (foundOption) {
@@ -288,13 +283,14 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
                     return 0;
                   }}
                 >
-                  <CommandInput 
-                    placeholder={`Search ${relatedModel.name}...`} 
+                  <CommandInput
+                    key={relatedModel.id} // Add key here
+                    placeholder={relatedModel.name ? `Search ${relatedModel.name}...` : "Search..."}
                     value={comboboxInputValue}
                     onValueChange={setComboboxInputValue}
                   />
                   <CommandList>
-                    <CommandEmpty>No {relatedModel.name.toLowerCase()} found.</CommandEmpty>
+                    <CommandEmpty>{relatedModel.name ? `No ${relatedModel.name.toLowerCase()} found.` : "No items found."}</CommandEmpty>
                     <ScrollArea className="max-h-60">
                       <CommandItem
                         key={INTERNAL_NONE_SELECT_VALUE}
@@ -427,3 +423,4 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
     />
   );
 }
+
