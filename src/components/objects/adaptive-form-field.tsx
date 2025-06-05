@@ -291,7 +291,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
       defaultValueForController = null;
       break;
     case 'number':
-      defaultValueForController = null; // Explicitly null for optional numbers
+      defaultValueForController = null; 
       break;
     default:
       defaultValueForController = undefined;
@@ -304,8 +304,8 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
     appliedRule = validationRulesets.find(rs => rs.id === property.validationRulesetId);
   }
   if (property.type === 'number') {
-    const minText = (property.min !== null && typeof property.min === 'number') ? `Min: ${property.min}` : null;
-    const maxText = (property.max !== null && typeof property.max === 'number') ? `Max: ${property.max}` : null;
+    const minText = (property.minValue !== null && typeof property.minValue === 'number') ? `Min: ${property.minValue}` : null;
+    const maxText = (property.maxValue !== null && typeof property.maxValue === 'number') ? `Max: ${property.maxValue}` : null;
     if (minText && maxText) descriptionText = `${minText}, ${maxText}.`;
     else if (minText) descriptionText = `${minText}.`;
     else if (maxText) descriptionText = `${maxText}.`;

@@ -99,8 +99,8 @@ async function initializeDb(): Promise<Database> {
       orderIndex INTEGER NOT NULL DEFAULT 0, -- For property display order
       defaultValue TEXT, -- Store default value as string
       validationRulesetId TEXT, -- FK to validation_rulesets table
-      min REAL, -- For number type validation
-      max REAL, -- For number type validation
+      minValue REAL, -- For number type validation
+      maxValue REAL, -- For number type validation
       FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE,
       FOREIGN KEY (validationRulesetId) REFERENCES validation_rulesets(id) ON DELETE SET NULL,
       UNIQUE (model_id, name)
@@ -138,17 +138,17 @@ async function initializeDb(): Promise<Database> {
     }
   }
   try {
-    await db.run('ALTER TABLE properties ADD COLUMN min REAL');
+    await db.run('ALTER TABLE properties ADD COLUMN minValue REAL');
   } catch (e: any) {
-    if (!(e.message && (e.message.toLowerCase().includes('duplicate column name') || e.message.toLowerCase().includes('already has a column named min')))) {
-        console.error("Migration: Error trying to add 'min' column to 'properties' table:", e.message);
+    if (!(e.message && (e.message.toLowerCase().includes('duplicate column name') || e.message.toLowerCase().includes('already has a column named minvalue')))) {
+        console.error("Migration: Error trying to add 'minValue' column to 'properties' table:", e.message);
     }
   }
   try {
-    await db.run('ALTER TABLE properties ADD COLUMN max REAL');
+    await db.run('ALTER TABLE properties ADD COLUMN maxValue REAL');
   } catch (e: any) {
-    if (!(e.message && (e.message.toLowerCase().includes('duplicate column name') || e.message.toLowerCase().includes('already has a column named max')))) {
-        console.error("Migration: Error trying to add 'max' column to 'properties' table:", e.message);
+    if (!(e.message && (e.message.toLowerCase().includes('duplicate column name') || e.message.toLowerCase().includes('already has a column named maxvalue')))) {
+        console.error("Migration: Error trying to add 'maxValue' column to 'properties' table:", e.message);
     }
   }
 

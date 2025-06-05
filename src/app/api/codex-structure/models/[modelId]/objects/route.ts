@@ -50,9 +50,9 @@ export async function POST(request: Request, { params }: Params) {
       return NextResponse.json({ error: 'Model not found' }, { status: 404 });
     }
 
-    const properties: Property[] = await db.all('SELECT * FROM properties WHERE model_id = ?', params.modelId); // Fetch all property details
+    const properties: Property[] = await db.all('SELECT * FROM properties WHERE model_id = ?', params.modelId); 
 
-    // Validation loop (Uniqueness & Min/Max)
+    // Validation loop
     for (const prop of properties) {
       const valueToCheck = objectData[prop.name];
 
@@ -76,22 +76,22 @@ export async function POST(request: Request, { params }: Params) {
       // Min/Max check for numbers
       if (prop.type === 'number' && (valueToCheck !== null && typeof valueToCheck !== 'undefined')) {
         const numericValue = Number(valueToCheck);
-        if (isNaN(numericValue) && prop.required) { // If required, it must be a valid number
+        if (isNaN(numericValue) && prop.required) { 
              return NextResponse.json({ 
                 error: `Property '${prop.name}' requires a valid number. Received: '${valueToCheck}'.`,
                 field: prop.name 
             }, { status: 400 });
         }
-        if (!isNaN(numericValue)) { // Only validate if it's a number
-            if (prop.min !== null && typeof prop.min === 'number' && numericValue < prop.min) {
+        if (!isNaN(numericValue)) { 
+            if (prop.minValue !== null && typeof prop.minValue === 'number' && numericValue < prop.minValue) {
             return NextResponse.json({ 
-                error: `Value '${numericValue}' for property '${prop.name}' is less than the minimum allowed value of ${prop.min}.`,
+                error: `Value '${numericValue}' for property '${prop.name}' is less than the minimum allowed value of ${prop.minValue}.`,
                 field: prop.name 
             }, { status: 400 });
             }
-            if (prop.max !== null && typeof prop.max === 'number' && numericValue > prop.max) {
+            if (prop.maxValue !== null && typeof prop.maxValue === 'number' && numericValue > prop.maxValue) {
             return NextResponse.json({ 
-                error: `Value '${numericValue}' for property '${prop.name}' is greater than the maximum allowed value of ${prop.max}.`,
+                error: `Value '${numericValue}' for property '${prop.name}' is greater than the maximum allowed value of ${prop.maxValue}.`,
                 field: prop.name 
             }, { status: 400 });
             }

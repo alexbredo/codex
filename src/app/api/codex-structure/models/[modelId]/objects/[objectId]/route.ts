@@ -47,14 +47,14 @@ export async function PUT(request: Request, { params }: Params) {
     }
     const currentObjectStateId = existingObjectRecord.currentStateId;
     
-    const properties: Property[] = await db.all('SELECT * FROM properties WHERE model_id = ?', params.modelId); // Fetch all property details
+    const properties: Property[] = await db.all('SELECT * FROM properties WHERE model_id = ?', params.modelId);
     const currentData = JSON.parse(existingObjectRecord.data);
     const validationRulesets: ValidationRuleset[] = await db.all('SELECT * FROM validation_rulesets');
 
 
-    // Validation loop (Uniqueness, Regex, Min/Max)
+    // Validation loop
     for (const prop of properties) {
-      if (updates.hasOwnProperty(prop.name)) { // Only validate if the property is being updated
+      if (updates.hasOwnProperty(prop.name)) { 
         const newValue = updates[prop.name];
 
         // Regex validation for strings
@@ -96,23 +96,23 @@ export async function PUT(request: Request, { params }: Params) {
         // Min/Max check for numbers
         if (prop.type === 'number' && (newValue !== null && typeof newValue !== 'undefined')) {
           const numericValue = Number(newValue);
-          if (isNaN(numericValue) && prop.required) { // If required and not a number, it's an error
+          if (isNaN(numericValue) && prop.required) { 
              return NextResponse.json({ 
                 error: `Property '${prop.name}' requires a valid number. Received: '${newValue}'.`,
                 field: prop.name 
             }, { status: 400 });
           }
 
-          if (!isNaN(numericValue)) { // Only validate if it's a number
-            if (prop.min !== null && typeof prop.min === 'number' && numericValue < prop.min) {
+          if (!isNaN(numericValue)) { 
+            if (prop.minValue !== null && typeof prop.minValue === 'number' && numericValue < prop.minValue) {
                 return NextResponse.json({ 
-                    error: `Value '${numericValue}' for property '${prop.name}' is less than the minimum allowed value of ${prop.min}.`,
+                    error: `Value '${numericValue}' for property '${prop.name}' is less than the minimum allowed value of ${prop.minValue}.`,
                     field: prop.name 
                 }, { status: 400 });
             }
-            if (prop.max !== null && typeof prop.max === 'number' && numericValue > prop.max) {
+            if (prop.maxValue !== null && typeof prop.maxValue === 'number' && numericValue > prop.maxValue) {
                 return NextResponse.json({ 
-                    error: `Value '${numericValue}' for property '${prop.name}' is greater than the maximum allowed value of ${prop.max}.`,
+                    error: `Value '${numericValue}' for property '${prop.name}' is greater than the maximum allowed value of ${prop.maxValue}.`,
                     field: prop.name 
                 }, { status: 400 });
             }

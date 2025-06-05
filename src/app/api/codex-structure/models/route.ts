@@ -46,8 +46,8 @@ export async function GET(request: Request) {
                   orderIndex: p_row?.orderIndex ?? 0,
                   defaultValue: p_row?.defaultValue,
                   validationRulesetId: p_row?.validationRulesetId ?? null,
-                  min: p_row?.min ?? null,
-                  max: p_row?.max ?? null,
+                  minValue: p_row?.minValue ?? null,
+                  maxValue: p_row?.maxValue ?? null,
               } as Property;
             }
             return {
@@ -66,8 +66,8 @@ export async function GET(request: Request) {
               orderIndex: p_row.orderIndex,
               defaultValue: p_row.defaultValue,
               validationRulesetId: p_row.validationRulesetId ?? null,
-              min: p_row.min ?? null,
-              max: p_row.max ?? null,
+              minValue: p_row.minValue ?? null,
+              maxValue: p_row.maxValue ?? null,
             } as Property;
           });
 
@@ -127,12 +127,12 @@ export async function POST(request: Request) {
     for (const prop of newProperties) {
       console.log(`[API POST /models] DB Prep - Property to insert:`, JSON.stringify(prop, null, 2));
       
-      const propMinForDb = (prop.type === 'number' && typeof prop.min === 'number' && !isNaN(prop.min)) ? Number(prop.min) : null;
-      const propMaxForDb = (prop.type === 'number' && typeof prop.max === 'number' && !isNaN(prop.max)) ? Number(prop.max) : null;
-      console.log(`[API POST /models] Values for DB - min: ${propMinForDb}, max: ${propMaxForDb} for property ${prop.name}`);
+      const propMinValueForDb = (prop.type === 'number' && typeof prop.minValue === 'number' && !isNaN(prop.minValue)) ? Number(prop.minValue) : null;
+      const propMaxValueForDb = (prop.type === 'number' && typeof prop.maxValue === 'number' && !isNaN(prop.maxValue)) ? Number(prop.maxValue) : null;
+      console.log(`[API POST /models] Values for DB - minValue: ${propMinValueForDb}, maxValue: ${propMaxValueForDb} for property ${prop.name}`);
 
       await db.run(
-        'INSERT INTO properties (id, model_id, name, type, relatedModelId, required, relationshipType, unit, precision, autoSetOnCreate, autoSetOnUpdate, isUnique, orderIndex, defaultValue, validationRulesetId, min, max) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO properties (id, model_id, name, type, relatedModelId, required, relationshipType, unit, precision, autoSetOnCreate, autoSetOnUpdate, isUnique, orderIndex, defaultValue, validationRulesetId, minValue, maxValue) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         prop.id || crypto.randomUUID(),
         modelId,
         prop.name,
@@ -148,8 +148,8 @@ export async function POST(request: Request) {
         prop.orderIndex,
         prop.defaultValue ?? null,
         prop.validationRulesetId ?? null,
-        propMinForDb,
-        propMaxForDb
+        propMinValueForDb,
+        propMaxValueForDb
       );
     }
 
@@ -169,8 +169,8 @@ export async function POST(request: Request) {
             isUnique: !!p.isUnique,
             defaultValue: p.defaultValue,
             validationRulesetId: p.validationRulesetId ?? null,
-            min: p.min ?? null,
-            max: p.max ?? null,
+            minValue: p.minValue ?? null,
+            maxValue: p.maxValue ?? null,
         })),
         workflowId: workflowId === undefined ? null : workflowId,
     };
@@ -188,4 +188,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Failed to create model', details: errorMessage }, { status: 500 });
   }
 }
-

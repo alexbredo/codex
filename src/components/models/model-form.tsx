@@ -126,8 +126,8 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, vali
   const relatedModelIdPath = `properties.${index}.relatedModelId` as const;
   const relationshipTypePath = `properties.${index}.relationshipType` as const;
   const validationRulesetIdPath = `properties.${index}.validationRulesetId` as const;
-  const minPath = `properties.${index}.min` as const;
-  const maxPath = `properties.${index}.max` as const;
+  const minValuePath = `properties.${index}.minValue` as const;
+  const maxValuePath = `properties.${index}.maxValue` as const;
 
 
   const currentPropertyType = useWatch({ control, name: propertyTypePath });
@@ -155,7 +155,7 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, vali
       const isString = currentPropertyType === 'string';
 
       if (!isRelationship) {
-        form.setValue(relatedModelIdPath, undefined, { shouldValidate: false }); // No validation if type changes
+        form.setValue(relatedModelIdPath, undefined, { shouldValidate: false }); 
         form.setValue(relationshipTypePath, undefined, { shouldValidate: false });
       } else {
          if (form.getValues(relationshipTypePath) === undefined) {
@@ -166,8 +166,8 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, vali
       if (!isNumber) {
         form.setValue(`properties.${index}.unit`, undefined, { shouldValidate: false });
         form.setValue(`properties.${index}.precision`, undefined, { shouldValidate: false });
-        form.setValue(minPath, null, { shouldValidate: true }); // Reset min/max if not number
-        form.setValue(maxPath, null, { shouldValidate: true });
+        form.setValue(minValuePath, null, { shouldValidate: true }); 
+        form.setValue(maxValuePath, null, { shouldValidate: true });
       } else {
         if (form.getValues(`properties.${index}.precision`) === undefined) {
             form.setValue(`properties.${index}.precision`, 2, {shouldValidate: true});
@@ -409,7 +409,7 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, vali
               />
                <FormField
                 control={control}
-                name={minPath}
+                name={minValuePath}
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Minimum Value (Optional)</FormLabel>
@@ -428,7 +428,7 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, vali
               />
               <FormField
                 control={control}
-                name={maxPath}
+                name={maxValuePath}
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Maximum Value (Optional)</FormLabel>
@@ -846,8 +846,8 @@ function PropertyFieldsWithDnd({
             isUnique: false,
             defaultValue: undefined,
             validationRulesetId: null,
-            min: null,
-            max: null,
+            minValue: null,
+            maxValue: null,
             orderIndex: fields.length,
         } as PropertyFormValues, {shouldFocus: false})}
         className="mt-4 w-full border-dashed hover:border-solid"
@@ -948,8 +948,8 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
         unit: formProperty.type === 'number' ? formProperty.unit : undefined,
         precision: formProperty.type === 'number' ? (formProperty.precision === undefined || formProperty.precision === null ? 2 : Number(formProperty.precision)) : undefined,
         validationRulesetId: formProperty.type === 'string' ? (formProperty.validationRulesetId || null) : null,
-        min: formProperty.type === 'number' ? (formProperty.min === undefined || formProperty.min === null || isNaN(Number(formProperty.min)) ? null : Number(formProperty.min)) : null,
-        max: formProperty.type === 'number' ? (formProperty.max === undefined || formProperty.max === null || isNaN(Number(formProperty.max)) ? null : Number(formProperty.max)) : null,
+        minValue: formProperty.type === 'number' ? (formProperty.minValue === undefined || formProperty.minValue === null || isNaN(Number(formProperty.minValue)) ? null : Number(formProperty.minValue)) : null,
+        maxValue: formProperty.type === 'number' ? (formProperty.maxValue === undefined || formProperty.maxValue === null || isNaN(Number(formProperty.maxValue)) ? null : Number(formProperty.maxValue)) : null,
       };
       return propForApi;
     });
@@ -1133,4 +1133,3 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     </Form>
   );
 }
-

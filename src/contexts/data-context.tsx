@@ -89,8 +89,8 @@ const mapDbModelToClientModel = (dbModel: any): Model => {
       orderIndex: p.orderIndex ?? 0,
       defaultValue: p.defaultValue ?? null,
       validationRulesetId: p.validationRulesetId ?? null,
-      min: p.min ?? null,
-      max: p.max ?? null,
+      minValue: p.minValue ?? null,
+      maxValue: p.maxValue ?? null,
     })).sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0)),
   };
 };
@@ -285,7 +285,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const modelId = crypto.randomUUID();
     
     const propertiesForApi = (modelData.properties || []).map((p, index) => ({
-      ...p, // Spread all incoming property fields first
+      ...p,
       id: p.id || crypto.randomUUID(),
       orderIndex: index,
       required: !!p.required,
@@ -298,8 +298,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       unit: p.type === 'number' ? p.unit : undefined,
       precision: p.type === 'number' ? (p.precision === undefined || p.precision === null || isNaN(Number(p.precision)) ? 2 : Number(p.precision)) : undefined,
       validationRulesetId: p.type === 'string' ? (p.validationRulesetId || null) : null,
-      min: p.type === 'number' ? (p.min ?? null) : null,
-      max: p.type === 'number' ? (p.max ?? null) : null,
+      minValue: p.type === 'number' ? (p.minValue === undefined || p.minValue === null || isNaN(Number(p.minValue)) ? null : Number(p.minValue)) : null,
+      maxValue: p.type === 'number' ? (p.maxValue === undefined || p.maxValue === null || isNaN(Number(p.maxValue)) ? null : Number(p.maxValue)) : null,
     }));
 
     const finalNamespace = (modelData.namespace && modelData.namespace.trim() !== '') ? modelData.namespace.trim() : 'Default';
@@ -311,6 +311,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         workflowId: modelData.workflowId,
         properties: propertiesForApi 
     };
+    console.log("[DataContext] addModel - Payload to API:", JSON.stringify(payload, null, 2));
 
     const response = await fetch('/api/codex-structure/models', {
       method: 'POST',
@@ -332,27 +333,24 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!existingModel) throw new Error(`Model with ID ${modelId} not found for update.`);
 
     const propertiesForApi = (updates.properties || []).map((p, index) => ({
-      ...p, // Spread all fields from the Property object `p` (which came from the form/page)
-      id: p.id || crypto.randomUUID(), // Ensure ID exists
-      orderIndex: index, // Override orderIndex based on current array order
-      // Coerce boolean fields to ensure they are booleans for the API/DB
+      ...p,
+      id: p.id || crypto.randomUUID(),
+      orderIndex: index,
       required: !!p.required,
       autoSetOnCreate: !!p.autoSetOnCreate,
       autoSetOnUpdate: !!p.autoSetOnUpdate,
       isUnique: !!p.isUnique,
-      // Ensure defaultValue is null if undefined/empty, otherwise use provided value
       defaultValue: p.defaultValue ?? null,
-      // Conditionally set fields based on property type, nullifying if not applicable
       relatedModelId: p.type === 'relationship' ? p.relatedModelId : undefined,
       relationshipType: p.type === 'relationship' ? (p.relationshipType || 'one') : undefined,
       unit: p.type === 'number' ? p.unit : undefined,
       precision: p.type === 'number' ? (p.precision === undefined || p.precision === null || isNaN(Number(p.precision)) ? 2 : Number(p.precision)) : undefined,
       validationRulesetId: p.type === 'string' ? (p.validationRulesetId || null) : null,
-      min: p.type === 'number' ? (p.min ?? null) : null, // Use p.min (should be number or null from form) if type is number
-      max: p.type === 'number' ? (p.max ?? null) : null, // Use p.max (should be number or null from form) if type is number
+      minValue: p.type === 'number' ? (p.minValue === undefined || p.minValue === null || isNaN(Number(p.minValue)) ? null : Number(p.minValue)) : null,
+      maxValue: p.type === 'number' ? (p.maxValue === undefined || p.maxValue === null || isNaN(Number(p.maxValue)) ? null : Number(p.maxValue)) : null,
     }));
     
-    const finalNamespace = (updates.namespace && updates.namespace.trim() !== '') ? updates.namespace.trim() : 'Default';
+    const finalNamespace = (updates.namespace && updates.namespace.trim() !== '') ? updates.namespace.trim() : (existingModel.namespace || 'Default');
 
     const payload = {
       name: updates.name ?? existingModel.name,
@@ -548,5 +546,3 @@ export function useData(): DataContextType {
   if (context === undefined) throw new Error('useData must be used within a DataProvider');
   return context;
 }
-
-    

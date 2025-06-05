@@ -19,8 +19,8 @@ export const propertyFormSchema = z.object({
   orderIndex: z.number().optional(), // Will be set programmatically
   defaultValue: z.string().optional(), // Stored as string, parsed based on 'type' when used
   validationRulesetId: z.string().nullable().default(null),
-  min: z.coerce.number().nullable().optional(), // Allow null or number
-  max: z.coerce.number().nullable().optional(), // Allow null or number
+  minValue: z.coerce.number().nullable().optional(),
+  maxValue: z.coerce.number().nullable().optional(),
 }).refine(data => {
   if (data.type === 'relationship' && !data.relatedModelId) {
     return false;
@@ -94,22 +94,22 @@ export const propertyFormSchema = z.object({
 })
 .refine(data => { // Min/Max only for number type
   if (data.type !== 'number') {
-    return data.min === null || data.min === undefined;
+    return data.minValue === null || data.minValue === undefined;
   }
   return true;
-}, { message: "Minimum value can only be set for number type properties.", path: ["min"] })
+}, { message: "Minimum value can only be set for number type properties.", path: ["minValue"] })
 .refine(data => {
   if (data.type !== 'number') {
-    return data.max === null || data.max === undefined;
+    return data.maxValue === null || data.maxValue === undefined;
   }
   return true;
-}, { message: "Maximum value can only be set for number type properties.", path: ["max"] })
+}, { message: "Maximum value can only be set for number type properties.", path: ["maxValue"] })
 .refine(data => { // If both min and max are set, min must be <= max
-  if (typeof data.min === 'number' && typeof data.max === 'number') {
-    return data.min <= data.max;
+  if (typeof data.minValue === 'number' && typeof data.maxValue === 'number') {
+    return data.minValue <= data.maxValue;
   }
   return true;
-}, { message: "Minimum value cannot be greater than maximum value.", path: ["min"] });
+}, { message: "Minimum value cannot be greater than maximum value.", path: ["minValue"] });
 
 
 export const modelFormSchema = z.object({

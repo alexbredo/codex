@@ -103,8 +103,8 @@ export async function GET(request: Request, { params }: Params) {
                 orderIndex: p_row?.orderIndex ?? 0,
                 defaultValue: p_row?.defaultValue,
                 validationRulesetId: p_row?.validationRulesetId ?? null,
-                min: p_row?.min ?? null,
-                max: p_row?.max ?? null,
+                minValue: p_row?.minValue ?? null,
+                maxValue: p_row?.maxValue ?? null,
             } as Property;
         }
         return {
@@ -123,8 +123,8 @@ export async function GET(request: Request, { params }: Params) {
             orderIndex: p_row.orderIndex,
             defaultValue: p_row.defaultValue,
             validationRulesetId: p_row.validationRulesetId ?? null,
-            min: p_row.min ?? null,
-            max: p_row.max ?? null,
+            minValue: p_row.minValue ?? null,
+            maxValue: p_row.maxValue ?? null,
         } as Property;
       }),
       workflowId: modelRow.workflowId === undefined ? null : modelRow.workflowId,
@@ -233,19 +233,19 @@ export async function PUT(request: Request, { params }: Params) {
         const propertyId = prop.id || crypto.randomUUID();
         console.log(`[API PUT /models/${params.modelId}] DB Prep - Property to insert/update:`, JSON.stringify(prop, null, 2));
         
-        const propMinForDb = (prop.type === 'number' && typeof prop.min === 'number' && !isNaN(prop.min)) ? Number(prop.min) : null;
-        const propMaxForDb = (prop.type === 'number' && typeof prop.max === 'number' && !isNaN(prop.max)) ? Number(prop.max) : null;
-        console.log(`[API PUT /models/${params.modelId}] Values for DB - min: ${propMinForDb}, max: ${propMaxForDb} for property ${prop.name}`);
+        const propMinValueForDb = (prop.type === 'number' && typeof prop.minValue === 'number' && !isNaN(prop.minValue)) ? Number(prop.minValue) : null;
+        const propMaxValueForDb = (prop.type === 'number' && typeof prop.maxValue === 'number' && !isNaN(prop.maxValue)) ? Number(prop.maxValue) : null;
+        console.log(`[API PUT /models/${params.modelId}] Values for DB - minValue: ${propMinValueForDb}, maxValue: ${propMaxValueForDb} for property ${prop.name}`);
         
         await db.run(
-          'INSERT INTO properties (id, model_id, name, type, relatedModelId, required, relationshipType, unit, precision, autoSetOnCreate, autoSetOnUpdate, isUnique, orderIndex, defaultValue, validationRulesetId, min, max) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          'INSERT INTO properties (id, model_id, name, type, relatedModelId, required, relationshipType, unit, precision, autoSetOnCreate, autoSetOnUpdate, isUnique, orderIndex, defaultValue, validationRulesetId, minValue, maxValue) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
           propertyId, params.modelId, prop.name, prop.type, prop.relatedModelId,
           prop.required ? 1 : 0, prop.relationshipType, prop.unit, prop.precision,
           prop.autoSetOnCreate ? 1 : 0, prop.autoSetOnUpdate ? 1 : 0,
           prop.isUnique ? 1 : 0, prop.orderIndex, prop.defaultValue ?? null,
           prop.validationRulesetId ?? null,
-          propMinForDb,
-          propMaxForDb
+          propMinValueForDb,
+          propMaxValueForDb
         );
 
         if (!oldPropertyIds.has(propertyId) && prop.defaultValue !== undefined && prop.defaultValue !== null && String(prop.defaultValue).trim() !== '') {
@@ -321,8 +321,8 @@ export async function PUT(request: Request, { params }: Params) {
         autoSetOnUpdate: p.autoSetOnUpdate === 1,
         isUnique: p.isUnique === 1,
         validationRulesetId: p.validationRulesetId ?? null,
-        min: p.min ?? null,
-        max: p.max ?? null,
+        minValue: p.minValue ?? null,
+        maxValue: p.maxValue ?? null,
       }) as Property),
       workflowId: refreshedModelRow.workflowId === undefined ? null : refreshedModelRow.workflowId,
     };
@@ -367,4 +367,3 @@ export async function DELETE(request: Request, { params }: Params) {
     return NextResponse.json({ error: 'Failed to delete model', details: errorMessage }, { status: 500 });
   }
 }
-    
