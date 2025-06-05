@@ -17,12 +17,12 @@ import type { Property, ValidationRuleset, Model } from '@/lib/types';
 import { useData } from '@/contexts/data-context';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
-import { CalendarIcon, ShieldCheck, ChevronsUpDown, Check } from 'lucide-react';
+import { CalendarIcon, ShieldCheck, ChevronsUpDown, Check, Search as SearchIcon } from 'lucide-react'; // Added SearchIcon
 import { Calendar } from '@/components/ui/calendar';
 import { cn, getObjectDisplayValue } from '@/lib/utils';
 import { format } from 'date-fns';
 import { MultiSelectAutocomplete, type MultiSelectOption } from '@/components/ui/multi-select-autocomplete';
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { StarRatingInput } from '@/components/ui/star-rating-input';
 import Image from 'next/image';
 import {
@@ -31,7 +31,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import * as React from 'react';
 
@@ -58,8 +57,12 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [currentFile, setCurrentFile] = useState<File | null>(null);
   
-  const [popoverOpen, setPopoverOpen] = useState(false);
-  const [comboboxInputValue, setComboboxInputValue] = React.useState<string>("");
+  // State for custom Combobox
+  const [customPopoverOpen, setCustomPopoverOpen] = useState(false);
+  const [customSearchValue, setCustomSearchValue] = useState("");
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [popoverWidth, setPopoverWidth] = useState<string | number>("auto");
+
 
   const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects]);
 
@@ -70,43 +73,27 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
     return undefined;
   }, [property.type, property.relatedModelId, getModelById]);
 
-  const relatedObjectsGrouped: Record<string, MultiSelectOption[]> = useMemo(() => {
+  const flatOptionsForRelationship: MultiSelectOption[] = useMemo(() => {
     if (relatedModel && property.relatedModelId) {
       const objects = getObjectsByModelId(property.relatedModelId);
-      const grouped = objects.reduce((acc, obj) => {
-        const relatedM = allModels.find(m => m.id === property.relatedModelId);
-        const namespace = relatedM?.namespace || 'Default';
-        if (!acc[namespace]) {
-          acc[namespace] = [];
-        }
-        acc[namespace].push({
+      return objects
+        .map(obj => ({
           value: String(obj.id), 
-          label: getObjectDisplayValue(obj, relatedM, allModels, allDbObjects),
-        });
-        return acc;
-      }, {} as Record<string, MultiSelectOption[]>);
-
-      const sortedNamespaces = Object.keys(grouped).sort((a, b) => {
-        if (a === 'Default') return -1;
-        if (b === 'Default') return 1;
-        return a.localeCompare(b);
-      });
-      
-      const sortedGrouped: Record<string, MultiSelectOption[]> = {};
-      for (const ns of sortedNamespaces) {
-        sortedGrouped[ns] = (grouped[ns] || []).sort((a,b) => a.label.localeCompare(b.label));
-      }
-      return sortedGrouped;
+          label: getObjectDisplayValue(obj, relatedModel, allModels, allDbObjects),
+        }))
+        .sort((a,b) => a.label.localeCompare(b.label));
     }
-    return {};
+    return [];
   }, [relatedModel, property.relatedModelId, getObjectsByModelId, allModels, allDbObjects]);
 
-  const flatOptionsForMultiSelect: MultiSelectOption[] = useMemo(() => {
-    return Object.values(relatedObjectsGrouped).flat().map(opt => ({
-        value: String(opt.value),
-        label: String(opt.label ?? '')
-    }));
-  }, [relatedObjectsGrouped]);
+  const filteredCustomOptions = useMemo(() => {
+    if (!customSearchValue) {
+      return flatOptionsForRelationship;
+    }
+    return flatOptionsForRelationship.filter(option =>
+      option.label.toLowerCase().includes(customSearchValue.toLowerCase())
+    );
+  }, [customSearchValue, flatOptionsForRelationship]);
 
 
   useEffect(() => {
@@ -117,6 +104,13 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
       }
     }
   }, [formContext, property.type, fieldName, form]);
+
+  useEffect(() => {
+    if (triggerRef.current) {
+      setPopoverWidth(triggerRef.current.offsetWidth);
+    }
+  }, [customPopoverOpen]);
+
 
   if (formContext === 'create' && property.type === 'date' && property.autoSetOnCreate) {
     return null;
@@ -132,15 +126,6 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
     if (property.type === 'date' && formContext === 'create' && property.autoSetOnCreate) {
         fieldIsDisabled = true;
     }
-    
-    const placeholderText = (relatedModel && relatedModel.name && relatedModel.name.trim() !== "")
-      ? `Search ${relatedModel.name.trim()}...`
-      : "Search items...";
-
-    const commandEmptyText = (relatedModel && relatedModel.name && relatedModel.name.trim() !== "")
-        ? `No ${relatedModel.name.trim().toLowerCase()} found.`
-        : "No items found.";
-
 
     switch (property.type) {
       case 'string':
@@ -251,25 +236,26 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
         if (property.relationshipType === 'many') {
           return (
             <MultiSelectAutocomplete
-              options={flatOptionsForMultiSelect} 
+              options={flatOptionsForRelationship} 
               selected={Array.isArray(controllerField.value) ? controllerField.value.map(String) : []}
               onChange={(selectedIds) => controllerField.onChange(selectedIds)}
               placeholder={`Select ${relatedModel.name}(s)...`}
               emptyIndicator={`No ${relatedModel.name.toLowerCase()}s found.`}
             />
           );
-        } else { 
+        } else { // 'one' relationship - Custom Combobox
           const selectedLabel = controllerField.value
-            ? flatOptionsForMultiSelect.find(opt => opt.value === controllerField.value)?.label
+            ? flatOptionsForRelationship.find(opt => opt.value === controllerField.value)?.label
             : `Select ${relatedModel.name}...`;
 
           return (
-            <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+            <Popover open={customPopoverOpen} onOpenChange={setCustomPopoverOpen}>
               <PopoverTrigger asChild>
                 <Button
+                  ref={triggerRef}
                   variant="outline"
                   role="combobox"
-                  aria-expanded={popoverOpen}
+                  aria-expanded={customPopoverOpen}
                   className="w-full justify-between"
                   disabled={fieldIsDisabled}
                 >
@@ -277,45 +263,58 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                <Command key={relatedModel.id}>
-                  <CommandInput
-                    placeholder={placeholderText} 
-                    value={comboboxInputValue}
-                    onValueChange={setComboboxInputValue}
-                  />
-                  <CommandList>
-                    <ScrollArea className="max-h-60">
-                      <CommandEmpty>{commandEmptyText}</CommandEmpty>
-                      <CommandItem
-                        key={INTERNAL_NONE_SELECT_VALUE}
-                        value={INTERNAL_NONE_SELECT_VALUE}
-                        onSelect={() => {
-                          controllerField.onChange(""); 
-                          setPopoverOpen(false);
-                          setTimeout(() => setComboboxInputValue(""), 0);
-                        }}
-                      >
-                        <Check className={cn("mr-2 h-4 w-4", (controllerField.value === "" || !controllerField.value) ? "opacity-100" : "opacity-0")} />
-                        <span>-- None --</span>
-                      </CommandItem>
-                      {flatOptionsForMultiSelect.map((option) => (
-                        <CommandItem
-                          key={option.value}
-                          value={String(option.value)} 
-                          onSelect={(currentValue) => {
-                            controllerField.onChange(currentValue === INTERNAL_NONE_SELECT_VALUE ? "" : currentValue);
-                            setPopoverOpen(false);
-                            setTimeout(() => setComboboxInputValue(""), 0);
-                          }}
-                        >
-                          <Check className={cn("mr-2 h-4 w-4", controllerField.value === option.value ? "opacity-100" : "opacity-0")} />
-                          <span>{String(option.label ?? "")}</span>
-                        </CommandItem>
-                      ))}
-                    </ScrollArea>
-                  </CommandList>
-                </Command>
+              <PopoverContent style={{ width: popoverWidth }} className="p-0">
+                <div className="p-2 border-b">
+                  <div className="relative">
+                    <SearchIcon className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      type="text"
+                      placeholder={`Search ${relatedModel.name}...`}
+                      value={customSearchValue}
+                      onChange={(e) => setCustomSearchValue(e.target.value)}
+                      className="pl-8"
+                    />
+                  </div>
+                </div>
+                <ScrollArea className="max-h-60">
+                  {filteredCustomOptions.length === 0 && customSearchValue && (
+                    <div className="p-2 text-center text-sm text-muted-foreground">
+                      No {relatedModel.name.toLowerCase()} found for "{customSearchValue}".
+                    </div>
+                  )}
+                   <div
+                      key={INTERNAL_NONE_SELECT_VALUE}
+                      className={cn(
+                        "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground",
+                        (controllerField.value === "" || !controllerField.value) && "bg-accent text-accent-foreground"
+                      )}
+                      onClick={() => {
+                        controllerField.onChange(""); 
+                        setCustomPopoverOpen(false);
+                        setCustomSearchValue("");
+                      }}
+                    >
+                      <Check className={cn("mr-2 h-4 w-4", (controllerField.value === "" || !controllerField.value) ? "opacity-100" : "opacity-0")} />
+                      -- None --
+                    </div>
+                  {filteredCustomOptions.map((option) => (
+                    <div
+                      key={option.value}
+                      className={cn(
+                        "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground",
+                        controllerField.value === option.value && "bg-accent text-accent-foreground"
+                      )}
+                      onClick={() => {
+                        controllerField.onChange(option.value);
+                        setCustomPopoverOpen(false);
+                        setCustomSearchValue("");
+                      }}
+                    >
+                      <Check className={cn("mr-2 h-4 w-4", controllerField.value === option.value ? "opacity-100" : "opacity-0")} />
+                      {String(option.label ?? "")}
+                    </div>
+                  ))}
+                </ScrollArea>
               </PopoverContent>
             </Popover>
           );
