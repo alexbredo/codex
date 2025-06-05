@@ -276,6 +276,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
               </PopoverTrigger>
               <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
                 <Command
+                  key={relatedModel.id} // Key the Command component
                   filter={(value, search) => { 
                     const option = flatOptionsForMultiSelect.find(opt => opt.value === value);
                     if (option && option.label.toLowerCase().includes(search.toLowerCase())) return 1;
@@ -284,7 +285,6 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
                   }}
                 >
                   <CommandInput
-                    key={relatedModel.id} // Add key here
                     placeholder={relatedModel.name ? `Search ${relatedModel.name}...` : "Search..."}
                     value={comboboxInputValue}
                     onValueChange={setComboboxInputValue}
