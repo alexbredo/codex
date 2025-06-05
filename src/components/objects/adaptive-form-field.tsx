@@ -22,21 +22,27 @@ import {
   FormMessage,
   FormDescription
 } from '@/components/ui/form';
-import type { Property } from '@/lib/types';
+import type { Property, ValidationRuleset } from '@/lib/types';
 import { useData } from '@/contexts/data-context';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
-import { CalendarIcon } from 'lucide-react';
+import { CalendarIcon, ShieldCheck } from 'lucide-react'; // Added ShieldCheck
 import { Calendar } from '@/components/ui/calendar';
 import { cn, getObjectDisplayValue } from '@/lib/utils';
 import { format } from 'date-fns';
 import { MultiSelectAutocomplete, type MultiSelectOption } from '@/components/ui/multi-select-autocomplete';
 import { useMemo, useState, useEffect } from 'react';
 import { StarRatingInput } from '@/components/ui/star-rating-input';
-import Image from 'next/image'; // For image preview
+import Image from 'next/image';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"; // Added Tooltip components
 
 interface AdaptiveFormFieldProps<TFieldValues extends FieldValues = FieldValues> {
-  form: UseFormReturn<TFieldValues>; // Changed from control to form
+  form: UseFormReturn<TFieldValues>;
   property: Property;
   formContext: 'create' | 'edit';
   modelId: string;
@@ -46,13 +52,13 @@ interface AdaptiveFormFieldProps<TFieldValues extends FieldValues = FieldValues>
 const INTERNAL_NONE_SELECT_VALUE = "__EMPTY_SELECTION_VALUE__";
 
 export default function AdaptiveFormField<TFieldValues extends FieldValues = FieldValues>({
-  form, // Changed from control to form
+  form,
   property,
   formContext,
   modelId,
   objectId,
 }: AdaptiveFormFieldProps<TFieldValues>) {
-  const { models: allModels, getModelById, getObjectsByModelId, getAllObjects } = useData();
+  const { models: allModels, getModelById, getObjectsByModelId, getAllObjects, validationRulesets } = useData(); // Added validationRulesets
   const fieldName = property.name as FieldPath<TFieldValues>;
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [currentFile, setCurrentFile] = useState<File | null>(null);
@@ -86,27 +92,25 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
     return {};
   }, [relatedModel, property.relatedModelId, getObjectsByModelId, allModels, allDbObjects]);
 
-  // Effect to set initial image preview if editing and value is a URL string
   useEffect(() => {
-    const fieldValue = form.getValues(fieldName); // Use form.getValues
+    const fieldValue = form.getValues(fieldName);
     if (formContext === 'edit' && property.type === 'image' && typeof fieldValue === 'string' && fieldValue) {
-      // Check if it's a local upload path or an external URL
       if (fieldValue.startsWith('/uploads/') || fieldValue.startsWith('http')) {
         setImagePreviewUrl(fieldValue);
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formContext, property.type, fieldName, form.getValues]); // Use form.getValues in dependency array
+  }, [formContext, property.type, fieldName, form.getValues]);
 
 
   if (formContext === 'create' && property.type === 'date' && property.autoSetOnCreate) {
-    return null; // Hide field if auto-set on create
+    return null;
   }
 
   const renderField = (controllerField: ControllerRenderProps<TFieldValues, FieldPath<TFieldValues>>) => {
     let fieldIsDisabled = false;
     if (property.type === 'date') {
-        if (formContext === 'edit' && (property.autoSetOnUpdate || property.autoSetOnCreate)) { // autoSetOnCreate should also disable in edit
+        if (formContext === 'edit' && (property.autoSetOnUpdate || property.autoSetOnCreate)) {
             fieldIsDisabled = true;
         }
     }
@@ -144,9 +148,6 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
                   setImagePreviewUrl(null);
                 }
               }}
-              // Setting value to undefined or null for file input is tricky.
-              // React Hook Form handles its state.
-              // This `ref` and the `useEffect` below can help reset visually if needed.
             />
             {imagePreviewUrl && (
               <div className="mt-2 relative w-32 h-32 border rounded overflow-hidden">
@@ -286,20 +287,41 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
       defaultValueForController = null;
       break;
     default:
-      // For string, number, markdown, keep undefined so RHF uses its own default handling
-      // or value from form.reset() in parent page
       defaultValueForController = undefined;
   }
 
+  let appliedRule: ValidationRuleset | undefined;
+  if (property.type === 'string' && property.validationRulesetId) {
+    appliedRule = validationRulesets.find(rs => rs.id === property.validationRulesetId);
+  }
 
   return (
     <Controller
       name={fieldName}
-      control={form.control} // Use form.control here
+      control={form.control}
       defaultValue={defaultValueForController}
       render={({ field, fieldState: { error } }) => (
         <FormItem>
-          <FormLabel>{property.name}{property.required && <span className="text-destructive">*</span>}</FormLabel>
+          <div className="flex items-center">
+            <FormLabel htmlFor={field.name}>
+              {property.name}
+              {property.required && <span className="text-destructive">*</span>}
+            </FormLabel>
+            {appliedRule && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <ShieldCheck className="h-4 w-4 ml-2 text-blue-500" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="font-semibold">Validation Rule: {appliedRule.name}</p>
+                    {appliedRule.description && <p className="text-xs text-muted-foreground">{appliedRule.description}</p>}
+                    <p className="text-xs text-muted-foreground mt-1">Pattern: <code className="font-mono bg-muted p-0.5 rounded-sm">{appliedRule.regexPattern}</code></p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+          </div>
           <FormControl>{renderField(field)}</FormControl>
           {error && <FormMessage>{error.message}</FormMessage>}
         </FormItem>
@@ -307,4 +329,3 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
     />
   );
 }
-
