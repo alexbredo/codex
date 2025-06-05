@@ -58,7 +58,6 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [currentFile, setCurrentFile] = useState<File | null>(null);
   
-  // State for 'one' relationship Combobox
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [comboboxInputValue, setComboboxInputValue] = React.useState<string>("");
 
@@ -81,7 +80,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
           acc[namespace] = [];
         }
         acc[namespace].push({
-          value: String(obj.id), // Ensure value is string
+          value: String(obj.id), 
           label: getObjectDisplayValue(obj, relatedM, allModels, allDbObjects),
         });
         return acc;
@@ -259,7 +258,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
               emptyIndicator={`No ${relatedModel.name.toLowerCase()}s found.`}
             />
           );
-        } else { // 'one' relationship
+        } else { 
           const selectedLabel = controllerField.value
             ? flatOptionsForMultiSelect.find(opt => opt.value === controllerField.value)?.label
             : `Select ${relatedModel.name}...`;
@@ -279,14 +278,14 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                <Command key={relatedModel.id}> {/* Key for re-initialization if model changes */}
+                <Command key={relatedModel.id}>
                   <CommandInput
-                    placeholder={placeholderText}
+                    placeholder={placeholderText} 
                     value={comboboxInputValue}
                     onValueChange={setComboboxInputValue}
                   />
                   <CommandList>
-                    <ScrollArea className="max-h-60"> {/* ScrollArea around items */}
+                    <ScrollArea className="max-h-60">
                       <CommandEmpty>{commandEmptyText}</CommandEmpty>
                       <CommandItem
                         key={INTERNAL_NONE_SELECT_VALUE}
@@ -294,32 +293,25 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
                         onSelect={() => {
                           controllerField.onChange(""); 
                           setPopoverOpen(false);
-                          setComboboxInputValue("");
+                          setTimeout(() => setComboboxInputValue(""), 0);
                         }}
                       >
                         <Check className={cn("mr-2 h-4 w-4", (controllerField.value === "" || !controllerField.value) ? "opacity-100" : "opacity-0")} />
-                        -- None --
+                        <span>-- None --</span>
                       </CommandItem>
-                      {Object.entries(relatedObjectsGrouped).map(([namespace, optionsInNamespace]) => (
-                        <CommandGroup 
-                          key={namespace} 
-                          heading={namespace === 'Default' && Object.keys(relatedObjectsGrouped).length === 1 ? undefined : namespace}
+                      {flatOptionsForMultiSelect.map((option) => (
+                        <CommandItem
+                          key={option.value}
+                          value={String(option.value)} 
+                          onSelect={(currentValue) => {
+                            controllerField.onChange(currentValue === INTERNAL_NONE_SELECT_VALUE ? "" : currentValue);
+                            setPopoverOpen(false);
+                            setTimeout(() => setComboboxInputValue(""), 0);
+                          }}
                         >
-                          {optionsInNamespace.map((option) => (
-                            <CommandItem
-                              key={option.value}
-                              value={String(option.value)} 
-                              onSelect={(currentValue) => {
-                                controllerField.onChange(currentValue === INTERNAL_NONE_SELECT_VALUE ? "" : currentValue);
-                                setPopoverOpen(false);
-                                setComboboxInputValue(""); 
-                              }}
-                            >
-                              <Check className={cn("mr-2 h-4 w-4", controllerField.value === option.value ? "opacity-100" : "opacity-0")} />
-                              {String(option.label ?? "")}
-                            </CommandItem>
-                          ))}
-                        </CommandGroup>
+                          <Check className={cn("mr-2 h-4 w-4", controllerField.value === option.value ? "opacity-100" : "opacity-0")} />
+                          <span>{String(option.label ?? "")}</span>
+                        </CommandItem>
                       ))}
                     </ScrollArea>
                   </CommandList>
