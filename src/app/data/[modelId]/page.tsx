@@ -61,6 +61,13 @@ import ColumnFilterPopover, { type ColumnFilterValue } from '@/components/object
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { MultiSelectAutocomplete, type MultiSelectOption } from '@/components/ui/multi-select-autocomplete';
+import { Progress } from '@/components/ui/progress';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 
 const ITEMS_PER_PAGE = 10;
@@ -703,9 +710,38 @@ export default function DataObjectsPage() {
       case 'boolean': return value ? <Badge variant="default" className="bg-green-500 hover:bg-green-600">Yes</Badge> : <Badge variant="secondary">No</Badge>;
       case 'date': try { const date = new Date(value); return isDateValidFn(date) ? formatDateFns(date, 'PP') : String(value); } catch { return String(value); }
       case 'number':
-        const precision = property.precision === undefined ? 2 : property.precision; const unitText = property.unit || ''; const parsedValue = parseFloat(String(value));
-        if (isNaN(parsedValue)) { const displayUnit = unitText ? ` (${unitText})` : ''; return <span className="text-muted-foreground">N/A{displayUnit}</span>; }
-        return `${parsedValue.toFixed(precision)}${unitText ? ` ${unitText}` : ''}`;
+        const numValue = parseFloat(String(value));
+        const precision = property.precision === undefined ? 2 : property.precision;
+        const unitText = property.unit || '';
+        const formattedValue = isNaN(numValue) ? <span className="text-muted-foreground">N/A{unitText ? ` (${unitText})` : ''}</span> : `${numValue.toFixed(precision)}${unitText ? ` ${unitText}` : ''}`;
+
+        if (typeof property.minValue === 'number' && typeof property.maxValue === 'number' && property.minValue < property.maxValue && !isNaN(numValue)) {
+          const min = Number(property.minValue);
+          const max = Number(property.maxValue);
+          const val = Number(numValue);
+          let percentage = 0;
+          if (max > min) {
+            percentage = Math.max(0, Math.min(100, ((val - min) / (max - min)) * 100));
+          } else {
+            percentage = val >= min ? 100 : 0;
+          }
+          return (
+            <div className="flex flex-col space-y-1 w-full max-w-[150px]">
+              <span className="truncate" title={String(formattedValue)}>{formattedValue}</span>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                     <Progress value={percentage} className="h-2" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{`${percentage.toFixed(0)}% (Min: ${min}${unitText}, Max: ${max}${unitText})`}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          );
+        }
+        return formattedValue;
       case 'markdown': return <Badge variant="outline">Markdown</Badge>;
       case 'image':
         const imgUrl = String(value); return (
@@ -1129,8 +1165,3 @@ export default function DataObjectsPage() {
     </div>
   );
 }
-
-
-      
-
-

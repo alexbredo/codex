@@ -11,6 +11,13 @@ import Image from 'next/image';
 import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { StarDisplay } from '@/components/ui/star-display';
+import { Progress } from '@/components/ui/progress';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -102,14 +109,38 @@ const GalleryCard = React.memo(function GalleryCard({
           return <span className="text-xs">{isDateValid(date) ? formatDateFns(date, 'PP') : String(value)}</span>;
         } catch { return <span className="text-xs">{String(value)}</span>; }
       case 'number':
+        const numValue = parseFloat(String(value));
         const precision = property.precision === undefined ? 2 : property.precision;
         const unitText = property.unit || '';
-        const parsedValue = parseFloat(value);
-         if (isNaN(parsedValue)) {
-          const displayUnit = unitText ? ` (${unitText})` : '';
-          return <span className="text-xs text-muted-foreground">N/A{displayUnit}</span>;
+        const formattedValue = isNaN(numValue) ? <span className="text-xs text-muted-foreground">N/A{unitText ? ` (${unitText})` : ''}</span> : <span className="text-xs">{`${numValue.toFixed(precision)}${unitText ? ` ${unitText}` : ''}`}</span>;
+
+        if (typeof property.minValue === 'number' && typeof property.maxValue === 'number' && property.minValue < property.maxValue && !isNaN(numValue)) {
+          const min = Number(property.minValue);
+          const max = Number(property.maxValue);
+          const val = Number(numValue);
+          let percentage = 0;
+          if (max > min) {
+            percentage = Math.max(0, Math.min(100, ((val - min) / (max - min)) * 100));
+          } else {
+            percentage = val >= min ? 100 : 0;
+          }
+          return (
+            <div className="flex items-center space-x-2">
+              {formattedValue}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Progress value={percentage} className="h-1.5 w-10 flex-shrink-0" />
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" align="start">
+                    <p className="text-xs">{`${percentage.toFixed(0)}% (Min: ${min}${unitText}, Max: ${max}${unitText})`}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          );
         }
-        return <span className="text-xs">{`${parsedValue.toFixed(precision)}${unitText ? ` ${unitText}` : ''}`}</span>;
+        return formattedValue;
       case 'markdown':
         return <Badge variant="outline" className="text-xs">Markdown Content</Badge>;
       case 'image':

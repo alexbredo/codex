@@ -16,6 +16,7 @@ import ReactMarkdown from 'react-markdown';
 import { StarDisplay } from '@/components/ui/star-display';
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
+import { Progress } from '@/components/ui/progress';
 import {
   Tooltip,
   TooltipContent,
@@ -111,11 +112,38 @@ export default function ViewObjectPage() {
           return String(value);
         }
       case 'number':
+        const numValue = parseFloat(String(value));
         const precision = property.precision === undefined ? 2 : property.precision;
         const unitText = property.unit || '';
-        const parsedValue = parseFloat(value);
-        if (isNaN(parsedValue)) return <span className="text-muted-foreground italic">Invalid number</span>;
-        return `${parsedValue.toFixed(precision)}${unitText ? ` ${unitText}` : ''}`;
+        const formattedValue = isNaN(numValue) ? <span className="text-muted-foreground italic">Invalid number</span> : `${numValue.toFixed(precision)}${unitText ? ` ${unitText}` : ''}`;
+
+        if (typeof property.minValue === 'number' && typeof property.maxValue === 'number' && property.minValue < property.maxValue && !isNaN(numValue)) {
+          const min = Number(property.minValue);
+          const max = Number(property.maxValue);
+          const val = Number(numValue);
+          let percentage = 0;
+          if (max > min) {
+            percentage = Math.max(0, Math.min(100, ((val - min) / (max - min)) * 100));
+          } else {
+            percentage = val >= min ? 100 : 0;
+          }
+          return (
+            <div className="flex flex-col space-y-1.5">
+              <span>{formattedValue}</span>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Progress value={percentage} className="h-2.5 w-full" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{`${percentage.toFixed(0)}% (Min: ${min}${unitText}, Max: ${max}${unitText})`}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          );
+        }
+        return formattedValue;
       case 'markdown':
         return (
           <div className="prose prose-sm dark:prose-invert max-w-none bg-muted p-3 rounded-md">
@@ -293,3 +321,4 @@ export default function ViewObjectPage() {
     </div>
   );
 }
+
