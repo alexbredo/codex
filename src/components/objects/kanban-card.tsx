@@ -9,7 +9,6 @@ import { getObjectDisplayValue, cn } from '@/lib/utils';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import Image from 'next/image';
-import { useDroppable } from '@dnd-kit/core';
 import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { StarDisplay } from '@/components/ui/star-display';
@@ -38,9 +37,9 @@ export function KanbanCard({
   const displayName = getObjectDisplayValue(object, model, allModels, allObjects);
 
   let imageProp: Property | undefined = model.properties.find(p => p.type === 'image' && object[p.name]);
-  let imageUrl: string | null = imageProp && object[imageProp.name] ? String(object[imageProp.name]) : null;
+  let imageUrlFromProp: string | null = imageProp && object[imageProp.name] ? String(object[imageProp.name]) : null;
   
-  if (!imageUrl) {
+  if (!imageUrlFromProp) {
     const fallbackImageProp = model.properties.find(
       (p) => (p.name.toLowerCase().includes('image') ||
               p.name.toLowerCase().includes('picture') ||
@@ -52,13 +51,13 @@ export function KanbanCard({
               ((object[p.name] as string).startsWith('http') || (object[p.name] as string).startsWith('/uploads'))
     );
     if (fallbackImageProp && object[fallbackImageProp.name]) {
-      imageUrl = object[fallbackImageProp.name] as string;
-      imageProp = fallbackImageProp; // Consider this the image property now
+      imageUrlFromProp = object[fallbackImageProp.name] as string;
+      imageProp = fallbackImageProp; 
     }
   }
   
-  const placeholderImage = `https://placehold.co/300x200.png`;
-  const finalImageUrl = imageUrl && (imageUrl.startsWith('http') || imageUrl.startsWith('/uploads')) ? imageUrl : placeholderImage;
+  const placeholderImageForError = `https://placehold.co/300x200.png`;
+  const displayImage = imageUrlFromProp && (imageUrlFromProp.startsWith('http') || imageUrlFromProp.startsWith('/uploads'));
   const imageAltText = imageProp ? `${displayName} ${imageProp.name}` : `${displayName} image`;
 
 
@@ -66,13 +65,13 @@ export function KanbanCard({
     .filter(p => 
       p.name.toLowerCase() !== 'name' && 
       p.name.toLowerCase() !== 'title' &&
-      p.type !== 'image' && // Exclude image type as it's handled separately
-      p.type !== 'markdown' && // Exclude markdown as it's usually long
-      !model.displayPropertyNames?.includes(p.name) && // Exclude if already part of primary display
-      object[p.name] !== null && object[p.name] !== undefined && String(object[p.name]).trim() !== '' // Only if has value
+      p.id !== imageProp?.id && // Exclude the property already used for the main image
+      p.type !== 'markdown' && 
+      !model.displayPropertyNames?.includes(p.name) && 
+      object[p.name] !== null && object[p.name] !== undefined && String(object[p.name]).trim() !== ''
     )
     .sort((a, b) => a.orderIndex - b.orderIndex)
-    .slice(0, 3); // Show up to 3 additional properties
+    .slice(0, 3);
 
   const getCompactPropertyValue = (property: Property, value: any): React.ReactNode => {
     if (value === null || typeof value === 'undefined' || String(value).trim() === '') {
@@ -84,7 +83,7 @@ export function KanbanCard({
         return <span className="truncate" title={strValue}>{strValue.length > 25 ? strValue.substring(0, 22) + '...' : strValue}</span>;
       case 'number':
         const numValue = parseFloat(String(value));
-        const precision = property.precision === undefined ? 0 : property.precision; // Default to 0 for compact view
+        const precision = property.precision === undefined ? 0 : property.precision; 
         const unitText = property.unit ? ` ${property.unit}` : '';
         return isNaN(numValue) ? <span className="text-muted-foreground italic">N/A</span> : <span>{numValue.toFixed(precision)}{unitText}</span>;
       case 'boolean':
@@ -120,27 +119,30 @@ export function KanbanCard({
 
   return (
     <Card className={cn("mb-2 shadow-md hover:shadow-lg transition-shadow break-inside-avoid-column flex flex-col", className)}>
-      {finalImageUrl && (
+      {displayImage && imageUrlFromProp && (
         <div className="aspect-video relative w-full bg-muted rounded-t-lg overflow-hidden">
           <Image
-            src={finalImageUrl}
+            src={imageUrlFromProp}
             alt={imageAltText}
             layout="fill"
             objectFit="cover"
             data-ai-hint={model.name.toLowerCase()}
-            onError={(e) => { (e.target as HTMLImageElement).src = placeholderImage; }}
+            onError={(e) => { (e.target as HTMLImageElement).src = placeholderImageForError; }}
           />
         </div>
       )}
       <CardHeader 
-        className={cn("p-3 flex flex-row items-center justify-between", finalImageUrl && "pt-2", dragHandleListeners && "cursor-grab")}
+        className={cn(
+          "p-3 flex flex-row items-center justify-between", 
+          displayImage && imageUrlFromProp && "pt-2", // Only reduce top padding if image is shown
+          dragHandleListeners && "cursor-grab"
+        )}
         {...(dragHandleListeners || {})}
       >
         <CardTitle className="text-sm font-semibold truncate" title={displayName}>{displayName}</CardTitle>
         {dragHandleListeners && <GripVertical className="h-5 w-5 text-muted-foreground flex-shrink-0" />}
       </CardHeader>
       <CardContent className="p-3 pt-0 text-xs text-muted-foreground flex-grow space-y-0.5">
-        {/* ID display removed */}
         {propertiesToDisplay.map(prop => (
            <div key={prop.id} className="flex items-center text-xs">
              <span className="font-medium text-foreground/70 mr-1.5 shrink-0">{prop.name}:</span>
@@ -149,7 +151,7 @@ export function KanbanCard({
              </div>
            </div>
         ))}
-        {propertiesToDisplay.length === 0 && !imageUrl && (
+        {propertiesToDisplay.length === 0 && (!displayImage || !imageUrlFromProp) && (
             <p className="text-xs text-muted-foreground italic">No additional details to display.</p>
         )}
       </CardContent>
@@ -216,7 +218,7 @@ export function DroppablePlaceholder({ id, className }: DroppablePlaceholderProp
     <div
       ref={setNodeRef}
       className={cn(
-        "flex-grow flex items-center justify-center text-sm text-muted-foreground p-4 border-2 border-dashed rounded-md min-h-[100px] pointer-events-none", // pointer-events-none is crucial
+        "flex-grow flex items-center justify-center text-sm text-muted-foreground p-4 border-2 border-dashed rounded-md min-h-[100px] pointer-events-none", 
         isOver && "bg-accent/20 border-accent-foreground/20 border-accent", 
         className
       )}
