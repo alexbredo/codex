@@ -230,9 +230,12 @@ export async function PUT(request: Request, { params }: Params) {
       await db.run('DELETE FROM properties WHERE model_id = ?', params.modelId);
       
       for (const prop of updatedPropertiesInput) {
-        // Ensure prop.id is always a string. If client sends new prop without ID, generate one.
         const propertyId = prop.id || crypto.randomUUID();
         console.log(`[API PUT /models/${params.modelId}] DB Prep - Property to insert/update:`, JSON.stringify(prop, null, 2));
+        
+        const propMinForDb = (prop.type === 'number' && typeof prop.min === 'number' && !isNaN(prop.min)) ? Number(prop.min) : null;
+        const propMaxForDb = (prop.type === 'number' && typeof prop.max === 'number' && !isNaN(prop.max)) ? Number(prop.max) : null;
+        console.log(`[API PUT /models/${params.modelId}] Values for DB - min: ${propMinForDb}, max: ${propMaxForDb} for property ${prop.name}`);
         
         await db.run(
           'INSERT INTO properties (id, model_id, name, type, relatedModelId, required, relationshipType, unit, precision, autoSetOnCreate, autoSetOnUpdate, isUnique, orderIndex, defaultValue, validationRulesetId, min, max) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -241,27 +244,23 @@ export async function PUT(request: Request, { params }: Params) {
           prop.autoSetOnCreate ? 1 : 0, prop.autoSetOnUpdate ? 1 : 0,
           prop.isUnique ? 1 : 0, prop.orderIndex, prop.defaultValue ?? null,
           prop.validationRulesetId ?? null,
-          prop.min ?? null,
-          prop.max ?? null
+          propMinForDb,
+          propMaxForDb
         );
 
-        // Identify genuinely new properties (by ID) that have a meaningful default value
         if (!oldPropertyIds.has(propertyId) && prop.defaultValue !== undefined && prop.defaultValue !== null && String(prop.defaultValue).trim() !== '') {
-          propertiesToApplyDefaultsFor.push({ ...prop, id: propertyId }); // Use the ID that was inserted
+          propertiesToApplyDefaultsFor.push({ ...prop, id: propertyId });
         }
       }
 
-      // Apply defaults for genuinely new properties that have a non-empty default value
       if (propertiesToApplyDefaultsFor.length > 0) {
         const existingDataObjects = await db.all('SELECT id, data FROM data_objects WHERE model_id = ?', params.modelId);
         for (const newPropWithDefault of propertiesToApplyDefaultsFor) {
           const parsedDefaultValue = parseDefaultValueForStorage(newPropWithDefault.defaultValue, newPropWithDefault.type, newPropWithDefault.relationshipType);
           
-          // Only proceed if parsedDefaultValue is not undefined (meaning it's a valid, non-empty default)
           if (parsedDefaultValue !== undefined) {
             for (const dataObj of existingDataObjects) {
               let currentData = JSON.parse(dataObj.data);
-              // Critical check: only apply default if the property name does not already exist in the object
               if (!Object.prototype.hasOwnProperty.call(currentData, newPropWithDefault.name)) {
                 currentData[newPropWithDefault.name] = parsedDefaultValue;
                 await db.run('UPDATE data_objects SET data = ? WHERE id = ?', JSON.stringify(currentData), dataObj.id);

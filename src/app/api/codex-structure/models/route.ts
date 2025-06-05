@@ -121,11 +121,16 @@ export async function POST(request: Request) {
       description,
       finalNamespace,
       JSON.stringify(displayPropertyNames || []),
-      workflowId === undefined ? null : workflowId // Ensure NULL if undefined
+      workflowId === undefined ? null : workflowId
     );
 
     for (const prop of newProperties) {
       console.log(`[API POST /models] DB Prep - Property to insert:`, JSON.stringify(prop, null, 2));
+      
+      const propMinForDb = (prop.type === 'number' && typeof prop.min === 'number' && !isNaN(prop.min)) ? Number(prop.min) : null;
+      const propMaxForDb = (prop.type === 'number' && typeof prop.max === 'number' && !isNaN(prop.max)) ? Number(prop.max) : null;
+      console.log(`[API POST /models] Values for DB - min: ${propMinForDb}, max: ${propMaxForDb} for property ${prop.name}`);
+
       await db.run(
         'INSERT INTO properties (id, model_id, name, type, relatedModelId, required, relationshipType, unit, precision, autoSetOnCreate, autoSetOnUpdate, isUnique, orderIndex, defaultValue, validationRulesetId, min, max) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         prop.id || crypto.randomUUID(),
@@ -143,8 +148,8 @@ export async function POST(request: Request) {
         prop.orderIndex,
         prop.defaultValue ?? null,
         prop.validationRulesetId ?? null,
-        prop.min ?? null,
-        prop.max ?? null
+        propMinForDb,
+        propMaxForDb
       );
     }
 
