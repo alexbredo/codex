@@ -102,6 +102,7 @@ export async function GET(request: Request, { params }: Params) {
                 isUnique: p_row?.isUnique === 1,
                 orderIndex: p_row?.orderIndex ?? 0,
                 defaultValue: p_row?.defaultValue,
+                validationRulesetId: p_row?.validationRulesetId ?? null,
             } as Property;
         }
         return {
@@ -119,6 +120,7 @@ export async function GET(request: Request, { params }: Params) {
             isUnique: p_row.isUnique === 1,
             orderIndex: p_row.orderIndex,
             defaultValue: p_row.defaultValue,
+            validationRulesetId: p_row.validationRulesetId ?? null,
         } as Property;
       }),
       workflowId: modelRow.workflowId === undefined ? null : modelRow.workflowId,
@@ -144,7 +146,7 @@ export async function PUT(request: Request, { params }: Params) {
 
   try {
     const body: Partial<Omit<Model, 'id'>> & { properties?: Property[], workflowId?: string | null } = await request.json();
-    console.log(`[API PUT /models/:id DEBUG] Received payload:`, JSON.stringify(body, null, 2));
+    console.log(`[API PUT /models/:id DEBUG] Received payload for update:`, JSON.stringify(body, null, 2));
     
     const { name, description, namespace, displayPropertyNames, properties: updatedPropertiesInput } = body;
 
@@ -228,11 +230,12 @@ export async function PUT(request: Request, { params }: Params) {
         const propertyId = prop.id || crypto.randomUUID();
         
         await db.run(
-          'INSERT INTO properties (id, model_id, name, type, relatedModelId, required, relationshipType, unit, precision, autoSetOnCreate, autoSetOnUpdate, isUnique, orderIndex, defaultValue) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          'INSERT INTO properties (id, model_id, name, type, relatedModelId, required, relationshipType, unit, precision, autoSetOnCreate, autoSetOnUpdate, isUnique, orderIndex, defaultValue, validationRulesetId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
           propertyId, params.modelId, prop.name, prop.type, prop.relatedModelId,
           prop.required ? 1 : 0, prop.relationshipType, prop.unit, prop.precision,
           prop.autoSetOnCreate ? 1 : 0, prop.autoSetOnUpdate ? 1 : 0,
-          prop.isUnique ? 1 : 0, prop.orderIndex, prop.defaultValue ?? null
+          prop.isUnique ? 1 : 0, prop.orderIndex, prop.defaultValue ?? null,
+          prop.validationRulesetId ?? null // Ensure validationRulesetId is saved
         );
 
         // Identify genuinely new properties (by ID) that have a meaningful default value
@@ -311,6 +314,7 @@ export async function PUT(request: Request, { params }: Params) {
         autoSetOnCreate: p.autoSetOnCreate === 1,
         autoSetOnUpdate: p.autoSetOnUpdate === 1,
         isUnique: p.isUnique === 1,
+        validationRulesetId: p.validationRulesetId ?? null,
       }) as Property),
       workflowId: refreshedModelRow.workflowId === undefined ? null : refreshedModelRow.workflowId,
     };

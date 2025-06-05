@@ -45,6 +45,7 @@ export async function GET(request: Request) {
                   isUnique: p_row?.isUnique === 1,
                   orderIndex: p_row?.orderIndex ?? 0,
                   defaultValue: p_row?.defaultValue,
+                  validationRulesetId: p_row?.validationRulesetId ?? null,
               } as Property;
             }
             return {
@@ -62,6 +63,7 @@ export async function GET(request: Request) {
               isUnique: p_row.isUnique === 1,
               orderIndex: p_row.orderIndex,
               defaultValue: p_row.defaultValue,
+              validationRulesetId: p_row.validationRulesetId ?? null,
             } as Property;
           });
 
@@ -102,7 +104,7 @@ export async function POST(request: Request) {
 
   try {
     const { id: modelId, name, description, namespace, displayPropertyNames, properties: newProperties, workflowId }: Omit<Model, 'id'> & {id: string} = await request.json();
-    console.log("[API POST /models] Received workflowId:", workflowId);
+    console.log("[API POST /models] Received payload for create:", JSON.stringify({ id: modelId, name, description, namespace, displayPropertyNames, properties: newProperties, workflowId }, null, 2));
     const db = await getDb();
     const finalNamespace = (namespace && namespace.trim() !== '') ? namespace.trim() : 'Default';
 
@@ -120,7 +122,7 @@ export async function POST(request: Request) {
 
     for (const prop of newProperties) {
       await db.run(
-        'INSERT INTO properties (id, model_id, name, type, relatedModelId, required, relationshipType, unit, precision, autoSetOnCreate, autoSetOnUpdate, isUnique, orderIndex, defaultValue) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO properties (id, model_id, name, type, relatedModelId, required, relationshipType, unit, precision, autoSetOnCreate, autoSetOnUpdate, isUnique, orderIndex, defaultValue, validationRulesetId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         prop.id || crypto.randomUUID(),
         modelId,
         prop.name,
@@ -134,7 +136,8 @@ export async function POST(request: Request) {
         prop.autoSetOnUpdate ? 1 : 0,
         prop.isUnique ? 1 : 0,
         prop.orderIndex,
-        prop.defaultValue ?? null 
+        prop.defaultValue ?? null,
+        prop.validationRulesetId ?? null // Ensure validationRulesetId is saved
       );
     }
 
@@ -153,6 +156,7 @@ export async function POST(request: Request) {
             autoSetOnUpdate: !!p.autoSetOnUpdate,
             isUnique: !!p.isUnique,
             defaultValue: p.defaultValue,
+            validationRulesetId: p.validationRulesetId ?? null,
         })),
         workflowId: workflowId === undefined ? null : workflowId,
     };
@@ -170,3 +174,4 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Failed to create model', details: errorMessage }, { status: 500 });
   }
 }
+
