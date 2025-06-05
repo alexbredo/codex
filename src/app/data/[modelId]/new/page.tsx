@@ -62,20 +62,25 @@ export default function CreateObjectPage() {
   const router = useRouter();
   const params = useParams();
   const modelId = params.modelId as string;
-  const { getModelById, addObject, isReady } = useData(); // Removed pause/resumePolling
+  const { getModelById, addObject, validationRulesets, isReady } = useData(); 
   const { toast } = useToast();
   const [currentModel, setCurrentModel] = useState<Model | null>(null);
   const [isLoadingModel, setIsLoadingModel] = useState(true);
   const [formObjectId, setFormObjectId] = useState<string | null>(null); 
 
-  const dynamicSchema = useMemo(() => currentModel ? createObjectFormSchema(currentModel) : z.object({}), [currentModel]);
+  const dynamicSchema = useMemo(() => {
+    if (currentModel && isReady) { // Ensure validationRulesets are ready from context
+      return createObjectFormSchema(currentModel, validationRulesets);
+    }
+    return z.object({});
+  }, [currentModel, validationRulesets, isReady]);
+
 
   const form = useForm<Record<string, any>>({
     resolver: zodResolver(dynamicSchema),
     defaultValues: {},
   });
 
-  // Removed useEffect for pause/resumePolling
 
   useEffect(() => {
     if (isReady && modelId) {
@@ -116,6 +121,11 @@ export default function CreateObjectPage() {
       setIsLoadingModel(false);
     }
   }, [modelId, getModelById, isReady, form, router, toast]);
+
+  useEffect(() => { // Re-evaluate resolver when dynamicSchema changes
+    form.resolver = zodResolver(dynamicSchema) as any;
+  }, [dynamicSchema, form]);
+
 
   const onSubmit = async (values: Record<string, any>) => {
     if (!currentModel || !formObjectId) return;

@@ -1,14 +1,13 @@
 
 import { z } from 'zod';
-import type { Model, Property } from '@/lib/types';
+import type { Model, Property, ValidationRuleset } from '@/lib/types';
 
-export function createObjectFormSchema(model: Model | undefined) {
+export function createObjectFormSchema(model: Model | undefined, validationRulesets: ValidationRuleset[] = []) {
   if (!model) {
     return z.object({});
   }
 
   const shape: Record<string, z.ZodTypeAny> = {
-    // Add currentStateId here, it's common for all objects that might have a workflow
     currentStateId: z.string().nullable().optional(),
   };
 
@@ -23,6 +22,23 @@ export function createObjectFormSchema(model: Model | undefined) {
         } else {
           fieldSchema = fieldSchema.optional().or(z.literal(''));
         }
+        // Apply regex validation if a ruleset is assigned
+        if (prop.validationRulesetId) {
+          const ruleset = validationRulesets.find(rs => rs.id === prop.validationRulesetId);
+          if (ruleset) {
+            try {
+              const regex = new RegExp(ruleset.regexPattern);
+              fieldSchema = fieldSchema.refine(val => {
+                if (val === null || val === undefined || val === '') return true; // Allow empty if not required
+                return regex.test(String(val));
+              }, {
+                message: `${prop.name} must match the format: ${ruleset.name}. (Pattern: ${ruleset.regexPattern})`,
+              });
+            } catch (e) {
+              console.warn(`Invalid regex pattern for ruleset ${ruleset.name} (ID: ${ruleset.id}): ${ruleset.regexPattern}`);
+            }
+          }
+        }
         break;
       case 'markdown':
         fieldSchema = z.string();
@@ -33,24 +49,19 @@ export function createObjectFormSchema(model: Model | undefined) {
         }
         break;
       case 'image':
-        // Allows a File object for new uploads, a string (URL) for existing images,
-        // or null/undefined if not set.
         fieldSchema = z.any()
           .refine(value => {
             if (prop.required) {
-              // For required fields, it must be a File or a non-empty string (URL).
               return value instanceof File || (typeof value === 'string' && value.trim() !== '');
             }
-            return true; // Optional fields can be null, undefined, File, or string.
+            return true;
           }, { message: `${prop.name} is required. Please select an image or provide a URL.` })
           .optional()
           .nullable();
         break;
       case 'number':
         fieldSchema = z.coerce.number();
-        if (prop.required) {
-          // For required numbers, we expect a number. Zod's coerce will handle parsing.
-        } else {
+        if (!prop.required) {
           fieldSchema = fieldSchema.optional().nullable();
         }
         break;
@@ -59,7 +70,6 @@ export function createObjectFormSchema(model: Model | undefined) {
         break;
       case 'date':
         let baseDateSchema = z.union([z.string().datetime({ offset: true }), z.date()]).nullable();
-
         if (prop.autoSetOnCreate || prop.autoSetOnUpdate) {
           fieldSchema = baseDateSchema.optional().nullable();
         } else {

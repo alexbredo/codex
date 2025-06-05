@@ -21,7 +21,7 @@ export default function EditObjectPage() {
   const modelId = params.modelId as string;
   const objectId = params.objectId as string;
 
-  const { getModelById, updateObject, getWorkflowById, isReady: dataContextIsReady, formatApiError } = useData(); // Removed pause/resumePolling
+  const { getModelById, updateObject, getWorkflowById, validationRulesets, isReady: dataContextIsReady, formatApiError } = useData();
   const { toast } = useToast();
 
   const [currentModel, setCurrentModel] = useState<Model | null>(null);
@@ -30,14 +30,19 @@ export default function EditObjectPage() {
   const [isLoadingPageData, setIsLoadingPageData] = useState(true);
   const [pageError, setPageError] = useState<string | null>(null);
 
-  const dynamicSchema = useMemo(() => currentModel ? createObjectFormSchema(currentModel) : z.object({}), [currentModel]);
+  const dynamicSchema = useMemo(() => {
+    if (currentModel && dataContextIsReady) { // Ensure validationRulesets are ready
+      return createObjectFormSchema(currentModel, validationRulesets);
+    }
+    return z.object({});
+  }, [currentModel, validationRulesets, dataContextIsReady]);
+
 
   const form = useForm<Record<string, any>>({
     resolver: zodResolver(dynamicSchema),
     defaultValues: {},
   });
 
-  // Removed useEffect for pause/resumePolling
 
   useEffect(() => {
     const loadObjectForEditing = async () => {
@@ -98,6 +103,11 @@ export default function EditObjectPage() {
     loadObjectForEditing();
 
   }, [modelId, objectId, getModelById, getWorkflowById, dataContextIsReady, form, router, toast, formatApiError]);
+  
+  useEffect(() => { // Re-evaluate resolver when dynamicSchema changes
+    form.resolver = zodResolver(dynamicSchema) as any;
+  }, [dynamicSchema, form]);
+
 
   const onSubmit = async (values: Record<string, any>) => {
     if (!currentModel || !editingObject) return;

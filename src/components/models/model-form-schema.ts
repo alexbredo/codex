@@ -18,6 +18,7 @@ export const propertyFormSchema = z.object({
   isUnique: z.boolean().optional().default(false),
   orderIndex: z.number().optional(), // Will be set programmatically
   defaultValue: z.string().optional(), // Stored as string, parsed based on 'type' when used
+  validationRulesetId: z.string().nullable().optional(), // Added for validation ruleset
 }).refine(data => {
   if (data.type === 'relationship' && !data.relatedModelId) {
     return false;
@@ -85,6 +86,11 @@ export const propertyFormSchema = z.object({
 })
 .refine(data => ['rating', 'markdown', 'image'].includes(data.type) ? !data.isUnique : true, {
     message: "Unique constraint cannot be set for this property type.", path: ["isUnique"],
+})
+// Refinement for validationRulesetId: only allowed for 'string' type
+.refine(data => data.type === 'string' || data.validationRulesetId === undefined || data.validationRulesetId === null, {
+  message: "Validation ruleset can only be applied to 'string' type properties.",
+  path: ["validationRulesetId"],
 });
 
 

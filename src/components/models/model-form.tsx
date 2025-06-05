@@ -28,10 +28,10 @@ import {
 } from '@/components/ui/form';
 import { Card, CardHeader, CardTitle, CardContent as UiCardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { Trash2, PlusCircle, GripVertical, FolderOpen, CalendarIcon as CalendarIconLucide, Network } from 'lucide-react';
+import { Trash2, PlusCircle, GripVertical, FolderOpen, CalendarIcon as CalendarIconLucide, Network, ShieldCheck } from 'lucide-react';
 import type { ModelFormValues, PropertyFormValues } from './model-form-schema';
 import { propertyTypes, relationshipTypes } from './model-form-schema';
-import type { Model, ModelGroup, WorkflowWithDetails } from '@/lib/types';
+import type { Model, ModelGroup, WorkflowWithDetails, ValidationRuleset } from '@/lib/types';
 import { useData } from '@/contexts/data-context';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { MultiSelectAutocomplete, type MultiSelectOption } from '@/components/ui/multi-select-autocomplete';
@@ -80,6 +80,7 @@ const INTERNAL_DEFAULT_NAMESPACE_VALUE = "__DEFAULT_NAMESPACE_VALUE__";
 const INTERNAL_BOOLEAN_NOT_SET_VALUE = "__BOOLEAN_NOT_SET__";
 const INTERNAL_RELATIONSHIP_DEFAULT_NOT_SET_VALUE = "__RELATIONSHIP_DEFAULT_NOT_SET__";
 const INTERNAL_NO_WORKFLOW_VALUE = "__NO_WORKFLOW_SELECTED__";
+const INTERNAL_NO_VALIDATION_RULE_VALUE = "__NO_VALIDATION_RULE_SELECTED__";
 
 
 interface SortablePropertyItemProps {
@@ -112,10 +113,11 @@ function SortablePropertyItem({ id, children, className }: SortablePropertyItemP
 }
 
 
-const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped }: {
+const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, validationRulesetsForSelect }: {
   form: UseFormReturn<ModelFormValues>,
   index: number,
   modelsForRelationsGrouped: Record<string, Model[]>,
+  validationRulesetsForSelect: ValidationRuleset[],
 }) => {
   const control = form.control;
   const { getModelById, getObjectsByModelId, allModels, getAllObjects } = useData();
@@ -123,6 +125,7 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped }: {
   const propertyTypePath = `properties.${index}.type` as const;
   const relatedModelIdPath = `properties.${index}.relatedModelId` as const;
   const relationshipTypePath = `properties.${index}.relationshipType` as const;
+  const validationRulesetIdPath = `properties.${index}.validationRulesetId` as const;
 
   const currentPropertyType = useWatch({ control, name: propertyTypePath });
   const currentRelatedModelId = useWatch({ control, name: relatedModelIdPath });
@@ -162,6 +165,8 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped }: {
       form.setValue(`properties.${index}.autoSetOnCreate`, isDate ? !!form.getValues(`properties.${index}.autoSetOnCreate`) : false, { shouldValidate: true });
       form.setValue(`properties.${index}.autoSetOnUpdate`, isDate ? !!form.getValues(`properties.${index}.autoSetOnUpdate`) : false, { shouldValidate: true });
       form.setValue(`properties.${index}.isUnique`, isString ? !!form.getValues(`properties.${index}.isUnique`) : false, { shouldValidate: true });
+      form.setValue(validationRulesetIdPath, isString ? form.getValues(validationRulesetIdPath) : null, { shouldValidate: true });
+
 
       if (isRatingOrMarkdownOrImage) {
         form.setValue(`properties.${index}.unit`, undefined, { shouldValidate: true });
@@ -171,6 +176,7 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped }: {
         form.setValue(`properties.${index}.autoSetOnCreate`, false, { shouldValidate: true });
         form.setValue(`properties.${index}.autoSetOnUpdate`, false, { shouldValidate: true });
         form.setValue(`properties.${index}.isUnique`, false, { shouldValidate: true });
+        form.setValue(validationRulesetIdPath, null, { shouldValidate: true });
       }
     }
 
@@ -264,6 +270,37 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped }: {
               </FormItem>
             )}
           />
+          {currentPropertyType === 'string' && (
+            <FormField
+              control={control}
+              name={validationRulesetIdPath}
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Validation Rule (Optional)</FormLabel>
+                  <Select
+                    onValueChange={(value) => field.onChange(value === INTERNAL_NO_VALIDATION_RULE_VALUE ? null : value)}
+                    value={field.value || INTERNAL_NO_VALIDATION_RULE_VALUE}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a validation rule" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value={INTERNAL_NO_VALIDATION_RULE_VALUE}>-- None --</SelectItem>
+                      {validationRulesetsForSelect.map((ruleset) => (
+                        <SelectItem key={ruleset.id} value={ruleset.id}>
+                          {ruleset.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormDescription>Apply a regex validation rule to this text field.</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          )}
           {currentPropertyType === 'relationship' && (
             <>
               <FormField
@@ -615,10 +652,12 @@ function PropertyFieldsWithDnd({
   form,
   fieldArray,
   modelsForRelationsGrouped,
+  validationRulesetsForSelect
 }: {
   form: UseFormReturn<ModelFormValues>,
   fieldArray: UseFieldArrayReturn<ModelFormValues, "properties", "id">,
   modelsForRelationsGrouped: Record<string, Model[]>
+  validationRulesetsForSelect: ValidationRuleset[],
 }) {
   const { fields, append, remove, move } = fieldArray;
   const [openAccordionItems, setOpenAccordionItems] = useState<string[]>([]);
@@ -677,9 +716,6 @@ function PropertyFieldsWithDnd({
   useEffect(() => {
     if (fields.length === 0 && form.getValues('properties')?.length > 0) {
       console.warn("[ModelForm PropertyFieldsWithDnd] RHF useFieldArray 'fields' is empty, but form.getValues('properties') has items. This indicates a potential issue with keyName or how useFieldArray is initialized/updated.");
-    } else {
-        // console.log("[ModelForm PropertyFieldsWithDnd] fields.length:", fields.length);
-        // if (fields.length > 0) console.log("[ModelForm PropertyFieldsWithDnd] First field data:", JSON.stringify(fields[0]));
     }
   }, [fields, form]);
 
@@ -742,6 +778,7 @@ function PropertyFieldsWithDnd({
                             form={form}
                             index={index}
                             modelsForRelationsGrouped={modelsForRelationsGrouped}
+                            validationRulesetsForSelect={validationRulesetsForSelect}
                         />
                     </AccordionItem>
                  )}
@@ -766,6 +803,7 @@ function PropertyFieldsWithDnd({
             autoSetOnUpdate: false,
             isUnique: false,
             defaultValue: undefined,
+            validationRulesetId: null,
             orderIndex: fields.length,
         } as PropertyFormValues, {shouldFocus: false})}
         className="mt-4 w-full border-dashed hover:border-solid"
@@ -778,7 +816,7 @@ function PropertyFieldsWithDnd({
 
 
 export default function ModelForm({ form, onSubmit, onCancel, isLoading, existingModel }: ModelFormProps) {
-  const { models, modelGroups, workflows, isReady: dataReady } = useData();
+  const { models, modelGroups, workflows, validationRulesets, isReady: dataReady } = useData();
   const { toast } = useToast();
   const fieldArray = useFieldArray({
     control: form.control,
@@ -850,8 +888,6 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
       processedValues.namespace = 'Default';
     }
     
-    // Explicitly determine the workflowId to be passed on
-    // values.workflowId should be either the string ID or null due to the Select's onChange logic
     processedValues.workflowId = values.workflowId; 
     console.log("[ModelForm] handleFormSubmit - processedValues.workflowId before passing to page onSubmit:", processedValues.workflowId);
 
@@ -876,6 +912,8 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
       finalProp.autoSetOnUpdate = isDate ? !!prop.autoSetOnUpdate : false;
 
       finalProp.isUnique = isString ? !!prop.isUnique : false;
+      finalProp.validationRulesetId = isString ? prop.validationRulesetId : null;
+
 
       finalProp.relatedModelId = isRelationship ? prop.relatedModelId : undefined;
       finalProp.relationshipType = isRelationship ? prop.relationshipType : undefined;
@@ -888,6 +926,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
         finalProp.autoSetOnCreate = false;
         finalProp.autoSetOnUpdate = false;
         finalProp.isUnique = false;
+        finalProp.validationRulesetId = null;
       } else if (!isNumber) {
         finalProp.unit = undefined;
         finalProp.precision = undefined;
@@ -902,6 +941,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
       }
       if(!isString){
         finalProp.isUnique = false;
+        finalProp.validationRulesetId = null;
       }
       return finalProp;
     });
@@ -1069,7 +1109,12 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
 
         <div>
           <h3 className="text-lg font-medium mb-2">Properties</h3>
-          <PropertyFieldsWithDnd form={form} fieldArray={fieldArray} modelsForRelationsGrouped={modelsForRelationsGrouped} />
+          <PropertyFieldsWithDnd
+            form={form}
+            fieldArray={fieldArray}
+            modelsForRelationsGrouped={modelsForRelationsGrouped}
+            validationRulesetsForSelect={validationRulesets}
+          />
         </div>
 
         <div className="flex justify-end space-x-2 pt-4 border-t">
@@ -1084,3 +1129,4 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     </Form>
   );
 }
+
