@@ -1,15 +1,18 @@
 
 'use client';
 
-import type { DataObject, Model } from '@/lib/types';
+import type { DataObject, Model, Property } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Eye, Edit, GripVertical } from 'lucide-react'; // Added Edit, GripVertical icon
-import { getObjectDisplayValue, cn } from '@/lib/utils'; // Ensure cn is imported
+import { Eye, Edit, GripVertical } from 'lucide-react';
+import { getObjectDisplayValue, cn } from '@/lib/utils';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import Image from 'next/image'; // For image display
-import { useDroppable } from '@dnd-kit/core'; // Added for DroppablePlaceholder
+import Image from 'next/image';
+import { useDroppable } from '@dnd-kit/core';
+import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
+import { Badge } from '@/components/ui/badge';
+import { StarDisplay } from '@/components/ui/star-display';
 
 interface KanbanCardProps {
   object: DataObject;
@@ -17,9 +20,9 @@ interface KanbanCardProps {
   allModels: Model[];
   allObjects: Record<string, DataObject[]>;
   onViewObject: (object: DataObject) => void;
-  onEditObject: (object: DataObject) => void; // Added onEditObject prop
+  onEditObject: (object: DataObject) => void;
   className?: string;
-  dragHandleListeners?: ReturnType<typeof useSortable>['listeners']; // For passing drag listeners
+  dragHandleListeners?: ReturnType<typeof useSortable>['listeners'];
 }
 
 export function KanbanCard({
@@ -34,11 +37,10 @@ export function KanbanCard({
 }: KanbanCardProps) {
   const displayName = getObjectDisplayValue(object, model, allModels, allObjects);
 
-  let imageUrl: string | null = null;
-  const imageProperty = model.properties.find(p => p.type === 'image' && object[p.name]);
-  if (imageProperty && typeof object[imageProperty.name] === 'string') {
-    imageUrl = object[imageProperty.name] as string;
-  } else {
+  let imageProp: Property | undefined = model.properties.find(p => p.type === 'image' && object[p.name]);
+  let imageUrl: string | null = imageProp && object[imageProp.name] ? String(object[imageProp.name]) : null;
+  
+  if (!imageUrl) {
     const fallbackImageProp = model.properties.find(
       (p) => (p.name.toLowerCase().includes('image') ||
               p.name.toLowerCase().includes('picture') ||
@@ -49,47 +51,109 @@ export function KanbanCard({
               typeof object[p.name] === 'string' &&
               ((object[p.name] as string).startsWith('http') || (object[p.name] as string).startsWith('/uploads'))
     );
-    if (fallbackImageProp) {
+    if (fallbackImageProp && object[fallbackImageProp.name]) {
       imageUrl = object[fallbackImageProp.name] as string;
+      imageProp = fallbackImageProp; // Consider this the image property now
     }
   }
   
   const placeholderImage = `https://placehold.co/300x200.png`;
+  const finalImageUrl = imageUrl && (imageUrl.startsWith('http') || imageUrl.startsWith('/uploads')) ? imageUrl : placeholderImage;
+  const imageAltText = imageProp ? `${displayName} ${imageProp.name}` : `${displayName} image`;
+
+
+  const propertiesToDisplay = model.properties
+    .filter(p => 
+      p.name.toLowerCase() !== 'name' && 
+      p.name.toLowerCase() !== 'title' &&
+      p.type !== 'image' && // Exclude image type as it's handled separately
+      p.type !== 'markdown' && // Exclude markdown as it's usually long
+      !model.displayPropertyNames?.includes(p.name) && // Exclude if already part of primary display
+      object[p.name] !== null && object[p.name] !== undefined && String(object[p.name]).trim() !== '' // Only if has value
+    )
+    .sort((a, b) => a.orderIndex - b.orderIndex)
+    .slice(0, 3); // Show up to 3 additional properties
+
+  const getCompactPropertyValue = (property: Property, value: any): React.ReactNode => {
+    if (value === null || typeof value === 'undefined' || String(value).trim() === '') {
+      return <span className="text-muted-foreground italic">N/A</span>;
+    }
+    switch (property.type) {
+      case 'string':
+        const strValue = String(value);
+        return <span className="truncate" title={strValue}>{strValue.length > 25 ? strValue.substring(0, 22) + '...' : strValue}</span>;
+      case 'number':
+        const numValue = parseFloat(String(value));
+        const precision = property.precision === undefined ? 0 : property.precision; // Default to 0 for compact view
+        const unitText = property.unit ? ` ${property.unit}` : '';
+        return isNaN(numValue) ? <span className="text-muted-foreground italic">N/A</span> : <span>{numValue.toFixed(precision)}{unitText}</span>;
+      case 'boolean':
+        return value ? <Badge variant="default" className="text-xs px-1 py-0 bg-green-500 hover:bg-green-600">Yes</Badge> : <Badge variant="secondary" className="text-xs px-1 py-0">No</Badge>;
+      case 'date':
+        try {
+          const date = new Date(value);
+          return <span>{isDateValid(date) ? formatDateFns(date, 'PP') : String(value)}</span>;
+        } catch { return <span>{String(value)}</span>; }
+      case 'rating':
+        return <StarDisplay rating={value as number} size="sm"/>;
+      case 'relationship':
+        if (!property.relatedModelId) return <span className="text-destructive text-xs">Config Err</span>;
+        const relatedModelDef = allModels.find(m => m.id === property.relatedModelId);
+        if (!relatedModelDef) return <span className="text-destructive text-xs">Model N/A</span>;
+        
+        if (property.relationshipType === 'many') {
+            const ids = Array.isArray(value) ? value : [];
+            if (ids.length === 0) return <span className="text-muted-foreground italic">None</span>;
+            const firstRelatedObj = (allObjects[property.relatedModelId] || []).find(o => o.id === ids[0]);
+            const firstDisplay = getObjectDisplayValue(firstRelatedObj, relatedModelDef, allModels, allObjects);
+            return <Badge variant="outline" className="text-xs px-1 py-0" title={ids.map(id => getObjectDisplayValue((allObjects[property.relatedModelId!] || []).find(o => o.id === id), relatedModelDef, allModels, allObjects)).join(', ')}>{firstDisplay.substring(0,15) + '...'}{ids.length > 1 ? ` +${ids.length -1}` : ''}</Badge>;
+        } else {
+            const relatedObjSingle = (allObjects[property.relatedModelId] || []).find(o => o.id === value);
+            const displayValSingle = getObjectDisplayValue(relatedObjSingle, relatedModelDef, allModels, allObjects);
+             return <Badge variant="outline" className="text-xs px-1 py-0" title={displayValSingle}>{displayValSingle.substring(0,20) + (displayValSingle.length > 20 ? '...' : '')}</Badge>;
+        }
+      default:
+        const defaultVal = String(value);
+        return <span className="truncate" title={defaultVal}>{defaultVal.length > 25 ? defaultVal.substring(0, 22) + '...' : defaultVal}</span>;
+    }
+  };
 
   return (
     <Card className={cn("mb-2 shadow-md hover:shadow-lg transition-shadow break-inside-avoid-column flex flex-col", className)}>
-      {imageUrl && (
+      {finalImageUrl && (
         <div className="aspect-video relative w-full bg-muted rounded-t-lg overflow-hidden">
           <Image
-            src={imageUrl.startsWith('http') || imageUrl.startsWith('/uploads') ? imageUrl : placeholderImage}
-            alt={`Image for ${displayName}`}
+            src={finalImageUrl}
+            alt={imageAltText}
             layout="fill"
             objectFit="cover"
-            data-ai-hint={`${model.name.toLowerCase()} image`}
+            data-ai-hint={model.name.toLowerCase()}
             onError={(e) => { (e.target as HTMLImageElement).src = placeholderImage; }}
           />
         </div>
       )}
       <CardHeader 
-        className={cn("p-3 flex flex-row items-center justify-between", imageUrl && "pt-2", dragHandleListeners && "cursor-grab")}
-        {...(dragHandleListeners || {})} // Spread listeners here to make header the handle
+        className={cn("p-3 flex flex-row items-center justify-between", finalImageUrl && "pt-2", dragHandleListeners && "cursor-grab")}
+        {...(dragHandleListeners || {})}
       >
         <CardTitle className="text-sm font-semibold truncate" title={displayName}>{displayName}</CardTitle>
         {dragHandleListeners && <GripVertical className="h-5 w-5 text-muted-foreground flex-shrink-0" />}
       </CardHeader>
-      <CardContent className="p-3 pt-0 text-xs text-muted-foreground flex-grow">
-        <p className="truncate text-ellipsis text-gray-500">ID: {object.id.substring(0, 8)}...</p>
-        {model.properties
-          .filter(p => p.name.toLowerCase() !== 'name' && p.name.toLowerCase() !== 'title' && p.type !== 'image' && p.type !== 'markdown' && !model.displayPropertyNames?.includes(p.name))
-          .slice(0, 1) 
-          .map(prop => (
-           <p key={prop.id} className="truncate text-ellipsis mt-1">
-             <span className="font-medium text-foreground/80">{prop.name}: </span>
-             {String(object[prop.name] ?? 'N/A')}
-           </p>
+      <CardContent className="p-3 pt-0 text-xs text-muted-foreground flex-grow space-y-0.5">
+        {/* ID display removed */}
+        {propertiesToDisplay.map(prop => (
+           <div key={prop.id} className="flex items-center text-xs">
+             <span className="font-medium text-foreground/70 mr-1.5 shrink-0">{prop.name}:</span>
+             <div className="truncate flex-grow min-w-0">
+                {getCompactPropertyValue(prop, object[prop.name])}
+             </div>
+           </div>
         ))}
+        {propertiesToDisplay.length === 0 && !imageUrl && (
+            <p className="text-xs text-muted-foreground italic">No additional details to display.</p>
+        )}
       </CardContent>
-      <div className="p-2 border-t flex justify-end space-x-1 mt-auto">
+      <div className="p-2 border-t flex justify-end space-x-1 mt-auto bg-muted/30">
         <Button variant="ghost" size="xs" onClick={() => onViewObject(object)} title="View Details">
           <Eye className="h-3 w-3 mr-1" /> View
         </Button>
@@ -128,12 +192,11 @@ export function SortableKanbanItem(props: SortableKanbanItemProps) {
       <KanbanCard 
         {...props} 
         className={isDragging ? 'ring-2 ring-primary' : ''}
-        dragHandleListeners={listeners} // Pass listeners to be applied to the CardHeader
+        dragHandleListeners={listeners}
       />
     </div>
   );
 }
-
 
 interface DroppablePlaceholderProps {
   id: string; 
@@ -153,7 +216,7 @@ export function DroppablePlaceholder({ id, className }: DroppablePlaceholderProp
     <div
       ref={setNodeRef}
       className={cn(
-        "flex-grow flex items-center justify-center text-sm text-muted-foreground p-4 border-2 border-dashed rounded-md min-h-[100px] pointer-events-none",
+        "flex-grow flex items-center justify-center text-sm text-muted-foreground p-4 border-2 border-dashed rounded-md min-h-[100px] pointer-events-none", // pointer-events-none is crucial
         isOver && "bg-accent/20 border-accent-foreground/20 border-accent", 
         className
       )}
@@ -162,4 +225,3 @@ export function DroppablePlaceholder({ id, className }: DroppablePlaceholderProp
     </div>
   );
 }
-
