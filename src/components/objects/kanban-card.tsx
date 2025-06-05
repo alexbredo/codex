@@ -4,7 +4,7 @@
 import type { DataObject, Model } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Eye } from 'lucide-react';
+import { Eye, Edit } from 'lucide-react'; // Added Edit icon
 import { getObjectDisplayValue, cn } from '@/lib/utils'; // Ensure cn is imported
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -17,10 +17,11 @@ interface KanbanCardProps {
   allModels: Model[];
   allObjects: Record<string, DataObject[]>;
   onViewObject: (object: DataObject) => void;
+  onEditObject: (object: DataObject) => void; // Added onEditObject prop
   className?: string;
 }
 
-export function KanbanCard({ object, model, allModels, allObjects, onViewObject, className }: KanbanCardProps) {
+export function KanbanCard({ object, model, allModels, allObjects, onViewObject, onEditObject, className }: KanbanCardProps) {
   const displayName = getObjectDisplayValue(object, model, allModels, allObjects);
 
   // Attempt to find an image URL property for the card
@@ -77,9 +78,12 @@ export function KanbanCard({ object, model, allModels, allObjects, onViewObject,
            </p>
         ))}
       </CardContent>
-      <div className="p-2 border-t flex justify-end">
+      <div className="p-2 border-t flex justify-end space-x-1">
         <Button variant="ghost" size="xs" onClick={() => onViewObject(object)} title="View Details">
           <Eye className="h-3 w-3 mr-1" /> View
+        </Button>
+        <Button variant="ghost" size="xs" onClick={() => onEditObject(object)} title="Edit Object">
+          <Edit className="h-3 w-3 mr-1" /> Edit
         </Button>
       </div>
     </Card>
@@ -134,7 +138,7 @@ export function DroppablePlaceholder({ id, className }: DroppablePlaceholderProp
     <div
       ref={setNodeRef}
       className={cn(
-        "flex-grow flex items-center justify-center text-sm text-muted-foreground p-4 border-2 border-dashed rounded-md min-h-[100px]",
+        "flex-grow flex items-center justify-center text-sm text-muted-foreground p-4 border-2 border-dashed rounded-md min-h-[100px] pointer-events-none", // Added pointer-events-none
         isOver && "bg-accent/20 border-accent-foreground/20 border-accent", // Highlight when dragged over
         className
       )}

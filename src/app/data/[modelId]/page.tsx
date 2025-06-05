@@ -846,15 +846,14 @@ export default function DataObjectsPage() {
       toast({ variant: "destructive", title: "Error", description: "Model or workflow not available for state change." });
       return;
     }
-
+    console.log(`[DataObjectsPage] handleStateChangeViaDrag: objectId=${objectId}, newPotentialStateId=${newPotentialStateId}`);
+    console.log(`[DataObjectsPage] Current Workflow (captured):`, currentWorkflow ? { id: currentWorkflow.id, name: currentWorkflow.name, states: currentWorkflow.states.map(s => ({id: s.id, name: s.name, successors: s.successorStateIds})) } : 'null');
+    
     const objectToUpdate = localObjects.find(obj => obj.id === objectId);
     if (!objectToUpdate) {
       toast({ variant: "destructive", title: "Error", description: `Object with ID ${objectId} not found.` });
       return;
     }
-
-    console.log(`[DataObjectsPage] handleStateChangeViaDrag: objectId=${objectId}, newPotentialStateId=${newPotentialStateId}`);
-    console.log(`[DataObjectsPage] Current Workflow (captured):`, currentWorkflow ? { id: currentWorkflow.id, name: currentWorkflow.name, states: currentWorkflow.states.map(s => ({id: s.id, name: s.name, successors: s.successorStateIds})) } : 'null');
     console.log(`[DataObjectsPage] Object to Update (captured):`, objectToUpdate);
 
 
@@ -1251,6 +1250,7 @@ export default function DataObjectsPage() {
           allObjects={allDbObjects}
           onObjectUpdate={handleStateChangeViaDrag}
           onViewObject={handleView}
+          onEditObject={handleEdit} // Pass handleEdit to KanbanBoard
         />
       ) : null }
       {(viewMode === 'table' || viewMode === 'gallery') && totalPages > 1 && (
@@ -1263,4 +1263,3 @@ export default function DataObjectsPage() {
     </div>
   );
 }
-
