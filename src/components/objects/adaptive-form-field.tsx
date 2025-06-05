@@ -6,15 +6,8 @@ import { Controller } from 'react-hook-form';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-import {
-  Select, // Still needed for non-relationship selects (if any in future)
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel as UiSelectLabel, // Keep alias
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+// Select import is no longer needed for the "one" relationship
+// import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel as UiSelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   FormControl,
   FormItem,
@@ -26,7 +19,7 @@ import type { Property, ValidationRuleset } from '@/lib/types';
 import { useData } from '@/contexts/data-context';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
-import { CalendarIcon, ShieldCheck, ChevronsUpDown, Check } from 'lucide-react'; // Added ChevronsUpDown, Check
+import { CalendarIcon, ShieldCheck, ChevronsUpDown, Check } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { cn, getObjectDisplayValue } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -66,6 +59,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
   const fieldName = property.name as FieldPath<TFieldValues>;
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [currentFile, setCurrentFile] = useState<File | null>(null);
+  const [comboboxInputValue, setComboboxInputValue] = React.useState(""); // State for Combobox input
 
   const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects, property.type, property.relatedModelId]);
 
@@ -278,7 +272,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
                   variant="outline"
                   role="combobox"
                   aria-expanded={popoverOpen}
-                  className="w-full justify-between font-normal" // Ensure button text doesn't bold
+                  className="w-full justify-between font-normal" 
                   disabled={fieldIsDisabled}
                 >
                   <span className="truncate">{selectedLabel}</span>
@@ -287,14 +281,18 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
               </PopoverTrigger>
               <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
                 <Command
-                  filter={(value, search) => { // value is option.value (ID)
+                  filter={(value, search) => { 
                     const option = flatOptionsForMultiSelect.find(opt => opt.value === value);
                     if (option && option.label.toLowerCase().includes(search.toLowerCase())) return 1;
-                    if (value === INTERNAL_NONE_SELECT_VALUE && "-- none --".includes(search.toLowerCase())) return 1; // Allow searching for "none"
+                    if (value === INTERNAL_NONE_SELECT_VALUE && "-- none --".includes(search.toLowerCase())) return 1; 
                     return 0;
                   }}
                 >
-                  <CommandInput placeholder={`Search ${relatedModel.name}...`} />
+                  <CommandInput 
+                    placeholder={`Search ${relatedModel.name}...`} 
+                    value={comboboxInputValue}
+                    onValueChange={setComboboxInputValue}
+                  />
                   <CommandList>
                     <CommandEmpty>No {relatedModel.name.toLowerCase()} found.</CommandEmpty>
                     <ScrollArea className="max-h-60">
@@ -303,6 +301,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
                         value={INTERNAL_NONE_SELECT_VALUE}
                         onSelect={() => {
                           controllerField.onChange(""); 
+                          setComboboxInputValue("");
                           setPopoverOpen(false);
                         }}
                       >
@@ -317,6 +316,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
                               value={option.value}
                               onSelect={() => {
                                 controllerField.onChange(option.value === currentSingleSelectionValue ? "" : option.value);
+                                setComboboxInputValue("");
                                 setPopoverOpen(false);
                               }}
                             >
