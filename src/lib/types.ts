@@ -15,6 +15,7 @@ export interface Property {
   isUnique?: boolean; // For string type: enforce unique value across objects of this model
   orderIndex: number; // For property display order
   defaultValue?: string; // Stored as string, parsed based on 'type' when used
+  validationRulesetId?: string | null; // ID of the assigned validation ruleset
 }
 
 export interface Model {
@@ -71,6 +72,14 @@ export interface WorkflowWithDetails extends Workflow {
   states: WorkflowStateWithSuccessors[];
 }
 
+// Validation Ruleset System Types
+export interface ValidationRuleset {
+  id: string;
+  name: string;
+  description?: string;
+  regexPattern: string;
+}
+
 
 // For forms
 export type ModelFormData = Omit<Model, 'id' | 'namespace' | 'workflowId'> & {
@@ -85,6 +94,7 @@ export type PropertyFormData = Omit<Property, 'id' | 'orderIndex'> & {
   autoSetOnUpdate?: boolean,
   isUnique?: boolean,
   defaultValue?: string;
+  validationRulesetId?: string | null;
 };
 export type ObjectFormData = Omit<DataObject, 'id' | 'currentStateId'> & { // Allow currentStateId to be part of form data
   currentStateId?: string | null;
@@ -92,3 +102,5 @@ export type ObjectFormData = Omit<DataObject, 'id' | 'currentStateId'> & { // Al
 
 
 export type ModelGroupFormData = Omit<ModelGroup, 'id'>;
+export type ValidationRulesetFormData = Omit<ValidationRuleset, 'id'>;
+

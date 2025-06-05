@@ -3,15 +3,16 @@
 
 import type { ReactNode } from 'react';
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import type { Model, DataObject, Property, ModelGroup, WorkflowWithDetails } from '@/lib/types';
+import type { Model, DataObject, Property, ModelGroup, WorkflowWithDetails, ValidationRuleset } from '@/lib/types';
 
 const HIGHLIGHT_DURATION_MS = 3000;
 
-interface DataContextType {
+export interface DataContextType { // Exported for use in withAuth if needed
   models: Model[];
   objects: Record<string, DataObject[]>;
   modelGroups: ModelGroup[];
   workflows: WorkflowWithDetails[];
+  validationRulesets: ValidationRuleset[];
   lastChangedInfo: { modelId: string, objectId: string, changeType: 'added' | 'updated' } | null;
 
   addModel: (modelData: Omit<Model, 'id' | 'namespace' | 'workflowId'> & { namespace?: string, workflowId?: string | null }) => Promise<Model>;
@@ -38,7 +39,13 @@ interface DataContextType {
   deleteWorkflow: (workflowId: string) => Promise<void>;
   getWorkflowById: (workflowId: string) => WorkflowWithDetails | undefined;
 
+  addValidationRuleset: (rulesetData: Omit<ValidationRuleset, 'id'>) => Promise<ValidationRuleset>;
+  updateValidationRuleset: (rulesetId: string, updates: Partial<Omit<ValidationRuleset, 'id'>>) => Promise<ValidationRuleset | undefined>;
+  deleteValidationRuleset: (rulesetId: string) => Promise<void>;
+  getValidationRulesetById: (rulesetId: string) => ValidationRuleset | undefined;
+
   isReady: boolean;
+  isBackgroundFetching: boolean;
   fetchData: (triggeredBy?: string) => Promise<void>;
   formatApiError: (response: Response, defaultMessage: string) => Promise<string>;
 }
@@ -80,7 +87,8 @@ const mapDbModelToClientModel = (dbModel: any): Model => {
       autoSetOnUpdate: p.type === 'date' ? (p.autoSetOnUpdate === 1 || p.autoSetOnUpdate === true) : false,
       isUnique: p.type === 'string' ? (p.isUnique === 1 || p.isUnique === true) : false,
       orderIndex: p.orderIndex ?? 0,
-      defaultValue: p.defaultValue ?? null, 
+      defaultValue: p.defaultValue ?? null,
+      validationRulesetId: p.validationRulesetId === undefined ? null : p.validationRulesetId,
     })).sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0)),
   };
 };
@@ -116,11 +124,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [objects, setObjects] = useState<Record<string, DataObject[]>>({});
   const [modelGroups, setModelGroups] = useState<ModelGroup[]>([]);
   const [workflows, setWorkflows] = useState<WorkflowWithDetails[]>([]);
+  const [validationRulesets, setValidationRulesets] = useState<ValidationRuleset[]>([]);
   const [isReady, setIsReady] = useState(false);
+  const [isBackgroundFetching, setIsBackgroundFetching] = useState(false);
   const [lastChangedInfo, setLastChangedInfo] = useState<{ modelId: string, objectId: string, changeType: 'added' | 'updated' } | null>(null);
 
   const highlightTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isFetchingDataRef = useRef(false);
+  const initialLoadCompletedRef = useRef(false);
 
 
   const fetchWorkflowsInternal = useCallback(async (): Promise<WorkflowWithDetails[] | null> => {
@@ -146,6 +157,21 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const fetchValidationRulesetsInternal = useCallback(async (): Promise<ValidationRuleset[] | null> => {
+    try {
+      const response = await fetch('/api/codex-structure/validation-rulesets');
+      if (!response.ok) {
+        const errorMessage = await formatApiError(response, 'Failed to fetch validation rulesets');
+        throw new Error(errorMessage);
+      }
+      const rulesetsDataFromApi: ValidationRuleset[] = await response.json();
+      return rulesetsDataFromApi.sort((a, b) => a.name.localeCompare(b.name));
+    } catch (error: any) {
+      console.error("[DataContext] Failed to load validation rulesets from API:", error.message, error);
+      return null;
+    }
+  }, []);
+
   const fetchData = useCallback(async (triggeredBy?: string) => {
     if (isFetchingDataRef.current) {
       console.warn(`[DataContext] Fetch already in progress. New trigger: ${triggeredBy}. Skipping.`);
@@ -153,7 +179,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
     console.log(`[DataContext] Starting fetchData. Trigger: ${triggeredBy || 'Unknown'}`);
     isFetchingDataRef.current = true;
-    setIsReady(false);
+
+    if (initialLoadCompletedRef.current) {
+      setIsBackgroundFetching(true);
+    } else {
+      setIsReady(false);
+    }
 
     try {
       const groupsResponse = await fetch('/api/codex-structure/model-groups');
@@ -202,8 +233,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
             hasChanged = true;
           }
         });
-        // If nothing changed at all (no models added/removed, no objects changed in any model)
-        // preserve the top-level object reference.
         if (!hasChanged && Object.keys(prevAllObjects).length === Object.keys(nextAllObjectsState).length) {
           return prevAllObjects;
         }
@@ -219,14 +248,27 @@ export function DataProvider({ children }: { children: ReactNode }) {
         });
       }
 
+      const newRulesetsData = await fetchValidationRulesetsInternal();
+      if (newRulesetsData) {
+        setValidationRulesets(prevRulesets => {
+          const newSortedJson = JSON.stringify([...newRulesetsData].sort((a,b) => a.id.localeCompare(b.id)));
+          const prevSortedJson = JSON.stringify([...prevRulesets].sort((a,b) => a.id.localeCompare(b.id)));
+          return newSortedJson !== prevSortedJson ? newRulesetsData : prevRulesets;
+        });
+      }
+
     } catch (error: any) {
       console.error(`[DataContext] Error during fetchData (Trigger: ${triggeredBy}):`, error.message, error);
     } finally {
-      setIsReady(true);
+      if (!initialLoadCompletedRef.current) {
+        setIsReady(true);
+        initialLoadCompletedRef.current = true;
+      }
+      setIsBackgroundFetching(false);
       isFetchingDataRef.current = false;
       console.log(`[DataContext] Finished fetchData. Trigger: ${triggeredBy || 'Unknown'}`);
     }
-  }, [fetchWorkflowsInternal]); // Only depend on stable callbacks
+  }, [fetchWorkflowsInternal, fetchValidationRulesetsInternal]);
 
 
   useEffect(() => {
@@ -247,7 +289,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       autoSetOnUpdate: !!p.autoSetOnUpdate,
       isUnique: !!p.isUnique,
       defaultValue: p.defaultValue ?? null,
-      orderIndex: index 
+      orderIndex: index,
+      validationRulesetId: p.validationRulesetId === undefined ? null : p.validationRulesetId,
     }));
     const finalNamespace = (modelData.namespace && modelData.namespace.trim() !== '') ? modelData.namespace.trim() : 'Default';
     
@@ -283,7 +326,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       autoSetOnUpdate: !!p.autoSetOnUpdate,
       isUnique: !!p.isUnique,
       defaultValue: p.defaultValue ?? null,
-      orderIndex: index
+      orderIndex: index,
+      validationRulesetId: p.validationRulesetId === undefined ? null : p.validationRulesetId,
     }));
 
     const finalNamespace = (updates.namespace && updates.namespace.trim() !== '') ? updates.namespace.trim() : 'Default';
@@ -430,13 +474,43 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const getWorkflowById = useCallback((workflowId: string) => workflows.find((wf) => wf.id === workflowId), [workflows]);
 
+  // Validation Ruleset CRUD
+  const addValidationRuleset = useCallback(async (rulesetData: Omit<ValidationRuleset, 'id'>): Promise<ValidationRuleset> => {
+    const response = await fetch('/api/codex-structure/validation-rulesets', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rulesetData),
+    });
+    if (!response.ok) throw new Error(await formatApiError(response, 'Failed to add validation ruleset'));
+    const newRuleset: ValidationRuleset = await response.json();
+    await fetchData('After Add ValidationRuleset');
+    return newRuleset;
+  }, [fetchData]);
+
+  const updateValidationRuleset = useCallback(async (rulesetId: string, updates: Partial<Omit<ValidationRuleset, 'id'>>): Promise<ValidationRuleset | undefined> => {
+    const response = await fetch(`/api/codex-structure/validation-rulesets/${rulesetId}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updates),
+    });
+    if (!response.ok) throw new Error(await formatApiError(response, 'Failed to update validation ruleset'));
+    const updatedRuleset: ValidationRuleset = await response.json();
+    await fetchData('After Update ValidationRuleset');
+    return updatedRuleset;
+  }, [fetchData]);
+
+  const deleteValidationRuleset = useCallback(async (rulesetId: string) => {
+    const response = await fetch(`/api/codex-structure/validation-rulesets/${rulesetId}`, { method: 'DELETE' });
+    if (!response.ok) throw new Error(await formatApiError(response, 'Failed to delete validation ruleset'));
+    await fetchData('After Delete ValidationRuleset');
+  }, [fetchData]);
+
+  const getValidationRulesetById = useCallback((rulesetId: string) => validationRulesets.find(rs => rs.id === rulesetId), [validationRulesets]);
+
   const contextValue: DataContextType = {
-    models, objects, modelGroups, workflows, lastChangedInfo,
+    models, objects, modelGroups, workflows, validationRulesets, lastChangedInfo,
     addModel, updateModel, deleteModel, getModelById, getModelByName,
     addObject, updateObject, deleteObject, getObjectsByModelId, getAllObjects,
     addModelGroup, updateModelGroup, deleteModelGroup, getModelGroupById, getModelGroupByName, getAllModelGroups,
     addWorkflow, updateWorkflow, deleteWorkflow, getWorkflowById, 
-    isReady, fetchData, formatApiError,
+    addValidationRuleset, updateValidationRuleset, deleteValidationRuleset, getValidationRulesetById,
+    isReady, isBackgroundFetching, fetchData, formatApiError,
   };
 
   return <DataContext.Provider value={contextValue}>{children}</DataContext.Provider>;
