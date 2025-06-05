@@ -13,11 +13,11 @@ import {
   FormMessage,
   FormDescription
 } from '@/components/ui/form';
-import type { Property, ValidationRuleset, Model } from '@/lib/types'; // Added Model here
+import type { Property, ValidationRuleset, Model } from '@/lib/types';
 import { useData } from '@/contexts/data-context';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
-import { CalendarIcon, ShieldCheck, ChevronsUpDown, Check, Search } from 'lucide-react';
+import { CalendarIcon, ShieldCheck, ChevronsUpDown, Check } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { cn, getObjectDisplayValue } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -57,9 +57,12 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
   const fieldName = property.name as FieldPath<TFieldValues>;
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [currentFile, setCurrentFile] = useState<File | null>(null);
-  // const [comboboxInputValue, setComboboxInputValue] = React.useState<string>(""); // No longer needed for HTML select
+  
+  // State for 'one' relationship Combobox
+  const [popoverOpen, setPopoverOpen] = useState(false);
+  const [comboboxInputValue, setComboboxInputValue] = React.useState<string>("");
 
-  const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects, property.type, property.relatedModelId]);
+  const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects]);
 
   const relatedModel = useMemo(() => {
     if (property.type === 'relationship' && property.relatedModelId) {
@@ -68,7 +71,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
     return undefined;
   }, [property.type, property.relatedModelId, getModelById]);
 
-  const relatedObjectsGrouped = useMemo(() => {
+  const relatedObjectsGrouped: Record<string, MultiSelectOption[]> = useMemo(() => {
     if (relatedModel && property.relatedModelId) {
       const objects = getObjectsByModelId(property.relatedModelId);
       const grouped = objects.reduce((acc, obj) => {
@@ -78,7 +81,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
           acc[namespace] = [];
         }
         acc[namespace].push({
-          value: obj.id,
+          value: String(obj.id), // Ensure value is string
           label: getObjectDisplayValue(obj, relatedM, allModels, allDbObjects),
         });
         return acc;
@@ -99,8 +102,11 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
     return {};
   }, [relatedModel, property.relatedModelId, getObjectsByModelId, allModels, allDbObjects]);
 
-  const flatOptionsForMultiSelect = useMemo(() => {
-    return Object.values(relatedObjectsGrouped).flat();
+  const flatOptionsForMultiSelect: MultiSelectOption[] = useMemo(() => {
+    return Object.values(relatedObjectsGrouped).flat().map(opt => ({
+        value: String(opt.value),
+        label: String(opt.label ?? '')
+    }));
   }, [relatedObjectsGrouped]);
 
 
@@ -247,38 +253,79 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
           return (
             <MultiSelectAutocomplete
               options={flatOptionsForMultiSelect} 
-              selected={Array.isArray(controllerField.value) ? controllerField.value : []}
-              onChange={controllerField.onChange}
+              selected={Array.isArray(controllerField.value) ? controllerField.value.map(String) : []}
+              onChange={(selectedIds) => controllerField.onChange(selectedIds)}
               placeholder={`Select ${relatedModel.name}(s)...`}
               emptyIndicator={`No ${relatedModel.name.toLowerCase()}s found.`}
             />
           );
-        } else { // 'one' relationship - TEMPORARILY REPLACED WITH HTML SELECT
-          const currentSingleSelectionValue = controllerField.value === "" || controllerField.value === null || typeof controllerField.value === 'undefined'
-            ? INTERNAL_NONE_SELECT_VALUE
-            : String(controllerField.value);
+        } else { // 'one' relationship
+          const selectedLabel = controllerField.value
+            ? flatOptionsForMultiSelect.find(opt => opt.value === controllerField.value)?.label
+            : `Select ${relatedModel.name}...`;
 
           return (
-            <select
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-              value={currentSingleSelectionValue}
-              onChange={(e) => {
-                controllerField.onChange(e.target.value === INTERNAL_NONE_SELECT_VALUE ? "" : e.target.value);
-              }}
-              disabled={fieldIsDisabled}
-              ref={controllerField.ref} // Ensure ref is passed for React Hook Form
-            >
-              <option value={INTERNAL_NONE_SELECT_VALUE}>-- None --</option>
-              {Object.entries(relatedObjectsGrouped).map(([namespace, optionsInNamespace]) => (
-                <optgroup key={namespace} label={namespace}>
-                  {optionsInNamespace.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
+            <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={popoverOpen}
+                  className="w-full justify-between"
+                  disabled={fieldIsDisabled}
+                >
+                  <span className="truncate">{selectedLabel ?? `-- None --`}</span>
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                <Command key={relatedModel.id}> {/* Key for re-initialization if model changes */}
+                  <CommandInput
+                    placeholder={placeholderText}
+                    value={comboboxInputValue}
+                    onValueChange={setComboboxInputValue}
+                  />
+                  <CommandList>
+                    <ScrollArea className="max-h-60"> {/* ScrollArea around items */}
+                      <CommandEmpty>{commandEmptyText}</CommandEmpty>
+                      <CommandItem
+                        key={INTERNAL_NONE_SELECT_VALUE}
+                        value={INTERNAL_NONE_SELECT_VALUE}
+                        onSelect={() => {
+                          controllerField.onChange(""); 
+                          setPopoverOpen(false);
+                          setComboboxInputValue("");
+                        }}
+                      >
+                        <Check className={cn("mr-2 h-4 w-4", (controllerField.value === "" || !controllerField.value) ? "opacity-100" : "opacity-0")} />
+                        -- None --
+                      </CommandItem>
+                      {Object.entries(relatedObjectsGrouped).map(([namespace, optionsInNamespace]) => (
+                        <CommandGroup 
+                          key={namespace} 
+                          heading={namespace === 'Default' && Object.keys(relatedObjectsGrouped).length === 1 ? undefined : namespace}
+                        >
+                          {optionsInNamespace.map((option) => (
+                            <CommandItem
+                              key={option.value}
+                              value={String(option.value)} 
+                              onSelect={(currentValue) => {
+                                controllerField.onChange(currentValue === INTERNAL_NONE_SELECT_VALUE ? "" : currentValue);
+                                setPopoverOpen(false);
+                                setComboboxInputValue(""); 
+                              }}
+                            >
+                              <Check className={cn("mr-2 h-4 w-4", controllerField.value === option.value ? "opacity-100" : "opacity-0")} />
+                              {String(option.label ?? "")}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      ))}
+                    </ScrollArea>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
           );
         }
       case 'rating':
@@ -370,5 +417,4 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
     />
   );
 }
-
     
