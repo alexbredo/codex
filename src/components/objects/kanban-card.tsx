@@ -4,16 +4,27 @@
 import type { DataObject, Model, Property } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Eye, Edit, GripVertical } from 'lucide-react';
+import { Eye, Edit, GripVertical, Trash2 } from 'lucide-react';
 import { getObjectDisplayValue, cn } from '@/lib/utils';
 import { useSortable } from '@dnd-kit/sortable';
-import { useDroppable } from '@dnd-kit/core'; // Corrected import
+import { useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import Image from 'next/image';
 import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { StarDisplay } from '@/components/ui/star-display';
-import * as React from 'react'; // Ensure React is imported for JSX
+import * as React from 'react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface KanbanCardProps {
   object: DataObject;
@@ -22,6 +33,7 @@ interface KanbanCardProps {
   allObjects: Record<string, DataObject[]>;
   onViewObject: (object: DataObject) => void;
   onEditObject: (object: DataObject) => void;
+  onDeleteObject: (objectId: string) => void; // Added onDeleteObject
   className?: string;
   dragHandleListeners?: ReturnType<typeof useSortable>['listeners'];
 }
@@ -33,6 +45,7 @@ export function KanbanCard({
   allObjects,
   onViewObject,
   onEditObject,
+  onDeleteObject, // Added onDeleteObject
   className,
   dragHandleListeners,
 }: KanbanCardProps) {
@@ -40,7 +53,7 @@ export function KanbanCard({
 
   let imageProp: Property | undefined = model.properties.find(p => p.type === 'image' && object[p.name]);
   let imageUrlFromProp: string | null = imageProp && object[imageProp.name] ? String(object[imageProp.name]) : null;
-  
+
   if (!imageUrlFromProp) {
     const fallbackImageProp = model.properties.find(
       (p) => (p.name.toLowerCase().includes('image') ||
@@ -54,22 +67,22 @@ export function KanbanCard({
     );
     if (fallbackImageProp && object[fallbackImageProp.name]) {
       imageUrlFromProp = object[fallbackImageProp.name] as string;
-      imageProp = fallbackImageProp; 
+      imageProp = fallbackImageProp;
     }
   }
-  
+
   const placeholderImageForError = `https://placehold.co/300x200.png`;
   const displayImage = imageUrlFromProp && (imageUrlFromProp.startsWith('http') || imageUrlFromProp.startsWith('/uploads'));
   const imageAltText = imageProp ? `${displayName} ${imageProp.name}` : `${displayName} image`;
 
 
   const propertiesToDisplay = model.properties
-    .filter(p => 
-      p.name.toLowerCase() !== 'name' && 
+    .filter(p =>
+      p.name.toLowerCase() !== 'name' &&
       p.name.toLowerCase() !== 'title' &&
-      p.id !== imageProp?.id && 
-      p.type !== 'markdown' && 
-      !model.displayPropertyNames?.includes(p.name) && 
+      p.id !== imageProp?.id &&
+      p.type !== 'markdown' &&
+      !model.displayPropertyNames?.includes(p.name) &&
       object[p.name] !== null && object[p.name] !== undefined && String(object[p.name]).trim() !== ''
     )
     .sort((a, b) => a.orderIndex - b.orderIndex)
@@ -85,7 +98,7 @@ export function KanbanCard({
         return <span className="truncate" title={strValue}>{strValue.length > 25 ? strValue.substring(0, 22) + '...' : strValue}</span>;
       case 'number':
         const numValue = parseFloat(String(value));
-        const precision = property.precision === undefined ? 0 : property.precision; 
+        const precision = property.precision === undefined ? 0 : property.precision;
         const unitText = property.unit ? ` ${property.unit}` : '';
         return isNaN(numValue) ? <span className="text-muted-foreground italic">N/A</span> : <span>{numValue.toFixed(precision)}{unitText}</span>;
       case 'boolean':
@@ -101,7 +114,7 @@ export function KanbanCard({
         if (!property.relatedModelId) return <span className="text-destructive text-xs">Config Err</span>;
         const relatedModelDef = allModels.find(m => m.id === property.relatedModelId);
         if (!relatedModelDef) return <span className="text-destructive text-xs">Model N/A</span>;
-        
+
         if (property.relationshipType === 'many') {
             const ids = Array.isArray(value) ? value : [];
             if (ids.length === 0) return <span className="text-muted-foreground italic">None</span>;
@@ -129,14 +142,14 @@ export function KanbanCard({
             layout="fill"
             objectFit="cover"
             data-ai-hint={model.name.toLowerCase()}
-             onError={(e) => { (e.target as HTMLImageElement).src = placeholderImageForError; }}
+             onError={(e) => { (e.target as HTMLImageElement).src = placeholderImageForError; (e.target as HTMLImageElement).dataset.aiHint = 'placeholder image'; }}
           />
         </div>
       )}
-      <CardHeader 
+      <CardHeader
         className={cn(
-          "p-3 flex flex-row items-center justify-between", 
-          (displayImage && imageUrlFromProp) ? "pt-2" : "", 
+          "p-3 flex flex-row items-center justify-between",
+          (displayImage && imageUrlFromProp) ? "pt-2" : "",
           dragHandleListeners && "cursor-grab"
         )}
         {...(dragHandleListeners || {})}
@@ -164,13 +177,34 @@ export function KanbanCard({
         <Button variant="ghost" size="xs" onClick={() => onEditObject(object)} title="Edit Object">
           <Edit className="h-3 w-3 mr-1" /> Edit
         </Button>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button variant="ghost" size="xs" className="hover:text-destructive" title="Delete Object">
+              <Trash2 className="h-3 w-3 mr-1" /> Delete
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This action cannot be undone. This will permanently delete the object "{displayName}".
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={() => onDeleteObject(object.id)}>
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </Card>
   );
 }
 
 interface SortableKanbanItemProps extends Omit<KanbanCardProps, 'dragHandleListeners'> {
-  id: string; 
+  id: string;
 }
 
 export function SortableKanbanItem(props: SortableKanbanItemProps) {
@@ -193,8 +227,8 @@ export function SortableKanbanItem(props: SortableKanbanItemProps) {
 
   return (
     <div ref={setNodeRef} style={style} {...attributes} >
-      <KanbanCard 
-        {...props} 
+      <KanbanCard
+        {...props}
         className={isDragging ? 'ring-2 ring-primary' : ''}
         dragHandleListeners={listeners}
       />
@@ -203,15 +237,15 @@ export function SortableKanbanItem(props: SortableKanbanItemProps) {
 }
 
 interface DroppablePlaceholderProps {
-  id: string; 
+  id: string;
   className?: string;
 }
 
 export function DroppablePlaceholder({ id, className }: DroppablePlaceholderProps) {
-  const { setNodeRef, isOver } = useDroppable({ 
-    id: id, 
+  const { setNodeRef, isOver } = useDroppable({
+    id: id,
     data: {
-      isPlaceholder: true, 
+      isPlaceholder: true,
       columnId: id,
     }
   });
@@ -220,8 +254,8 @@ export function DroppablePlaceholder({ id, className }: DroppablePlaceholderProp
     <div
       ref={setNodeRef}
       className={cn(
-        "flex-grow flex items-center justify-center text-sm text-muted-foreground p-4 border-2 border-dashed rounded-md min-h-[100px] pointer-events-none", 
-        isOver && "bg-accent/20 border-accent-foreground/20 border-accent", 
+        "flex-grow flex items-center justify-center text-sm text-muted-foreground p-4 border-2 border-dashed rounded-md min-h-[100px] pointer-events-none",
+        isOver && "bg-accent/20 border-accent-foreground/20 border-accent",
         className
       )}
     >

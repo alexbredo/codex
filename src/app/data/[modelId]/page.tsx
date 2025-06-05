@@ -165,23 +165,23 @@ export default function DataObjectsPage() {
             setViewMode('table');
           }
         }
-        
+
         if (isTrulyDifferentModel) {
           console.log(`[DataObjectsPage] Model ID TRULY changed to ${foundModel.id} (${foundModel.name}). Fetching all data and resetting page state.`);
           fetchData(`Model ID Change to ${foundModel.name}`);
-          
+
           setSearchTerm('');
           setCurrentPage(1);
           setSortConfig(null);
           setColumnFilters({});
           setSelectedObjectIds(new Set());
-          
+
           previousModelIdRef.current = modelIdFromUrl;
         }
       } else {
         toast({ variant: "destructive", title: "Error", description: `Model with ID ${modelIdFromUrl} not found.` });
         router.push('/models');
-        previousModelIdRef.current = null; 
+        previousModelIdRef.current = null;
       }
     }
   }, [modelIdFromUrl, dataContextIsReady, getModelById, getWorkflowById, getObjectsByModelId, fetchData, toast, router]);
@@ -650,7 +650,7 @@ export default function DataObjectsPage() {
         } else if (selectedBatchPropertyDetails.type === 'date') {
             if (batchUpdateDate && isDateValidFn(batchUpdateDate)) {
                 processedNewValue = batchUpdateDate.toISOString();
-            } else if (!batchUpdateDate && batchUpdateValue === ''){ 
+            } else if (!batchUpdateDate && batchUpdateValue === ''){
                 processedNewValue = null;
             }
              else {
@@ -659,7 +659,7 @@ export default function DataObjectsPage() {
         } else if (selectedBatchPropertyDetails.type === 'relationship') {
             if (selectedBatchPropertyDetails.relationshipType === 'one') {
                 processedNewValue = batchUpdateValue === INTERNAL_CLEAR_RELATIONSHIP_VALUE ? null : batchUpdateValue;
-            } else { 
+            } else {
                 processedNewValue = Array.isArray(batchUpdateValue) ? batchUpdateValue : [];
             }
         }
@@ -848,7 +848,7 @@ export default function DataObjectsPage() {
     }
     console.log(`[DataObjectsPage] handleStateChangeViaDrag: objectId=${objectId}, newPotentialStateId=${newPotentialStateId}`);
     console.log(`[DataObjectsPage] Current Workflow (captured):`, currentWorkflow ? { id: currentWorkflow.id, name: currentWorkflow.name, states: currentWorkflow.states.map(s => ({id: s.id, name: s.name, successors: s.successorStateIds})) } : 'null');
-    
+
     const objectToUpdate = localObjects.find(obj => obj.id === objectId);
     if (!objectToUpdate) {
       toast({ variant: "destructive", title: "Error", description: `Object with ID ${objectId} not found.` });
@@ -1050,7 +1050,7 @@ export default function DataObjectsPage() {
                                             selected={batchUpdateDate}
                                             onSelect={(date) => {
                                                 setBatchUpdateDate(date);
-                                                setBatchUpdateValue(date ? date.toISOString() : ''); 
+                                                setBatchUpdateValue(date ? date.toISOString() : '');
                                             }}
                                             initialFocus
                                         />
@@ -1242,15 +1242,16 @@ export default function DataObjectsPage() {
           {paginatedObjects.map((obj) => ( <GalleryCard key={obj.id} obj={obj} model={currentModel} allModels={allModels} allObjects={allDbObjects} currentWorkflow={currentWorkflow} getWorkflowStateName={getWorkflowStateName} onView={handleView} onEdit={handleEdit} onDelete={handleDelete} lastChangedInfo={lastChangedInfo}/> ))}
         </div>
       ) : viewMode === 'kanban' && currentWorkflow ? (
-        <KanbanBoard 
-          model={currentModel} 
-          workflow={currentWorkflow} 
+        <KanbanBoard
+          model={currentModel}
+          workflow={currentWorkflow}
           objects={sortedObjects} // Pass all sorted (and filtered) objects to Kanban
           allModels={allModels}
           allObjects={allDbObjects}
           onObjectUpdate={handleStateChangeViaDrag}
           onViewObject={handleView}
-          onEditObject={handleEdit} // Pass handleEdit to KanbanBoard
+          onEditObject={handleEdit}
+          onDeleteObject={handleDelete} // Pass handleDelete to KanbanBoard
         />
       ) : null }
       {(viewMode === 'table' || viewMode === 'gallery') && totalPages > 1 && (
