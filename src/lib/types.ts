@@ -40,6 +40,8 @@ export interface DataObject {
   id: string;
   currentStateId?: string | null; // ID of the current workflow state
   ownerId?: string | null; // ID of the user who owns/created the record
+  createdAt?: string; // ISO 8601 date string
+  updatedAt?: string; // ISO 8601 date string
   [key: string]: any; // Dynamic properties based on the model
 }
 
@@ -105,7 +107,7 @@ export type PropertyFormData = Omit<Property, 'id' | 'orderIndex'> & {
   minValue?: number | null;
   maxValue?: number | null;
 };
-export type ObjectFormData = Omit<DataObject, 'id' | 'currentStateId' | 'ownerId'> & {
+export type ObjectFormData = Omit<DataObject, 'id' | 'currentStateId' | 'ownerId' | 'createdAt' | 'updatedAt'> & {
   currentStateId?: string | null;
   ownerId?: string | null;
 };
@@ -113,3 +115,4 @@ export type ObjectFormData = Omit<DataObject, 'id' | 'currentStateId' | 'ownerId
 
 export type ModelGroupFormData = Omit<ModelGroup, 'id'>;
 export type ValidationRulesetFormData = Omit<ValidationRuleset, 'id'>;
+

@@ -27,7 +27,7 @@ export async function GET(request: Request, { params }: Params) {
       id: row.id,
       currentStateId: row.currentStateId,
       ownerId: row.ownerId,
-      ...JSON.parse(row.data),
+      ...JSON.parse(row.data), // createdAt and updatedAt will be in here
     }));
     return NextResponse.json(objects);
   } catch (error) {
@@ -43,7 +43,15 @@ export async function POST(request: Request, { params }: Params) {
     return NextResponse.json({ error: 'Unauthorized to create objects' }, { status: 403 });
   }
   try {
-    const { id: objectId, currentStateId: _clientSuppliedStateId, ownerId: _clientSuppliedOwnerId, ...objectData }: Omit<DataObject, 'id' | 'currentStateId' | 'ownerId'> & { id: string, currentStateId?: string, ownerId?: string } = await request.json();
+    const { 
+      id: objectId, 
+      currentStateId: _clientSuppliedStateId, 
+      ownerId: _clientSuppliedOwnerId,
+      createdAt: _clientSuppliedCreatedAt, // Ignore client-supplied audit fields
+      updatedAt: _clientSuppliedUpdatedAt, // Ignore client-supplied audit fields
+      ...objectDataInput 
+    }: Omit<DataObject, 'id' | 'currentStateId' | 'ownerId'> & { id: string, currentStateId?: string, ownerId?: string, createdAt?: string, updatedAt?: string } = await request.json();
+    
     const db = await getDb();
 
     const modelRow: Model | undefined = await db.get('SELECT id, workflowId FROM models WHERE id = ?', params.modelId);
@@ -55,7 +63,7 @@ export async function POST(request: Request, { params }: Params) {
 
     // Validation loop
     for (const prop of properties) {
-      const valueToCheck = objectData[prop.name];
+      const valueToCheck = objectDataInput[prop.name];
 
       // Uniqueness check for strings
       if (prop.type === 'string' && prop.isUnique) {
@@ -119,17 +127,29 @@ export async function POST(request: Request, { params }: Params) {
     }
 
     const finalOwnerId = currentUser?.id || null;
+    const currentTimestamp = new Date().toISOString();
+
+    const finalObjectData = {
+      ...objectDataInput,
+      createdAt: currentTimestamp,
+      updatedAt: currentTimestamp,
+    };
 
     await db.run(
       'INSERT INTO data_objects (id, model_id, data, currentStateId, ownerId) VALUES (?, ?, ?, ?, ?)',
       objectId,
       params.modelId,
-      JSON.stringify(objectData),
+      JSON.stringify(finalObjectData),
       finalCurrentStateId,
       finalOwnerId
     );
     
-    const createdObject: DataObject = { id: objectId, currentStateId: finalCurrentStateId, ownerId: finalOwnerId, ...objectData };
+    const createdObject: DataObject = { 
+      id: objectId, 
+      currentStateId: finalCurrentStateId, 
+      ownerId: finalOwnerId, 
+      ...finalObjectData 
+    };
     return NextResponse.json(createdObject, { status: 201 });
   } catch (error: any) {
     console.error(`Failed to create object for model ${params.modelId}:`, error);
@@ -140,3 +160,4 @@ export async function POST(request: Request, { params }: Params) {
     return NextResponse.json({ error: errorMessage, details: error.message }, { status: 500 });
   }
 }
+

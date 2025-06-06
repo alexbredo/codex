@@ -21,7 +21,12 @@ export async function GET(request: Request, { params }: Params) {
     if (!row) {
       return NextResponse.json({ error: 'Object not found' }, { status: 404 });
     }
-    const object: DataObject = { id: row.id, currentStateId: row.currentStateId, ownerId: row.ownerId, ...JSON.parse(row.data) };
+    const object: DataObject = { 
+      id: row.id, 
+      currentStateId: row.currentStateId, 
+      ownerId: row.ownerId, 
+      ...JSON.parse(row.data) // createdAt and updatedAt will be in here
+    };
     return NextResponse.json(object);
   } catch (error) {
     console.error(`Failed to fetch object ${params.objectId}:`, error);
@@ -37,7 +42,15 @@ export async function PUT(request: Request, { params }: Params) {
   }
   try {
     const requestBody = await request.clone().json(); 
-    const { id: _id, model_id: _model_id, currentStateId: newCurrentStateIdFromRequest, ownerId: newOwnerIdFromRequest, ...updates }: Partial<DataObject> & {id?: string, model_id?:string, currentStateId?: string | null, ownerId?: string | null} = requestBody;
+    const { 
+      id: _id, 
+      model_id: _model_id, 
+      currentStateId: newCurrentStateIdFromRequest, 
+      ownerId: newOwnerIdFromRequest,
+      createdAt: _clientSuppliedCreatedAt, // Ignore client-supplied audit fields
+      updatedAt: _clientSuppliedUpdatedAt, // Ignore client-supplied audit fields
+      ...updates 
+    }: Partial<DataObject> & {id?: string, model_id?:string, currentStateId?: string | null, ownerId?: string | null, createdAt?:string, updatedAt?:string} = requestBody;
 
     const db = await getDb();
 
@@ -180,8 +193,17 @@ export async function PUT(request: Request, { params }: Params) {
       console.warn(`User ${currentUser.username} (not admin) attempted to change ownerId for object ${params.objectId}. Change ignored.`);
     }
 
+    const currentTimestamp = new Date().toISOString();
+    const preservedCreatedAt = currentData.createdAt || currentTimestamp; // Preserve original createdAt if it exists
 
-    const newData = { ...currentData, ...updates };
+    const newData = { 
+      ...currentData, 
+      ...updates,
+      createdAt: preservedCreatedAt, // Ensure original createdAt is kept
+      updatedAt: currentTimestamp,   // Always update updatedAt
+    };
+
+    // Remove fields that are managed at the table level, not in the JSON blob
     if (Object.prototype.hasOwnProperty.call(requestBody, 'currentStateId')) {
       delete newData.currentStateId; 
     }
@@ -199,7 +221,12 @@ export async function PUT(request: Request, { params }: Params) {
       params.modelId
     );
     
-    const updatedObject: DataObject = { id: params.objectId, currentStateId: finalCurrentStateIdToSave, ownerId: finalOwnerIdToSave, ...newData };
+    const updatedObject: DataObject = { 
+      id: params.objectId, 
+      currentStateId: finalCurrentStateIdToSave, 
+      ownerId: finalOwnerIdToSave, 
+      ...newData 
+    };
     return NextResponse.json(updatedObject);
   } catch (error: any) {
     console.error(`API Error (PUT /models/${params.modelId}/objects/${params.objectId}) - Error updating object. Message: ${error.message}, Stack: ${error.stack}`, error);
@@ -231,3 +258,4 @@ export async function DELETE(request: Request, { params }: Params) {
     return NextResponse.json({ error: 'Failed to delete object' }, { status: 500 });
   }
 }
+
