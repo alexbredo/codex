@@ -16,12 +16,19 @@ import type { WorkflowWithDetails } from '@/lib/types';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { withAuth } from '@/contexts/auth-context';
 
+const DEFAULT_STATE_COLORS_EDIT = [ // A slightly different set or extended for edits if needed
+  '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899',
+  '#6366F1', '#EF4444', '#22C55E', '#D946EF', '#F97316',
+  '#06B6D4', '#FBBF24', '#A855F7', '#F43F5E', '#7DD3FC',
+  '#0EA5E9', '#84CC16', '#F472B6', '#6D28D9', '#F87171'
+];
+
 function mapWorkflowToFormValues(workflow?: WorkflowWithDetails): WorkflowFormValues {
   if (!workflow) {
     return {
       name: '',
       description: '',
-      states: [{ id: `temp-${crypto.randomUUID()}`, name: 'New', description: 'Initial state', isInitial: true, orderIndex: 0, successorStateNames: [] }],
+      states: [{ id: `temp-${crypto.randomUUID()}`, name: 'New', description: 'Initial state', color: DEFAULT_STATE_COLORS_EDIT[0], isInitial: true, orderIndex: 0, successorStateNames: [] }],
     };
   }
   // Sort states by orderIndex before mapping
@@ -38,6 +45,7 @@ function mapWorkflowToFormValues(workflow?: WorkflowWithDetails): WorkflowFormVa
         id: state.id,
         name: state.name,
         description: state.description || '',
+        color: state.color || DEFAULT_STATE_COLORS_EDIT[index % DEFAULT_STATE_COLORS_EDIT.length],
         isInitial: !!state.isInitial,
         orderIndex: state.orderIndex !== undefined ? state.orderIndex : index, // Ensure orderIndex is set
         successorStateNames: successorNames,
@@ -83,6 +91,7 @@ function EditWorkflowPageInternal() {
       id: s.id?.startsWith('temp-') ? undefined : s.id,
       name: s.name,
       description: s.description,
+      color: s.color,
       isInitial: s.isInitial,
       orderIndex: s.orderIndex !== undefined ? s.orderIndex : index, // Ensure orderIndex is passed
       successorStateNames: s.successorStateNames || [],

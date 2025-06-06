@@ -199,6 +199,7 @@ async function initializeDb(): Promise<Database> {
       workflowId TEXT NOT NULL,
       name TEXT NOT NULL,
       description TEXT,
+      color TEXT, -- Added color column
       isInitial INTEGER DEFAULT 0, -- 0 for false, 1 for true
       orderIndex INTEGER NOT NULL DEFAULT 0, -- For state display order
       FOREIGN KEY (workflowId) REFERENCES workflows(id) ON DELETE CASCADE,
@@ -211,6 +212,14 @@ async function initializeDb(): Promise<Database> {
   } catch (e: any) {
     if (!(e.message && (e.message.toLowerCase().includes('duplicate column name') || e.message.toLowerCase().includes('already has a column named orderindex')))) {
         console.error("Migration: Error trying to add 'orderIndex' column to 'workflow_states' table:", e.message);
+    }
+  }
+  // Add color to workflow_states if it doesn't exist
+  try {
+    await db.run('ALTER TABLE workflow_states ADD COLUMN color TEXT');
+  } catch (e: any) {
+    if (!(e.message && (e.message.toLowerCase().includes('duplicate column name') || e.message.toLowerCase().includes('already has a column named color')))) {
+        console.error("Migration: Error trying to add 'color' column to 'workflow_states' table:", e.message);
     }
   }
 

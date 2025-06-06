@@ -18,7 +18,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Trash2, PlusCircle, GripVertical, Network } from 'lucide-react';
+import { Trash2, PlusCircle, GripVertical, Network, Palette } from 'lucide-react'; // Added Palette
 import type { WorkflowFormValues, WorkflowStateFormValues } from './workflow-form-schema';
 import type { WorkflowWithDetails } from '@/lib/types';
 import { MultiSelectAutocomplete, type MultiSelectOption } from '@/components/ui/multi-select-autocomplete';
@@ -53,6 +53,12 @@ function SortableStateItem({ id, children, className }: SortableStateItemProps) 
   const style: React.CSSProperties = { transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 10 : undefined };
   return (<div ref={setNodeRef} style={style} {...attributes} className={className}>{children({ dragHandleListeners: listeners })}</div>);
 }
+
+const DEFAULT_STATE_COLORS = [
+  '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899',
+  '#6366F1', '#EF4444', '#22C55E', '#D946EF', '#F97316',
+  '#06B6D4', '#FBBF24', '#A855F7', '#F43F5E', '#7DD3FC'
+];
 
 
 function StateFields({ control, form, statesFieldArray }: {
@@ -127,6 +133,7 @@ function StateFields({ control, form, statesFieldArray }: {
           {fields.map((fieldItem, index) => {
             const stateName = form.watch(`states.${index}.name`);
             const headerTitle = stateName || `State #${index + 1}`;
+            const stateColor = form.watch(`states.${index}.color`);
             return (
               <SortableStateItem key={fieldItem.id} id={fieldItem.id} className="bg-card rounded-md border">
                 {(dndProps) => (
@@ -137,6 +144,7 @@ function StateFields({ control, form, statesFieldArray }: {
                           <span {...dndProps.dragHandleListeners} className="cursor-grab p-1 -ml-1 text-muted-foreground hover:text-foreground">
                             <GripVertical className="h-5 w-5" />
                           </span>
+                          {stateColor && <div className="h-4 w-4 rounded-full border" style={{ backgroundColor: stateColor }} />}
                           <span className="text-lg font-medium text-foreground truncate mr-2">{headerTitle}</span>
                         </div>
                         <Button
@@ -173,6 +181,33 @@ function StateFields({ control, form, statesFieldArray }: {
                             </FormItem>
                           )}
                         />
+                         <FormField
+                            control={form.control}
+                            name={`states.${index}.color`}
+                            render={({ field }) => (
+                                <FormItem>
+                                <FormLabel>State Color</FormLabel>
+                                <div className="flex items-center gap-2">
+                                    <FormControl>
+                                    <Input
+                                        type="color"
+                                        {...field}
+                                        value={field.value ?? '#ffffff'} // Default to white if no color
+                                        className="w-12 h-10 p-1"
+                                    />
+                                    </FormControl>
+                                    <Input
+                                        type="text"
+                                        placeholder="#RRGGBB"
+                                        value={field.value ?? ''}
+                                        onChange={(e) => field.onChange(e.target.value || null)}
+                                        className="flex-grow"
+                                    />
+                                </div>
+                                <FormMessage />
+                                </FormItem>
+                            )}
+                         />
                       </div>
                       <FormField control={control} name={`states.${index}.isInitial`}
                         render={({ field }) => (
@@ -212,14 +247,17 @@ function StateFields({ control, form, statesFieldArray }: {
         </Accordion>
       </SortableContext>
       <Button type="button" variant="outline" size="sm"
-        onClick={() => append({ 
+        onClick={() => {
+          const newOrderIndex = fields.length;
+          append({ 
             id: crypto.randomUUID(), 
             name: '', 
             description: '', 
-            isInitial: false, 
-            orderIndex: fields.length, // Set orderIndex for new state
+            color: DEFAULT_STATE_COLORS[newOrderIndex % DEFAULT_STATE_COLORS.length],
+            isInitial: fields.length === 0, // Make first state initial by default
+            orderIndex: newOrderIndex, 
             successorStateNames: [] 
-        })}
+        })}}
         className="mt-4 w-full border-dashed hover:border-solid"
       >
         <PlusCircle className="mr-2 h-4 w-4" /> Add State

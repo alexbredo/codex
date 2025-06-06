@@ -5,6 +5,11 @@ export const workflowStateSchema = z.object({
   id: z.string().optional(), // For existing states during update
   name: z.string().min(1, "State name is required.").max(100, "State name must be 100 characters or less."),
   description: z.string().max(500, "State description must be 500 characters or less.").optional(),
+  color: z.string()
+    .regex(/^#([0-9a-f]{3}){1,2}$/i, "Must be a valid hex color code (e.g., #RRGGBB or #RGB).")
+    .optional()
+    .nullable()
+    .transform(val => val === '' ? null : val), // Allow empty string to be treated as null
   isInitial: z.boolean().default(false),
   orderIndex: z.number().optional(), // Will be set programmatically by dnd and on add
   successorStateNames: z.array(z.string()).optional().default([]), // Names of successor states

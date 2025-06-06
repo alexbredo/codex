@@ -40,6 +40,7 @@ export async function GET(request: Request, { params }: Params) {
       );
       statesWithSuccessors.push({
         ...s,
+        color: s.color ?? null,
         isInitial: !!s.isInitial,
         orderIndex: s.orderIndex, // Ensure orderIndex is included
         successorStateIds: transitions.map((t) => t.toStateId),
@@ -122,13 +123,13 @@ export async function PUT(request: Request, { params }: Params) {
       if (isExistingStateById && sInput.id) { // Update existing state
         stateId = sInput.id; 
         await db.run(
-          'UPDATE workflow_states SET name = ?, description = ?, isInitial = ?, orderIndex = ? WHERE id = ? AND workflowId = ?',
-          stateNameTrimmed, sInput.description, sInput.isInitial ? 1 : 0, orderIndex, stateId, workflowId
+          'UPDATE workflow_states SET name = ?, description = ?, color = ?, isInitial = ?, orderIndex = ? WHERE id = ? AND workflowId = ?',
+          stateNameTrimmed, sInput.description, sInput.color ?? null, sInput.isInitial ? 1 : 0, orderIndex, stateId, workflowId
         );
       } else { // Insert new state
         await db.run(
-          'INSERT INTO workflow_states (id, workflowId, name, description, isInitial, orderIndex) VALUES (?, ?, ?, ?, ?, ?)',
-          stateId, workflowId, stateNameTrimmed, sInput.description, sInput.isInitial ? 1 : 0, orderIndex
+          'INSERT INTO workflow_states (id, workflowId, name, description, color, isInitial, orderIndex) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          stateId, workflowId, stateNameTrimmed, sInput.description, sInput.color ?? null, sInput.isInitial ? 1 : 0, orderIndex
         );
       }
       finalStatesForResponse.push({
@@ -136,6 +137,7 @@ export async function PUT(request: Request, { params }: Params) {
         workflowId,
         name: stateNameTrimmed,
         description: sInput.description,
+        color: sInput.color ?? null,
         isInitial: !!sInput.isInitial,
         orderIndex: orderIndex,
         successorStateIds: [], // Will be populated next
@@ -178,7 +180,7 @@ export async function PUT(request: Request, { params }: Params) {
     const finalStatesWithSuccessors = [];
     for (const s of finalStatesDataFromDb) {
         const transitions = await db.all('SELECT toStateId FROM workflow_state_transitions WHERE fromStateId = ? AND workflowId = ?', s.id, workflowId);
-        finalStatesWithSuccessors.push({...s, isInitial: !!s.isInitial, successorStateIds: transitions.map(t => t.toStateId)});
+        finalStatesWithSuccessors.push({...s, color: s.color ?? null, isInitial: !!s.isInitial, successorStateIds: transitions.map(t => t.toStateId)});
     }
 
 

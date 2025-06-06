@@ -35,6 +35,7 @@ export async function GET(request: Request) {
         );
         statesWithSuccessors.push({
           ...s,
+          color: s.color ?? null,
           isInitial: !!s.isInitial,
           orderIndex: s.orderIndex, // Ensure orderIndex is included
           successorStateIds: transitions.map((t) => t.toStateId),
@@ -98,14 +99,15 @@ export async function POST(request: Request) {
       const orderIndex = sInput.orderIndex !== undefined ? sInput.orderIndex : index;
 
       await db.run(
-        'INSERT INTO workflow_states (id, workflowId, name, description, isInitial, orderIndex) VALUES (?, ?, ?, ?, ?, ?)',
-        stateId, workflowId, sInput.name.trim(), sInput.description, sInput.isInitial ? 1 : 0, orderIndex
+        'INSERT INTO workflow_states (id, workflowId, name, description, color, isInitial, orderIndex) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        stateId, workflowId, sInput.name.trim(), sInput.description, sInput.color ?? null, sInput.isInitial ? 1 : 0, orderIndex
       );
       createdStatesForResponse.push({
         id: stateId,
         workflowId,
         name: sInput.name.trim(),
         description: sInput.description,
+        color: sInput.color ?? null,
         isInitial: !!sInput.isInitial,
         orderIndex: orderIndex,
         successorStateIds: [], // Will be populated below
@@ -144,7 +146,7 @@ export async function POST(request: Request) {
     const finalStatesWithSuccessors = [];
     for (const s of finalStatesForResponse) {
         const transitions = await db.all('SELECT toStateId FROM workflow_state_transitions WHERE fromStateId = ? AND workflowId = ?', s.id, workflowId);
-        finalStatesWithSuccessors.push({...s, isInitial: !!s.isInitial, successorStateIds: transitions.map(t => t.toStateId)});
+        finalStatesWithSuccessors.push({...s, color: s.color ?? null, isInitial: !!s.isInitial, successorStateIds: transitions.map(t => t.toStateId)});
     }
 
 

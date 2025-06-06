@@ -1,7 +1,7 @@
 
 'use client';
 
-import type { DataObject, Model, Property } from '@/lib/types';
+import type { DataObject, Model, Property, WorkflowStateWithSuccessors } from '@/lib/types'; // Added WorkflowStateWithSuccessors
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Eye, Edit, GripVertical, Trash2 } from 'lucide-react';
@@ -33,9 +33,10 @@ interface KanbanCardProps {
   allObjects: Record<string, DataObject[]>;
   onViewObject: (object: DataObject) => void;
   onEditObject: (object: DataObject) => void;
-  onDeleteObject: (objectId: string) => void; // Added onDeleteObject
+  onDeleteObject: (objectId: string) => void;
   className?: string;
   dragHandleListeners?: ReturnType<typeof useSortable>['listeners'];
+  stateColor?: string | null; // Added stateColor
 }
 
 export function KanbanCard({
@@ -45,9 +46,10 @@ export function KanbanCard({
   allObjects,
   onViewObject,
   onEditObject,
-  onDeleteObject, // Added onDeleteObject
+  onDeleteObject,
   className,
   dragHandleListeners,
+  stateColor, // Destructure stateColor
 }: KanbanCardProps) {
   const displayName = getObjectDisplayValue(object, model, allModels, allObjects);
 
@@ -133,9 +135,20 @@ export function KanbanCard({
   };
 
   return (
-    <Card className={cn("mb-2 shadow-md hover:shadow-lg transition-shadow break-inside-avoid-column flex flex-col", className)}>
+    <Card className={cn(
+        "mb-2 shadow-md hover:shadow-lg transition-shadow break-inside-avoid-column flex flex-col relative overflow-hidden", // Added relative & overflow-hidden
+        className
+      )}
+    >
+      {stateColor && (
+        <div 
+          className="absolute left-0 top-0 bottom-0 w-1.5" 
+          style={{ backgroundColor: stateColor }}
+          aria-hidden="true"
+        />
+      )}
       {displayImage && imageUrlFromProp && (
-        <div className="aspect-video relative w-full bg-muted rounded-t-lg overflow-hidden">
+        <div className="aspect-video relative w-full bg-muted rounded-t-lg overflow-hidden ml-1.5"> {/* Added ml-1.5 if stateColor exists */}
           <Image
             src={imageUrlFromProp}
             alt={imageAltText}
@@ -150,14 +163,15 @@ export function KanbanCard({
         className={cn(
           "p-3 flex flex-row items-center justify-between",
           (displayImage && imageUrlFromProp) ? "pt-2" : "",
-          dragHandleListeners && "cursor-grab"
+          dragHandleListeners && "cursor-grab",
+          stateColor && "pl-5" // Add left padding if color bar is present
         )}
         {...(dragHandleListeners || {})}
       >
         <CardTitle className="text-sm font-semibold truncate" title={displayName}>{displayName}</CardTitle>
         {dragHandleListeners && <GripVertical className="h-5 w-5 text-muted-foreground flex-shrink-0" />}
       </CardHeader>
-      <CardContent className="p-3 pt-0 text-xs text-muted-foreground flex-grow space-y-0.5">
+      <CardContent className={cn("p-3 pt-0 text-xs text-muted-foreground flex-grow space-y-0.5", stateColor && "pl-5")}>
         {propertiesToDisplay.map(prop => (
            <div key={prop.id} className="flex items-center text-xs">
              <span className="font-medium text-foreground/70 mr-1.5 shrink-0">{prop.name}:</span>
@@ -170,7 +184,7 @@ export function KanbanCard({
             <p className="text-xs text-muted-foreground italic">No additional details to display.</p>
         )}
       </CardContent>
-      <div className="p-2 border-t flex justify-end space-x-1 mt-auto bg-muted/30">
+      <div className={cn("p-2 border-t flex justify-end space-x-1 mt-auto bg-muted/30", stateColor && "pl-5")}>
         <Button variant="ghost" size="xs" onClick={() => onViewObject(object)} title="View Details">
           <Eye className="h-3 w-3 mr-1" /> View
         </Button>
@@ -203,8 +217,9 @@ export function KanbanCard({
   );
 }
 
-interface SortableKanbanItemProps extends Omit<KanbanCardProps, 'dragHandleListeners'> {
+interface SortableKanbanItemProps extends Omit<KanbanCardProps, 'dragHandleListeners' | 'stateColor'> { // stateColor will be derived in SortableKanbanItem
   id: string;
+  workflowStates: WorkflowStateWithSuccessors[]; // Pass all states for color lookup
 }
 
 export function SortableKanbanItem(props: SortableKanbanItemProps) {
@@ -225,10 +240,14 @@ export function SortableKanbanItem(props: SortableKanbanItemProps) {
     boxShadow: isDragging ? '0 0 15px rgba(var(--primary-rgb), 0.5)' : undefined,
   };
 
+  const currentState = props.workflowStates.find(s => s.id === props.object.currentStateId);
+  const stateColor = currentState?.color;
+
   return (
     <div ref={setNodeRef} style={style} {...attributes} >
       <KanbanCard
         {...props}
+        stateColor={stateColor} // Pass the determined color
         className={isDragging ? 'ring-2 ring-primary' : ''}
         dragHandleListeners={listeners}
       />

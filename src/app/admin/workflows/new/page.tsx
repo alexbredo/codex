@@ -15,6 +15,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { withAuth } from '@/contexts/auth-context';
 
+const DEFAULT_STATE_COLORS_NEW = [ // Using the same list as in the form for consistency
+  '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899',
+  '#6366F1', '#EF4444', '#22C55E', '#D946EF', '#F97316',
+  '#06B6D4', '#FBBF24', '#A855F7', '#F43F5E', '#7DD3FC'
+];
+
 function CreateWorkflowPageInternal() {
   const router = useRouter();
   const { addWorkflow, isReady: dataIsReady, fetchData } = useData(); 
@@ -25,7 +31,15 @@ function CreateWorkflowPageInternal() {
     defaultValues: {
       name: '',
       description: '',
-      states: [{ id: `temp-${crypto.randomUUID()}`, name: 'New', description: 'Initial state', isInitial: true, orderIndex: 0, successorStateNames: [] }],
+      states: [{ 
+        id: `temp-${crypto.randomUUID()}`, 
+        name: 'New', 
+        description: 'Initial state', 
+        color: DEFAULT_STATE_COLORS_NEW[0],
+        isInitial: true, 
+        orderIndex: 0, 
+        successorStateNames: [] 
+      }],
     },
   });
   
@@ -34,6 +48,7 @@ function CreateWorkflowPageInternal() {
       id: s.id?.startsWith('temp-') ? undefined : s.id,
       name: s.name,
       description: s.description,
+      color: s.color,
       isInitial: s.isInitial,
       orderIndex: s.orderIndex !== undefined ? s.orderIndex : index, // Ensure orderIndex is passed
       successorStateNames: s.successorStateNames || [],

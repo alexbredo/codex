@@ -47,6 +47,7 @@ export interface WorkflowStateInput { // For form input, before DB IDs are known
   id?: string; // Optional, for existing states during update
   name: string;
   description?: string;
+  color?: string | null; // Hex color code
   isInitial?: boolean;
   orderIndex: number; // For maintaining UI order
   successorStateNames?: string[]; // Use names for UI, resolve to IDs on backend
@@ -57,6 +58,7 @@ export interface WorkflowState {
   workflowId: string;
   name: string;
   description?: string;
+  color?: string | null; // Hex color code
   isInitial: boolean; // Stored as 0 or 1 in DB, mapped to boolean
   orderIndex: number;
 }
