@@ -9,6 +9,7 @@ export function createObjectFormSchema(model: Model | undefined, validationRules
 
   const shape: Record<string, z.ZodTypeAny> = {
     currentStateId: z.string().nullable().optional(),
+    ownerId: z.string().nullable().optional(), // Added ownerId here
   };
 
   model.properties.forEach((prop: Property) => {
