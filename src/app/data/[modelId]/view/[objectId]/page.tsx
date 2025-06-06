@@ -19,7 +19,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Edit, Loader2, ExternalLink, ImageIcon, CheckCircle2, ShieldAlert, ShieldCheck, UserCircle, CalendarClock, History, FileText, Users as UsersIconLucide, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Edit, Loader2, ExternalLink, ImageIcon, CheckCircle2, ShieldAlert, ShieldCheck, UserCircle, CalendarClock, History, FileText, Users as UsersIconLucide, RotateCcw, Trash2 } from 'lucide-react';
 import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
 import Link from 'next/link';
 import { getObjectDisplayValue } from '@/lib/utils';
