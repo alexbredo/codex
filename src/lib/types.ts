@@ -42,6 +42,8 @@ export interface DataObject {
   ownerId?: string | null; // ID of the user who owns/created the record
   createdAt?: string; // ISO 8601 date string
   updatedAt?: string; // ISO 8601 date string
+  isDeleted?: boolean; // Flag for soft delete
+  deletedAt?: string | null; // Timestamp for soft delete
   [key: string]: any; // Dynamic properties based on the model
 }
 
@@ -100,9 +102,12 @@ export interface PropertyChangeDetail {
 }
 
 export interface ChangelogEventData {
-  type: 'CREATE' | 'UPDATE';
+  type: 'CREATE' | 'UPDATE' | 'DELETE' | 'RESTORE';
+  status?: 'deleted' | 'restored'; // For DELETE/RESTORE types
+  timestamp?: string; // For DELETE/RESTORE types
   initialData?: Record<string, any>; // For CREATE type
   modifiedProperties?: PropertyChangeDetail[]; // For UPDATE type
+  snapshot?: Record<string, any>; // For DELETE to store pre-delete state
 }
 
 export interface ChangelogEntry {
@@ -112,7 +117,7 @@ export interface ChangelogEntry {
   changedAt: string; // ISO 8601
   changedByUserId: string | null;
   changedByUsername?: string; // Populated by API when fetching
-  changeType: 'CREATE' | 'UPDATE';
+  changeType: 'CREATE' | 'UPDATE' | 'DELETE' | 'RESTORE';
   changes: ChangelogEventData; // Parsed JSON from DB
 }
 
@@ -134,7 +139,7 @@ export type PropertyFormData = Omit<Property, 'id' | 'orderIndex'> & {
   minValue?: number | null;
   maxValue?: number | null;
 };
-export type ObjectFormData = Omit<DataObject, 'id' | 'currentStateId' | 'ownerId' | 'createdAt' | 'updatedAt'> & {
+export type ObjectFormData = Omit<DataObject, 'id' | 'currentStateId' | 'ownerId' | 'createdAt' | 'updatedAt' | 'isDeleted' | 'deletedAt'> & {
   currentStateId?: string | null;
   ownerId?: string | null;
 };
@@ -142,3 +147,4 @@ export type ObjectFormData = Omit<DataObject, 'id' | 'currentStateId' | 'ownerId
 
 export type ModelGroupFormData = Omit<ModelGroup, 'id'>;
 export type ValidationRulesetFormData = Omit<ValidationRuleset, 'id'>;
+

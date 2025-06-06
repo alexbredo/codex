@@ -217,6 +217,8 @@ async function initializeDb(): Promise<Database> {
       data TEXT NOT NULL,
       currentStateId TEXT,
       ownerId TEXT,
+      isDeleted INTEGER DEFAULT 0,
+      deletedAt TEXT,
       FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE,
       FOREIGN KEY (currentStateId) REFERENCES workflow_states(id) ON DELETE SET NULL,
       FOREIGN KEY (ownerId) REFERENCES users(id) ON DELETE SET NULL
@@ -236,6 +238,22 @@ async function initializeDb(): Promise<Database> {
     const msg = e.message?.toLowerCase() || "";
     if (!(msg.includes('duplicate column name') || msg.includes('already has a column named ownerid'))) {
       console.error("Migration Error (data_objects.ownerId FK):", e.message); throw e;
+    }
+  }
+  try {
+    await db.run("ALTER TABLE data_objects ADD COLUMN isDeleted INTEGER DEFAULT 0");
+  } catch (e: any) {
+    const msg = e.message?.toLowerCase() || "";
+    if (!(msg.includes('duplicate column name') || msg.includes('already has a column named isdeleted'))) {
+      console.error("Migration Error (data_objects.isDeleted):", e.message); throw e;
+    }
+  }
+  try {
+    await db.run("ALTER TABLE data_objects ADD COLUMN deletedAt TEXT");
+  } catch (e: any) {
+    const msg = e.message?.toLowerCase() || "";
+    if (!(msg.includes('duplicate column name') || msg.includes('already has a column named deletedat'))) {
+      console.error("Migration Error (data_objects.deletedAt):", e.message); throw e;
     }
   }
 
@@ -261,7 +279,7 @@ async function initializeDb(): Promise<Database> {
       modelId TEXT NOT NULL, -- Store modelId for easier grouping/querying if needed
       changedAt TEXT NOT NULL, -- ISO8601 timestamp
       changedByUserId TEXT,    -- Can be NULL if system change or user deleted
-      changeType TEXT NOT NULL, -- e.g., 'CREATE', 'UPDATE'
+      changeType TEXT NOT NULL, -- e.g., 'CREATE', 'UPDATE', 'DELETE', 'RESTORE'
       changes TEXT NOT NULL,    -- JSON blob detailing the changes
       FOREIGN KEY (dataObjectId) REFERENCES data_objects(id) ON DELETE CASCADE,
       FOREIGN KEY (modelId) REFERENCES models(id) ON DELETE CASCADE,
@@ -301,3 +319,4 @@ export function getDb(): Promise<Database> {
   }
   return dbInstance;
 }
+

@@ -16,7 +16,8 @@ export async function GET(request: Request, { params }: Params) {
   }
   try {
     const db = await getDb();
-    const row = await db.get('SELECT id, data, currentStateId, ownerId FROM data_objects WHERE id = ? AND model_id = ?', params.objectId, params.modelId);
+    // Also fetch isDeleted and deletedAt
+    const row = await db.get('SELECT id, data, currentStateId, ownerId, isDeleted, deletedAt FROM data_objects WHERE id = ? AND model_id = ?', params.objectId, params.modelId);
 
     if (!row) {
       return NextResponse.json({ error: 'Object not found' }, { status: 404 });
@@ -25,6 +26,8 @@ export async function GET(request: Request, { params }: Params) {
       id: row.id,
       currentStateId: row.currentStateId,
       ownerId: row.ownerId,
+      isDeleted: !!row.isDeleted,
+      deletedAt: row.deletedAt,
       ...JSON.parse(row.data) // createdAt and updatedAt will be in here
     };
     return NextResponse.json(object);
@@ -51,17 +54,24 @@ export async function PUT(request: Request, { params }: Params) {
       model_id: _model_id,
       currentStateId: newCurrentStateIdFromRequest,
       ownerId: newOwnerIdFromRequest,
-      createdAt: _clientSuppliedCreatedAt, // Ignore client-supplied audit fields
-      updatedAt: _clientSuppliedUpdatedAt, // Ignore client-supplied audit fields
+      createdAt: _clientSuppliedCreatedAt, 
+      updatedAt: _clientSuppliedUpdatedAt, 
+      isDeleted: _clientSuppliedIsDeleted, // Ignore client-supplied soft delete fields
+      deletedAt: _clientSuppliedDeletedAt, // Ignore client-supplied soft delete fields
       ...updates
-    }: Partial<DataObject> & {id?: string, model_id?:string, currentStateId?: string | null, ownerId?: string | null, createdAt?:string, updatedAt?:string} = requestBody;
+    }: Partial<DataObject> & {id?: string, model_id?:string, currentStateId?: string | null, ownerId?: string | null, createdAt?:string, updatedAt?:string, isDeleted?: boolean, deletedAt?: string | null} = requestBody;
 
 
-    const existingObjectRecord = await db.get('SELECT data, currentStateId, ownerId, model_id FROM data_objects WHERE id = ? AND model_id = ?', params.objectId, params.modelId);
+    const existingObjectRecord = await db.get('SELECT data, currentStateId, ownerId, model_id, isDeleted FROM data_objects WHERE id = ? AND model_id = ?', params.objectId, params.modelId);
     if (!existingObjectRecord) {
       await db.run('ROLLBACK');
       return NextResponse.json({ error: 'Object not found' }, { status: 404 });
     }
+    if (existingObjectRecord.isDeleted) {
+      await db.run('ROLLBACK');
+      return NextResponse.json({ error: 'Cannot update a deleted object. Please restore it first.' }, { status: 400 });
+    }
+
 
     const oldDataParsed = JSON.parse(existingObjectRecord.data);
     const oldCurrentStateId = existingObjectRecord.currentStateId;
@@ -99,7 +109,7 @@ export async function PUT(request: Request, { params }: Params) {
         if (prop.type === 'string' && prop.isUnique && newValue !== oldDataParsed[prop.name]) {
           if (newValue !== null && typeof newValue !== 'undefined' && String(newValue).trim() !== '') {
             const conflictingObject = await db.get(
-              `SELECT id FROM data_objects WHERE model_id = ? AND id != ? AND json_extract(data, '$.${prop.name}') = ?`,
+              `SELECT id FROM data_objects WHERE model_id = ? AND id != ? AND json_extract(data, '$.${prop.name}') = ? AND (isDeleted = 0 OR isDeleted IS NULL)`, // Check only non-deleted
               params.modelId,
               params.objectId,
               newValue
@@ -222,8 +232,8 @@ export async function PUT(request: Request, { params }: Params) {
     // --- Changelog Logic ---
     const propertyChanges: PropertyChangeDetail[] = [];
     const allPropertiesIncludingMeta = [...properties,
-        { name: '__workflowState__', type: 'string' } as Property, // Virtual property for logging
-        { name: '__owner__', type: 'string' } as Property // Virtual property for logging
+        { name: '__workflowState__', type: 'string' } as Property, 
+        { name: '__owner__', type: 'string' } as Property 
     ];
 
     for (const prop of allPropertiesIncludingMeta) {
@@ -255,10 +265,10 @@ export async function PUT(request: Request, { params }: Params) {
             oldValue = oldDataParsed[propName];
             newValue = newData[propName];
         } else {
-            continue; // No change for this regular property or meta-field not in requestBody
+            continue; 
         }
 
-        // Deep comparison for arrays and objects if necessary, for now simple compare
+        
         if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
             propertyChanges.push({ propertyName: propName, oldValue, newValue, oldLabel, newLabel });
         }
@@ -299,6 +309,8 @@ export async function PUT(request: Request, { params }: Params) {
       id: params.objectId,
       currentStateId: finalCurrentStateIdToSave,
       ownerId: finalOwnerIdToSave,
+      isDeleted: false, // Since this is an update, it must be active
+      deletedAt: null,
       ...newData
     };
     return NextResponse.json(updatedObject);
@@ -314,25 +326,61 @@ export async function PUT(request: Request, { params }: Params) {
   }
 }
 
-// DELETE an object
+// DELETE an object (now soft delete)
 export async function DELETE(request: Request, { params }: Params) {
   const currentUser = await getCurrentUserFromCookie();
   if (!currentUser || !['user', 'administrator'].includes(currentUser.role)) {
     return NextResponse.json({ error: 'Unauthorized to delete object' }, { status: 403 });
   }
-  // Note: Changelog for DELETE can be handled by ON DELETE CASCADE if desired,
-  // or explicitly here if specific "DELETED" log entry is needed (more complex).
-  // For now, relying on CASCADE to remove changelog entries for the deleted object.
+  
+  const db = await getDb();
+  await db.run('BEGIN TRANSACTION');
   try {
-    const db = await getDb();
-    const result = await db.run('DELETE FROM data_objects WHERE id = ? AND model_id = ?', params.objectId, params.modelId);
+    const currentTimestamp = new Date().toISOString();
+    const objectToSoftDelete = await db.get('SELECT data FROM data_objects WHERE id = ? AND model_id = ? AND (isDeleted = 0 OR isDeleted IS NULL)', params.objectId, params.modelId);
+
+    if (!objectToSoftDelete) {
+      await db.run('ROLLBACK');
+      return NextResponse.json({ error: 'Object not found or already deleted' }, { status: 404 });
+    }
+
+    const result = await db.run(
+      'UPDATE data_objects SET isDeleted = 1, deletedAt = ? WHERE id = ? AND model_id = ?',
+      currentTimestamp,
+      params.objectId,
+      params.modelId
+    );
 
     if (result.changes === 0) {
-      return NextResponse.json({ error: 'Object not found' }, { status: 404 });
+      await db.run('ROLLBACK'); // Should be caught by the check above, but as safeguard
+      return NextResponse.json({ error: 'Object not found or failed to soft delete' }, { status: 404 });
     }
-    return NextResponse.json({ message: 'Object deleted successfully' });
-  } catch (error) {
-    console.error(`Failed to delete object ${params.objectId}:`, error);
-    return NextResponse.json({ error: 'Failed to delete object' }, { status: 500 });
+
+    // Log soft delete event
+    const changelogId = crypto.randomUUID();
+    const changelogEventData: ChangelogEventData = {
+      type: 'DELETE',
+      status: 'deleted',
+      timestamp: currentTimestamp,
+      snapshot: JSON.parse(objectToSoftDelete.data), // Store snapshot of data before deletion
+    };
+    await db.run(
+      'INSERT INTO data_object_changelog (id, dataObjectId, modelId, changedAt, changedByUserId, changeType, changes) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      changelogId,
+      params.objectId,
+      params.modelId,
+      currentTimestamp,
+      currentUser?.id || null,
+      'DELETE',
+      JSON.stringify(changelogEventData)
+    );
+
+    await db.run('COMMIT');
+    return NextResponse.json({ message: 'Object soft deleted successfully' });
+  } catch (error: any) {
+    await db.run('ROLLBACK');
+    console.error(`Failed to soft delete object ${params.objectId}:`, error);
+    return NextResponse.json({ error: 'Failed to soft delete object', details: error.message }, { status: 500 });
   }
 }
+

@@ -4,11 +4,20 @@ import { getDb } from '@/lib/db';
 import type { DataObject } from '@/lib/types';
 
 // GET all data objects, grouped by model_id
-export async function GET() {
+export async function GET(request: Request) { // Add request to access URL
+  const { searchParams } = new URL(request.url);
+  const includeDeleted = searchParams.get('includeDeleted') === 'true';
+
   try {
     const db = await getDb();
-    // Include currentStateId and ownerId in the SELECT statement
-    const rows = await db.all('SELECT id, model_id, data, currentStateId, ownerId FROM data_objects');
+    let query = 'SELECT id, model_id, data, currentStateId, ownerId, isDeleted, deletedAt FROM data_objects';
+    const queryParams: any[] = [];
+
+    if (!includeDeleted) {
+      query += ' WHERE (isDeleted = 0 OR isDeleted IS NULL)';
+    }
+    
+    const rows = await db.all(query, ...queryParams);
     
     const allObjects: Record<string, DataObject[]> = {};
 
@@ -21,6 +30,8 @@ export async function GET() {
         id: row.id,
         currentStateId: row.currentStateId,
         ownerId: row.ownerId,
+        isDeleted: !!row.isDeleted,
+        deletedAt: row.deletedAt,
         ...objectData,
       });
     }
@@ -31,3 +42,4 @@ export async function GET() {
     return NextResponse.json({ error: 'Failed to fetch all objects' }, { status: 500 });
   }
 }
+

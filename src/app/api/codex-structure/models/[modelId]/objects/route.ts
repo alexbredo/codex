@@ -14,6 +14,10 @@ export async function GET(request: Request, { params }: Params) {
   if (!currentUser || !['user', 'administrator'].includes(currentUser.role)) {
     return NextResponse.json({ error: 'Unauthorized to view objects' }, { status: 403 });
   }
+
+  const { searchParams } = new URL(request.url);
+  const includeDeleted = searchParams.get('includeDeleted') === 'true';
+
   try {
     const db = await getDb();
     const modelExists = await db.get('SELECT id FROM models WHERE id = ?', params.modelId);
@@ -21,12 +25,23 @@ export async function GET(request: Request, { params }: Params) {
       return NextResponse.json({ error: 'Model not found' }, { status: 404 });
     }
 
-    // Include currentStateId and ownerId in the SELECT statement
-    const rows = await db.all('SELECT id, data, currentStateId, ownerId FROM data_objects WHERE model_id = ?', params.modelId);
+    let query = 'SELECT id, data, currentStateId, ownerId, isDeleted, deletedAt FROM data_objects WHERE model_id = ?';
+    const queryParams: any[] = [params.modelId];
+
+    if (!includeDeleted) {
+      query += ' AND (isDeleted = 0 OR isDeleted IS NULL)';
+    }
+    
+    query += ' ORDER BY CASE WHEN json_extract(data, \'$.name\') IS NOT NULL THEN json_extract(data, \'$.name\') WHEN json_extract(data, \'$.title\') IS NOT NULL THEN json_extract(data, \'$.title\') ELSE id END ASC';
+
+
+    const rows = await db.all(query, ...queryParams);
     const objects: DataObject[] = rows.map(row => ({
       id: row.id,
       currentStateId: row.currentStateId,
       ownerId: row.ownerId,
+      isDeleted: !!row.isDeleted,
+      deletedAt: row.deletedAt,
       ...JSON.parse(row.data), // createdAt and updatedAt will be in here
     }));
     return NextResponse.json(objects);
@@ -50,10 +65,12 @@ export async function POST(request: Request, { params }: Params) {
       id: objectId,
       currentStateId: _clientSuppliedStateId,
       ownerId: _clientSuppliedOwnerId,
-      createdAt: _clientSuppliedCreatedAt, // Ignore client-supplied audit fields
-      updatedAt: _clientSuppliedUpdatedAt, // Ignore client-supplied audit fields
+      createdAt: _clientSuppliedCreatedAt, 
+      updatedAt: _clientSuppliedUpdatedAt, 
+      isDeleted: _clientSuppliedIsDeleted, 
+      deletedAt: _clientSuppliedDeletedAt, 
       ...objectDataInput
-    }: Omit<DataObject, 'id' | 'currentStateId' | 'ownerId'> & { id: string, currentStateId?: string, ownerId?: string, createdAt?: string, updatedAt?: string } = await request.json();
+    }: Omit<DataObject, 'id' | 'currentStateId' | 'ownerId' | 'createdAt' | 'updatedAt' | 'isDeleted' | 'deletedAt'> & { id: string, currentStateId?: string, ownerId?: string, createdAt?: string, updatedAt?: string, isDeleted?: boolean, deletedAt?: string | null } = await request.json();
 
     const modelRow: Model | undefined = await db.get('SELECT id, workflowId FROM models WHERE id = ?', params.modelId);
     if (!modelRow) {
@@ -63,13 +80,13 @@ export async function POST(request: Request, { params }: Params) {
 
     const properties: Property[] = await db.all('SELECT * FROM properties WHERE model_id = ?', params.modelId);
 
-    // Validation loop (simplified for brevity, keep your existing validation)
+    // Validation loop
     for (const prop of properties) {
       const valueToCheck = objectDataInput[prop.name];
       if (prop.type === 'string' && prop.isUnique) {
         if (valueToCheck !== null && typeof valueToCheck !== 'undefined' && String(valueToCheck).trim() !== '') {
           const existingObject = await db.get(
-            `SELECT id FROM data_objects WHERE model_id = ? AND json_extract(data, '$.${prop.name}') = ?`,
+            `SELECT id FROM data_objects WHERE model_id = ? AND json_extract(data, '$.${prop.name}') = ? AND (isDeleted = 0 OR isDeleted IS NULL)`,
             params.modelId,
             valueToCheck
           );
@@ -138,7 +155,7 @@ export async function POST(request: Request, { params }: Params) {
     };
 
     await db.run(
-      'INSERT INTO data_objects (id, model_id, data, currentStateId, ownerId) VALUES (?, ?, ?, ?, ?)',
+      'INSERT INTO data_objects (id, model_id, data, currentStateId, ownerId, isDeleted, deletedAt) VALUES (?, ?, ?, ?, ?, 0, NULL)',
       objectId,
       params.modelId,
       JSON.stringify(finalObjectData),
@@ -150,9 +167,9 @@ export async function POST(request: Request, { params }: Params) {
     const changelogId = crypto.randomUUID();
     const changelogEventData: ChangelogEventData = {
       type: 'CREATE',
-      initialData: { ...finalObjectData } // Store a copy
+      initialData: { ...finalObjectData } 
     };
-    delete changelogEventData.initialData?.createdAt; // Don't log these as part of initial data diff
+    delete changelogEventData.initialData?.createdAt; 
     delete changelogEventData.initialData?.updatedAt;
 
     await db.run(
@@ -172,6 +189,8 @@ export async function POST(request: Request, { params }: Params) {
       id: objectId,
       currentStateId: finalCurrentStateId,
       ownerId: finalOwnerId,
+      isDeleted: false,
+      deletedAt: null,
       ...finalObjectData
     };
     return NextResponse.json(createdObject, { status: 201 });
@@ -185,3 +204,4 @@ export async function POST(request: Request, { params }: Params) {
     return NextResponse.json({ error: errorMessage, details: error.message }, { status: 500 });
   }
 }
+
