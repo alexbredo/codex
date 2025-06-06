@@ -8,6 +8,7 @@ import { useRouter, useParams } from 'next/navigation';
 import ObjectForm from '@/components/objects/object-form';
 import { createObjectFormSchema } from '@/components/objects/object-form-schema';
 import { useData } from '@/contexts/data-context';
+import { useAuth } from '@/contexts/auth-context'; // Import useAuth
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,7 +22,8 @@ export default function EditObjectPage() {
   const modelId = params.modelId as string;
   const objectId = params.objectId as string;
 
-  const { getModelById, updateObject, getWorkflowById, validationRulesets, isReady: dataContextIsReady, formatApiError } = useData();
+  const { getModelById, updateObject, getWorkflowById, validationRulesets, allUsers, isReady: dataContextIsReady, formatApiError } = useData(); // Get allUsers
+  const { user: currentUser, isLoading: authIsLoading } = useAuth(); // Get current authenticated user
   const { toast } = useToast();
 
   const [currentModel, setCurrentModel] = useState<Model | null>(null);
@@ -31,7 +33,7 @@ export default function EditObjectPage() {
   const [pageError, setPageError] = useState<string | null>(null);
 
   const dynamicSchema = useMemo(() => {
-    if (currentModel && dataContextIsReady) { // Ensure validationRulesets are ready
+    if (currentModel && dataContextIsReady) { 
       return createObjectFormSchema(currentModel, validationRulesets);
     }
     return z.object({});
@@ -46,7 +48,7 @@ export default function EditObjectPage() {
 
   useEffect(() => {
     const loadObjectForEditing = async () => {
-      if (!dataContextIsReady || !modelId || !objectId) {
+      if (!dataContextIsReady || !modelId || !objectId || authIsLoading) { // Wait for auth too
         return;
       }
       setIsLoadingPageData(true);
@@ -80,6 +82,7 @@ export default function EditObjectPage() {
 
         const formValues: Record<string, any> = {
           currentStateId: objectToEdit.currentStateId || null,
+          ownerId: objectToEdit.ownerId || null, // Initialize ownerId in form
         };
         foundModel.properties.forEach(prop => {
           formValues[prop.name] = objectToEdit[prop.name] ??
@@ -102,9 +105,9 @@ export default function EditObjectPage() {
     
     loadObjectForEditing();
 
-  }, [modelId, objectId, getModelById, getWorkflowById, dataContextIsReady, form, router, toast, formatApiError]);
+  }, [modelId, objectId, getModelById, getWorkflowById, dataContextIsReady, authIsLoading, form, router, toast, formatApiError]);
   
-  useEffect(() => { // Re-evaluate resolver when dynamicSchema changes
+  useEffect(() => { 
     form.resolver = zodResolver(dynamicSchema) as any;
   }, [dynamicSchema, form]);
 
@@ -153,6 +156,7 @@ export default function EditObjectPage() {
       }
 
       const updatePayload = { ...processedValues };
+      // ownerId is now part of 'values' and will be included if changed by admin in the form
 
       await updateObject(currentModel.id, editingObject.id, updatePayload);
       toast({ title: `${currentModel.name} Updated`, description: `The ${currentModel.name.toLowerCase()} has been updated.` });
@@ -167,7 +171,7 @@ export default function EditObjectPage() {
     }
   };
 
-  if (isLoadingPageData) {
+  if (isLoadingPageData || authIsLoading || !dataContextIsReady) { // Include authIsLoading and dataContextIsReady
     return (
       <div className="flex flex-col justify-center items-center h-screen">
         <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
@@ -220,6 +224,8 @@ export default function EditObjectPage() {
             isLoading={form.formState.isSubmitting}
             formObjectId={objectId}
             currentWorkflow={currentWorkflow}
+            allUsers={allUsers} // Pass all users
+            currentUser={currentUser} // Pass current authenticated user
           />
         </CardContent>
       </Card>

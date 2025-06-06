@@ -7,7 +7,7 @@ import { useData } from '@/contexts/data-context';
 import type { Model, DataObject, Property, WorkflowWithDetails, ValidationRuleset } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Edit, Loader2, ExternalLink, ImageIcon, CheckCircle2, ShieldAlert, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Edit, Loader2, ExternalLink, ImageIcon, CheckCircle2, ShieldAlert, ShieldCheck, UserCircle } from 'lucide-react'; // Added UserCircle
 import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
 import Link from 'next/link';
 import { getObjectDisplayValue } from '@/lib/utils';
@@ -31,7 +31,7 @@ export default function ViewObjectPage() {
   const objectId = params.objectId as string;
   const { toast } = useToast();
 
-  const { getModelById, models: allModels, getAllObjects, getWorkflowById, validationRulesets, isReady: dataContextIsReady, formatApiError } = useData();
+  const { getModelById, models: allModels, getAllObjects, getWorkflowById, validationRulesets, getUserById, isReady: dataContextIsReady, formatApiError } = useData();
 
   const [currentModel, setCurrentModel] = useState<Model | null>(null);
   const [viewingObject, setViewingObject] = useState<DataObject | null>(null);
@@ -47,6 +47,15 @@ export default function ViewObjectPage() {
     const state = currentWorkflow.states.find(s => s.id === stateId);
     return state ? state.name : 'Unknown State';
   }, [currentWorkflow]);
+
+  const ownerUsername = useMemo(() => {
+    if (viewingObject?.ownerId) {
+      const owner = getUserById(viewingObject.ownerId);
+      return owner?.username || 'Unknown User';
+    }
+    return 'Not Assigned';
+  }, [viewingObject, getUserById]);
+
 
   useEffect(() => {
     const loadObjectData = async () => {
@@ -271,14 +280,22 @@ export default function ViewObjectPage() {
         <CardHeader>
           <CardTitle className="text-3xl text-primary">{getObjectDisplayValue(viewingObject, currentModel, allModels, allDbObjects)}</CardTitle>
           <CardDescription>Detailed view of this {currentModel.name.toLowerCase()} object.</CardDescription>
-           {currentWorkflow && (
-            <div className="mt-2">
-                <Badge variant={viewingObject.currentStateId ? "default" : "secondary"} className="text-sm">
-                    <CheckCircle2 className="mr-2 h-4 w-4" />
-                    State: {objectStateName}
-                </Badge>
+          <div className="mt-2 space-y-1">
+            {currentWorkflow && (
+              <div>
+                  <Badge variant={viewingObject.currentStateId ? "default" : "secondary"} className="text-sm">
+                      <CheckCircle2 className="mr-2 h-4 w-4" />
+                      State: {objectStateName}
+                  </Badge>
+              </div>
+            )}
+            <div>
+              <Badge variant="outline" className="text-sm">
+                <UserCircle className="mr-2 h-4 w-4 text-muted-foreground" />
+                Owned By: {ownerUsername}
+              </Badge>
             </div>
-          )}
+          </div>
         </CardHeader>
         <TooltipProvider>
         <CardContent className="space-y-6">

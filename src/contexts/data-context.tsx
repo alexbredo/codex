@@ -7,12 +7,20 @@ import type { Model, DataObject, Property, ModelGroup, WorkflowWithDetails, Vali
 
 const HIGHLIGHT_DURATION_MS = 3000;
 
-export interface DataContextType { // Exported for use in withAuth if needed
+// User type, assuming it's similar to what AuthContext might use
+interface User {
+  id: string;
+  username: string;
+  role: 'user' | 'administrator';
+}
+
+export interface DataContextType {
   models: Model[];
   objects: Record<string, DataObject[]>;
   modelGroups: ModelGroup[];
   workflows: WorkflowWithDetails[];
   validationRulesets: ValidationRuleset[];
+  allUsers: User[]; // Added to store all users
   lastChangedInfo: { modelId: string, objectId: string, changeType: 'added' | 'updated' } | null;
 
   addModel: (modelData: Omit<Model, 'id' | 'namespace' | 'workflowId'> & { namespace?: string, workflowId?: string | null }) => Promise<Model>;
@@ -21,7 +29,7 @@ export interface DataContextType { // Exported for use in withAuth if needed
   getModelById: (modelId: string) => Model | undefined;
   getModelByName: (name: string) => Model | undefined;
 
-  addObject: (modelId: string, objectData: Omit<DataObject, 'id' | 'currentStateId'> & {currentStateId?: string | null}, objectId?: string) => Promise<DataObject>;
+  addObject: (modelId: string, objectData: Omit<DataObject, 'id' | 'currentStateId' | 'ownerId'> & {currentStateId?: string | null, ownerId?: string | null}, objectId?: string) => Promise<DataObject>;
   updateObject: (modelId: string, objectId: string, updates: Partial<Omit<DataObject, 'id'>>) => Promise<DataObject | undefined>;
   deleteObject: (modelId: string, objectId: string) => Promise<void>;
   getObjectsByModelId: (modelId: string) => DataObject[];
@@ -43,6 +51,7 @@ export interface DataContextType { // Exported for use in withAuth if needed
   updateValidationRuleset: (rulesetId: string, updates: Partial<Omit<ValidationRuleset, 'id'>>) => Promise<ValidationRuleset | undefined>;
   deleteValidationRuleset: (rulesetId: string) => Promise<void>;
   getValidationRulesetById: (rulesetId: string) => ValidationRuleset | undefined;
+  getUserById: (userId: string | null | undefined) => User | undefined; // Added user getter
 
   isReady: boolean;
   isBackgroundFetching: boolean;
@@ -127,6 +136,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [modelGroups, setModelGroups] = useState<ModelGroup[]>([]);
   const [workflows, setWorkflows] = useState<WorkflowWithDetails[]>([]);
   const [validationRulesets, setValidationRulesets] = useState<ValidationRuleset[]>([]);
+  const [allUsers, setAllUsers] = useState<User[]>([]); // State for all users
   const [isReady, setIsReady] = useState(false);
   const [isBackgroundFetching, setIsBackgroundFetching] = useState(false);
   const [lastChangedInfo, setLastChangedInfo] = useState<{ modelId: string, objectId: string, changeType: 'added' | 'updated' } | null>(null);
@@ -173,6 +183,22 @@ export function DataProvider({ children }: { children: ReactNode }) {
       return null;
     }
   }, []);
+  
+  const fetchAllUsersInternal = useCallback(async (): Promise<User[] | null> => {
+    try {
+      const response = await fetch('/api/users'); // API endpoint updated to allow authenticated users
+      if (!response.ok) {
+        const errorMessage = await formatApiError(response, 'Failed to fetch users');
+        throw new Error(errorMessage);
+      }
+      const usersDataFromApi: User[] = await response.json();
+      return usersDataFromApi.sort((a, b) => a.username.localeCompare(b.username));
+    } catch (error: any) {
+      console.error("[DataContext] Failed to load users from API:", error.message, error);
+      return null;
+    }
+  }, []);
+
 
   const fetchData = useCallback(async (triggeredBy?: string) => {
     if (isFetchingDataRef.current) {
@@ -222,8 +248,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
         allModelIds.forEach(modelId => {
           const newObjectsForModel = newAllObjectsData[modelId] || [];
           const currentObjectsForModel = prevAllObjects[modelId] || [];
-          const newObjectsJson = JSON.stringify([...newObjectsForModel].sort((a, b) => a.id.localeCompare(b.id)));
-          const currentObjectsJson = JSON.stringify([...currentObjectsForModel].sort((a, b) => a.id.localeCompare(b.id)));
+          // Make sure ownerId is included if present
+          const mapWithObjects = (objs: DataObject[]) => objs.map(obj => ({...obj, ownerId: obj.ownerId ?? null}));
+          
+          const newObjectsJson = JSON.stringify([...mapWithObjects(newObjectsForModel)].sort((a, b) => a.id.localeCompare(b.id)));
+          const currentObjectsJson = JSON.stringify([...mapWithObjects(currentObjectsForModel)].sort((a, b) => a.id.localeCompare(b.id)));
+
 
           if (newObjectsJson !== currentObjectsJson) {
             nextAllObjectsState[modelId] = newObjectsForModel;
@@ -259,6 +289,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
         });
       }
 
+      const newUsersData = await fetchAllUsersInternal();
+      if (newUsersData) {
+        setAllUsers(prevUsers => {
+          const newSortedJson = JSON.stringify([...newUsersData].sort((a,b) => a.id.localeCompare(b.id)));
+          const prevSortedJson = JSON.stringify([...prevUsers].sort((a,b) => a.id.localeCompare(b.id)));
+          return newSortedJson !== prevSortedJson ? newUsersData : prevUsers;
+        });
+      }
+
+
     } catch (error: any) {
       console.error(`[DataContext] Error during fetchData (Trigger: ${triggeredBy}):`, error.message, error);
     } finally {
@@ -270,7 +310,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       isFetchingDataRef.current = false;
       console.log(`[DataContext] Finished fetchData. Trigger: ${triggeredBy || 'Unknown'}`);
     }
-  }, [fetchWorkflowsInternal, fetchValidationRulesetsInternal]);
+  }, [fetchWorkflowsInternal, fetchValidationRulesetsInternal, fetchAllUsersInternal]);
 
 
   useEffect(() => {
@@ -387,7 +427,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const getModelById = useCallback((modelId: string) => models.find((model) => model.id === modelId), [models]);
   const getModelByName = useCallback((name: string) => models.find((model) => model.name.toLowerCase() === name.toLowerCase()), [models]);
 
-  const addObject = useCallback(async (modelId: string, objectData: Omit<DataObject, 'id' | 'currentStateId'> & {currentStateId?: string | null}, objectId?: string): Promise<DataObject> => {
+  const addObject = useCallback(async (modelId: string, objectData: Omit<DataObject, 'id' | 'currentStateId' | 'ownerId'> & {currentStateId?: string | null, ownerId?: string | null}, objectId?: string): Promise<DataObject> => {
     const finalObjectId = objectId || crypto.randomUUID();
     const payload = { ...objectData, id: finalObjectId }; 
     const response = await fetch(`/api/codex-structure/models/${modelId}/objects`, {
@@ -402,12 +442,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
       throw new Error(errorMessage);
     }
     const newObject: DataObject = await response.json();
-    setObjects((prev) => ({ ...prev, [modelId]: [...(prev[modelId] || []), newObject] }));
+    // Optimistic update or refetch
+    await fetchData(`After Add Object to ${modelId}`);
     setLastChangedInfo({ modelId, objectId: newObject.id, changeType: 'added' });
     if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
     highlightTimeoutRef.current = setTimeout(() => setLastChangedInfo(null), HIGHLIGHT_DURATION_MS);
     return newObject;
-  }, []);
+  }, [fetchData]);
 
   const updateObject = useCallback(async (modelId: string, objectId: string, updates: Partial<Omit<DataObject, 'id'>>): Promise<DataObject | undefined> => {
     const response = await fetch(`/api/codex-structure/models/${modelId}/objects/${objectId}`, {
@@ -422,21 +463,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
       throw new Error(errorMessage);
     }
     const updatedObjectFromApi: DataObject = await response.json();
-    setObjects((prev) => ({
-      ...prev,
-      [modelId]: (prev[modelId] || []).map((obj) => obj.id === objectId ? { ...obj, ...updatedObjectFromApi } : obj),
-    }));
+    await fetchData(`After Update Object ${objectId} in ${modelId}`);
     setLastChangedInfo({ modelId, objectId, changeType: 'updated' });
     if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
     highlightTimeoutRef.current = setTimeout(() => setLastChangedInfo(null), HIGHLIGHT_DURATION_MS);
     return updatedObjectFromApi;
-  }, []);
+  }, [fetchData]);
 
   const deleteObject = useCallback(async (modelId: string, objectId: string) => {
     const response = await fetch(`/api/codex-structure/models/${modelId}/objects/${objectId}`, { method: 'DELETE' });
     if (!response.ok) throw new Error(await formatApiError(response, `Failed to delete object ${objectId} from model ${modelId}`));
-    setObjects((prev) => ({ ...prev, [modelId]: (prev[modelId] || []).filter((obj) => obj.id !== objectId) }));
-  }, []);
+    await fetchData(`After Delete Object ${objectId} from ${modelId}`);
+  }, [fetchData]);
 
   const getObjectsByModelId = useCallback((modelId: string) => objects[modelId] || [], [objects]);
   const getAllObjects = useCallback(() => objects, [objects]);
@@ -499,7 +537,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const getWorkflowById = useCallback((workflowId: string) => workflows.find((wf) => wf.id === workflowId), [workflows]);
 
-  // Validation Ruleset CRUD
   const addValidationRuleset = useCallback(async (rulesetData: Omit<ValidationRuleset, 'id'>): Promise<ValidationRuleset> => {
     const response = await fetch('/api/codex-structure/validation-rulesets', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rulesetData),
@@ -527,14 +564,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [fetchData]);
 
   const getValidationRulesetById = useCallback((rulesetId: string) => validationRulesets.find(rs => rs.id === rulesetId), [validationRulesets]);
+  const getUserById = useCallback((userId: string | null | undefined) => allUsers.find(u => u.id === userId), [allUsers]);
+
 
   const contextValue: DataContextType = {
-    models, objects, modelGroups, workflows, validationRulesets, lastChangedInfo,
+    models, objects, modelGroups, workflows, validationRulesets, allUsers, lastChangedInfo,
     addModel, updateModel, deleteModel, getModelById, getModelByName,
     addObject, updateObject, deleteObject, getObjectsByModelId, getAllObjects,
     addModelGroup, updateModelGroup, deleteModelGroup, getModelGroupById, getModelGroupByName, getAllModelGroups,
     addWorkflow, updateWorkflow, deleteWorkflow, getWorkflowById, 
     addValidationRuleset, updateValidationRuleset, deleteValidationRuleset, getValidationRulesetById,
+    getUserById,
     isReady, isBackgroundFetching, fetchData, formatApiError,
   };
 

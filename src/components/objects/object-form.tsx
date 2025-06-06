@@ -9,7 +9,14 @@ import type { Model, DataObject, WorkflowWithDetails, WorkflowStateWithSuccessor
 import AdaptiveFormField from './adaptive-form-field';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useAuth } from '@/contexts/auth-context'; // For getting current user role
 
+// User type for allUsers prop
+interface User {
+  id: string;
+  username: string;
+  role: 'user' | 'administrator';
+}
 interface ObjectFormProps {
   form: UseFormReturn<Record<string, any>>;
   model: Model;
@@ -17,11 +24,15 @@ interface ObjectFormProps {
   onCancel: () => void;
   isLoading?: boolean;
   existingObject?: DataObject;
-  formObjectId?: string | null; // Used to pass objectId for image uploads
+  formObjectId?: string | null; 
   currentWorkflow?: WorkflowWithDetails | null;
+  allUsers?: User[]; // Make allUsers optional as it might not always be passed
+  currentUser?: User | null; // Current authenticated user
 }
 
 const INTERNAL_NO_STATE_CHANGE = "__NO_STATE_CHANGE__";
+const INTERNAL_NO_OWNER_SELECTED = "__NO_OWNER_SELECTED__";
+
 
 export default function ObjectForm({
   form,
@@ -32,6 +43,8 @@ export default function ObjectForm({
   existingObject,
   formObjectId,
   currentWorkflow,
+  allUsers = [], // Default to empty array if not provided
+  currentUser,
 }: ObjectFormProps) {
   const formContext = existingObject ? 'edit' : 'create';
 
@@ -44,10 +57,7 @@ export default function ObjectForm({
     
     if (objCurrentState) {
       currentStateName = objCurrentState.name;
-      // Add current state as an option (marked as current)
       availableStatesForSelect.push({ value: objCurrentState.id, label: `${objCurrentState.name} (Current)`, isCurrent: true });
-      
-      // Add successor states
       objCurrentState.successorStateIds.forEach(successorId => {
         const successorState = currentWorkflow.states.find(s => s.id === successorId);
         if (successorState) {
@@ -55,7 +65,6 @@ export default function ObjectForm({
         }
       });
     } else if (objCurrentStateId === null || objCurrentStateId === undefined) {
-      // If object has no current state, but workflow exists, allow selection of initial state if any
       currentStateName = "None (No Current State)";
       availableStatesForSelect.push({ value: INTERNAL_NO_STATE_CHANGE, label: "(No Current State)", isCurrent: true });
       const initialWfState = currentWorkflow.states.find(s => s.isInitial);
@@ -63,12 +72,12 @@ export default function ObjectForm({
         availableStatesForSelect.push({ value: initialWfState.id, label: `${initialWfState.name} (Set Initial)`, isCurrent: false });
       }
     } else {
-        // Current state ID exists but not found in workflow (edge case, e.g. workflow changed)
         currentStateName = `Unknown State (ID: ${objCurrentStateId.substring(0,8)}...)`;
         availableStatesForSelect.push({ value: objCurrentStateId, label: `${currentStateName} (Current)`, isCurrent: true });
     }
   }
 
+  const isAdmin = currentUser?.role === 'administrator';
 
   return (
     <Form {...form}>
@@ -86,7 +95,6 @@ export default function ObjectForm({
                           onValueChange={(value) => {
                             field.onChange(value === INTERNAL_NO_STATE_CHANGE ? (existingObject?.currentStateId || null) : value)
                           }}
-                          // Ensure value is a string, RHF might provide null. If null/undefined, use placeholder.
                           value={field.value ? String(field.value) : (existingObject?.currentStateId ? String(existingObject.currentStateId) : INTERNAL_NO_STATE_CHANGE) }
                         >
                           <FormControl>
@@ -100,12 +108,12 @@ export default function ObjectForm({
                                 {stateOption.label}
                               </SelectItem>
                             ))}
-                             {availableStatesForSelect.length === 0 && objCurrentStateId && (
-                                 <SelectItem value={objCurrentStateId} disabled>
-                                    {currentStateName || `Current State (ID: ${objCurrentStateId.substring(0,8)}...)`}
+                             {availableStatesForSelect.length === 0 && existingObject?.currentStateId && (
+                                 <SelectItem value={existingObject.currentStateId} disabled>
+                                    {currentStateName || `Current State (ID: ${existingObject.currentStateId.substring(0,8)}...)`}
                                 </SelectItem>
                             )}
-                            {availableStatesForSelect.length === 0 && !objCurrentStateId && (
+                            {availableStatesForSelect.length === 0 && !existingObject?.currentStateId && (
                                  <SelectItem value={INTERNAL_NO_STATE_CHANGE} disabled>
                                     (No Current State)
                                 </SelectItem>
@@ -120,6 +128,41 @@ export default function ObjectForm({
                     )}
                   />
                 )}
+
+                {formContext === 'edit' && isAdmin && (
+                  <FormField
+                    control={form.control}
+                    name="ownerId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Owner</FormLabel>
+                        <Select
+                          onValueChange={(value) => field.onChange(value === INTERNAL_NO_OWNER_SELECTED ? null : value)}
+                          value={field.value || INTERNAL_NO_OWNER_SELECTED}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select an owner" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value={INTERNAL_NO_OWNER_SELECTED}>-- No Owner / Unassigned --</SelectItem>
+                            {allUsers.map(user => (
+                              <SelectItem key={user.id} value={user.id}>
+                                {user.username} ({user.role})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormDescription>
+                          Assign or change the owner of this record. (Admin only)
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+
 
                 {model.properties.map((property) => (
                 <AdaptiveFormField
