@@ -45,6 +45,17 @@ export function MultiSelectAutocomplete({
 }: MultiSelectAutocompleteProps) {
   const [open, setOpen] = React.useState(false);
   const [inputValue, setInputValue] = React.useState("");
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    if (open && inputRef.current) {
+      // Timeout to allow the popover to render and be focusable
+      const timeoutId = setTimeout(() => {
+        inputRef.current?.focus();
+      }, 0);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [open]);
 
   const handleSelect = (value: string) => {
     if (!selected.includes(value)) {
@@ -94,11 +105,11 @@ export function MultiSelectAutocomplete({
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="w-[--radix-popover-trigger-width] p-0"
-        data-multiselect-popover-content="true" // Added data attribute
+        className="w-[--radix-popover-trigger-width] p-0 z-[51]" // Increased z-index
+        data-multiselect-popover-content="true"
         onPointerDownOutside={(event) => {
-          // Prevent Dialog from closing when interacting with Popover content
-          // This is a first line of defense. The Dialog's onInteractOutside will be more robust for portalled content.
+          // Prevent the popover from closing if the click is inside another popover or select (e.g. ColorPicker)
+          // More importantly, prevent Dialog from closing due to this interaction
           event.preventDefault();
         }}
       >
@@ -110,6 +121,7 @@ export function MultiSelectAutocomplete({
           }}
         >
           <CommandInput
+            ref={inputRef} // Added ref
             placeholder="Search items..."
             value={inputValue}
             onValueChange={setInputValue}
