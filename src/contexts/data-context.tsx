@@ -16,12 +16,13 @@ interface User {
 
 export interface DataContextType {
   models: Model[];
-  objects: Record<string, DataObject[]>;
+  objects: Record<string, DataObject[]>; // Stores active objects
+  deletedObjects: Record<string, DataObject[]>; // Stores soft-deleted objects
   modelGroups: ModelGroup[];
   workflows: WorkflowWithDetails[];
   validationRulesets: ValidationRuleset[];
-  allUsers: User[]; // Added to store all users
-  lastChangedInfo: { modelId: string, objectId: string, changeType: 'added' | 'updated' } | null;
+  allUsers: User[];
+  lastChangedInfo: { modelId: string, objectId: string, changeType: 'added' | 'updated' | 'restored' | 'deleted' } | null;
 
   addModel: (modelData: Omit<Model, 'id' | 'namespace' | 'workflowId'> & { namespace?: string, workflowId?: string | null }) => Promise<Model>;
   updateModel: (modelId: string, updates: Partial<Omit<Model, 'id' | 'properties' | 'displayPropertyNames' | 'namespace' | 'workflowId'>> & { properties?: Property[], displayPropertyNames?: string[], namespace?: string, workflowId?: string | null }) => Promise<Model | undefined>;
@@ -31,9 +32,10 @@ export interface DataContextType {
 
   addObject: (modelId: string, objectData: Omit<DataObject, 'id' | 'currentStateId' | 'ownerId'> & {currentStateId?: string | null, ownerId?: string | null}, objectId?: string) => Promise<DataObject>;
   updateObject: (modelId: string, objectId: string, updates: Partial<Omit<DataObject, 'id'>>) => Promise<DataObject | undefined>;
-  deleteObject: (modelId: string, objectId: string) => Promise<void>;
-  getObjectsByModelId: (modelId: string) => DataObject[];
-  getAllObjects: () => Record<string, DataObject[]>;
+  deleteObject: (modelId: string, objectId: string) => Promise<void>; // This will now soft delete
+  restoreObject: (modelId: string, objectId: string) => Promise<DataObject | undefined>; // New restore function
+  getObjectsByModelId: (modelId: string, includeDeleted?: boolean) => DataObject[]; // Added includeDeleted flag
+  getAllObjects: (includeDeleted?: boolean) => Record<string, DataObject[]>; // Added includeDeleted flag
   
   addModelGroup: (groupData: Omit<ModelGroup, 'id'>) => Promise<ModelGroup>;
   updateModelGroup: (groupId: string, updates: Partial<Omit<ModelGroup, 'id'>>) => Promise<ModelGroup | undefined>;
@@ -51,7 +53,7 @@ export interface DataContextType {
   updateValidationRuleset: (rulesetId: string, updates: Partial<Omit<ValidationRuleset, 'id'>>) => Promise<ValidationRuleset | undefined>;
   deleteValidationRuleset: (rulesetId: string) => Promise<void>;
   getValidationRulesetById: (rulesetId: string) => ValidationRuleset | undefined;
-  getUserById: (userId: string | null | undefined) => User | undefined; // Added user getter
+  getUserById: (userId: string | null | undefined) => User | undefined;
 
   isReady: boolean;
   isBackgroundFetching: boolean;
@@ -132,14 +134,15 @@ const formatApiError = async (response: Response, defaultMessage: string): Promi
 
 export function DataProvider({ children }: { children: ReactNode }) {
   const [models, setModels] = useState<Model[]>([]);
-  const [objects, setObjects] = useState<Record<string, DataObject[]>>({});
+  const [objects, setObjects] = useState<Record<string, DataObject[]>>({}); // Active objects
+  const [deletedObjects, setDeletedObjects] = useState<Record<string, DataObject[]>>({}); // Soft-deleted objects
   const [modelGroups, setModelGroups] = useState<ModelGroup[]>([]);
   const [workflows, setWorkflows] = useState<WorkflowWithDetails[]>([]);
   const [validationRulesets, setValidationRulesets] = useState<ValidationRuleset[]>([]);
-  const [allUsers, setAllUsers] = useState<User[]>([]); // State for all users
+  const [allUsers, setAllUsers] = useState<User[]>([]);
   const [isReady, setIsReady] = useState(false);
   const [isBackgroundFetching, setIsBackgroundFetching] = useState(false);
-  const [lastChangedInfo, setLastChangedInfo] = useState<{ modelId: string, objectId: string, changeType: 'added' | 'updated' } | null>(null);
+  const [lastChangedInfo, setLastChangedInfo] = useState<{ modelId: string, objectId: string, changeType: 'added' | 'updated' | 'restored' | 'deleted' } | null>(null);
 
   const highlightTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isFetchingDataRef = useRef(false);
@@ -186,7 +189,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   
   const fetchAllUsersInternal = useCallback(async (): Promise<User[] | null> => {
     try {
-      const response = await fetch('/api/users'); // API endpoint updated to allow authenticated users
+      const response = await fetch('/api/users');
       if (!response.ok) {
         const errorMessage = await formatApiError(response, 'Failed to fetch users');
         throw new Error(errorMessage);
@@ -236,40 +239,22 @@ export function DataProvider({ children }: { children: ReactNode }) {
         return JSON.stringify(newModelsSorted) !== JSON.stringify(prevModelsSorted) ? newModelsMapped : prevModels;
       });
 
-      const allObjectsResponse = await fetch('/api/codex-structure/objects/all');
-      if (!allObjectsResponse.ok) throw new Error(await formatApiError(allObjectsResponse, 'Failed to fetch all objects'));
-      const newAllObjectsData: Record<string, DataObject[]> = await allObjectsResponse.json();
+      // Fetch active objects
+      const activeObjectsResponse = await fetch('/api/codex-structure/objects/all'); // Default is non-deleted
+      if (!activeObjectsResponse.ok) throw new Error(await formatApiError(activeObjectsResponse, 'Failed to fetch active objects'));
+      const newActiveObjectsData: Record<string, DataObject[]> = await activeObjectsResponse.json();
+      setObjects(newActiveObjectsData); // Direct set for active objects
+
+      // Fetch soft-deleted objects
+      const deletedObjectsResponse = await fetch('/api/codex-structure/objects/all?includeDeleted=true');
+      if (!deletedObjectsResponse.ok) throw new Error(await formatApiError(deletedObjectsResponse, 'Failed to fetch all objects including deleted'));
+      const allObjectsIncludingDeleted: Record<string, DataObject[]> = await deletedObjectsResponse.json();
       
-      setObjects(prevAllObjects => {
-        let hasChanged = false;
-        const nextAllObjectsState: Record<string, DataObject[]> = {};
-        const allModelIds = new Set([...Object.keys(prevAllObjects), ...Object.keys(newAllObjectsData)]);
-
-        allModelIds.forEach(modelId => {
-          const newObjectsForModel = newAllObjectsData[modelId] || [];
-          const currentObjectsForModel = prevAllObjects[modelId] || [];
-          // Make sure ownerId is included if present
-          const mapWithObjects = (objs: DataObject[]) => objs.map(obj => ({...obj, ownerId: obj.ownerId ?? null}));
-          
-          const newObjectsJson = JSON.stringify([...mapWithObjects(newObjectsForModel)].sort((a, b) => a.id.localeCompare(b.id)));
-          const currentObjectsJson = JSON.stringify([...mapWithObjects(currentObjectsForModel)].sort((a, b) => a.id.localeCompare(b.id)));
-
-
-          if (newObjectsJson !== currentObjectsJson) {
-            nextAllObjectsState[modelId] = newObjectsForModel;
-            hasChanged = true;
-          } else if (prevAllObjects[modelId]) {
-            nextAllObjectsState[modelId] = prevAllObjects[modelId]; // Keep old reference
-          } else if (newObjectsForModel.length > 0) { // Case where prev was empty, new has items
-            nextAllObjectsState[modelId] = newObjectsForModel;
-            hasChanged = true;
-          }
-        });
-        if (!hasChanged && Object.keys(prevAllObjects).length === Object.keys(nextAllObjectsState).length) {
-          return prevAllObjects;
-        }
-        return nextAllObjectsState;
-      });
+      const newDeletedObjectsData: Record<string, DataObject[]> = {};
+      for (const modelId in allObjectsIncludingDeleted) {
+        newDeletedObjectsData[modelId] = allObjectsIncludingDeleted[modelId].filter(obj => obj.isDeleted);
+      }
+      setDeletedObjects(newDeletedObjectsData); // Direct set for deleted objects
 
       const newWorkflowsData = await fetchWorkflowsInternal();
       if (newWorkflowsData) {
@@ -297,7 +282,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
           return newSortedJson !== prevSortedJson ? newUsersData : prevUsers;
         });
       }
-
 
     } catch (error: any) {
       console.error(`[DataContext] Error during fetchData (Trigger: ${triggeredBy}):`, error.message, error);
@@ -351,7 +335,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
         workflowId: modelData.workflowId,
         properties: propertiesForApi 
     };
-    console.log("[DataContext] addModel - Payload to API:", JSON.stringify(payload, null, 2));
 
     const response = await fetch('/api/codex-structure/models', {
       method: 'POST',
@@ -400,9 +383,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       workflowId: Object.prototype.hasOwnProperty.call(updates, 'workflowId') ? updates.workflowId : existingModel.workflowId,
       properties: propertiesForApi,
     };
-    
-    console.log("[DataContext] updateModel - Payload to API:", JSON.stringify(payload, null, 2));
-
 
     const response = await fetch(`/api/codex-structure/models/${modelId}`, {
       method: 'PUT',
@@ -442,7 +422,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       throw new Error(errorMessage);
     }
     const newObject: DataObject = await response.json();
-    // Optimistic update or refetch
     await fetchData(`After Add Object to ${modelId}`);
     setLastChangedInfo({ modelId, objectId: newObject.id, changeType: 'added' });
     if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
@@ -470,14 +449,49 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return updatedObjectFromApi;
   }, [fetchData]);
 
-  const deleteObject = useCallback(async (modelId: string, objectId: string) => {
+  const deleteObject = useCallback(async (modelId: string, objectId: string) => { // Now soft deletes
     const response = await fetch(`/api/codex-structure/models/${modelId}/objects/${objectId}`, { method: 'DELETE' });
-    if (!response.ok) throw new Error(await formatApiError(response, `Failed to delete object ${objectId} from model ${modelId}`));
-    await fetchData(`After Delete Object ${objectId} from ${modelId}`);
+    if (!response.ok) throw new Error(await formatApiError(response, `Failed to soft delete object ${objectId} from model ${modelId}`));
+    await fetchData(`After Soft Delete Object ${objectId} from ${modelId}`);
+    setLastChangedInfo({ modelId, objectId, changeType: 'deleted' });
+    if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
+    highlightTimeoutRef.current = setTimeout(() => setLastChangedInfo(null), HIGHLIGHT_DURATION_MS);
   }, [fetchData]);
 
-  const getObjectsByModelId = useCallback((modelId: string) => objects[modelId] || [], [objects]);
-  const getAllObjects = useCallback(() => objects, [objects]);
+  const restoreObject = useCallback(async (modelId: string, objectId: string): Promise<DataObject | undefined> => {
+    const response = await fetch(`/api/codex-structure/models/${modelId}/objects/${objectId}/restore`, { method: 'POST' });
+    if (!response.ok) throw new Error(await formatApiError(response, `Failed to restore object ${objectId} in model ${modelId}`));
+    const restoredObjectFromApi: DataObject = await response.json();
+    await fetchData(`After Restore Object ${objectId} in ${modelId}`);
+    setLastChangedInfo({ modelId, objectId, changeType: 'restored' });
+    if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
+    highlightTimeoutRef.current = setTimeout(() => setLastChangedInfo(null), HIGHLIGHT_DURATION_MS);
+    return restoredObjectFromApi;
+  }, [fetchData]);
+
+  const getObjectsByModelId = useCallback((modelId: string, includeDeleted = false) => {
+    if (includeDeleted) {
+      const active = objects[modelId] || [];
+      const deleted = deletedObjects[modelId] || [];
+      // Combine and ensure no duplicates if an object was somehow in both (shouldn't happen with proper API logic)
+      const combined = [...active, ...deleted];
+      const uniqueCombined = Array.from(new Map(combined.map(item => [item.id, item])).values());
+      return uniqueCombined;
+    }
+    return objects[modelId] || [];
+  }, [objects, deletedObjects]);
+
+  const getAllObjects = useCallback((includeDeleted = false) => {
+    if (includeDeleted) {
+      const allCombinedObjects: Record<string, DataObject[]> = {};
+      const allModelIds = new Set([...Object.keys(objects), ...Object.keys(deletedObjects)]);
+      allModelIds.forEach(modelId => {
+        allCombinedObjects[modelId] = getObjectsByModelId(modelId, true);
+      });
+      return allCombinedObjects;
+    }
+    return objects;
+  }, [objects, deletedObjects, getObjectsByModelId]);
 
   const addModelGroup = useCallback(async (groupData: Omit<ModelGroup, 'id'>): Promise<ModelGroup> => {
     const response = await fetch('/api/codex-structure/model-groups', {
@@ -568,9 +582,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
 
   const contextValue: DataContextType = {
-    models, objects, modelGroups, workflows, validationRulesets, allUsers, lastChangedInfo,
+    models, objects, deletedObjects, modelGroups, workflows, validationRulesets, allUsers, lastChangedInfo,
     addModel, updateModel, deleteModel, getModelById, getModelByName,
-    addObject, updateObject, deleteObject, getObjectsByModelId, getAllObjects,
+    addObject, updateObject, deleteObject, restoreObject, getObjectsByModelId, getAllObjects,
     addModelGroup, updateModelGroup, deleteModelGroup, getModelGroupById, getModelGroupByName, getAllModelGroups,
     addWorkflow, updateWorkflow, deleteWorkflow, getWorkflowById, 
     addValidationRuleset, updateValidationRuleset, deleteValidationRuleset, getValidationRulesetById,
