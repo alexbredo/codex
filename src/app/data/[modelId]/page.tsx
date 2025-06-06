@@ -91,6 +91,7 @@ const INTERNAL_NO_REFERENCES_VALUE = "__NO_REFERENCES__";
 const INTERNAL_WORKFLOW_STATE_UPDATE_KEY = "__workflowStateUpdate__";
 const INTERNAL_CLEAR_RELATIONSHIP_VALUE = "__CLEAR_RELATIONSHIP__";
 const NO_GROUPING_VALUE = "__NO_GROUPING__";
+const WORKFLOW_STATE_GROUPING_KEY = "__WORKFLOW_STATE_GROUPING__";
 
 
 export default function DataObjectsPage() {
@@ -145,9 +146,7 @@ export default function DataObjectsPage() {
         setCurrentModel(foundModel);
         setLocalObjects(getObjectsByModelId(foundModel.id));
 
-        // Load view mode from session storage
         const savedViewMode = sessionStorage.getItem(`codexStructure-viewMode-${foundModel.id}`) as ViewMode | null;
-        // Load grouping key from session storage
         const savedGroupingKey = sessionStorage.getItem(`codexStructure-grouping-${foundModel.id}`);
         if (savedGroupingKey && savedGroupingKey !== NO_GROUPING_VALUE) {
             setGroupingPropertyKey(savedGroupingKey);
@@ -161,9 +160,9 @@ export default function DataObjectsPage() {
           setCurrentWorkflow(wf || null);
           if (savedViewMode && (['table', 'gallery', 'kanban'] as ViewMode[]).includes(savedViewMode)) {
             setViewMode(savedViewMode);
-          } else if (wf && !savedViewMode) { // if workflow exists and no specific view mode saved, default to Kanban
+          } else if (wf && !savedViewMode) { 
              setViewMode('kanban');
-          } else { // if no workflow, or savedViewMode is table/gallery
+          } else { 
              setViewMode(savedViewMode || 'table');
           }
         } else {
@@ -209,11 +208,17 @@ export default function DataObjectsPage() {
 
   const groupableProperties = useMemo(() => {
     if (!currentModel) return [];
-    return currentModel.properties.filter(
+    const props = currentModel.properties.filter(
       p => ['string', 'number', 'boolean', 'date', 'rating'].includes(p.type) ||
            (p.type === 'relationship' && p.relationshipType === 'one')
-    ).sort((a,b) => a.name.localeCompare(b.name));
-  }, [currentModel]);
+    ).map(p => ({ id: p.id, name: p.name, isWorkflowState: false }))
+     .sort((a,b) => a.name.localeCompare(b.name));
+
+    if (currentWorkflow && currentWorkflow.states.length > 0) {
+        props.unshift({ id: WORKFLOW_STATE_GROUPING_KEY, name: "Workflow State", isWorkflowState: true });
+    }
+    return props;
+  }, [currentModel, currentWorkflow]);
 
 
   const batchUpdatableProperties = useMemo(() => {
@@ -457,7 +462,7 @@ export default function DataObjectsPage() {
       direction = 'desc';
     }
     setSortConfig({ key, direction });
-    setCurrentPage(1); // Reset page when sort changes
+    setCurrentPage(1); 
   };
 
   const getSortIcon = (columnKey: string) => {
@@ -468,7 +473,7 @@ export default function DataObjectsPage() {
   };
 
   const getWorkflowStateName = useCallback((stateId: string | null | undefined): string => {
-    if (!stateId || !currentWorkflow) return 'N/A';
+    if (!stateId || !currentWorkflow) return 'N/A (No State)';
     const state = currentWorkflow.states.find(s => s.id === stateId);
     return state ? state.name : 'Unknown State';
   }, [currentWorkflow]);
@@ -575,9 +580,9 @@ export default function DataObjectsPage() {
   }, [localObjects, searchTerm, currentModel, columnFilters, getModelById, allDbObjects, allModels, currentWorkflow, getWorkflowStateName, virtualIncomingRelationColumns]); 
 
   const sortedObjects = useMemo(() => {
-    if (!currentModel) return filteredObjects; // Return filtered if no sort needed or possible
+    if (!currentModel) return filteredObjects; 
     let objectsToSort = [...filteredObjects];
-    if (!sortConfig) return objectsToSort; // If no sort config, return as is (respects filter order)
+    if (!sortConfig) return objectsToSort; 
 
     return objectsToSort.sort((a, b) => {
       let aValue: any; let bValue: any;
@@ -615,13 +620,31 @@ export default function DataObjectsPage() {
       } else return 0;
       if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
       if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
-      // Secondary sort by a stable property like ID if primary values are equal
       return String(a.id).localeCompare(String(b.id));
     });
   }, [filteredObjects, sortConfig, currentModel, getModelById, allDbObjects, allModels, virtualIncomingRelationColumns, currentWorkflow, getWorkflowStateName]);
 
   const groupedDataForRender = useMemo(() => {
     if (!groupingPropertyKey || !currentModel) return null;
+    
+    if (groupingPropertyKey === WORKFLOW_STATE_GROUPING_KEY && currentWorkflow) {
+      const groupedByState = sortedObjects.reduce((acc, obj) => {
+        const stateId = obj.currentStateId || 'null'; // Group objects with no state under 'null'
+        const state = currentWorkflow.states.find(s => s.id === stateId);
+        const groupTitle = state ? state.name : 'N/A (No State)';
+        const orderIndex = state ? state.orderIndex : Infinity; // States with no orderIndex go last
+        
+        if (!acc[groupTitle]) {
+          acc[groupTitle] = { objects: [], orderIndex };
+        }
+        acc[groupTitle].objects.push(obj);
+        return acc;
+      }, {} as Record<string, { objects: DataObject[]; orderIndex: number }>);
+
+      return Object.entries(groupedByState)
+        .map(([groupTitle, data]) => ({ groupTitle, objects: data.objects, orderIndex: data.orderIndex }))
+        .sort((a, b) => a.orderIndex - b.orderIndex); // Sort groups by workflow state orderIndex
+    }
     
     const groupingProperty = currentModel.properties.find(p => p.id === groupingPropertyKey);
     if (!groupingProperty) return null;
@@ -635,8 +658,8 @@ export default function DataObjectsPage() {
 
     return Object.entries(grouped)
       .map(([groupTitle, objectsInGroup]) => ({ groupTitle, objects: objectsInGroup }))
-      .sort((a, b) => a.groupTitle.localeCompare(b.groupTitle)); // Sort groups by title
-  }, [groupingPropertyKey, sortedObjects, currentModel, allModels, allDbObjects]);
+      .sort((a, b) => a.groupTitle.localeCompare(b.groupTitle)); 
+  }, [groupingPropertyKey, sortedObjects, currentModel, currentWorkflow, allModels, allDbObjects, getWorkflowStateName]);
 
 
   const totalItemsForPagination = groupedDataForRender ? groupedDataForRender.length : sortedObjects.length;
@@ -651,7 +674,6 @@ export default function DataObjectsPage() {
 
   const handleSelectAll = (checked: boolean) => {
     if (groupingPropertyKey && groupedDataForRender) {
-      // Select all objects within the currently visible groups
       const idsToSelect = new Set<string>();
       (paginatedDataToRender as { groupTitle: string; objects: DataObject[] }[]).forEach(group => {
         group.objects.forEach(obj => idsToSelect.add(obj.id));
@@ -666,7 +688,6 @@ export default function DataObjectsPage() {
         });
       }
     } else {
-      // Select all objects on the current page (ungrouped view)
       if (checked) {
         setSelectedObjectIds(new Set((paginatedDataToRender as DataObject[]).map(obj => obj.id)));
       } else {
@@ -856,7 +877,7 @@ export default function DataObjectsPage() {
   };
 
   const handleExportCSV = () => {
-    if (!currentModel || filteredObjects.length === 0) { // Use filteredObjects for export base
+    if (!currentModel || filteredObjects.length === 0) { 
       toast({ title: "No Data to Export", description: "There is no data available for the current selection to export.", variant: "destructive" });
       return;
     }
@@ -866,8 +887,8 @@ export default function DataObjectsPage() {
     const csvRows: string[] = [headers.map(escapeCsvCell).join(',')];
     
     const objectsToExport = groupingPropertyKey && groupedDataForRender
-      ? groupedDataForRender.flatMap(g => g.objects) // If grouped, export all objects from all groups (respecting filters and sort *within* groups)
-      : sortedObjects; // Otherwise, export all sorted and filtered objects
+      ? groupedDataForRender.flatMap(g => g.objects) 
+      : sortedObjects; 
 
     objectsToExport.forEach(obj => {
       const row: string[] = [];
@@ -976,6 +997,14 @@ export default function DataObjectsPage() {
 
   const directPropertiesToShowInTable = currentModel.properties.sort((a,b) => a.orderIndex - b.orderIndex);
   const hasActiveColumnFilters = Object.keys(columnFilters).length > 0;
+  
+  const currentGroupingPropertyDisplayName = useMemo(() => {
+    if (!groupingPropertyKey) return "None";
+    if (groupingPropertyKey === WORKFLOW_STATE_GROUPING_KEY) return "Workflow State";
+    const prop = currentModel?.properties.find(p => p.id === groupingPropertyKey);
+    return prop ? prop.name : "None";
+  }, [groupingPropertyKey, currentModel]);
+
 
   return (
     <div className="container mx-auto py-8">
@@ -1226,10 +1255,10 @@ export default function DataObjectsPage() {
       ) : viewMode === 'table' ? (
         <>
         {groupingPropertyKey && groupedDataForRender ? (
-          (paginatedDataToRender as { groupTitle: string; objects: DataObject[] }[]).map((group, groupIndex) => (
-            <div key={`${group.groupTitle}-${groupIndex}`} className="mb-8">
+          (paginatedDataToRender as { groupTitle: string; objects: DataObject[], orderIndex?: number }[]).map((group, groupIndex) => (
+            <div key={`${group.groupTitle}-${group.orderIndex}-${groupIndex}`} className="mb-8">
               <h2 className="text-xl font-semibold my-4 p-2 bg-muted rounded-md">
-                {currentModel.properties.find(p => p.id === groupingPropertyKey)?.name || 'Group'}: <span className="text-primary">{group.groupTitle}</span> ({group.objects.length} items)
+                {currentGroupingPropertyDisplayName}: <span className="text-primary">{group.groupTitle}</span> ({group.objects.length} items)
               </h2>
               {group.objects.length > 0 ? (
                 <Card className="shadow-lg">
@@ -1270,7 +1299,7 @@ export default function DataObjectsPage() {
               )}
             </div>
           ))
-        ) : ( // Ungrouped view
+        ) : ( 
           <Card className="shadow-lg">
             <Table>
               <TableHeader>
@@ -1329,4 +1358,4 @@ export default function DataObjectsPage() {
     </div>
   );
 }
-
+    
