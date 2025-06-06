@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -126,8 +127,8 @@ export default function DataObjectsPage() {
     updateObject,
     getAllObjects,
     getWorkflowById,
-    allUsers, // Added for owner info
-    getUserById, // Added for owner info
+    allUsers, 
+    getUserById, 
     isReady: dataContextIsReady,
     fetchData,
     lastChangedInfo,
@@ -166,6 +167,31 @@ export default function DataObjectsPage() {
         setCurrentModel(foundModel);
         setLocalObjects(getObjectsByModelId(foundModel.id));
 
+        // Define the new default set of hidden columns
+        const defaultHiddenColumnsSet = new Set([
+          CREATED_AT_COLUMN_KEY,
+          UPDATED_AT_COLUMN_KEY,
+          OWNER_COLUMN_KEY,
+        ]);
+
+        const savedHiddenColsJson = sessionStorage.getItem(`codexStructure-hiddenColumns-${foundModel.id}`);
+        if (savedHiddenColsJson) {
+          try {
+            const parsedHidden = JSON.parse(savedHiddenColsJson);
+            if (Array.isArray(parsedHidden) && parsedHidden.every(item => typeof item === 'string')) {
+              setHiddenColumns(new Set(parsedHidden)); // User's preference loaded
+            } else {
+              console.warn("Invalid hidden columns format in session storage. Applying defaults.");
+              setHiddenColumns(defaultHiddenColumnsSet); // Fallback to new default
+            }
+          } catch (e) {
+            console.warn("Failed to parse hidden columns from session storage. Applying defaults:", e);
+            setHiddenColumns(defaultHiddenColumnsSet); // Fallback to new default
+          }
+        } else {
+          setHiddenColumns(defaultHiddenColumnsSet); // No session state, apply new default
+        }
+        
         const savedViewMode = sessionStorage.getItem(`codexStructure-viewMode-${foundModel.id}`) as ViewMode | null;
         const savedGroupingKey = sessionStorage.getItem(`codexStructure-grouping-${foundModel.id}`);
         if (savedGroupingKey && savedGroupingKey !== NO_GROUPING_VALUE) {
@@ -173,24 +199,6 @@ export default function DataObjectsPage() {
         } else {
             setGroupingPropertyKey(null);
         }
-
-        const savedHiddenCols = sessionStorage.getItem(`codexStructure-hiddenColumns-${foundModel.id}`);
-        if (savedHiddenCols) {
-            try {
-              const parsedHidden = JSON.parse(savedHiddenCols);
-              if (Array.isArray(parsedHidden) && parsedHidden.every(item => typeof item === 'string')) {
-                setHiddenColumns(new Set(parsedHidden));
-              } else {
-                setHiddenColumns(new Set()); // Default if parse fails or format is wrong
-              }
-            } catch (e) {
-              console.warn("Failed to parse hidden columns from session storage:", e);
-              setHiddenColumns(new Set());
-            }
-        } else {
-            setHiddenColumns(new Set());
-        }
-
 
         if (foundModel.workflowId) {
           const wf = getWorkflowById(foundModel.workflowId);
@@ -218,7 +226,7 @@ export default function DataObjectsPage() {
           setSortConfig(null);
           setColumnFilters({});
           setSelectedObjectIds(new Set());
-          // Hidden columns and grouping key are already handled above by reading from sessionStorage
+          // Hidden columns are already handled above by the logic that checks sessionStorage for the new foundModel.id
           previousModelIdRef.current = modelIdFromUrl;
         }
       } else {
