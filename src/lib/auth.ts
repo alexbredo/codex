@@ -11,7 +11,7 @@ interface UserSession {
   role: 'user' | 'administrator';
 }
 
-const MOCK_API_ADMIN_USER: UserSession = {
+export const MOCK_API_ADMIN_USER: UserSession = {
   id: 'debug-api-admin-user',
   username: 'DebugApiAdmin',
   role: 'administrator',
@@ -48,3 +48,4 @@ export async function getCurrentUserFromCookie(): Promise<UserSession | null> {
     return null;
   }
 }
+

@@ -52,149 +52,7 @@ async function initializeDb(): Promise<Database> {
   `);
   console.log("Validation Rulesets table ensured.");
 
-
-  // Models Table
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS models (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL UNIQUE,
-      description TEXT,
-      displayPropertyNames TEXT, -- Stores JSON string array: '["prop1", "prop2"]'
-      namespace TEXT NOT NULL DEFAULT 'Default', -- Refers to model_groups.name, or 'Default'
-      workflowId TEXT, -- FK to workflows table
-      FOREIGN KEY (workflowId) REFERENCES workflows(id) ON DELETE SET NULL
-    );
-  `);
-
-  try {
-    await db.run("ALTER TABLE models ADD COLUMN namespace TEXT NOT NULL DEFAULT 'Default'");
-  } catch (e: any) {
-    if (!(e.message && (e.message.toLowerCase().includes('duplicate column name') || e.message.toLowerCase().includes('already has a column named namespace')))) {
-      console.error("Migration: Error trying to add 'namespace' column to 'models' table (this might be an issue if it doesn't exist):", e.message);
-    }
-  }
-  try {
-    await db.run("ALTER TABLE models ADD COLUMN workflowId TEXT REFERENCES workflows(id) ON DELETE SET NULL");
-  } catch (e: any) {
-    if (!(e.message && (e.message.toLowerCase().includes('duplicate column name') || e.message.toLowerCase().includes('already has a column named workflowid')))) {
-      console.error("Migration: Error trying to add 'workflowId' column to 'models' table (this might be an issue if it doesn't exist):", e.message);
-    }
-  }
-
-
-  // Properties Table
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS properties (
-      id TEXT PRIMARY KEY,
-      model_id TEXT NOT NULL,
-      name TEXT NOT NULL,
-      type TEXT NOT NULL,
-      relatedModelId TEXT,
-      required INTEGER DEFAULT 0, -- 0 for false, 1 for true
-      relationshipType TEXT, -- 'one' or 'many'
-      unit TEXT,
-      precision INTEGER,
-      autoSetOnCreate INTEGER DEFAULT 0,
-      autoSetOnUpdate INTEGER DEFAULT 0,
-      isUnique INTEGER DEFAULT 0, -- 0 for false, 1 for true (only for string type)
-      orderIndex INTEGER NOT NULL DEFAULT 0, -- For property display order
-      defaultValue TEXT, -- Store default value as string
-      validationRulesetId TEXT, -- FK to validation_rulesets table
-      minValue REAL, -- For number type validation
-      maxValue REAL, -- For number type validation
-      FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE,
-      FOREIGN KEY (validationRulesetId) REFERENCES validation_rulesets(id) ON DELETE SET NULL,
-      UNIQUE (model_id, name)
-    );
-  `);
-
-  try {
-    await db.run('ALTER TABLE properties ADD COLUMN orderIndex INTEGER NOT NULL DEFAULT 0');
-  } catch (e: any) {
-    if (!(e.message && (e.message.toLowerCase().includes('duplicate column name') || e.message.toLowerCase().includes('already has a column named orderindex')))) {
-        console.error("Migration: Error trying to add 'orderIndex' column to 'properties' table (this might be an issue if it doesn't exist):", e.message);
-    }
-  }
-  
-  try {
-    await db.run('ALTER TABLE properties ADD COLUMN isUnique INTEGER DEFAULT 0');
-  } catch (e: any) {
-     if (!(e.message && (e.message.toLowerCase().includes('duplicate column name') || e.message.toLowerCase().includes('already has a column named isunique')))) {
-        console.error("Migration: Error trying to add 'isUnique' column to 'properties' table (this might be an issue if it doesn't exist):", e.message);
-    }
-  }
-
-  try {
-    await db.run('ALTER TABLE properties ADD COLUMN defaultValue TEXT');
-  } catch (e: any) {
-     if (!(e.message && (e.message.toLowerCase().includes('duplicate column name') || e.message.toLowerCase().includes('already has a column named defaultvalue')))) {
-        console.error("Migration: Error trying to add 'defaultValue' column to 'properties' table (this might be an issue if it doesn't exist):", e.message);
-    }
-  }
-  try {
-    await db.run('ALTER TABLE properties ADD COLUMN validationRulesetId TEXT REFERENCES validation_rulesets(id) ON DELETE SET NULL');
-  } catch (e: any) {
-    if (!(e.message && (e.message.toLowerCase().includes('duplicate column name') || e.message.toLowerCase().includes('already has a column named validationrulesetid')))) {
-        console.error("Migration: Error trying to add 'validationRulesetId' column to 'properties' table:", e.message);
-    }
-  }
-  try {
-    await db.run('ALTER TABLE properties ADD COLUMN minValue REAL');
-  } catch (e: any) {
-    if (!(e.message && (e.message.toLowerCase().includes('duplicate column name') || e.message.toLowerCase().includes('already has a column named minvalue')))) {
-        console.error("Migration: Error trying to add 'minValue' column to 'properties' table:", e.message);
-    }
-  }
-  try {
-    await db.run('ALTER TABLE properties ADD COLUMN maxValue REAL');
-  } catch (e: any) {
-    if (!(e.message && (e.message.toLowerCase().includes('duplicate column name') || e.message.toLowerCase().includes('already has a column named maxvalue')))) {
-        console.error("Migration: Error trying to add 'maxValue' column to 'properties' table:", e.message);
-    }
-  }
-
-  // Users Table (for placeholder authentication)
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY,
-      username TEXT NOT NULL UNIQUE,
-      password TEXT NOT NULL, -- WARNING: Storing plaintext passwords. Highly insecure. For demo only.
-      role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('user', 'administrator'))
-    );
-  `);
-  console.log("Users table (for placeholder auth) ensured.");
-
-
-  // Data Objects Table
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS data_objects (
-      id TEXT PRIMARY KEY,
-      model_id TEXT NOT NULL,
-      data TEXT NOT NULL, -- Stores the object's key-value pairs as a JSON string
-      currentStateId TEXT, -- FK to workflow_states table
-      ownerId TEXT, -- FK to users table
-      FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE,
-      FOREIGN KEY (currentStateId) REFERENCES workflow_states(id) ON DELETE SET NULL,
-      FOREIGN KEY (ownerId) REFERENCES users(id) ON DELETE SET NULL -- Important: Ensure users table exists and has the user
-    );
-  `);
-   try {
-    await db.run("ALTER TABLE data_objects ADD COLUMN currentStateId TEXT REFERENCES workflow_states(id) ON DELETE SET NULL");
-  } catch (e: any) {
-    if (!(e.message && (e.message.toLowerCase().includes('duplicate column name') || e.message.toLowerCase().includes('already has a column named currentstateid')))) {
-      console.error("Migration: Error trying to add 'currentStateId' column to 'data_objects' table:", e.message);
-    }
-  }
-   try {
-    await db.run("ALTER TABLE data_objects ADD COLUMN ownerId TEXT REFERENCES users(id) ON DELETE SET NULL");
-  } catch (e: any) {
-    if (!(e.message && (e.message.toLowerCase().includes('duplicate column name') || e.message.toLowerCase().includes('already has a column named ownerid')))) {
-      console.error("Migration: Error trying to add 'ownerId' column to 'data_objects' table:", e.message);
-    }
-  }
-
-
-  // Workflow Tables
+  // Workflow Tables first due to FK dependencies from Models
   await db.exec(`
     CREATE TABLE IF NOT EXISTS workflows (
       id TEXT PRIMARY KEY,
@@ -209,27 +67,180 @@ async function initializeDb(): Promise<Database> {
       workflowId TEXT NOT NULL,
       name TEXT NOT NULL,
       description TEXT,
-      color TEXT, -- Added color column
-      isInitial INTEGER DEFAULT 0, -- 0 for false, 1 for true
-      orderIndex INTEGER NOT NULL DEFAULT 0, -- For state display order
+      color TEXT,
+      isInitial INTEGER DEFAULT 0,
+      orderIndex INTEGER NOT NULL DEFAULT 0,
       FOREIGN KEY (workflowId) REFERENCES workflows(id) ON DELETE CASCADE,
       UNIQUE (workflowId, name)
     );
   `);
-  // Add orderIndex to workflow_states if it doesn't exist
   try {
     await db.run('ALTER TABLE workflow_states ADD COLUMN orderIndex INTEGER NOT NULL DEFAULT 0');
   } catch (e: any) {
-    if (!(e.message && (e.message.toLowerCase().includes('duplicate column name') || e.message.toLowerCase().includes('already has a column named orderindex')))) {
-        console.error("Migration: Error trying to add 'orderIndex' column to 'workflow_states' table:", e.message);
+    const msg = e.message?.toLowerCase() || "";
+    if (!(msg.includes('duplicate column name') || msg.includes('already has a column named orderindex'))) {
+        console.error("Migration Error (workflow_states.orderIndex):", e.message); throw e;
     }
   }
-  // Add color to workflow_states if it doesn't exist
   try {
     await db.run('ALTER TABLE workflow_states ADD COLUMN color TEXT');
+  } catch (e: any)
+    {const msg = e.message?.toLowerCase() || "";
+    if (!(msg.includes('duplicate column name') || msg.includes('already has a column named color'))) {
+        console.error("Migration Error (workflow_states.color):", e.message); throw e;
+    }
+  }
+
+  // Models Table
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS models (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      description TEXT,
+      displayPropertyNames TEXT, 
+      namespace TEXT NOT NULL DEFAULT 'Default', 
+      workflowId TEXT, 
+      FOREIGN KEY (workflowId) REFERENCES workflows(id) ON DELETE SET NULL
+    );
+  `);
+
+  try {
+    await db.run("ALTER TABLE models ADD COLUMN namespace TEXT NOT NULL DEFAULT 'Default'");
   } catch (e: any) {
-    if (!(e.message && (e.message.toLowerCase().includes('duplicate column name') || e.message.toLowerCase().includes('already has a column named color')))) {
-        console.error("Migration: Error trying to add 'color' column to 'workflow_states' table:", e.message);
+    const msg = e.message?.toLowerCase() || "";
+    if (!(msg.includes('duplicate column name') || msg.includes('already has a column named namespace'))) {
+      console.error("Migration Error (models.namespace):", e.message); throw e;
+    }
+  }
+  try {
+    // workflowId column might already exist from CREATE TABLE if schema was updated
+    // So, check for "duplicate column" first, then for issues with REFERENCES if it's a new add
+    await db.run("ALTER TABLE models ADD COLUMN workflowId TEXT REFERENCES workflows(id) ON DELETE SET NULL");
+  } catch (e: any) {
+    const msg = e.message?.toLowerCase() || "";
+    if (!(msg.includes('duplicate column name') || msg.includes('already has a column named workflowid'))) {
+      console.error("Migration Error (models.workflowId FK):", e.message); throw e;
+    }
+  }
+
+
+  // Properties Table
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS properties (
+      id TEXT PRIMARY KEY,
+      model_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL,
+      relatedModelId TEXT,
+      required INTEGER DEFAULT 0, 
+      relationshipType TEXT, 
+      unit TEXT,
+      precision INTEGER,
+      autoSetOnCreate INTEGER DEFAULT 0,
+      autoSetOnUpdate INTEGER DEFAULT 0,
+      isUnique INTEGER DEFAULT 0, 
+      orderIndex INTEGER NOT NULL DEFAULT 0, 
+      defaultValue TEXT, 
+      validationRulesetId TEXT, 
+      minValue REAL, 
+      maxValue REAL, 
+      FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE,
+      FOREIGN KEY (validationRulesetId) REFERENCES validation_rulesets(id) ON DELETE SET NULL,
+      UNIQUE (model_id, name)
+    );
+  `);
+
+  try {
+    await db.run('ALTER TABLE properties ADD COLUMN orderIndex INTEGER NOT NULL DEFAULT 0');
+  } catch (e: any) {
+    const msg = e.message?.toLowerCase() || "";
+    if (!(msg.includes('duplicate column name') || msg.includes('already has a column named orderindex'))) {
+        console.error("Migration Error (properties.orderIndex):", e.message); throw e;
+    }
+  }
+  try {
+    await db.run('ALTER TABLE properties ADD COLUMN isUnique INTEGER DEFAULT 0');
+  } catch (e: any) {
+     const msg = e.message?.toLowerCase() || "";
+     if (!(msg.includes('duplicate column name') || msg.includes('already has a column named isunique'))) {
+        console.error("Migration Error (properties.isUnique):", e.message); throw e;
+    }
+  }
+  try {
+    await db.run('ALTER TABLE properties ADD COLUMN defaultValue TEXT');
+  } catch (e: any) {
+     const msg = e.message?.toLowerCase() || "";
+     if (!(msg.includes('duplicate column name') || msg.includes('already has a column named defaultvalue'))) {
+        console.error("Migration Error (properties.defaultValue):", e.message); throw e;
+    }
+  }
+  try {
+    // validationRulesetId might already exist from CREATE TABLE
+    await db.run('ALTER TABLE properties ADD COLUMN validationRulesetId TEXT REFERENCES validation_rulesets(id) ON DELETE SET NULL');
+  } catch (e: any) {
+    const msg = e.message?.toLowerCase() || "";
+    if (!(msg.includes('duplicate column name') || msg.includes('already has a column named validationrulesetid'))) {
+        console.error("Migration Error (properties.validationRulesetId FK):", e.message); throw e;
+    }
+  }
+  try {
+    await db.run('ALTER TABLE properties ADD COLUMN minValue REAL');
+  } catch (e: any) {
+    const msg = e.message?.toLowerCase() || "";
+    if (!(msg.includes('duplicate column name') || msg.includes('already has a column named minvalue'))) {
+        console.error("Migration Error (properties.minValue):", e.message); throw e;
+    }
+  }
+  try {
+    await db.run('ALTER TABLE properties ADD COLUMN maxValue REAL');
+  } catch (e: any) {
+    const msg = e.message?.toLowerCase() || "";
+    if (!(msg.includes('duplicate column name') || msg.includes('already has a column named maxvalue'))) {
+        console.error("Migration Error (properties.maxValue):", e.message); throw e;
+    }
+  }
+
+  // Users Table (for placeholder authentication)
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      username TEXT NOT NULL UNIQUE,
+      password TEXT NOT NULL, 
+      role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('user', 'administrator'))
+    );
+  `);
+  console.log("Users table (for placeholder auth) ensured.");
+
+
+  // Data Objects Table
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS data_objects (
+      id TEXT PRIMARY KEY,
+      model_id TEXT NOT NULL,
+      data TEXT NOT NULL, 
+      currentStateId TEXT, 
+      ownerId TEXT, 
+      FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE,
+      FOREIGN KEY (currentStateId) REFERENCES workflow_states(id) ON DELETE SET NULL,
+      FOREIGN KEY (ownerId) REFERENCES users(id) ON DELETE SET NULL
+    );
+  `);
+   try {
+    // currentStateId might exist from CREATE TABLE
+    await db.run("ALTER TABLE data_objects ADD COLUMN currentStateId TEXT REFERENCES workflow_states(id) ON DELETE SET NULL");
+  } catch (e: any) {
+    const msg = e.message?.toLowerCase() || "";
+    if (!(msg.includes('duplicate column name') || msg.includes('already has a column named currentstateid'))) {
+      console.error("Migration Error (data_objects.currentStateId FK):", e.message); throw e;
+    }
+  }
+   try {
+    // ownerId might exist from CREATE TABLE
+    await db.run("ALTER TABLE data_objects ADD COLUMN ownerId TEXT REFERENCES users(id) ON DELETE SET NULL");
+  } catch (e: any) {
+    const msg = e.message?.toLowerCase() || "";
+    if (!(msg.includes('duplicate column name') || msg.includes('already has a column named ownerid'))) {
+      console.error("Migration Error (data_objects.ownerId FK):", e.message); throw e;
     }
   }
 
@@ -237,7 +248,7 @@ async function initializeDb(): Promise<Database> {
   await db.exec(`
     CREATE TABLE IF NOT EXISTS workflow_state_transitions (
       id TEXT PRIMARY KEY,
-      workflowId TEXT NOT NULL, -- For easier cascading deletes and querying
+      workflowId TEXT NOT NULL, 
       fromStateId TEXT NOT NULL,
       toStateId TEXT NOT NULL,
       FOREIGN KEY (workflowId) REFERENCES workflows(id) ON DELETE CASCADE,
@@ -250,7 +261,6 @@ async function initializeDb(): Promise<Database> {
   // Ensure mock admin user exists if in DEBUG_MODE
   if (DEBUG_MODE) {
     const mockAdmin = MOCK_API_ADMIN_USER;
-    // This password is a placeholder and won't be used for login in DEBUG_MODE
     const placeholderPassword = 'debugpassword'; 
     try {
       await db.run(
@@ -262,6 +272,7 @@ async function initializeDb(): Promise<Database> {
       );
       console.log(`DEBUG_MODE: Ensured mock admin user '${mockAdmin.username}' (ID: ${mockAdmin.id}) exists in the database.`);
     } catch (error: any) {
+      // This error during debug user insertion should not stop DB initialization unless critical
       console.error(`DEBUG_MODE: Failed to ensure mock admin user '${mockAdmin.username}' in database:`, error.message);
     }
   }
