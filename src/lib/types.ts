@@ -89,6 +89,33 @@ export interface ValidationRuleset {
   regexPattern: string;
 }
 
+// Changelog Types
+export interface PropertyChangeDetail {
+  propertyName: string;
+  oldValue: any;
+  newValue: any;
+  // Optional labels for special fields like workflow state or owner
+  oldLabel?: string;
+  newLabel?: string;
+}
+
+export interface ChangelogEventData {
+  type: 'CREATE' | 'UPDATE';
+  initialData?: Record<string, any>; // For CREATE type
+  modifiedProperties?: PropertyChangeDetail[]; // For UPDATE type
+}
+
+export interface ChangelogEntry {
+  id: string;
+  dataObjectId: string;
+  modelId: string;
+  changedAt: string; // ISO 8601
+  changedByUserId: string | null;
+  changedByUsername?: string; // Populated by API when fetching
+  changeType: 'CREATE' | 'UPDATE';
+  changes: ChangelogEventData; // Parsed JSON from DB
+}
+
 
 // For forms
 export type ModelFormData = Omit<Model, 'id' | 'namespace' | 'workflowId'> & {
@@ -115,4 +142,3 @@ export type ObjectFormData = Omit<DataObject, 'id' | 'currentStateId' | 'ownerId
 
 export type ModelGroupFormData = Omit<ModelGroup, 'id'>;
 export type ValidationRulesetFormData = Omit<ValidationRuleset, 'id'>;
-
