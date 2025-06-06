@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button'; // Imported buttonVariants
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,11 +25,11 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
-  Select, // Renamed original Select to avoid conflict
+  Select, 
   SelectContent,
   SelectGroup,
   SelectItem,
-  SelectLabel as UiSelectLabel, // Renamed original SelectLabel
+  SelectLabel as UiSelectLabel, 
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -47,7 +47,7 @@ import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useData } from '@/contexts/data-context';
 import type { Model, DataObject, Property, WorkflowWithDetails, WorkflowStateWithSuccessors, DataContextType } from '@/lib/types';
-import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye, LayoutGrid, List as ListIcon, ExternalLink, Image as ImageIcon, CheckCircle2, FilterX, X as XIcon, Settings as SettingsIcon, Edit3, Workflow as WorkflowIconLucide, CalendarIcon as CalendarIconLucideLucide, Star, RefreshCw, Loader2, Kanban as KanbanIcon, Rows } from 'lucide-react'; // Added Rows icon
+import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye, LayoutGrid, List as ListIcon, ExternalLink, Image as ImageIcon, CheckCircle2, FilterX, X as XIcon, Settings as SettingsIcon, Edit3, Workflow as WorkflowIconLucide, CalendarIcon as CalendarIconLucideLucide, Star, RefreshCw, Loader2, Kanban as KanbanIcon, Rows } from 'lucide-react'; 
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -1259,7 +1259,7 @@ export default function DataObjectsPage() {
                             {directPropertiesToShowInTable.map((prop) => ( <TableCell key={`${obj.id}-${prop.id}`}> {displayCellContent(obj, prop)} </TableCell> ))}
                             {currentWorkflow && ( <TableCell> <Badge variant={obj.currentStateId ? "outline" : "secondary"}> {getWorkflowStateName(obj.currentStateId)} </Badge> </TableCell> )}
                             {virtualIncomingRelationColumns.map((colDef) => { const referencingData = allDbObjects[colDef.referencingModel.id] || []; const linkedItems = referencingData.filter(refObj => { const linkedValue = refObj[colDef.referencingProperty.name]; if (colDef.referencingProperty.relationshipType === 'many') return Array.isArray(linkedValue) && linkedValue.includes(obj.id); return linkedValue === obj.id; }); if (linkedItems.length === 0) return <TableCell key={colDef.id}><span className="text-muted-foreground">N/A</span></TableCell>; return ( <TableCell key={colDef.id} className="space-x-1 space-y-1"> {linkedItems.map(item => ( <Link key={item.id} href={`/data/${colDef.referencingModel.id}/edit/${item.id}`} className="inline-block"> <Badge variant="secondary" className="hover:bg-muted cursor-pointer"> {getObjectDisplayValue(item, colDef.referencingModel, allModels, allDbObjects)} </Badge> </Link> ))} </TableCell> ); })}
-                            <TableCell className="text-right"> <Button variant="ghost" size="icon" onClick={() => handleEdit(obj)} className="mr-2 hover:text-primary"> <Edit className="h-4 w-4" /> </Button> <AlertDialog> <AlertDialogTrigger asChild> <Button variant="ghost" size="icon" className="hover:text-destructive"><Trash2 className="h-4 w-4" /></Button> </AlertDialogTrigger> <AlertDialogContent> <AlertDialogHeader> <AlertDialogTitle>Are you sure?</AlertDialogTitle> <AlertDialogDescription> This action cannot be undone. This will permanently delete this {currentModel.name.toLowerCase()} object. </AlertDialogDescription> </AlertDialogHeader> <AlertDialogFooter> <AlertDialogCancel>Cancel</AlertDialogCancel> <AlertDialogAction onClick={() => handleDelete(obj.id)}> Delete </AlertDialogAction> </AlertDialogFooter> </AlertDialogContent> </AlertDialog> </TableCell>
+                            <TableCell className="text-right"> <Button variant="ghost" size="icon" onClick={() => handleEdit(obj)} className="mr-2 hover:text-primary"> <Edit className="h-4 w-4" /> </Button> <AlertDialog> <AlertDialogTrigger className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "hover:text-destructive")}> <Trash2 className="h-4 w-4" /> </AlertDialogTrigger> <AlertDialogContent> <AlertDialogHeader> <AlertDialogTitle>Are you sure?</AlertDialogTitle> <AlertDialogDescription> This action cannot be undone. This will permanently delete this {currentModel.name.toLowerCase()} object. </AlertDialogDescription> </AlertDialogHeader> <AlertDialogFooter> <AlertDialogCancel>Cancel</AlertDialogCancel> <AlertDialogAction onClick={() => handleDelete(obj.id)}> Delete </AlertDialogAction> </AlertDialogFooter> </AlertDialogContent> </AlertDialog> </TableCell>
                           </TableRow> );
                       })}
                     </TableBody>
@@ -1294,7 +1294,7 @@ export default function DataObjectsPage() {
                     {directPropertiesToShowInTable.map((prop) => ( <TableCell key={`${obj.id}-${prop.id}`}> {displayCellContent(obj, prop)} </TableCell> ))}
                     {currentWorkflow && ( <TableCell> <Badge variant={obj.currentStateId ? "outline" : "secondary"}> {getWorkflowStateName(obj.currentStateId)} </Badge> </TableCell> )}
                     {virtualIncomingRelationColumns.map((colDef) => { const referencingData = allDbObjects[colDef.referencingModel.id] || []; const linkedItems = referencingData.filter(refObj => { const linkedValue = refObj[colDef.referencingProperty.name]; if (colDef.referencingProperty.relationshipType === 'many') return Array.isArray(linkedValue) && linkedValue.includes(obj.id); return linkedValue === obj.id; }); if (linkedItems.length === 0) return <TableCell key={colDef.id}><span className="text-muted-foreground">N/A</span></TableCell>; return ( <TableCell key={colDef.id} className="space-x-1 space-y-1"> {linkedItems.map(item => ( <Link key={item.id} href={`/data/${colDef.referencingModel.id}/edit/${item.id}`} className="inline-block"> <Badge variant="secondary" className="hover:bg-muted cursor-pointer"> {getObjectDisplayValue(item, colDef.referencingModel, allModels, allDbObjects)} </Badge> </Link> ))} </TableCell> ); })}
-                    <TableCell className="text-right"> <Button variant="ghost" size="icon" onClick={() => handleEdit(obj)} className="mr-2 hover:text-primary"> <Edit className="h-4 w-4" /> </Button> <AlertDialog> <AlertDialogTrigger asChild><Button variant="ghost" size="icon" className="hover:text-destructive"><Trash2 className="h-4 w-4" /></Button></AlertDialogTrigger> <AlertDialogContent> <AlertDialogHeader> <AlertDialogTitle>Are you sure?</AlertDialogTitle> <AlertDialogDescription> This action cannot be undone. This will permanently delete this {currentModel.name.toLowerCase()} object. </AlertDialogDescription> </AlertDialogHeader> <AlertDialogFooter> <AlertDialogCancel>Cancel</AlertDialogCancel> <AlertDialogAction onClick={() => handleDelete(obj.id)}> Delete </AlertDialogAction> </AlertDialogFooter> </AlertDialogContent> </AlertDialog> </TableCell>
+                    <TableCell className="text-right"> <Button variant="ghost" size="icon" onClick={() => handleEdit(obj)} className="mr-2 hover:text-primary"> <Edit className="h-4 w-4" /> </Button> <AlertDialog> <AlertDialogTrigger className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "hover:text-destructive")}> <Trash2 className="h-4 w-4" /> </AlertDialogTrigger> <AlertDialogContent> <AlertDialogHeader> <AlertDialogTitle>Are you sure?</AlertDialogTitle> <AlertDialogDescription> This action cannot be undone. This will permanently delete this {currentModel.name.toLowerCase()} object. </AlertDialogDescription> </AlertDialogHeader> <AlertDialogFooter> <AlertDialogCancel>Cancel</AlertDialogCancel> <AlertDialogAction onClick={() => handleDelete(obj.id)}> Delete </AlertDialogAction> </AlertDialogFooter> </AlertDialogContent> </AlertDialog> </TableCell>
                   </TableRow> );
                 })}
               </TableBody>
