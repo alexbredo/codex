@@ -1116,7 +1116,13 @@ export default function DataObjectsPage() {
 
   const directPropertiesToShowInTable = currentModel?.properties.sort((a,b) => a.orderIndex - b.orderIndex) || [];
 
-  // Moved the loading guard to after all hook calls
+  const handleBatchUpdateDialogInteractOutside = (event: Event) => {
+    if ((event.target as HTMLElement)?.closest('[data-multiselect-popover-content="true"]')) {
+      event.preventDefault();
+    }
+  };
+
+
   if (!dataContextIsReady || !currentModel) {
     return (
       <div className="flex justify-center items-center h-screen">
@@ -1218,7 +1224,7 @@ export default function DataObjectsPage() {
                         <Edit3 className="mr-2 h-4 w-4" /> Batch Update
                     </Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent onInteractOutside={handleBatchUpdateDialogInteractOutside}>
                     <DialogHeader>
                         <DialogTitle>Batch Update {selectedObjectIds.size} Items</DialogTitle>
                         <DialogDescription>Select a property and a new value to apply to all selected items.</DialogDescription>
@@ -1505,4 +1511,5 @@ export default function DataObjectsPage() {
     
 
     
+
 

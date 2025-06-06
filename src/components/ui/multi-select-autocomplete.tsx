@@ -95,11 +95,12 @@ export function MultiSelectAutocomplete({
       </PopoverTrigger>
       <PopoverContent
         className="w-[--radix-popover-trigger-width] p-0"
+        data-multiselect-popover-content="true" // Added data attribute
         onPointerDownOutside={(event) => {
           // Prevent Dialog from closing when interacting with Popover content
+          // This is a first line of defense. The Dialog's onInteractOutside will be more robust for portalled content.
           event.preventDefault();
         }}
-        // Consider adding onInteractOutside if focus issues persist, but onPointerDownOutside is often sufficient
       >
         <Command
           filter={(value, search) => {
