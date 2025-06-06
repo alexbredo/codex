@@ -20,7 +20,6 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
-// ScrollArea import is removed as it's no longer used directly here.
 
 export type MultiSelectOption = {
   value: string;
@@ -79,7 +78,7 @@ export function MultiSelectAutocomplete({
                   key={item.value}
                   className="mr-1 mb-1"
                   onClick={(e) => {
-                    e.stopPropagation(); // Prevent popover from closing
+                    e.stopPropagation(); 
                     handleDeselect(item.value);
                   }}
                 >
@@ -94,7 +93,14 @@ export function MultiSelectAutocomplete({
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+      <PopoverContent
+        className="w-[--radix-popover-trigger-width] p-0"
+        onPointerDownOutside={(event) => {
+          // Prevent Dialog from closing when interacting with Popover content
+          event.preventDefault();
+        }}
+        // Consider adding onInteractOutside if focus issues persist, but onPointerDownOutside is often sufficient
+      >
         <Command
           filter={(value, search) => {
             const option = options.find(opt => opt.value === value);
@@ -107,7 +113,7 @@ export function MultiSelectAutocomplete({
             value={inputValue}
             onValueChange={setInputValue}
           />
-          <CommandList> {/* CommandList itself handles scrolling and has max-h */}
+          <CommandList> 
             <CommandEmpty>{emptyIndicator}</CommandEmpty>
             <CommandGroup>
               {options.map((option) => {
