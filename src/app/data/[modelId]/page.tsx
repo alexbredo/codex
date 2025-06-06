@@ -19,19 +19,19 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter as BatchUpdateDialogFooter, // Renamed to avoid conflict
+  DialogFooter as BatchUpdateDialogFooter, 
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
-  Select as BatchSelect, // Renamed to avoid conflict
-  SelectContent as BatchSelectContent,
-  SelectGroup as BatchSelectGroup,
-  SelectItem as BatchSelectItem,
-  SelectLabel as BatchSelectLabel,
-  SelectTrigger as BatchSelectTrigger,
-  SelectValue as BatchSelectValue,
+  Select, // Renamed original Select to avoid conflict
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel as UiSelectLabel, // Renamed original SelectLabel
+  SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select";
 import {
   Table,
@@ -47,13 +47,13 @@ import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useData } from '@/contexts/data-context';
 import type { Model, DataObject, Property, WorkflowWithDetails, WorkflowStateWithSuccessors, DataContextType } from '@/lib/types';
-import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye, LayoutGrid, List as ListIcon, ExternalLink, Image as ImageIcon, CheckCircle2, FilterX, X as XIcon, Settings as SettingsIcon, Edit3, Workflow as WorkflowIconLucide, CalendarIcon as CalendarIconLucideLucide, Star, RefreshCw, Loader2, Kanban as KanbanIcon } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye, LayoutGrid, List as ListIcon, ExternalLink, Image as ImageIcon, CheckCircle2, FilterX, X as XIcon, Settings as SettingsIcon, Edit3, Workflow as WorkflowIconLucide, CalendarIcon as CalendarIconLucideLucide, Star, RefreshCw, Loader2, Kanban as KanbanIcon, Rows } from 'lucide-react'; // Added Rows icon
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { format as formatDateFns, isValid as isDateValidFn, startOfDay, isEqual as isEqualDate } from 'date-fns';
 import Link from 'next/link';
-import { getObjectDisplayValue, cn } from '@/lib/utils';
+import { getObjectDisplayValue, cn, getObjectGroupValue } from '@/lib/utils';
 import { StarDisplay } from '@/components/ui/star-display';
 import { StarRatingInput } from '@/components/ui/star-rating-input';
 import GalleryCard from '@/components/objects/gallery-card';
@@ -90,6 +90,7 @@ interface IncomingRelationColumn {
 const INTERNAL_NO_REFERENCES_VALUE = "__NO_REFERENCES__";
 const INTERNAL_WORKFLOW_STATE_UPDATE_KEY = "__workflowStateUpdate__";
 const INTERNAL_CLEAR_RELATIONSHIP_VALUE = "__CLEAR_RELATIONSHIP__";
+const NO_GROUPING_VALUE = "__NO_GROUPING__";
 
 
 export default function DataObjectsPage() {
@@ -100,11 +101,11 @@ export default function DataObjectsPage() {
   const dataContext = useData();
   const {
     models: allModels,
-    objects, // Destructure 'objects' here
+    objects, 
     getModelById,
     getObjectsByModelId,
     deleteObject,
-    updateObject, // Added updateObject for Kanban
+    updateObject, 
     getAllObjects,
     getWorkflowById,
     isReady: dataContextIsReady,
@@ -130,8 +131,10 @@ export default function DataObjectsPage() {
   const [batchUpdateValue, setBatchUpdateValue] = useState<any>('');
   const [batchUpdateDate, setBatchUpdateDate] = useState<Date | undefined>(undefined);
 
-  const previousModelIdRef = useRef<string | null>(null);
+  const [groupingPropertyKey, setGroupingPropertyKey] = useState<string | null>(null);
 
+
+  const previousModelIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (dataContextIsReady && modelIdFromUrl) {
@@ -139,27 +142,33 @@ export default function DataObjectsPage() {
 
       if (foundModel) {
         const isTrulyDifferentModel = previousModelIdRef.current !== modelIdFromUrl;
-
         setCurrentModel(foundModel);
         setLocalObjects(getObjectsByModelId(foundModel.id));
+
+        // Load view mode from session storage
+        const savedViewMode = sessionStorage.getItem(`codexStructure-viewMode-${foundModel.id}`) as ViewMode | null;
+        // Load grouping key from session storage
+        const savedGroupingKey = sessionStorage.getItem(`codexStructure-grouping-${foundModel.id}`);
+        if (savedGroupingKey && savedGroupingKey !== NO_GROUPING_VALUE) {
+            setGroupingPropertyKey(savedGroupingKey);
+        } else {
+            setGroupingPropertyKey(null);
+        }
 
 
         if (foundModel.workflowId) {
           const wf = getWorkflowById(foundModel.workflowId);
           setCurrentWorkflow(wf || null);
-          // If workflow exists and no specific view mode saved, default to Kanban for workflows
-          const savedViewMode = sessionStorage.getItem(`codexStructure-viewMode-${foundModel.id}`) as ViewMode | null;
           if (savedViewMode && (['table', 'gallery', 'kanban'] as ViewMode[]).includes(savedViewMode)) {
             setViewMode(savedViewMode);
-          } else if (wf) {
-             setViewMode('kanban'); // Default to Kanban if workflow is present and no specific mode saved
-          } else {
-             setViewMode('table');
+          } else if (wf && !savedViewMode) { // if workflow exists and no specific view mode saved, default to Kanban
+             setViewMode('kanban');
+          } else { // if no workflow, or savedViewMode is table/gallery
+             setViewMode(savedViewMode || 'table');
           }
         } else {
           setCurrentWorkflow(null);
-          const savedViewMode = sessionStorage.getItem(`codexStructure-viewMode-${foundModel.id}`) as ViewMode | null;
-           if (savedViewMode && (['table', 'gallery'] as ViewMode[]).includes(savedViewMode)) { // Kanban not an option if no workflow
+           if (savedViewMode && (['table', 'gallery'] as ViewMode[]).includes(savedViewMode)) {
             setViewMode(savedViewMode);
           } else {
             setViewMode('table');
@@ -167,15 +176,12 @@ export default function DataObjectsPage() {
         }
 
         if (isTrulyDifferentModel) {
-          console.log(`[DataObjectsPage] Model ID TRULY changed to ${foundModel.id} (${foundModel.name}). Fetching all data and resetting page state.`);
           fetchData(`Model ID Change to ${foundModel.name}`);
-
           setSearchTerm('');
           setCurrentPage(1);
           setSortConfig(null);
           setColumnFilters({});
           setSelectedObjectIds(new Set());
-
           previousModelIdRef.current = modelIdFromUrl;
         }
       } else {
@@ -186,12 +192,28 @@ export default function DataObjectsPage() {
     }
   }, [modelIdFromUrl, dataContextIsReady, getModelById, getWorkflowById, getObjectsByModelId, fetchData, toast, router]);
 
-
   useEffect(() => {
     if (dataContextIsReady && currentModel) {
       setLocalObjects(getObjectsByModelId(currentModel.id));
     }
-  }, [objects, currentModel, dataContextIsReady, getObjectsByModelId]); // Depend on the global 'objects' from context
+  }, [objects, currentModel, dataContextIsReady, getObjectsByModelId]);
+
+
+  useEffect(() => {
+    if (currentModel && groupingPropertyKey !== null) {
+      sessionStorage.setItem(`codexStructure-grouping-${currentModel.id}`, groupingPropertyKey);
+    } else if (currentModel && groupingPropertyKey === null) {
+      sessionStorage.setItem(`codexStructure-grouping-${currentModel.id}`, NO_GROUPING_VALUE);
+    }
+  }, [groupingPropertyKey, currentModel]);
+
+  const groupableProperties = useMemo(() => {
+    if (!currentModel) return [];
+    return currentModel.properties.filter(
+      p => ['string', 'number', 'boolean', 'date', 'rating'].includes(p.type) ||
+           (p.type === 'relationship' && p.relationshipType === 'one')
+    ).sort((a,b) => a.name.localeCompare(b.name));
+  }, [currentModel]);
 
 
   const batchUpdatableProperties = useMemo(() => {
@@ -374,7 +396,7 @@ export default function DataObjectsPage() {
                 displayValue = getObjectDisplayValue(referencingObject, virtualCol.referencingModel, allModels, allDbObjects);
                 operator = "by";
             }
-        } else { // Legacy 'incomingRelationshipCount'
+        } else { 
             if (filter.value === true) displayValue = "Yes";
             else if (filter.value === false) displayValue = "No";
             else displayValue = "Any";
@@ -435,7 +457,7 @@ export default function DataObjectsPage() {
       direction = 'desc';
     }
     setSortConfig({ key, direction });
-    setCurrentPage(1);
+    setCurrentPage(1); // Reset page when sort changes
   };
 
   const getSortIcon = (columnKey: string) => {
@@ -453,7 +475,7 @@ export default function DataObjectsPage() {
 
   const filteredObjects = useMemo(() => {
     if (!currentModel) return [];
-    let searchableObjects = [...localObjects]; // Use localObjects state
+    let searchableObjects = [...localObjects]; 
 
     if (searchTerm) {
       searchableObjects = searchableObjects.filter(obj => {
@@ -537,7 +559,7 @@ export default function DataObjectsPage() {
                 return virtualColumnDef.referencingProperty.relationshipType === 'many'
                     ? (Array.isArray(linkedValueOnSpecific) && linkedValueOnSpecific.includes(obj.id)) : linkedValueOnSpecific === obj.id;
             }
-        } else if (virtualColumnDef && filter.operator === 'eq') { // Legacy incomingRelationshipCount
+        } else if (virtualColumnDef && filter.operator === 'eq') { 
             const referencingData = allDbObjects[virtualColumnDef.referencingModel.id] || [];
             const count = referencingData.filter(refObj => {
                 const linkedValue = refObj[virtualColumnDef.referencingProperty.name];
@@ -550,11 +572,14 @@ export default function DataObjectsPage() {
       });
     });
     return searchableObjects;
-  }, [localObjects, searchTerm, currentModel, columnFilters, getModelById, allDbObjects, allModels, currentWorkflow, getWorkflowStateName, virtualIncomingRelationColumns]); // Use localObjects
+  }, [localObjects, searchTerm, currentModel, columnFilters, getModelById, allDbObjects, allModels, currentWorkflow, getWorkflowStateName, virtualIncomingRelationColumns]); 
 
   const sortedObjects = useMemo(() => {
-    if (!sortConfig || !currentModel) return filteredObjects;
-    return [...filteredObjects].sort((a, b) => {
+    if (!currentModel) return filteredObjects; // Return filtered if no sort needed or possible
+    let objectsToSort = [...filteredObjects];
+    if (!sortConfig) return objectsToSort; // If no sort config, return as is (respects filter order)
+
+    return objectsToSort.sort((a, b) => {
       let aValue: any; let bValue: any;
       const directPropertyToSort = currentModel.properties.find(p => p.id === sortConfig.key);
       const virtualColumnToSort = virtualIncomingRelationColumns.find(vc => vc.id === sortConfig.key);
@@ -590,22 +615,63 @@ export default function DataObjectsPage() {
       } else return 0;
       if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
       if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
-      return 0;
+      // Secondary sort by a stable property like ID if primary values are equal
+      return String(a.id).localeCompare(String(b.id));
     });
   }, [filteredObjects, sortConfig, currentModel, getModelById, allDbObjects, allModels, virtualIncomingRelationColumns, currentWorkflow, getWorkflowStateName]);
 
-  const paginatedObjects = useMemo(() => {
-    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-    return sortedObjects.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-  }, [sortedObjects, currentPage]);
+  const groupedDataForRender = useMemo(() => {
+    if (!groupingPropertyKey || !currentModel) return null;
+    
+    const groupingProperty = currentModel.properties.find(p => p.id === groupingPropertyKey);
+    if (!groupingProperty) return null;
 
-  const totalPages = Math.ceil(sortedObjects.length / ITEMS_PER_PAGE);
+    const grouped = sortedObjects.reduce((acc, obj) => {
+      const groupVal = getObjectGroupValue(obj, groupingProperty, allModels, allDbObjects);
+      if (!acc[groupVal]) acc[groupVal] = [];
+      acc[groupVal].push(obj);
+      return acc;
+    }, {} as Record<string, DataObject[]>);
+
+    return Object.entries(grouped)
+      .map(([groupTitle, objectsInGroup]) => ({ groupTitle, objects: objectsInGroup }))
+      .sort((a, b) => a.groupTitle.localeCompare(b.groupTitle)); // Sort groups by title
+  }, [groupingPropertyKey, sortedObjects, currentModel, allModels, allDbObjects]);
+
+
+  const totalItemsForPagination = groupedDataForRender ? groupedDataForRender.length : sortedObjects.length;
+  const totalPages = Math.ceil(totalItemsForPagination / ITEMS_PER_PAGE);
+
+  const paginatedDataToRender = useMemo(() => {
+    const itemsToPaginate = groupedDataForRender ? groupedDataForRender : sortedObjects;
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    return itemsToPaginate.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [groupedDataForRender, sortedObjects, currentPage]);
+
 
   const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      setSelectedObjectIds(new Set(paginatedObjects.map(obj => obj.id)));
+    if (groupingPropertyKey && groupedDataForRender) {
+      // Select all objects within the currently visible groups
+      const idsToSelect = new Set<string>();
+      (paginatedDataToRender as { groupTitle: string; objects: DataObject[] }[]).forEach(group => {
+        group.objects.forEach(obj => idsToSelect.add(obj.id));
+      });
+      if (checked) {
+        setSelectedObjectIds(prev => new Set([...Array.from(prev), ...Array.from(idsToSelect)]));
+      } else {
+        setSelectedObjectIds(prev => {
+          const newSet = new Set(prev);
+          idsToSelect.forEach(id => newSet.delete(id));
+          return newSet;
+        });
+      }
     } else {
-      setSelectedObjectIds(new Set());
+      // Select all objects on the current page (ungrouped view)
+      if (checked) {
+        setSelectedObjectIds(new Set((paginatedDataToRender as DataObject[]).map(obj => obj.id)));
+      } else {
+        setSelectedObjectIds(new Set());
+      }
     }
   };
 
@@ -617,8 +683,18 @@ export default function DataObjectsPage() {
       return newSet;
     });
   };
+  
+  const isAllPaginatedSelected = useMemo(() => {
+    if (groupedDataForRender) {
+      if (!paginatedDataToRender || (paginatedDataToRender as { groupTitle: string; objects: DataObject[] }[]).length === 0) return false;
+      const allVisibleObjectIds = (paginatedDataToRender as { groupTitle: string; objects: DataObject[] }[]).flatMap(group => group.objects.map(obj => obj.id));
+      return allVisibleObjectIds.length > 0 && allVisibleObjectIds.every(id => selectedObjectIds.has(id));
+    } else {
+      if (!paginatedDataToRender || (paginatedDataToRender as DataObject[]).length === 0) return false;
+      return (paginatedDataToRender as DataObject[]).length > 0 && (paginatedDataToRender as DataObject[]).every(obj => selectedObjectIds.has(obj.id));
+    }
+  }, [paginatedDataToRender, selectedObjectIds, groupedDataForRender]);
 
-  const isAllPaginatedSelected = paginatedObjects.length > 0 && paginatedObjects.every(obj => selectedObjectIds.has(obj.id));
 
   const handleBatchUpdate = async () => {
     if (!currentModel || !selectedBatchPropertyDetails || selectedObjectIds.size === 0) {
@@ -670,7 +746,6 @@ export default function DataObjectsPage() {
             propertyType: payloadPropertyType,
             newValue: processedNewValue,
         };
-        console.log("Batch update payload:", JSON.stringify(payload, null, 2));
 
         const response = await fetch(`/api/codex-structure/models/${currentModel.id}/objects/batch-update`, {
             method: 'POST',
@@ -781,7 +856,7 @@ export default function DataObjectsPage() {
   };
 
   const handleExportCSV = () => {
-    if (!currentModel || sortedObjects.length === 0) {
+    if (!currentModel || filteredObjects.length === 0) { // Use filteredObjects for export base
       toast({ title: "No Data to Export", description: "There is no data available for the current selection to export.", variant: "destructive" });
       return;
     }
@@ -789,7 +864,12 @@ export default function DataObjectsPage() {
     if (currentWorkflow) headers.push("Workflow State");
     virtualIncomingRelationColumns.forEach(col => headers.push(col.headerLabel));
     const csvRows: string[] = [headers.map(escapeCsvCell).join(',')];
-    sortedObjects.forEach(obj => {
+    
+    const objectsToExport = groupingPropertyKey && groupedDataForRender
+      ? groupedDataForRender.flatMap(g => g.objects) // If grouped, export all objects from all groups (respecting filters and sort *within* groups)
+      : sortedObjects; // Otherwise, export all sorted and filtered objects
+
+    objectsToExport.forEach(obj => {
       const row: string[] = [];
       currentModel.properties.forEach(prop => {
         const value = obj[prop.name]; let cellValue = '';
@@ -846,74 +926,48 @@ export default function DataObjectsPage() {
       toast({ variant: "destructive", title: "Error", description: "Model or workflow not available for state change." });
       return;
     }
-    console.log(`[DataObjectsPage] handleStateChangeViaDrag: objectId=${objectId}, newPotentialStateId=${newPotentialStateId}`);
-    console.log(`[DataObjectsPage] Current Workflow (captured):`, currentWorkflow ? { id: currentWorkflow.id, name: currentWorkflow.name, states: currentWorkflow.states.map(s => ({id: s.id, name: s.name, successors: s.successorStateIds})) } : 'null');
-
     const objectToUpdate = localObjects.find(obj => obj.id === objectId);
     if (!objectToUpdate) {
       toast({ variant: "destructive", title: "Error", description: `Object with ID ${objectId} not found.` });
       return;
     }
-    console.log(`[DataObjectsPage] Object to Update (captured):`, objectToUpdate);
-
-
-    const currentObjectStateId = objectToUpdate.currentStateId;
-    const currentObjectStateDef = currentObjectStateId
-      ? currentWorkflow.states.find(s => s.id === currentObjectStateId)
+    const currentObjectStateDef = objectToUpdate.currentStateId
+      ? currentWorkflow.states.find(s => s.id === objectToUpdate.currentStateId)
       : null;
-    console.log(`[DataObjectsPage] Current Object State Definition (captured):`, currentObjectStateDef ? { id: currentObjectStateDef.id, name: currentObjectStateDef.name, successors: currentObjectStateDef.successorStateIds } : 'null');
-
-
     const targetStateDef = currentWorkflow.states.find(s => s.id === newPotentialStateId);
     if (!targetStateDef) {
       toast({ variant: "destructive", title: "Error", description: `Target state ID "${newPotentialStateId}" not found in workflow "${currentWorkflow.name}".` });
-      console.error(`[DataObjectsPage] Target state ID "${newPotentialStateId}" not found in workflow "${currentWorkflow.name}". Workflow states:`, currentWorkflow.states);
       setIsRefreshing(false);
       return;
     }
-    console.log(`[DataObjectsPage] Target State Definition (captured):`, { id: targetStateDef.id, name: targetStateDef.name, isInitial: targetStateDef.isInitial });
-
-
     let isValidTransition = false;
     if (!currentObjectStateDef) {
-      console.log(`[DataObjectsPage] Object has no current state.`);
       if (targetStateDef.isInitial) {
         isValidTransition = true;
-        console.log(`[DataObjectsPage] Transition to initial state "${targetStateDef.name}" is valid.`);
       } else {
         toast({ variant: "destructive", title: "Invalid Transition", description: `Cannot move object to non-initial state "${targetStateDef.name}" as it has no current state.` });
-        console.warn(`[DataObjectsPage] Invalid: Cannot move object to non-initial state "${targetStateDef.name}" (ID: ${targetStateDef.id}) as it has no current state.`);
       }
     } else {
       const validSuccessorIds = currentObjectStateDef.successorStateIds || [];
-      console.log(`[DataObjectsPage] Valid successor IDs for state "${currentObjectStateDef.name}" (ID: ${currentObjectStateDef.id}):`, validSuccessorIds);
-      console.log(`[DataObjectsPage] Checking if target state ID "${newPotentialStateId}" is in validSuccessorIds.`);
       if (validSuccessorIds.includes(newPotentialStateId)) {
         isValidTransition = true;
-        console.log(`[DataObjectsPage] Transition from "${currentObjectStateDef.name}" to "${targetStateDef.name}" is valid.`);
       } else {
         toast({ variant: "destructive", title: "Invalid Transition", description: `Cannot move from "${currentObjectStateDef.name}" to "${targetStateDef.name}". Not a valid successor.` });
-        console.warn(`[DataObjectsPage] Invalid: Cannot move from "${currentObjectStateDef.name}" (ID: ${currentObjectStateDef.id}) to "${targetStateDef.name}" (ID: ${targetStateDef.id}). Not in successors:`, validSuccessorIds);
       }
     }
-
     if (isValidTransition) {
       try {
-        setIsRefreshing(true); // Indicate loading before API call
+        setIsRefreshing(true); 
         await updateObject(currentModel.id, objectId, { currentStateId: newPotentialStateId });
         toast({ title: "State Updated", description: `Object moved to "${targetStateDef.name}".` });
-        // DataProvider's updateObject should trigger a fetchData, which will update localObjects via useEffect
       } catch (error: any) {
         toast({ variant: "destructive", title: "Error Updating State", description: error.message });
-        // If API update fails, the UI will eventually revert on next full data sync if optimistic update was done.
-        // Or, explicitly call fetchData here to ensure UI consistency with backend.
         await fetchData('Error Reverting Kanban State Update');
       } finally {
-        setIsRefreshing(false); // Clear loading indicator
+        setIsRefreshing(false); 
       }
     } else {
-       console.log(`[DataObjectsPage] Invalid transition detected. Calling fetchData('Invalid Transition Revert').`);
-       await fetchData('Invalid Transition Revert'); // Re-fetch to revert optimistic UI changes if any
+       await fetchData('Invalid Transition Revert'); 
     }
   }, [currentModel, currentWorkflow, localObjects, updateObject, toast, fetchData]);
 
@@ -944,6 +998,31 @@ export default function DataObjectsPage() {
                  <Button variant={viewMode === 'kanban' ? 'secondary' : 'ghost'} size="sm" onClick={() => handleViewModeChange('kanban')} className="rounded-l-none border-l rounded-r-md" aria-label="Kanban View"><KanbanIcon className="h-5 w-5" /></Button>
               )}
             </div>
+            {viewMode === 'table' && groupableProperties.length > 0 && (
+              <div className="min-w-[180px]">
+                 <Select
+                  value={groupingPropertyKey ?? NO_GROUPING_VALUE}
+                  onValueChange={(value) => {
+                    setGroupingPropertyKey(value === NO_GROUPING_VALUE ? null : value);
+                    setCurrentPage(1);
+                  }}
+                >
+                  <SelectTrigger>
+                    <Rows className="mr-2 h-4 w-4 text-muted-foreground" />
+                    <SelectValue placeholder="Group by..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_GROUPING_VALUE}>No Grouping</SelectItem>
+                    <SelectGroup>
+                      <UiSelectLabel>Group by Property</UiSelectLabel>
+                      {groupableProperties.map(prop => (
+                        <SelectItem key={prop.id} value={prop.id}>{prop.name}</SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <Button onClick={handleRefreshData} variant="outline" disabled={isRefreshing}>
               {isRefreshing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
               {isRefreshing ? "Refreshing..." : "Refresh"}
@@ -976,21 +1055,21 @@ export default function DataObjectsPage() {
                     <div className="grid gap-4 py-4">
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="batch-property" className="text-right">Property</Label>
-                            <BatchSelect value={batchUpdateProperty} onValueChange={(value) => {
+                            <Select value={batchUpdateProperty} onValueChange={(value) => {
                                 setBatchUpdateProperty(value);
                               }}
                             >
-                                <BatchSelectTrigger id="batch-property" className="col-span-3">
-                                    <BatchSelectValue placeholder="Select property..." />
-                                </BatchSelectTrigger>
-                                <BatchSelectContent>
+                                <SelectTrigger id="batch-property" className="col-span-3">
+                                    <SelectValue placeholder="Select property..." />
+                                </SelectTrigger>
+                                <SelectContent>
                                     {batchUpdatableProperties.map(prop => (
-                                        <BatchSelectItem key={prop.id} value={prop.name}>
+                                        <SelectItem key={prop.id} value={prop.name}>
                                             {prop.label}
-                                        </BatchSelectItem>
+                                        </SelectItem>
                                     ))}
-                                </BatchSelectContent>
-                            </BatchSelect>
+                                </SelectContent>
+                            </Select>
                         </div>
                         {selectedBatchPropertyDetails && (
                             <div className="grid grid-cols-4 items-center gap-4">
@@ -1058,18 +1137,18 @@ export default function DataObjectsPage() {
                                     </Popover>
                                 )}
                                 {selectedBatchPropertyDetails.type === 'workflow_state' && currentWorkflow && (
-                                     <BatchSelect value={batchUpdateValue} onValueChange={setBatchUpdateValue}>
-                                        <BatchSelectTrigger id="batch-workflow-state-value" className="col-span-3">
-                                            <BatchSelectValue placeholder="Select target state..." />
-                                        </BatchSelectTrigger>
-                                        <BatchSelectContent>
+                                     <Select value={batchUpdateValue} onValueChange={setBatchUpdateValue}>
+                                        <SelectTrigger id="batch-workflow-state-value" className="col-span-3">
+                                            <SelectValue placeholder="Select target state..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
                                             {currentWorkflow.states.map(state => (
-                                                <BatchSelectItem key={state.id} value={state.id}>
+                                                <SelectItem key={state.id} value={state.id}>
                                                     {state.name}
-                                                </BatchSelectItem>
+                                                </SelectItem>
                                             ))}
-                                        </BatchSelectContent>
-                                    </BatchSelect>
+                                        </SelectContent>
+                                    </Select>
                                 )}
                                 {selectedBatchPropertyDetails.type === 'relationship' && relatedModelForBatchUpdate && (
                                   <div className="col-span-3">
@@ -1082,27 +1161,27 @@ export default function DataObjectsPage() {
                                         emptyIndicator={`No ${relatedModelForBatchUpdate.name.toLowerCase()}s found.`}
                                       />
                                     ) : (
-                                      <BatchSelect
+                                      <Select
                                         value={String(batchUpdateValue) || INTERNAL_CLEAR_RELATIONSHIP_VALUE}
                                         onValueChange={(val) => setBatchUpdateValue(val === INTERNAL_CLEAR_RELATIONSHIP_VALUE ? '' : val)}
                                       >
-                                        <BatchSelectTrigger>
-                                          <BatchSelectValue placeholder={`Select ${relatedModelForBatchUpdate.name}...`} />
-                                        </BatchSelectTrigger>
-                                        <BatchSelectContent>
-                                          <BatchSelectItem value={INTERNAL_CLEAR_RELATIONSHIP_VALUE}>-- Clear Relationship --</BatchSelectItem>
+                                        <SelectTrigger>
+                                          <SelectValue placeholder={`Select ${relatedModelForBatchUpdate.name}...`} />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value={INTERNAL_CLEAR_RELATIONSHIP_VALUE}>-- Clear Relationship --</SelectItem>
                                           {Object.entries(relatedObjectsForBatchUpdateGrouped).map(([namespace, optionsInNamespace]) => (
-                                            <BatchSelectGroup key={namespace}>
-                                              <BatchSelectLabel>{namespace}</BatchSelectLabel>
+                                            <SelectGroup key={namespace}>
+                                              <UiSelectLabel>{namespace}</UiSelectLabel>
                                               {optionsInNamespace.map((option) => (
-                                                <BatchSelectItem key={option.value} value={option.value}>
+                                                <SelectItem key={option.value} value={option.value}>
                                                   {option.label}
-                                                </BatchSelectItem>
+                                                </SelectItem>
                                               ))}
-                                            </BatchSelectGroup>
+                                            </SelectGroup>
                                           ))}
-                                        </BatchSelectContent>
-                                      </BatchSelect>
+                                        </SelectContent>
+                                      </Select>
                                     )}
                                   </div>
                                 )}
@@ -1145,119 +1224,107 @@ export default function DataObjectsPage() {
       ) : sortedObjects.length === 0 && (searchTerm || hasActiveColumnFilters) ? (
          <Card className="text-center py-12"> <CardContent> <Search size={48} className="mx-auto text-muted-foreground mb-4" /> <h3 className="text-xl font-semibold">No Results Found</h3> <p className="text-muted-foreground mb-4"> Your {searchTerm && hasActiveColumnFilters ? "search and column filters" : searchTerm ? "search" : "column filters"} did not match any {currentModel.name.toLowerCase()}s. </p> </CardContent> </Card>
       ) : viewMode === 'table' ? (
-        <Card className="shadow-lg">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[60px] text-center">
-                    <Checkbox
-                        checked={isAllPaginatedSelected}
-                        onCheckedChange={handleSelectAll}
-                        aria-label="Select all rows on current page"
-                        className="mx-auto"
-                    />
-                </TableHead>
-                <TableHead className="w-[60px] text-center">View</TableHead>
-                {directPropertiesToShowInTable.map((prop) => (
-                  <TableHead key={prop.id}> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(prop.id)} className="px-1 text-left justify-start flex-grow"> {prop.name} {getSortIcon(prop.id)} </Button> <ColumnFilterPopover columnKey={prop.id} columnName={prop.name} property={prop} currentFilter={columnFilters[prop.id] || null} onFilterChange={handleColumnFilterChange} /> </div> </TableHead>
-                ))}
-                {currentWorkflow && (
-                    <TableHead> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort('workflowState')} className="px-1 text-left justify-start flex-grow"> State {getSortIcon('workflowState')} </Button> <ColumnFilterPopover columnKey="workflowState" columnName="State" currentWorkflow={currentWorkflow} currentFilter={columnFilters['workflowState'] || null} onFilterChange={handleColumnFilterChange} /> </div> </TableHead>
-                )}
-                {virtualIncomingRelationColumns.map((col) => (
-                  <TableHead key={col.id} className="text-xs"> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(col.id)} className="px-1 text-xs text-left justify-start flex-grow"> {col.headerLabel} {getSortIcon(col.id)} </Button> <ColumnFilterPopover columnKey={col.id} columnName={col.headerLabel} currentFilter={columnFilters[col.id] || null} onFilterChange={handleColumnFilterChange} filterTypeOverride="specificIncomingReference" referencingModel={col.referencingModel} referencingProperty={col.referencingProperty} /> </div> </TableHead>
-                ))}
-                <TableHead className="text-right w-[120px]">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {paginatedObjects.map((obj) => {
-                const deleteTriggerButton = (
-                    <Button variant="ghost" size="icon" className="hover:text-destructive">
-                        <Trash2 className="h-4 w-4" />
-                    </Button>
-                );
-                const isHighlightedAdded = lastChangedInfo?.objectId === obj.id && lastChangedInfo?.modelId === currentModel?.id && lastChangedInfo?.changeType === 'added';
-                const isHighlightedUpdated = lastChangedInfo?.objectId === obj.id && lastChangedInfo?.modelId === currentModel?.id && lastChangedInfo?.changeType === 'updated';
-                return (
-                <TableRow
-                  key={obj.id}
-                  data-state={selectedObjectIds.has(obj.id) ? "selected" : ""}
-                  className={cn(
-                    isHighlightedAdded && "animate-highlight-green",
-                    isHighlightedUpdated && "animate-highlight-yellow"
-                  )}
-                >
-                  <TableCell className="text-center">
-                    <Checkbox
-                        checked={selectedObjectIds.has(obj.id)}
-                        onCheckedChange={(checked) => handleRowSelect(obj.id, !!checked)}
-                        aria-label={`Select row ${obj.id}`}
-                    />
-                  </TableCell>
-                  <TableCell className="text-center"> <Button variant="ghost" size="icon" onClick={() => handleView(obj)} className="hover:text-primary"> <Eye className="h-4 w-4" /> </Button> </TableCell>
-                  {directPropertiesToShowInTable.map((prop) => ( <TableCell key={`${obj.id}-${prop.id}`}> {displayCellContent(obj, prop)} </TableCell> ))}
-                  {currentWorkflow && ( <TableCell> <Badge variant={obj.currentStateId ? "outline" : "secondary"}> {getWorkflowStateName(obj.currentStateId)} </Badge> </TableCell> )}
-                  {virtualIncomingRelationColumns.map((colDef) => {
-                    const referencingData = allDbObjects[colDef.referencingModel.id] || [];
-                    const linkedItems = referencingData.filter(refObj => { const linkedValue = refObj[colDef.referencingProperty.name]; if (colDef.referencingProperty.relationshipType === 'many') return Array.isArray(linkedValue) && linkedValue.includes(obj.id); return linkedValue === obj.id; });
-                    if (linkedItems.length === 0) return <TableCell key={colDef.id}><span className="text-muted-foreground">N/A</span></TableCell>;
-                    return (
-                      <TableCell key={colDef.id} className="space-x-1 space-y-1">
-                        {linkedItems.map(item => (
-                           <Link key={item.id} href={`/data/${colDef.referencingModel.id}/edit/${item.id}`} className="inline-block">
-                            <Badge variant="secondary" className="hover:bg-muted cursor-pointer">
-                              {getObjectDisplayValue(item, colDef.referencingModel, allModels, allDbObjects)}
-                            </Badge>
-                          </Link>
+        <>
+        {groupingPropertyKey && groupedDataForRender ? (
+          (paginatedDataToRender as { groupTitle: string; objects: DataObject[] }[]).map((group, groupIndex) => (
+            <div key={`${group.groupTitle}-${groupIndex}`} className="mb-8">
+              <h2 className="text-xl font-semibold my-4 p-2 bg-muted rounded-md">
+                {currentModel.properties.find(p => p.id === groupingPropertyKey)?.name || 'Group'}: <span className="text-primary">{group.groupTitle}</span> ({group.objects.length} items)
+              </h2>
+              {group.objects.length > 0 ? (
+                <Card className="shadow-lg">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[60px] text-center">
+                           {/* No group-specific select-all, use main one for all visible on page */}
+                        </TableHead>
+                        <TableHead className="w-[60px] text-center">View</TableHead>
+                        {directPropertiesToShowInTable.map((prop) => (
+                          <TableHead key={prop.id}> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(prop.id)} className="px-1 text-left justify-start flex-grow"> {prop.name} {getSortIcon(prop.id)} </Button> <ColumnFilterPopover columnKey={prop.id} columnName={prop.name} property={prop} currentFilter={columnFilters[prop.id] || null} onFilterChange={handleColumnFilterChange} /> </div> </TableHead>
                         ))}
-                      </TableCell>
-                    );
-                  })}
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="icon" onClick={() => handleEdit(obj)} className="mr-2 hover:text-primary"> <Edit className="h-4 w-4" /> </Button>
-                    <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                            {deleteTriggerButton}
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                            <AlertDialogHeader>
-                                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                                <AlertDialogDescription> This action cannot be undone. This will permanently delete this {currentModel.name.toLowerCase()} object. </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => handleDelete(obj.id)}> Delete </AlertDialogAction>
-                            </AlertDialogFooter>
-                        </AlertDialogContent>
-                    </AlertDialog>
-                  </TableCell>
+                        {currentWorkflow && ( <TableHead> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort('workflowState')} className="px-1 text-left justify-start flex-grow"> State {getSortIcon('workflowState')} </Button> <ColumnFilterPopover columnKey="workflowState" columnName="State" currentWorkflow={currentWorkflow} currentFilter={columnFilters['workflowState'] || null} onFilterChange={handleColumnFilterChange} /> </div> </TableHead> )}
+                        {virtualIncomingRelationColumns.map((col) => ( <TableHead key={col.id} className="text-xs"> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(col.id)} className="px-1 text-xs text-left justify-start flex-grow"> {col.headerLabel} {getSortIcon(col.id)} </Button> <ColumnFilterPopover columnKey={col.id} columnName={col.headerLabel} currentFilter={columnFilters[col.id] || null} onFilterChange={handleColumnFilterChange} filterTypeOverride="specificIncomingReference" referencingModel={col.referencingModel} referencingProperty={col.referencingProperty} /> </div> </TableHead> ))}
+                        <TableHead className="text-right w-[120px]">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {group.objects.map((obj) => {
+                        const deleteTriggerButton = (<Button variant="ghost" size="icon" className="hover:text-destructive"><Trash2 className="h-4 w-4" /></Button>);
+                        const isHighlightedAdded = lastChangedInfo?.objectId === obj.id && lastChangedInfo?.modelId === currentModel?.id && lastChangedInfo?.changeType === 'added';
+                        const isHighlightedUpdated = lastChangedInfo?.objectId === obj.id && lastChangedInfo?.modelId === currentModel?.id && lastChangedInfo?.changeType === 'updated';
+                        return (
+                          <TableRow key={obj.id} data-state={selectedObjectIds.has(obj.id) ? "selected" : ""} className={cn( isHighlightedAdded && "animate-highlight-green", isHighlightedUpdated && "animate-highlight-yellow" )}>
+                            <TableCell className="text-center"> <Checkbox checked={selectedObjectIds.has(obj.id)} onCheckedChange={(checked) => handleRowSelect(obj.id, !!checked)} aria-label={`Select row ${obj.id}`} /> </TableCell>
+                            <TableCell className="text-center"> <Button variant="ghost" size="icon" onClick={() => handleView(obj)} className="hover:text-primary"> <Eye className="h-4 w-4" /> </Button> </TableCell>
+                            {directPropertiesToShowInTable.map((prop) => ( <TableCell key={`${obj.id}-${prop.id}`}> {displayCellContent(obj, prop)} </TableCell> ))}
+                            {currentWorkflow && ( <TableCell> <Badge variant={obj.currentStateId ? "outline" : "secondary"}> {getWorkflowStateName(obj.currentStateId)} </Badge> </TableCell> )}
+                            {virtualIncomingRelationColumns.map((colDef) => { const referencingData = allDbObjects[colDef.referencingModel.id] || []; const linkedItems = referencingData.filter(refObj => { const linkedValue = refObj[colDef.referencingProperty.name]; if (colDef.referencingProperty.relationshipType === 'many') return Array.isArray(linkedValue) && linkedValue.includes(obj.id); return linkedValue === obj.id; }); if (linkedItems.length === 0) return <TableCell key={colDef.id}><span className="text-muted-foreground">N/A</span></TableCell>; return ( <TableCell key={colDef.id} className="space-x-1 space-y-1"> {linkedItems.map(item => ( <Link key={item.id} href={`/data/${colDef.referencingModel.id}/edit/${item.id}`} className="inline-block"> <Badge variant="secondary" className="hover:bg-muted cursor-pointer"> {getObjectDisplayValue(item, colDef.referencingModel, allModels, allDbObjects)} </Badge> </Link> ))} </TableCell> ); })}
+                            <TableCell className="text-right"> <Button variant="ghost" size="icon" onClick={() => handleEdit(obj)} className="mr-2 hover:text-primary"> <Edit className="h-4 w-4" /> </Button> <AlertDialog> <AlertDialogTrigger asChild> {deleteTriggerButton} </AlertDialogTrigger> <AlertDialogContent> <AlertDialogHeader> <AlertDialogTitle>Are you sure?</AlertDialogTitle> <AlertDialogDescription> This action cannot be undone. This will permanently delete this {currentModel.name.toLowerCase()} object. </AlertDialogDescription> </AlertDialogHeader> <AlertDialogFooter> <AlertDialogCancel>Cancel</AlertDialogCancel> <AlertDialogAction onClick={() => handleDelete(obj.id)}> Delete </AlertDialogAction> </AlertDialogFooter> </AlertDialogContent> </AlertDialog> </TableCell>
+                          </TableRow> );
+                      })}
+                    </TableBody>
+                  </Table>
+                </Card>
+              ) : (
+                <p className="text-muted-foreground p-4">No items in this group match the current filters.</p>
+              )}
+            </div>
+          ))
+        ) : ( // Ungrouped view
+          <Card className="shadow-lg">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[60px] text-center"> <Checkbox checked={isAllPaginatedSelected} onCheckedChange={handleSelectAll} aria-label="Select all rows on current page" className="mx-auto" /> </TableHead>
+                  <TableHead className="w-[60px] text-center">View</TableHead>
+                  {directPropertiesToShowInTable.map((prop) => ( <TableHead key={prop.id}> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(prop.id)} className="px-1 text-left justify-start flex-grow"> {prop.name} {getSortIcon(prop.id)} </Button> <ColumnFilterPopover columnKey={prop.id} columnName={prop.name} property={prop} currentFilter={columnFilters[prop.id] || null} onFilterChange={handleColumnFilterChange} /> </div> </TableHead> ))}
+                  {currentWorkflow && ( <TableHead> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort('workflowState')} className="px-1 text-left justify-start flex-grow"> State {getSortIcon('workflowState')} </Button> <ColumnFilterPopover columnKey="workflowState" columnName="State" currentWorkflow={currentWorkflow} currentFilter={columnFilters['workflowState'] || null} onFilterChange={handleColumnFilterChange} /> </div> </TableHead> )}
+                  {virtualIncomingRelationColumns.map((col) => ( <TableHead key={col.id} className="text-xs"> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(col.id)} className="px-1 text-xs text-left justify-start flex-grow"> {col.headerLabel} {getSortIcon(col.id)} </Button> <ColumnFilterPopover columnKey={col.id} columnName={col.headerLabel} currentFilter={columnFilters[col.id] || null} onFilterChange={handleColumnFilterChange} filterTypeOverride="specificIncomingReference" referencingModel={col.referencingModel} referencingProperty={col.referencingProperty} /> </div> </TableHead> ))}
+                  <TableHead className="text-right w-[120px]">Actions</TableHead>
                 </TableRow>
-              )})}
-            </TableBody>
-          </Table>
-        </Card>
+              </TableHeader>
+              <TableBody>
+                {(paginatedDataToRender as DataObject[]).map((obj) => {
+                  const deleteTriggerButton = (<Button variant="ghost" size="icon" className="hover:text-destructive"><Trash2 className="h-4 w-4" /></Button>);
+                  const isHighlightedAdded = lastChangedInfo?.objectId === obj.id && lastChangedInfo?.modelId === currentModel?.id && lastChangedInfo?.changeType === 'added';
+                  const isHighlightedUpdated = lastChangedInfo?.objectId === obj.id && lastChangedInfo?.modelId === currentModel?.id && lastChangedInfo?.changeType === 'updated';
+                  return (
+                  <TableRow key={obj.id} data-state={selectedObjectIds.has(obj.id) ? "selected" : ""} className={cn( isHighlightedAdded && "animate-highlight-green", isHighlightedUpdated && "animate-highlight-yellow" )}>
+                    <TableCell className="text-center"> <Checkbox checked={selectedObjectIds.has(obj.id)} onCheckedChange={(checked) => handleRowSelect(obj.id, !!checked)} aria-label={`Select row ${obj.id}`} /> </TableCell>
+                    <TableCell className="text-center"> <Button variant="ghost" size="icon" onClick={() => handleView(obj)} className="hover:text-primary"> <Eye className="h-4 w-4" /> </Button> </TableCell>
+                    {directPropertiesToShowInTable.map((prop) => ( <TableCell key={`${obj.id}-${prop.id}`}> {displayCellContent(obj, prop)} </TableCell> ))}
+                    {currentWorkflow && ( <TableCell> <Badge variant={obj.currentStateId ? "outline" : "secondary"}> {getWorkflowStateName(obj.currentStateId)} </Badge> </TableCell> )}
+                    {virtualIncomingRelationColumns.map((colDef) => { const referencingData = allDbObjects[colDef.referencingModel.id] || []; const linkedItems = referencingData.filter(refObj => { const linkedValue = refObj[colDef.referencingProperty.name]; if (colDef.referencingProperty.relationshipType === 'many') return Array.isArray(linkedValue) && linkedValue.includes(obj.id); return linkedValue === obj.id; }); if (linkedItems.length === 0) return <TableCell key={colDef.id}><span className="text-muted-foreground">N/A</span></TableCell>; return ( <TableCell key={colDef.id} className="space-x-1 space-y-1"> {linkedItems.map(item => ( <Link key={item.id} href={`/data/${colDef.referencingModel.id}/edit/${item.id}`} className="inline-block"> <Badge variant="secondary" className="hover:bg-muted cursor-pointer"> {getObjectDisplayValue(item, colDef.referencingModel, allModels, allDbObjects)} </Badge> </Link> ))} </TableCell> ); })}
+                    <TableCell className="text-right"> <Button variant="ghost" size="icon" onClick={() => handleEdit(obj)} className="mr-2 hover:text-primary"> <Edit className="h-4 w-4" /> </Button> <AlertDialog> <AlertDialogTrigger asChild> {deleteTriggerButton} </AlertDialogTrigger> <AlertDialogContent> <AlertDialogHeader> <AlertDialogTitle>Are you sure?</AlertDialogTitle> <AlertDialogDescription> This action cannot be undone. This will permanently delete this {currentModel.name.toLowerCase()} object. </AlertDialogDescription> </AlertDialogHeader> <AlertDialogFooter> <AlertDialogCancel>Cancel</AlertDialogCancel> <AlertDialogAction onClick={() => handleDelete(obj.id)}> Delete </AlertDialogAction> </AlertDialogFooter> </AlertDialogContent> </AlertDialog> </TableCell>
+                  </TableRow> );
+                })}
+              </TableBody>
+            </Table>
+          </Card>
+        )}
+        </>
       ) : viewMode === 'gallery' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-          {paginatedObjects.map((obj) => ( <GalleryCard key={obj.id} obj={obj} model={currentModel} allModels={allModels} allObjects={allDbObjects} currentWorkflow={currentWorkflow} getWorkflowStateName={getWorkflowStateName} onView={handleView} onEdit={handleEdit} onDelete={handleDelete} lastChangedInfo={lastChangedInfo}/> ))}
+          {(paginatedDataToRender as DataObject[]).map((obj) => ( <GalleryCard key={obj.id} obj={obj} model={currentModel} allModels={allModels} allObjects={allDbObjects} currentWorkflow={currentWorkflow} getWorkflowStateName={getWorkflowStateName} onView={handleView} onEdit={handleEdit} onDelete={handleDelete} lastChangedInfo={lastChangedInfo}/> ))}
         </div>
       ) : viewMode === 'kanban' && currentWorkflow ? (
         <KanbanBoard
           model={currentModel}
           workflow={currentWorkflow}
-          objects={sortedObjects} // Pass all sorted (and filtered) objects to Kanban
+          objects={sortedObjects} 
           allModels={allModels}
           allObjects={allDbObjects}
           onObjectUpdate={handleStateChangeViaDrag}
           onViewObject={handleView}
           onEditObject={handleEdit}
-          onDeleteObject={handleDelete} // Pass handleDelete to KanbanBoard
+          onDeleteObject={handleDelete} 
         />
       ) : null }
-      {(viewMode === 'table' || viewMode === 'gallery') && totalPages > 1 && (
+      { (viewMode === 'table' || viewMode === 'gallery') && totalPages > 1 && (
         <div className="flex justify-center items-center space-x-2 mt-8">
           <Button variant="outline" size="sm" onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))} disabled={currentPage === 1}>Previous</Button>
-          <span className="text-sm text-muted-foreground"> Page {currentPage} of {totalPages} </span>
+          <span className="text-sm text-muted-foreground"> Page {currentPage} of {totalPages} ({groupingPropertyKey ? 'groups' : 'items'}) </span>
           <Button variant="outline" size="sm" onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))} disabled={currentPage === totalPages}>Next</Button>
         </div>
       )}

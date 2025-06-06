@@ -1,6 +1,8 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
-import type { Model, DataObject } from '@/lib/types';
+import type { Model, DataObject, Property } from '@/lib/types';
+import { format as formatDateFns, isValid as isDateValidFn } from 'date-fns';
+
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -24,8 +26,10 @@ export const getObjectDisplayValue = (
         const propertyDefinition = model.properties.find(p => p.name === propName);
         if (propertyDefinition?.type === 'relationship' && propertyDefinition.relatedModelId) {
             const relatedModelForProp = allModels.find(m => m.id === propertyDefinition.relatedModelId);
-            const relatedObjForProp = (allObjects[propertyDefinition.relatedModelId] || []).find(o => o.id === propValue);
-            // Recursive call to handle nested display properties
+            // Find the related object using its ID. If value is an array (many-to-many), this needs adjustment.
+            // For now, assuming displayPropertyNames refer to single-value fields or the first of many for simplicity.
+            const relatedObjectId = Array.isArray(propValue) ? propValue[0] : propValue;
+            const relatedObjForProp = (allObjects[propertyDefinition.relatedModelId] || []).find(o => o.id === relatedObjectId);
             return getObjectDisplayValue(relatedObjForProp, relatedModelForProp, allModels, allObjects);
         }
         return String(propValue);
@@ -55,3 +59,47 @@ export const getObjectDisplayValue = (
   return obj.id ? `ID: ...${obj.id.slice(-6)}` : 'N/A';
 };
 
+export function getObjectGroupValue(
+  obj: DataObject,
+  groupingProperty: Property | undefined,
+  allModels: Model[],
+  allDbObjects: Record<string, DataObject[]>
+): string {
+  if (!groupingProperty) return "Uncategorized"; // Default group for unexpected cases
+  const value = obj[groupingProperty.name];
+
+  if (value === null || typeof value === 'undefined') {
+    return "Not Set";
+  }
+
+  switch (groupingProperty.type) {
+    case 'boolean':
+      return value ? 'Yes' : 'No';
+    case 'date':
+      try {
+        const date = new Date(value);
+        return isDateValidFn(date) ? formatDateFns(date, 'PPP') : `Invalid Date: ${String(value).substring(0,10)}`;
+      } catch {
+        return `Invalid Date Format: ${String(value).substring(0,10)}`;
+      }
+    case 'number':
+    case 'rating': // Ratings can be grouped by their numeric value
+      return String(value);
+    case 'string':
+    case 'markdown': // Group by the raw markdown string or a preview
+    case 'image':    // Group by image URL string
+      return String(value).trim() === '' ? '(Empty)' : String(value);
+    case 'relationship':
+      if (!groupingProperty.relatedModelId || groupingProperty.relationshipType === 'many') {
+        return "N/A (Unsupported Grouping)";
+      }
+      const relatedModel = allModels.find(m => m.id === groupingProperty.relatedModelId);
+      if (!relatedModel) return "N/A (Related Model Missing)";
+      
+      const relatedObj = (allDbObjects[groupingProperty.relatedModelId] || []).find(o => o.id === value);
+      return getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
+    default:
+      const unhandledValue = String(value);
+      return unhandledValue.trim() === '' ? '(Empty)' : unhandledValue;
+  }
+}
