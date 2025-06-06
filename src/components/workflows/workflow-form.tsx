@@ -92,6 +92,11 @@ function StateFields({ control, form, statesFieldArray }: {
       const newIndex = fields.findIndex((field) => field.id === over.id);
       if (oldIndex !== -1 && newIndex !== -1) {
         move(oldIndex, newIndex);
+        // After moving, update orderIndex for all states in the form
+        const currentStates = form.getValues('states');
+        currentStates.forEach((state, idx) => {
+          form.setValue(`states.${idx}.orderIndex`, idx, { shouldDirty: true });
+        });
       }
     }
   }
@@ -207,7 +212,14 @@ function StateFields({ control, form, statesFieldArray }: {
         </Accordion>
       </SortableContext>
       <Button type="button" variant="outline" size="sm"
-        onClick={() => append({ id: crypto.randomUUID(), name: '', description: '', isInitial: false, successorStateNames: [] })}
+        onClick={() => append({ 
+            id: crypto.randomUUID(), 
+            name: '', 
+            description: '', 
+            isInitial: false, 
+            orderIndex: fields.length, // Set orderIndex for new state
+            successorStateNames: [] 
+        })}
         className="mt-4 w-full border-dashed hover:border-solid"
       >
         <PlusCircle className="mr-2 h-4 w-4" /> Add State
@@ -308,4 +320,3 @@ export default function WorkflowForm({ form, onSubmit, onCancel, isLoading, exis
     </Form>
   );
 }
-

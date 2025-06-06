@@ -48,6 +48,7 @@ export interface WorkflowStateInput { // For form input, before DB IDs are known
   name: string;
   description?: string;
   isInitial?: boolean;
+  orderIndex: number; // For maintaining UI order
   successorStateNames?: string[]; // Use names for UI, resolve to IDs on backend
 }
 
@@ -57,6 +58,7 @@ export interface WorkflowState {
   name: string;
   description?: string;
   isInitial: boolean; // Stored as 0 or 1 in DB, mapped to boolean
+  orderIndex: number;
 }
 
 export interface WorkflowStateWithSuccessors extends WorkflowState {

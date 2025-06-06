@@ -21,13 +21,16 @@ function mapWorkflowToFormValues(workflow?: WorkflowWithDetails): WorkflowFormVa
     return {
       name: '',
       description: '',
-      states: [{ id: `temp-${crypto.randomUUID()}`, name: 'New', description: 'Initial state', isInitial: true, successorStateNames: [] }],
+      states: [{ id: `temp-${crypto.randomUUID()}`, name: 'New', description: 'Initial state', isInitial: true, orderIndex: 0, successorStateNames: [] }],
     };
   }
+  // Sort states by orderIndex before mapping
+  const sortedStates = [...workflow.states].sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
+
   return {
     name: workflow.name,
     description: workflow.description || '',
-    states: workflow.states.map(state => {
+    states: sortedStates.map((state, index) => { // Use sortedStates and pass index
       const successorNames = state.successorStateIds
         .map(id => workflow.states.find(s => s.id === id)?.name)
         .filter(name => !!name) as string[];
@@ -36,6 +39,7 @@ function mapWorkflowToFormValues(workflow?: WorkflowWithDetails): WorkflowFormVa
         name: state.name,
         description: state.description || '',
         isInitial: !!state.isInitial,
+        orderIndex: state.orderIndex !== undefined ? state.orderIndex : index, // Ensure orderIndex is set
         successorStateNames: successorNames,
       };
     }),
@@ -47,7 +51,7 @@ function EditWorkflowPageInternal() {
   const params = useParams();
   const workflowId = params.workflowId as string;
 
-  const { getWorkflowById, updateWorkflow, isReady: dataIsReady, fetchData } = useData(); // Removed pause/resumePolling
+  const { getWorkflowById, updateWorkflow, isReady: dataIsReady, fetchData } = useData(); 
   const { toast } = useToast();
 
   const [currentWorkflow, setCurrentWorkflow] = useState<WorkflowWithDetails | null>(null);
@@ -58,8 +62,6 @@ function EditWorkflowPageInternal() {
     defaultValues: mapWorkflowToFormValues(), 
   });
   
-  // Removed useEffect for pause/resumePolling
-
   useEffect(() => {
     if (dataIsReady && workflowId) {
       const foundWorkflow = getWorkflowById(workflowId);
@@ -77,11 +79,12 @@ function EditWorkflowPageInternal() {
   const onSubmit = async (values: WorkflowFormValues) => {
     if (!currentWorkflow) return;
 
-    const payloadStates = values.states.map(s => ({
+    const payloadStates = values.states.map((s, index) => ({
       id: s.id?.startsWith('temp-') ? undefined : s.id,
       name: s.name,
       description: s.description,
       isInitial: s.isInitial,
+      orderIndex: s.orderIndex !== undefined ? s.orderIndex : index, // Ensure orderIndex is passed
       successorStateNames: s.successorStateNames || [],
     }));
     
@@ -94,7 +97,7 @@ function EditWorkflowPageInternal() {
     try {
       await updateWorkflow(currentWorkflow.id, payload);
       toast({ title: "Workflow Updated", description: `Workflow "${values.name}" has been updated.` });
-      await fetchData(); 
+      await fetchData('After Workflow Update'); 
       router.push('/admin/workflows');
     } catch (error: any) {
       let errorMessage = "Failed to update workflow.";

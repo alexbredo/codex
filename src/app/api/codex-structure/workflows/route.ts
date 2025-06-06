@@ -18,7 +18,7 @@ export async function GET(request: Request) {
 
     for (const wf of workflowsFromDb) {
       const statesFromDb = await db.all(
-        'SELECT * FROM workflow_states WHERE workflowId = ? ORDER BY name ASC',
+        'SELECT * FROM workflow_states WHERE workflowId = ? ORDER BY orderIndex ASC', // Order by orderIndex
         wf.id
       );
 
@@ -36,6 +36,7 @@ export async function GET(request: Request) {
         statesWithSuccessors.push({
           ...s,
           isInitial: !!s.isInitial,
+          orderIndex: s.orderIndex, // Ensure orderIndex is included
           successorStateIds: transitions.map((t) => t.toStateId),
         });
       }
@@ -67,7 +68,7 @@ export async function POST(request: Request) {
     }
 
     const initialStates = statesInput.filter(s => s.isInitial);
-    if (initialStates.length === 0) {
+    if (initialStates.length === 0 && statesInput.length > 0) { // Ensure at least one initial state if states are present
         return NextResponse.json({ error: 'Workflow must have one initial state defined.' }, { status: 400 });
     }
     if (initialStates.length > 1) {
@@ -87,17 +88,18 @@ export async function POST(request: Request) {
     const stateNameToIdMap: Record<string, string> = {};
     const createdStatesForResponse = [];
 
-    for (const sInput of statesInput) {
+    for (const [index, sInput] of statesInput.entries()) {
       if (!sInput.name || sInput.name.trim() === '') {
         await db.run('ROLLBACK');
         return NextResponse.json({ error: `State name cannot be empty.` }, { status: 400 });
       }
       const stateId = crypto.randomUUID();
       stateNameToIdMap[sInput.name.trim()] = stateId;
+      const orderIndex = sInput.orderIndex !== undefined ? sInput.orderIndex : index;
 
       await db.run(
-        'INSERT INTO workflow_states (id, workflowId, name, description, isInitial) VALUES (?, ?, ?, ?, ?)',
-        stateId, workflowId, sInput.name.trim(), sInput.description, sInput.isInitial ? 1 : 0
+        'INSERT INTO workflow_states (id, workflowId, name, description, isInitial, orderIndex) VALUES (?, ?, ?, ?, ?, ?)',
+        stateId, workflowId, sInput.name.trim(), sInput.description, sInput.isInitial ? 1 : 0, orderIndex
       );
       createdStatesForResponse.push({
         id: stateId,
@@ -105,6 +107,7 @@ export async function POST(request: Request) {
         name: sInput.name.trim(),
         description: sInput.description,
         isInitial: !!sInput.isInitial,
+        orderIndex: orderIndex,
         successorStateIds: [], // Will be populated below
       });
     }
@@ -136,12 +139,20 @@ export async function POST(request: Request) {
     await db.run('COMMIT');
 
     const initialDbState = await db.get('SELECT id FROM workflow_states WHERE workflowId = ? AND isInitial = 1', workflowId);
+    // Re-fetch states in correct order to return
+    const finalStatesForResponse = await db.all('SELECT * FROM workflow_states WHERE workflowId = ? ORDER BY orderIndex ASC', workflowId);
+    const finalStatesWithSuccessors = [];
+    for (const s of finalStatesForResponse) {
+        const transitions = await db.all('SELECT toStateId FROM workflow_state_transitions WHERE fromStateId = ? AND workflowId = ?', s.id, workflowId);
+        finalStatesWithSuccessors.push({...s, isInitial: !!s.isInitial, successorStateIds: transitions.map(t => t.toStateId)});
+    }
+
 
     const createdWorkflow: WorkflowWithDetails = {
       id: workflowId,
       name: name.trim(),
       description,
-      states: createdStatesForResponse,
+      states: finalStatesWithSuccessors,
       initialStateId: initialDbState?.id || null,
     };
 

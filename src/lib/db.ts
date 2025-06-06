@@ -200,10 +200,20 @@ async function initializeDb(): Promise<Database> {
       name TEXT NOT NULL,
       description TEXT,
       isInitial INTEGER DEFAULT 0, -- 0 for false, 1 for true
+      orderIndex INTEGER NOT NULL DEFAULT 0, -- For state display order
       FOREIGN KEY (workflowId) REFERENCES workflows(id) ON DELETE CASCADE,
       UNIQUE (workflowId, name)
     );
   `);
+  // Add orderIndex to workflow_states if it doesn't exist
+  try {
+    await db.run('ALTER TABLE workflow_states ADD COLUMN orderIndex INTEGER NOT NULL DEFAULT 0');
+  } catch (e: any) {
+    if (!(e.message && (e.message.toLowerCase().includes('duplicate column name') || e.message.toLowerCase().includes('already has a column named orderindex')))) {
+        console.error("Migration: Error trying to add 'orderIndex' column to 'workflow_states' table:", e.message);
+    }
+  }
+
 
   await db.exec(`
     CREATE TABLE IF NOT EXISTS workflow_state_transitions (

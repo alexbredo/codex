@@ -24,7 +24,7 @@ export async function GET(request: Request, { params }: Params) {
     }
 
     const statesFromDb = await db.all(
-      'SELECT * FROM workflow_states WHERE workflowId = ? ORDER BY name ASC',
+      'SELECT * FROM workflow_states WHERE workflowId = ? ORDER BY orderIndex ASC', // Order by orderIndex
       wf.id
     );
 
@@ -41,6 +41,7 @@ export async function GET(request: Request, { params }: Params) {
       statesWithSuccessors.push({
         ...s,
         isInitial: !!s.isInitial,
+        orderIndex: s.orderIndex, // Ensure orderIndex is included
         successorStateIds: transitions.map((t) => t.toStateId),
       });
     }
@@ -76,16 +77,12 @@ export async function PUT(request: Request, { params }: Params) {
         return NextResponse.json({ error: 'Workflow must have at least one state.' }, { status: 400 });
     }
     const initialStatesInput = statesInput.filter(s => s.isInitial);
-    if (initialStatesInput.length > 1) { // Can be 0 temporarily if user unchecks the only initial one
+    if (initialStatesInput.length > 1) { 
         return NextResponse.json({ error: 'Workflow can only have one initial state.' }, { status: 400 });
     }
     if (initialStatesInput.length === 0 && statesInput.length > 0) {
-        // If no state is marked as initial, this is an invalid setup unless it's a temporary state during form editing.
-        // However, on final submission, an initial state should ideally be present.
-        // For now, we'll let it through but the client form should enforce this or API can double check.
-        // The schema validation on the client already checks this, but good to be aware.
+         return NextResponse.json({ error: 'Workflow must have one initial state defined if states exist.' }, { status: 400 });
     }
-
 
     await db.run('BEGIN TRANSACTION');
 
@@ -96,14 +93,12 @@ export async function PUT(request: Request, { params }: Params) {
     );
     
     const existingDbStates: WorkflowState[] = await db.all('SELECT * FROM workflow_states WHERE workflowId = ?', workflowId);
-    const inputStateClientIds = new Set(statesInput.map(s => s.id).filter(Boolean)); // IDs provided by client (could be existing or temp)
-
+    
     // States to delete: those in DB but not in the final input state set (matched by actual DB ID)
     const inputStateDbIdsToKeep = new Set(statesInput.filter(s => s.id && !s.id.startsWith('temp-') && existingDbStates.some(dbS => dbS.id === s.id)).map(s => s.id!));
     for (const dbState of existingDbStates) {
       if (!inputStateDbIdsToKeep.has(dbState.id)) {
         await db.run('DELETE FROM workflow_states WHERE id = ?', dbState.id);
-        // Related data_objects.currentStateId will be set to NULL due to ON DELETE SET NULL
       }
     }
     
@@ -111,29 +106,29 @@ export async function PUT(request: Request, { params }: Params) {
     const finalStatesForResponse: WorkflowStateWithSuccessors[] = [];
 
     // Update existing states and insert new states
-    for (const sInput of statesInput) {
+    for (const [index, sInput] of statesInput.entries()) {
       if (!sInput.name || sInput.name.trim() === '') {
         await db.run('ROLLBACK');
         return NextResponse.json({ error: `State name cannot be empty.` }, { status: 400 });
       }
       const stateNameTrimmed = sInput.name.trim();
-      let stateId = sInput.id && existingDbStates.some(dbS => dbS.id === sInput.id) ? sInput.id : crypto.randomUUID();
+      let stateId = (sInput.id && !sInput.id.startsWith('temp-') && existingDbStates.some(dbS => dbS.id === sInput.id)) ? sInput.id : crypto.randomUUID();
+      const orderIndex = sInput.orderIndex !== undefined ? sInput.orderIndex : index;
       
-      stateNameToFinalIdMap[stateNameTrimmed] = stateId; // Map name to its final ID (new or existing)
+      stateNameToFinalIdMap[stateNameTrimmed] = stateId;
 
-      const isExistingStateById = existingDbStates.some(dbS => dbS.id === sInput.id);
+      const isExistingStateById = existingDbStates.some(dbS => dbS.id === sInput.id && !sInput.id?.startsWith('temp-'));
 
       if (isExistingStateById && sInput.id) { // Update existing state
-        stateId = sInput.id; // Use the provided existing ID
+        stateId = sInput.id; 
         await db.run(
-          'UPDATE workflow_states SET name = ?, description = ?, isInitial = ? WHERE id = ? AND workflowId = ?',
-          stateNameTrimmed, sInput.description, sInput.isInitial ? 1 : 0, stateId, workflowId
+          'UPDATE workflow_states SET name = ?, description = ?, isInitial = ?, orderIndex = ? WHERE id = ? AND workflowId = ?',
+          stateNameTrimmed, sInput.description, sInput.isInitial ? 1 : 0, orderIndex, stateId, workflowId
         );
       } else { // Insert new state
-        // stateId is already a new UUID if sInput.id was not a valid existing ID
         await db.run(
-          'INSERT INTO workflow_states (id, workflowId, name, description, isInitial) VALUES (?, ?, ?, ?, ?)',
-          stateId, workflowId, stateNameTrimmed, sInput.description, sInput.isInitial ? 1 : 0
+          'INSERT INTO workflow_states (id, workflowId, name, description, isInitial, orderIndex) VALUES (?, ?, ?, ?, ?, ?)',
+          stateId, workflowId, stateNameTrimmed, sInput.description, sInput.isInitial ? 1 : 0, orderIndex
         );
       }
       finalStatesForResponse.push({
@@ -142,6 +137,7 @@ export async function PUT(request: Request, { params }: Params) {
         name: stateNameTrimmed,
         description: sInput.description,
         isInitial: !!sInput.isInitial,
+        orderIndex: orderIndex,
         successorStateIds: [], // Will be populated next
       });
     }
@@ -151,18 +147,16 @@ export async function PUT(request: Request, { params }: Params) {
 
     for (const sInput of statesInput) {
       const fromStateNameTrimmed = sInput.name.trim();
-      const fromStateId = stateNameToFinalIdMap[fromStateNameTrimmed]; // Get the final ID for this state name
+      const fromStateId = stateNameToFinalIdMap[fromStateNameTrimmed]; 
       const currentFinalState = finalStatesForResponse.find(s => s.id === fromStateId);
 
       if (sInput.successorStateNames && sInput.successorStateNames.length > 0) {
         for (const successorName of sInput.successorStateNames) {
-          const toStateId = stateNameToFinalIdMap[successorName.trim()]; // Get final ID for successor
+          const toStateId = stateNameToFinalIdMap[successorName.trim()]; 
           if (!toStateId) {
             await db.run('ROLLBACK');
             return NextResponse.json({ error: `Successor state name "${successorName}" for state "${fromStateNameTrimmed}" is invalid or refers to a state not being processed.` }, { status: 400 });
           }
-          // Optional: Add check to prevent self-transitions if needed
-          // if (fromStateId === toStateId) continue; 
           
           const transitionId = crypto.randomUUID();
           await db.run(
@@ -179,12 +173,20 @@ export async function PUT(request: Request, { params }: Params) {
     await db.run('COMMIT');
 
     const initialDbStateAfterUpdate = await db.get('SELECT id FROM workflow_states WHERE workflowId = ? AND isInitial = 1', workflowId);
+    const finalStatesDataFromDb = await db.all('SELECT * FROM workflow_states WHERE workflowId = ? ORDER BY orderIndex ASC', workflowId);
+    
+    const finalStatesWithSuccessors = [];
+    for (const s of finalStatesDataFromDb) {
+        const transitions = await db.all('SELECT toStateId FROM workflow_state_transitions WHERE fromStateId = ? AND workflowId = ?', s.id, workflowId);
+        finalStatesWithSuccessors.push({...s, isInitial: !!s.isInitial, successorStateIds: transitions.map(t => t.toStateId)});
+    }
+
 
     const updatedWorkflow: WorkflowWithDetails = {
       id: workflowId,
       name: name.trim(),
       description,
-      states: finalStatesForResponse.sort((a,b) => a.name.localeCompare(b.name)), // Sort for consistent response
+      states: finalStatesWithSuccessors,
       initialStateId: initialDbStateAfterUpdate?.id || null,
     };
     return NextResponse.json(updatedWorkflow);
@@ -233,5 +235,3 @@ export async function DELETE(request: Request, { params }: Params) {
     return NextResponse.json({ error: 'Failed to delete workflow', details: error.message }, { status: 500 });
   }
 }
-
-    

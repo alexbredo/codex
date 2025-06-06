@@ -17,7 +17,7 @@ import { withAuth } from '@/contexts/auth-context';
 
 function CreateWorkflowPageInternal() {
   const router = useRouter();
-  const { addWorkflow, isReady: dataIsReady, fetchData } = useData(); // Removed pause/resumePolling
+  const { addWorkflow, isReady: dataIsReady, fetchData } = useData(); 
   const { toast } = useToast();
 
   const form = useForm<WorkflowFormValues>({
@@ -25,18 +25,17 @@ function CreateWorkflowPageInternal() {
     defaultValues: {
       name: '',
       description: '',
-      states: [{ id: `temp-${crypto.randomUUID()}`, name: 'New', description: 'Initial state', isInitial: true, successorStateNames: [] }],
+      states: [{ id: `temp-${crypto.randomUUID()}`, name: 'New', description: 'Initial state', isInitial: true, orderIndex: 0, successorStateNames: [] }],
     },
   });
   
-  // Removed useEffect for pause/resumePolling
-
   const onSubmit = async (values: WorkflowFormValues) => {
-    const payloadStates = values.states.map(s => ({
+    const payloadStates = values.states.map((s, index) => ({
       id: s.id?.startsWith('temp-') ? undefined : s.id,
       name: s.name,
       description: s.description,
       isInitial: s.isInitial,
+      orderIndex: s.orderIndex !== undefined ? s.orderIndex : index, // Ensure orderIndex is passed
       successorStateNames: s.successorStateNames || [],
     }));
     
@@ -49,7 +48,7 @@ function CreateWorkflowPageInternal() {
     try {
       await addWorkflow(payload);
       toast({ title: "Workflow Created", description: `Workflow "${values.name}" has been created.` });
-      await fetchData(); 
+      await fetchData('After Workflow Create'); 
       router.push('/admin/workflows');
     } catch (error: any) {
       let errorMessage = "Failed to create workflow.";
