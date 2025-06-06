@@ -20,7 +20,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "./scroll-area";
+// ScrollArea import is removed as it's no longer used directly here.
 
 export type MultiSelectOption = {
   value: string;
@@ -97,8 +97,6 @@ export function MultiSelectAutocomplete({
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
         <Command
           filter={(value, search) => {
-            // 'value' is option.value (the ID) from CommandItem
-            // 'search' is the input query
             const option = options.find(opt => opt.value === value);
             if (option && option.label.toLowerCase().includes(search.toLowerCase())) return 1;
             return 0;
@@ -109,39 +107,35 @@ export function MultiSelectAutocomplete({
             value={inputValue}
             onValueChange={setInputValue}
           />
-          <CommandList>
+          <CommandList> {/* CommandList itself handles scrolling and has max-h */}
             <CommandEmpty>{emptyIndicator}</CommandEmpty>
-            <ScrollArea className="max-h-60">
-              <CommandGroup>
-                {options.map((option) => {
-                  const isSelected = selected.includes(option.value);
-                  return (
-                    <CommandItem
-                      key={option.value}
-                      value={option.value} // Value for filtering/selection is the ID
-                      onSelect={() => { // onSelect callback gets the value (ID)
-                        if (isSelected) {
-                          handleDeselect(option.value);
-                        } else {
-                          handleSelect(option.value);
-                        }
-                        // Do not clear inputValue here to allow multiple selections without retyping search
-                        // setInputValue(""); 
-                      }}
-                      className="flex items-center justify-between"
-                    >
-                      <span className="truncate">{option.label}</span>
-                      <Check
-                        className={cn(
-                          "ml-2 h-4 w-4",
-                          isSelected ? "opacity-100" : "opacity-0"
-                        )}
-                      />
-                    </CommandItem>
-                  );
-                })}
-              </CommandGroup>
-            </ScrollArea>
+            <CommandGroup>
+              {options.map((option) => {
+                const isSelected = selected.includes(option.value);
+                return (
+                  <CommandItem
+                    key={option.value}
+                    value={option.value}
+                    onSelect={() => {
+                      if (isSelected) {
+                        handleDeselect(option.value);
+                      } else {
+                        handleSelect(option.value);
+                      }
+                    }}
+                    className="flex items-center justify-between"
+                  >
+                    <span className="truncate">{option.label}</span>
+                    <Check
+                      className={cn(
+                        "ml-2 h-4 w-4",
+                        isSelected ? "opacity-100" : "opacity-0"
+                      )}
+                    />
+                  </CommandItem>
+                );
+              })}
+            </CommandGroup>
           </CommandList>
         </Command>
       </PopoverContent>
