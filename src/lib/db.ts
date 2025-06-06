@@ -3,6 +3,7 @@ import sqlite3 from 'sqlite3';
 import { open, type Database } from 'sqlite';
 import path from 'path';
 import fs from 'fs/promises'; // Use fs.promises for async file operations
+import { DEBUG_MODE, MOCK_API_ADMIN_USER } from '@/lib/auth'; // Import debug constants
 
 // Determine the database path.
 // It will be created in a 'data' subdirectory of the application root.
@@ -174,7 +175,7 @@ async function initializeDb(): Promise<Database> {
       ownerId TEXT, -- FK to users table
       FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE,
       FOREIGN KEY (currentStateId) REFERENCES workflow_states(id) ON DELETE SET NULL,
-      FOREIGN KEY (ownerId) REFERENCES users(id) ON DELETE SET NULL
+      FOREIGN KEY (ownerId) REFERENCES users(id) ON DELETE SET NULL -- Important: Ensure users table exists and has the user
     );
   `);
    try {
@@ -245,6 +246,25 @@ async function initializeDb(): Promise<Database> {
       UNIQUE(workflowId, fromStateId, toStateId)
     );
   `);
+
+  // Ensure mock admin user exists if in DEBUG_MODE
+  if (DEBUG_MODE) {
+    const mockAdmin = MOCK_API_ADMIN_USER;
+    // This password is a placeholder and won't be used for login in DEBUG_MODE
+    const placeholderPassword = 'debugpassword'; 
+    try {
+      await db.run(
+        `INSERT OR IGNORE INTO users (id, username, password, role) VALUES (?, ?, ?, ?)`,
+        mockAdmin.id,
+        mockAdmin.username,
+        placeholderPassword,
+        mockAdmin.role
+      );
+      console.log(`DEBUG_MODE: Ensured mock admin user '${mockAdmin.username}' (ID: ${mockAdmin.id}) exists in the database.`);
+    } catch (error: any) {
+      console.error(`DEBUG_MODE: Failed to ensure mock admin user '${mockAdmin.username}' in database:`, error.message);
+    }
+  }
 
 
   console.log(`Database initialized at ${dbPath}`);
