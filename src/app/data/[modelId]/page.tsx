@@ -81,10 +81,10 @@ interface SortConfig {
 }
 
 interface IncomingRelationColumn {
-  id: string;
-  headerLabel: string;
-  referencingModel: Model;
-  referencingProperty: Property;
+  id: string; // Unique ID for the virtual column, e.g., `incoming-${referencingModel.id}-${referencingProperty.name}`
+  headerLabel: string; // Label for the table header, e.g., "Ref. by Orders (via Customer)"
+  referencingModel: Model; // The model that is pointing to the currentModel
+  referencingProperty: Property; // The 'relationship' property in referencingModel that points here
 }
 
 const INTERNAL_NO_REFERENCES_VALUE = "__NO_REFERENCES__";
@@ -206,19 +206,46 @@ export default function DataObjectsPage() {
     }
   }, [groupingPropertyKey, currentModel]);
 
+
+  const virtualIncomingRelationColumns: IncomingRelationColumn[] = useMemo(() => {
+    if (!currentModel || !dataContextIsReady) return [];
+    const columns: IncomingRelationColumn[] = [];
+    allModels.forEach(otherModel => {
+      if (otherModel.id === currentModel.id) return;
+      otherModel.properties.forEach(prop => {
+        if (prop.type === 'relationship' && prop.relatedModelId === currentModel.id) {
+          columns.push({
+            id: `incoming-${otherModel.id}-${prop.name}`,
+            headerLabel: `Ref. by ${otherModel.name} (via ${prop.name})`,
+            referencingModel: otherModel,
+            referencingProperty: prop,
+          });
+        }
+      });
+    });
+    return columns.sort((a,b) => a.headerLabel.localeCompare(b.headerLabel));
+  }, [currentModel, allModels, dataContextIsReady]);
+
+
   const groupableProperties = useMemo(() => {
     if (!currentModel) return [];
     const props = currentModel.properties.filter(
       p => ['string', 'number', 'boolean', 'date', 'rating'].includes(p.type) ||
            (p.type === 'relationship' && p.relationshipType === 'one')
-    ).map(p => ({ id: p.id, name: p.name, isWorkflowState: false }))
+    ).map(p => ({ id: p.id, name: p.name, isWorkflowState: false, isIncomingRelation: false }))
      .sort((a,b) => a.name.localeCompare(b.name));
 
     if (currentWorkflow && currentWorkflow.states.length > 0) {
-        props.unshift({ id: WORKFLOW_STATE_GROUPING_KEY, name: "Workflow State", isWorkflowState: true });
+        props.unshift({ id: WORKFLOW_STATE_GROUPING_KEY, name: "Workflow State", isWorkflowState: true, isIncomingRelation: false });
     }
+
+    virtualIncomingRelationColumns.forEach(vCol => {
+        props.push({ id: vCol.id, name: vCol.headerLabel, isWorkflowState: false, isIncomingRelation: true });
+    });
+
     return props;
-  }, [currentModel, currentWorkflow]);
+  }, [currentModel, currentWorkflow, virtualIncomingRelationColumns]);
+
 
 
   const batchUpdatableProperties = useMemo(() => {
@@ -307,24 +334,6 @@ export default function DataObjectsPage() {
   }, [relatedModelForBatchUpdate, getObjectsByModelId, allModels, allDbObjects]);
 
 
-  const virtualIncomingRelationColumns = useMemo(() => {
-    if (!currentModel || !dataContextIsReady) return [];
-    const columns: IncomingRelationColumn[] = [];
-    allModels.forEach(otherModel => {
-      if (otherModel.id === currentModel.id) return;
-      otherModel.properties.forEach(prop => {
-        if (prop.type === 'relationship' && prop.relatedModelId === currentModel.id) {
-          columns.push({
-            id: `incoming-${otherModel.id}-${prop.name}`,
-            headerLabel: `Ref. by ${otherModel.name} (via ${prop.name})`,
-            referencingModel: otherModel,
-            referencingProperty: prop,
-          });
-        }
-      });
-    });
-    return columns;
-  }, [currentModel, allModels, dataContextIsReady]);
 
   const handleViewModeChange = (newMode: ViewMode) => {
     setViewMode(newMode);
@@ -351,6 +360,12 @@ export default function DataObjectsPage() {
     setCurrentPage(1);
   };
 
+  const getWorkflowStateName = useCallback((stateId: string | null | undefined): string => {
+    if (!stateId || !currentWorkflow) return 'N/A (No State)';
+    const state = currentWorkflow.states.find(s => s.id === stateId);
+    return state ? state.name : 'Unknown State';
+  }, [currentWorkflow]);
+
   const getFilterDisplayDetails = useCallback((columnKey: string, filter: ColumnFilterValue): { columnName: string; displayValue: string; operator: string } | null => {
     if (!currentModel && !virtualIncomingRelationColumns.some(vc => vc.id === columnKey)) return null;
 
@@ -361,7 +376,7 @@ export default function DataObjectsPage() {
     const property = currentModel?.properties.find(p => p.id === columnKey);
     const virtualCol = virtualIncomingRelationColumns.find(vc => vc.id === columnKey);
 
-    if (columnKey === WORKFLOW_STATE_GROUPING_KEY) { // Use the constant here
+    if (columnKey === WORKFLOW_STATE_GROUPING_KEY) { 
       columnName = 'State';
       const state = currentWorkflow?.states.find(s => s.id === filter.value);
       displayValue = state ? state.name : 'Unknown State';
@@ -419,7 +434,8 @@ export default function DataObjectsPage() {
     operator = operatorDisplayMap[operator] || operator;
 
     return { columnName, displayValue, operator };
-  }, [currentModel, currentWorkflow, getModelById, allDbObjects, allModels, virtualIncomingRelationColumns]);
+  }, [currentModel, currentWorkflow, getModelById, allDbObjects, allModels, virtualIncomingRelationColumns, getWorkflowStateName]);
+
 
   const handleCreateNew = useCallback(() => {
     if (!currentModel) return;
@@ -472,11 +488,6 @@ export default function DataObjectsPage() {
     return sortConfig.direction === 'asc' ? <ArrowUp className="ml-2 h-4 w-4" /> : <ArrowDown className="ml-2 h-4 w-4" />;
   };
 
-  const getWorkflowStateName = useCallback((stateId: string | null | undefined): string => {
-    if (!stateId || !currentWorkflow) return 'N/A (No State)';
-    const state = currentWorkflow.states.find(s => s.id === stateId);
-    return state ? state.name : 'Unknown State';
-  }, [currentWorkflow]);
 
   const filteredObjects = useMemo(() => {
     if (!currentModel) return [];
@@ -522,7 +533,7 @@ export default function DataObjectsPage() {
       const property = currentModel.properties.find(p => p.id === columnKey);
       const virtualColumnDef = virtualIncomingRelationColumns.find(vc => vc.id === columnKey);
       searchableObjects = searchableObjects.filter(obj => {
-        if (columnKey === WORKFLOW_STATE_GROUPING_KEY) return obj.currentStateId === filter.value; // Use constant
+        if (columnKey === WORKFLOW_STATE_GROUPING_KEY) return obj.currentStateId === filter.value; 
         if (property) {
             const value = obj[property.name];
             switch (property.type) {
@@ -588,7 +599,7 @@ export default function DataObjectsPage() {
       let aValue: any; let bValue: any;
       const directPropertyToSort = currentModel.properties.find(p => p.id === sortConfig.key);
       const virtualColumnToSort = virtualIncomingRelationColumns.find(vc => vc.id === sortConfig.key);
-      const isWorkflowStateSort = sortConfig.key === WORKFLOW_STATE_GROUPING_KEY; // Use constant
+      const isWorkflowStateSort = sortConfig.key === WORKFLOW_STATE_GROUPING_KEY; 
       if (directPropertyToSort) {
         aValue = a[directPropertyToSort.name]; bValue = b[directPropertyToSort.name];
         switch (directPropertyToSort.type) {
@@ -632,7 +643,7 @@ export default function DataObjectsPage() {
         const stateId = obj.currentStateId || 'null'; 
         const state = currentWorkflow.states.find(s => s.id === stateId);
         const groupTitle = state ? state.name : 'N/A (No State)';
-        const orderIndex = state ? state.orderIndex : Infinity; 
+        const orderIndex = state ? (state.orderIndex !== undefined ? state.orderIndex : Infinity) : Infinity; 
         
         if (!acc[groupTitle]) {
           acc[groupTitle] = { objects: [], orderIndex };
@@ -647,19 +658,45 @@ export default function DataObjectsPage() {
     }
     
     const groupingProperty = currentModel.properties.find(p => p.id === groupingPropertyKey);
-    if (!groupingProperty) return null;
+    const groupingVirtualColumn = virtualIncomingRelationColumns.find(vc => vc.id === groupingPropertyKey);
 
-    const grouped = sortedObjects.reduce((acc, obj) => {
-      const groupVal = getObjectGroupValue(obj, groupingProperty, allModels, allDbObjects);
-      if (!acc[groupVal]) acc[groupVal] = [];
-      acc[groupVal].push(obj);
-      return acc;
-    }, {} as Record<string, DataObject[]>);
+    if (groupingProperty) {
+      const grouped = sortedObjects.reduce((acc, obj) => {
+        const groupVal = getObjectGroupValue(obj, groupingProperty, allModels, allDbObjects);
+        if (!acc[groupVal]) acc[groupVal] = [];
+        acc[groupVal].push(obj);
+        return acc;
+      }, {} as Record<string, DataObject[]>);
 
-    return Object.entries(grouped)
-      .map(([groupTitle, objectsInGroup]) => ({ groupTitle, objects: objectsInGroup }))
-      .sort((a, b) => a.groupTitle.localeCompare(b.groupTitle)); 
-  }, [groupingPropertyKey, sortedObjects, currentModel, currentWorkflow, allModels, allDbObjects, getWorkflowStateName]);
+      return Object.entries(grouped)
+        .map(([groupTitle, objectsInGroup]) => ({ groupTitle, objects: objectsInGroup }))
+        .sort((a, b) => a.groupTitle.localeCompare(b.groupTitle)); 
+    } else if (groupingVirtualColumn) {
+      const grouped = sortedObjects.reduce((acc, obj) => {
+        const referencingData = allDbObjects[groupingVirtualColumn.referencingModel.id] || [];
+        const linkedItems = referencingData.filter(refObj => {
+          const linkedValue = refObj[groupingVirtualColumn.referencingProperty.name];
+          return groupingVirtualColumn.referencingProperty.relationshipType === 'many' 
+                 ? (Array.isArray(linkedValue) && linkedValue.includes(obj.id)) 
+                 : linkedValue === obj.id;
+        });
+        
+        let groupTitle = `Not Referenced by ${groupingVirtualColumn.referencingModel.name}`;
+        if (linkedItems.length > 0) {
+          groupTitle = `Referenced by: ${linkedItems.map(item => getObjectDisplayValue(item, groupingVirtualColumn.referencingModel, allModels, allDbObjects)).join(', ')}`;
+        }
+        
+        if (!acc[groupTitle]) acc[groupTitle] = [];
+        acc[groupTitle].push(obj);
+        return acc;
+      }, {} as Record<string, DataObject[]>);
+
+      return Object.entries(grouped)
+        .map(([groupTitle, objectsInGroup]) => ({ groupTitle, objects: objectsInGroup }))
+        .sort((a, b) => a.groupTitle.localeCompare(b.groupTitle));
+    }
+    return null; // Should not happen if groupingPropertyKey is valid
+  }, [groupingPropertyKey, sortedObjects, currentModel, currentWorkflow, allModels, allDbObjects, getWorkflowStateName, virtualIncomingRelationColumns]);
 
 
   const totalItemsForPagination = groupedDataForRender ? groupedDataForRender.length : sortedObjects.length;
@@ -995,13 +1032,21 @@ export default function DataObjectsPage() {
   const hasActiveColumnFilters = Object.keys(columnFilters).length > 0;
   
   const currentGroupingPropertyDisplayName = useMemo(() => {
-    if (!currentModel || !groupingPropertyKey) return "None"; // Added !currentModel check
+    if (!groupingPropertyKey) return "None";
     if (groupingPropertyKey === WORKFLOW_STATE_GROUPING_KEY) return "Workflow State";
-    const prop = currentModel.properties.find(p => p.id === groupingPropertyKey);
-    return prop ? prop.name : "None";
-  }, [groupingPropertyKey, currentModel]);
+    
+    const directProp = currentModel?.properties.find(p => p.id === groupingPropertyKey);
+    if (directProp) return directProp.name;
 
-  // Moved the loading guard here, after all hooks.
+    const virtualProp = virtualIncomingRelationColumns.find(vc => vc.id === groupingPropertyKey);
+    if (virtualProp) return virtualProp.headerLabel;
+    
+    return "None";
+  }, [groupingPropertyKey, currentModel, virtualIncomingRelationColumns]);
+
+  const directPropertiesToShowInTable = currentModel?.properties.sort((a,b) => a.orderIndex - b.orderIndex) || [];
+
+
   if (!dataContextIsReady || !currentModel) {
     return (
       <div className="flex justify-center items-center h-screen">
@@ -1010,8 +1055,6 @@ export default function DataObjectsPage() {
       </div>
     );
   }
-
-  const directPropertiesToShowInTable = currentModel.properties.sort((a,b) => a.orderIndex - b.orderIndex);
   
   return (
     <div className="container mx-auto py-8">
@@ -1295,7 +1338,7 @@ export default function DataObjectsPage() {
                             {directPropertiesToShowInTable.map((prop) => ( <TableCell key={`${obj.id}-${prop.id}`}> {displayCellContent(obj, prop)} </TableCell> ))}
                             {currentWorkflow && ( <TableCell> <Badge variant={obj.currentStateId ? "outline" : "secondary"}> {getWorkflowStateName(obj.currentStateId)} </Badge> </TableCell> )}
                             {virtualIncomingRelationColumns.map((colDef) => { const referencingData = allDbObjects[colDef.referencingModel.id] || []; const linkedItems = referencingData.filter(refObj => { const linkedValue = refObj[colDef.referencingProperty.name]; if (colDef.referencingProperty.relationshipType === 'many') return Array.isArray(linkedValue) && linkedValue.includes(obj.id); return linkedValue === obj.id; }); if (linkedItems.length === 0) return <TableCell key={colDef.id}><span className="text-muted-foreground">N/A</span></TableCell>; return ( <TableCell key={colDef.id} className="space-x-1 space-y-1"> {linkedItems.map(item => ( <Link key={item.id} href={`/data/${colDef.referencingModel.id}/edit/${item.id}`} className="inline-block"> <Badge variant="secondary" className="hover:bg-muted cursor-pointer"> {getObjectDisplayValue(item, colDef.referencingModel, allModels, allDbObjects)} </Badge> </Link> ))} </TableCell> ); })}
-                            <TableCell className="text-right"> <Button variant="ghost" size="icon" onClick={() => handleEdit(obj)} className="mr-2 hover:text-primary"> <Edit className="h-4 w-4" /> </Button> <AlertDialog> <AlertDialogTrigger className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "hover:text-destructive")}><Trash2 className="h-4 w-4" /></AlertDialogTrigger> <AlertDialogContent> <AlertDialogHeader> <AlertDialogTitle>Are you sure?</AlertDialogTitle> <AlertDialogDescription> This action cannot be undone. This will permanently delete this {currentModel.name.toLowerCase()} object. </AlertDialogDescription> </AlertDialogHeader> <AlertDialogFooter> <AlertDialogCancel>Cancel</AlertDialogCancel> <AlertDialogAction onClick={() => handleDelete(obj.id)}> Delete </AlertDialogAction> </AlertDialogFooter> </AlertDialogContent> </AlertDialog> </TableCell>
+                            <TableCell className="text-right"> <Button variant="ghost" size="icon" onClick={() => handleEdit(obj)} className="mr-2 hover:text-primary"> <Edit className="h-4 w-4" /> </Button> <AlertDialog> <AlertDialogTrigger className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "hover:text-destructive")}><Trash2 className="h-4 w-4" /></AlertDialogTrigger> <AlertDialogContent> <AlertDialogHeader> <AlertDialogTitle>Are you sure?</AlertDialogTitle> <AlertDialogDescription> This action cannot be undone. This will permanently delete this {currentModel?.name.toLowerCase()} object. </AlertDialogDescription> </AlertDialogHeader> <AlertDialogFooter> <AlertDialogCancel>Cancel</AlertDialogCancel> <AlertDialogAction onClick={() => handleDelete(obj.id)}> Delete </AlertDialogAction> </AlertDialogFooter> </AlertDialogContent> </AlertDialog> </TableCell>
                           </TableRow> );
                       })}
                     </TableBody>
@@ -1330,7 +1373,7 @@ export default function DataObjectsPage() {
                     {directPropertiesToShowInTable.map((prop) => ( <TableCell key={`${obj.id}-${prop.id}`}> {displayCellContent(obj, prop)} </TableCell> ))}
                     {currentWorkflow && ( <TableCell> <Badge variant={obj.currentStateId ? "outline" : "secondary"}> {getWorkflowStateName(obj.currentStateId)} </Badge> </TableCell> )}
                     {virtualIncomingRelationColumns.map((colDef) => { const referencingData = allDbObjects[colDef.referencingModel.id] || []; const linkedItems = referencingData.filter(refObj => { const linkedValue = refObj[colDef.referencingProperty.name]; if (colDef.referencingProperty.relationshipType === 'many') return Array.isArray(linkedValue) && linkedValue.includes(obj.id); return linkedValue === obj.id; }); if (linkedItems.length === 0) return <TableCell key={colDef.id}><span className="text-muted-foreground">N/A</span></TableCell>; return ( <TableCell key={colDef.id} className="space-x-1 space-y-1"> {linkedItems.map(item => ( <Link key={item.id} href={`/data/${colDef.referencingModel.id}/edit/${item.id}`} className="inline-block"> <Badge variant="secondary" className="hover:bg-muted cursor-pointer"> {getObjectDisplayValue(item, colDef.referencingModel, allModels, allDbObjects)} </Badge> </Link> ))} </TableCell> ); })}
-                    <TableCell className="text-right"> <Button variant="ghost" size="icon" onClick={() => handleEdit(obj)} className="mr-2 hover:text-primary"> <Edit className="h-4 w-4" /> </Button> <AlertDialog> <AlertDialogTrigger className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "hover:text-destructive")}><Trash2 className="h-4 w-4" /></AlertDialogTrigger> <AlertDialogContent> <AlertDialogHeader> <AlertDialogTitle>Are you sure?</AlertDialogTitle> <AlertDialogDescription> This action cannot be undone. This will permanently delete this {currentModel.name.toLowerCase()} object. </AlertDialogDescription> </AlertDialogHeader> <AlertDialogFooter> <AlertDialogCancel>Cancel</AlertDialogCancel> <AlertDialogAction onClick={() => handleDelete(obj.id)}> Delete </AlertDialogAction> </AlertDialogFooter> </AlertDialogContent> </AlertDialog> </TableCell>
+                    <TableCell className="text-right"> <Button variant="ghost" size="icon" onClick={() => handleEdit(obj)} className="mr-2 hover:text-primary"> <Edit className="h-4 w-4" /> </Button> <AlertDialog> <AlertDialogTrigger className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "hover:text-destructive")}><Trash2 className="h-4 w-4" /></AlertDialogTrigger> <AlertDialogContent> <AlertDialogHeader> <AlertDialogTitle>Are you sure?</AlertDialogTitle> <AlertDialogDescription> This action cannot be undone. This will permanently delete this {currentModel?.name.toLowerCase()} object. </AlertDialogDescription> </AlertDialogHeader> <AlertDialogFooter> <AlertDialogCancel>Cancel</AlertDialogCancel> <AlertDialogAction onClick={() => handleDelete(obj.id)}> Delete </AlertDialogAction> </AlertDialogFooter> </AlertDialogContent> </AlertDialog> </TableCell>
                   </TableRow> );
                 })}
               </TableBody>
@@ -1340,11 +1383,11 @@ export default function DataObjectsPage() {
         </>
       ) : viewMode === 'gallery' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-          {(paginatedDataToRender as DataObject[]).map((obj) => ( <GalleryCard key={obj.id} obj={obj} model={currentModel} allModels={allModels} allObjects={allDbObjects} currentWorkflow={currentWorkflow} getWorkflowStateName={getWorkflowStateName} onView={handleView} onEdit={handleEdit} onDelete={handleDelete} lastChangedInfo={lastChangedInfo}/> ))}
+          {(paginatedDataToRender as DataObject[]).map((obj) => ( <GalleryCard key={obj.id} obj={obj} model={currentModel!} allModels={allModels} allObjects={allDbObjects} currentWorkflow={currentWorkflow} getWorkflowStateName={getWorkflowStateName} onView={handleView} onEdit={handleEdit} onDelete={handleDelete} lastChangedInfo={lastChangedInfo}/> ))}
         </div>
       ) : viewMode === 'kanban' && currentWorkflow ? (
         <KanbanBoard
-          model={currentModel}
+          model={currentModel!}
           workflow={currentWorkflow}
           objects={sortedObjects} 
           allModels={allModels}
