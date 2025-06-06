@@ -4,10 +4,22 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useData } from '@/contexts/data-context';
+import { useAuth } from '@/contexts/auth-context'; // Import useAuth
 import type { Model, DataObject, Property, WorkflowWithDetails, ValidationRuleset, ChangelogEntry, PropertyChangeDetail } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Edit, Loader2, ExternalLink, ImageIcon, CheckCircle2, ShieldAlert, ShieldCheck, UserCircle, CalendarClock, History, FileText, Users as UsersIconLucide } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { ArrowLeft, Edit, Loader2, ExternalLink, ImageIcon, CheckCircle2, ShieldAlert, ShieldCheck, UserCircle, CalendarClock, History, FileText, Users as UsersIconLucide, RotateCcw } from 'lucide-react';
 import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
 import Link from 'next/link';
 import { getObjectDisplayValue } from '@/lib/utils';
@@ -40,8 +52,9 @@ export default function ViewObjectPage() {
   const modelId = params.modelId as string;
   const objectId = params.objectId as string;
   const { toast } = useToast();
+  const { user: currentUser, isLoading: authIsLoading } = useAuth(); // Get current user
 
-  const { getModelById, models: allModels, getAllObjects, getWorkflowById, validationRulesets, getUserById, isReady: dataContextIsReady, formatApiError } = useData();
+  const { getModelById, models: allModels, getAllObjects, getWorkflowById, validationRulesets, getUserById, isReady: dataContextIsReady, formatApiError, fetchData: refreshDataContext } = useData();
 
   const [currentModel, setCurrentModel] = useState<Model | null>(null);
   const [viewingObject, setViewingObject] = useState<DataObject | null>(null);
@@ -52,8 +65,12 @@ export default function ViewObjectPage() {
   const [pageError, setPageError] = useState<string | null>(null);
   const [changelogError, setChangelogError] = useState<string | null>(null);
 
+  const [isRevertConfirmOpen, setIsRevertConfirmOpen] = useState(false);
+  const [revertingEntryId, setRevertingEntryId] = useState<string | null>(null);
+  const [isReverting, setIsReverting] = useState(false);
 
-  const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects, dataContextIsReady]);
+
+  const allDbObjects = useMemo(() => getAllObjects(true), [getAllObjects, dataContextIsReady]); // Include deleted for relationship lookups
 
   const getWorkflowStateName = useCallback((stateId: string | null | undefined): string => {
     if (!stateId || !currentWorkflow) return 'N/A';
@@ -70,75 +87,104 @@ export default function ViewObjectPage() {
   }, [viewingObject, getUserById]);
 
 
-  useEffect(() => {
-    const loadObjectData = async () => {
-      if (!dataContextIsReady || !modelId || !objectId) {
-        return;
+  const loadObjectData = useCallback(async () => {
+    if (!dataContextIsReady || !modelId || !objectId) {
+      return;
+    }
+    setIsLoadingPageData(true);
+    setPageError(null);
+
+    const foundModel = getModelById(modelId);
+    if (!foundModel) {
+      toast({ variant: "destructive", title: "Error", description: `Model with ID ${modelId} not found.` });
+      router.push('/models');
+      setIsLoadingPageData(false);
+      return;
+    }
+    setCurrentModel(foundModel);
+
+    if (foundModel.workflowId) {
+      setCurrentWorkflow(getWorkflowById(foundModel.workflowId) || null);
+    } else {
+      setCurrentWorkflow(null);
+    }
+
+    try {
+      const response = await fetch(`/api/codex-structure/models/${modelId}/objects/${objectId}`);
+      if (!response.ok) {
+        const errorMsg = await formatApiError(response, `Object with ID ${objectId} not found or error fetching.`);
+        throw new Error(errorMsg);
       }
-
-      setIsLoadingPageData(true);
-      setPageError(null);
-
-      const foundModel = getModelById(modelId);
-      if (!foundModel) {
-        toast({ variant: "destructive", title: "Error", description: `Model with ID ${modelId} not found.` });
-        router.push('/models');
-        setIsLoadingPageData(false);
-        return;
-      }
-      setCurrentModel(foundModel);
-
-      if (foundModel.workflowId) {
-        setCurrentWorkflow(getWorkflowById(foundModel.workflowId) || null);
-      } else {
-        setCurrentWorkflow(null);
-      }
-
-      try {
-        const response = await fetch(`/api/codex-structure/models/${modelId}/objects/${objectId}`);
-        if (!response.ok) {
-          const errorMsg = await formatApiError(response, `Object with ID ${objectId} not found or error fetching.`);
-          throw new Error(errorMsg);
-        }
-        const objectToView: DataObject = await response.json();
-        setViewingObject(objectToView);
-      } catch (error: any) {
-        console.error("Error fetching object for view:", error);
-        setPageError(error.message || "Failed to load object details.");
-        toast({ variant: "destructive", title: "Error Loading Object", description: error.message });
-      } finally {
-        setIsLoadingPageData(false);
-      }
-    };
-
-    loadObjectData();
+      const objectToView: DataObject = await response.json();
+      setViewingObject(objectToView);
+    } catch (error: any) {
+      console.error("Error fetching object for view:", error);
+      setPageError(error.message || "Failed to load object details.");
+      toast({ variant: "destructive", title: "Error Loading Object", description: error.message });
+    } finally {
+      setIsLoadingPageData(false);
+    }
   }, [modelId, objectId, dataContextIsReady, getModelById, getWorkflowById, router, toast, formatApiError]);
 
-  useEffect(() => {
-    const fetchChangelog = async () => {
-      if (!objectId) return;
-      setIsLoadingChangelog(true);
-      setChangelogError(null);
-      try {
-        const response = await fetch(`/api/codex-structure/objects/${objectId}/changelog`);
-        if (!response.ok) {
-           const errorMsg = await formatApiError(response, `Failed to fetch changelog for object ${objectId}.`);
-           throw new Error(errorMsg);
-        }
-        const data: ChangelogEntry[] = await response.json();
-        setChangelog(data);
-      } catch (error: any) {
-        setChangelogError(error.message);
-        toast({ variant: "destructive", title: "Error Loading Changelog", description: error.message });
-      } finally {
-        setIsLoadingChangelog(false);
+  const fetchChangelog = useCallback(async () => {
+    if (!objectId) return;
+    setIsLoadingChangelog(true);
+    setChangelogError(null);
+    try {
+      const response = await fetch(`/api/codex-structure/objects/${objectId}/changelog`);
+      if (!response.ok) {
+        const errorMsg = await formatApiError(response, `Failed to fetch changelog for object ${objectId}.`);
+        throw new Error(errorMsg);
       }
-    };
+      const data: ChangelogEntry[] = await response.json();
+      setChangelog(data);
+    } catch (error: any) {
+      setChangelogError(error.message);
+      toast({ variant: "destructive", title: "Error Loading Changelog", description: error.message });
+    } finally {
+      setIsLoadingChangelog(false);
+    }
+  }, [objectId, toast, formatApiError]);
 
+  useEffect(() => {
+    loadObjectData();
+  }, [loadObjectData]);
+
+  useEffect(() => {
     if (viewingObject) {
       fetchChangelog();
     }
-  }, [viewingObject, objectId, toast, formatApiError]);
+  }, [viewingObject, fetchChangelog]);
+
+  const handleRevertClick = (entryId: string) => {
+    setRevertingEntryId(entryId);
+    setIsRevertConfirmOpen(true);
+  };
+
+  const confirmRevert = async () => {
+    if (!revertingEntryId || !objectId) return;
+    setIsReverting(true);
+    try {
+      const response = await fetch(`/api/codex-structure/objects/${objectId}/changelog/${revertingEntryId}/revert`, {
+        method: 'POST',
+      });
+      if (!response.ok) {
+        const errorMsg = await formatApiError(response, `Failed to revert to changelog entry ${revertingEntryId}.`);
+        throw new Error(errorMsg);
+      }
+      const revertedObject: DataObject = await response.json();
+      setViewingObject(revertedObject); // Update current object view
+      await fetchChangelog(); // Refresh changelog to show the revert action
+      await refreshDataContext(`After Revert Object ${objectId}`); // Refresh context data if needed
+      toast({ title: "Revert Successful", description: "Object state has been reverted." });
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Revert Failed", description: error.message });
+    } finally {
+      setIsReverting(false);
+      setIsRevertConfirmOpen(false);
+      setRevertingEntryId(null);
+    }
+  };
 
 
   const displayFieldValue = (property: Property, value: any) => {
@@ -295,6 +341,10 @@ export default function ViewObjectPage() {
       propertyDisplayName = "Owner";
       finalOldValue = oldLabel || formatChangelogValue(oldValue);
       finalNewValue = newLabel || formatChangelogValue(newValue);
+    } else if (propertyName === '__isDeleted__') {
+      propertyDisplayName = "Status";
+      finalOldValue = oldValue ? "Deleted" : "Active";
+      finalNewValue = newValue ? "Deleted" : "Active";
     } else {
       const propDef = currentModel?.properties.find(p => p.name === propertyName);
       propertyDisplayName = propDef?.name || propertyName;
@@ -312,7 +362,7 @@ export default function ViewObjectPage() {
   };
 
 
-  if (isLoadingPageData) {
+  if (isLoadingPageData || authIsLoading) {
     return (
       <div className="flex flex-col justify-center items-center h-screen">
         <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
@@ -347,7 +397,7 @@ export default function ViewObjectPage() {
   const sortedProperties = [...currentModel.properties].sort((a,b) => a.orderIndex - b.orderIndex);
   const objectStateName = getWorkflowStateName(viewingObject.currentStateId);
 
-  const formattedDate = (dateString: string | undefined) => {
+  const formattedDate = (dateString: string | undefined | null) => {
     if (!dateString) return <span className="text-muted-foreground italic">Not set</span>;
     try {
       const date = new Date(dateString);
@@ -357,16 +407,37 @@ export default function ViewObjectPage() {
     }
   };
 
+  const isAdmin = currentUser?.role === 'administrator';
+  const canRevert = (changeType: ChangelogEntry['changeType']) => {
+    return ['UPDATE', 'DELETE', 'RESTORE'].includes(changeType);
+  };
+
   return (
     <div className="container mx-auto py-8">
       <div className="flex justify-between items-center mb-6">
         <Button variant="outline" onClick={() => router.push(`/data/${modelId}`)}>
           <ArrowLeft className="mr-2 h-4 w-4" /> Back to {currentModel.name} Data
         </Button>
-        <Button onClick={() => router.push(`/data/${modelId}/edit/${objectId}`)}>
-          <Edit className="mr-2 h-4 w-4" /> Edit This {currentModel.name}
-        </Button>
+        {!viewingObject.isDeleted && (
+          <Button onClick={() => router.push(`/data/${modelId}/edit/${objectId}`)}>
+            <Edit className="mr-2 h-4 w-4" /> Edit This {currentModel.name}
+          </Button>
+        )}
       </div>
+
+      {viewingObject.isDeleted && (
+        <Card className="max-w-4xl mx-auto shadow-lg mb-6 border-destructive bg-destructive/5">
+          <CardHeader>
+            <CardTitle className="text-destructive flex items-center">
+              <ShieldAlert className="mr-2 h-6 w-6" /> This object is in the Recycle Bin
+            </CardTitle>
+            <CardDescription className="text-destructive/80">
+              This object was deleted on {formattedDate(viewingObject.deletedAt)}. You can restore it from the data table view if needed.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      )}
+
       <Card className="max-w-4xl mx-auto shadow-lg mb-8">
         <CardHeader>
           <CardTitle className="text-3xl text-primary">{getObjectDisplayValue(viewingObject, currentModel, allModels, allDbObjects)}</CardTitle>
@@ -395,6 +466,12 @@ export default function ViewObjectPage() {
                 <CalendarClock size={14} className="mr-1.5" />
                 Last Modified: {formattedDate(viewingObject.updatedAt)}
               </div>
+              {viewingObject.isDeleted && viewingObject.deletedAt && (
+                 <div className="flex items-center text-destructive">
+                    <CalendarClock size={14} className="mr-1.5" />
+                    Deleted: {formattedDate(viewingObject.deletedAt)}
+                </div>
+              )}
             </div>
           </div>
         </CardHeader>
@@ -469,6 +546,7 @@ export default function ViewObjectPage() {
                                 <TableHead className="w-[150px]">User</TableHead>
                                 <TableHead className="w-[100px]">Action</TableHead>
                                 <TableHead>Details</TableHead>
+                                {isAdmin && <TableHead className="w-[100px] text-right">Revert</TableHead>}
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -484,8 +562,8 @@ export default function ViewObjectPage() {
                                         </Badge>
                                     </TableCell>
                                     <TableCell>
-                                        <Badge variant={entry.changeType === 'CREATE' ? 'default' : 'secondary'} className="capitalize">
-                                            {entry.changeType.toLowerCase()}
+                                        <Badge variant={entry.changeType === 'CREATE' ? 'default' : entry.changeType.startsWith('REVERT_') ? 'warning' : 'secondary'} className="capitalize">
+                                            {entry.changeType.toLowerCase().replace('_', ' ')}
                                         </Badge>
                                     </TableCell>
                                     <TableCell className="text-xs">
@@ -495,7 +573,7 @@ export default function ViewObjectPage() {
                                                 Object created with initial data.
                                             </div>
                                         )}
-                                        {entry.changeType === 'UPDATE' && entry.changes.modifiedProperties && entry.changes.modifiedProperties.length > 0 && (
+                                        {(entry.changeType === 'UPDATE' || entry.changeType === 'REVERT_UPDATE') && entry.changes.modifiedProperties && entry.changes.modifiedProperties.length > 0 && (
                                             <ul className="space-y-1">
                                                 {entry.changes.modifiedProperties.map((modProp, idx) => (
                                                     <li key={idx} className="flex items-start">
@@ -505,10 +583,48 @@ export default function ViewObjectPage() {
                                                 ))}
                                             </ul>
                                         )}
-                                        {entry.changeType === 'UPDATE' && (!entry.changes.modifiedProperties || entry.changes.modifiedProperties.length === 0) && (
-                                             <span className="italic text-muted-foreground">Object updated, but no specific property changes logged (possibly meta-data update).</span>
+                                         {(entry.changeType === 'UPDATE' || entry.changeType === 'REVERT_UPDATE') && (!entry.changes.modifiedProperties || entry.changes.modifiedProperties.length === 0) && (
+                                             <span className="italic text-muted-foreground">Object updated, but no specific property changes logged.</span>
+                                        )}
+                                        {(entry.changeType === 'DELETE' || entry.changeType === 'REVERT_RESTORE') && (
+                                            <div className="flex items-center">
+                                                <Trash2 className="h-3.5 w-3.5 mr-1.5 text-destructive" />
+                                                Object was soft-deleted.
+                                                {entry.changes.snapshot && <span className="text-muted-foreground ml-1 text-xs">(Snapshot taken)</span>}
+                                            </div>
+                                        )}
+                                        {(entry.changeType === 'RESTORE' || entry.changeType === 'REVERT_DELETE') && (
+                                            <div className="flex items-center">
+                                                <RotateCcw className="h-3.5 w-3.5 mr-1.5 text-green-600" />
+                                                Object was restored.
+                                            </div>
+                                        )}
+                                         {(entry.changeType === 'REVERT_UPDATE' || entry.changeType === 'REVERT_DELETE' || entry.changeType === 'REVERT_RESTORE') && entry.changes.revertedFromChangelogEntryId && (
+                                            <p className="text-xs text-muted-foreground mt-1">
+                                                (Reverted from change made on: {formatDateFns(new Date(changelog.find(c => c.id === entry.changes.revertedFromChangelogEntryId)?.changedAt || entry.changedAt), 'MMM d, HH:mm')})
+                                            </p>
                                         )}
                                     </TableCell>
+                                     {isAdmin && (
+                                      <TableCell className="text-right">
+                                        {canRevert(entry.changeType) && (
+                                          <Button
+                                            variant="outline"
+                                            size="xs"
+                                            onClick={() => handleRevertClick(entry.id)}
+                                            disabled={isReverting && revertingEntryId === entry.id}
+                                            className="text-xs"
+                                          >
+                                            {isReverting && revertingEntryId === entry.id ? (
+                                              <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                                            ) : (
+                                              <RotateCcw className="mr-1 h-3 w-3" />
+                                            )}
+                                            Revert
+                                          </Button>
+                                        )}
+                                      </TableCell>
+                                    )}
                                 </TableRow>
                             ))}
                         </TableBody>
@@ -517,6 +633,27 @@ export default function ViewObjectPage() {
             )}
         </CardContent>
       </Card>
+
+      {isAdmin && (
+        <AlertDialog open={isRevertConfirmOpen} onOpenChange={setIsRevertConfirmOpen}>
+            <AlertDialogContent>
+            <AlertDialogHeader>
+                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                <AlertDialogDescription>
+                This action will revert the object's properties to the state they were in *before* the selected change occurred.
+                This will create a new changelog entry for the revert action.
+                </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+                <AlertDialogCancel onClick={() => setRevertingEntryId(null)} disabled={isReverting}>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={confirmRevert} disabled={isReverting}>
+                {isReverting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Yes, revert
+                </AlertDialogAction>
+            </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+      )}
     </div>
   );
 }
