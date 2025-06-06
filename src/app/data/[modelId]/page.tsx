@@ -19,7 +19,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter as BatchUpdateDialogFooter, 
+  DialogFooter as BatchUpdateDialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -33,11 +33,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  Select, 
+  Select,
   SelectContent,
   SelectGroup,
   SelectItem,
-  SelectLabel as UiSelectLabel, 
+  SelectLabel as UiSelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -55,7 +55,7 @@ import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useData } from '@/contexts/data-context';
 import type { Model, DataObject, Property, WorkflowWithDetails, WorkflowStateWithSuccessors, DataContextType } from '@/lib/types';
-import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye, LayoutGrid, List as ListIcon, ExternalLink, Image as ImageIcon, CheckCircle2, FilterX, X as XIcon, Settings as SettingsIcon, Edit3, Workflow as WorkflowIconLucide, CalendarIcon as CalendarIconLucideLucide, Star, RefreshCw, Loader2, Kanban as KanbanIcon, Rows, Columns as ColumnsIcon } from 'lucide-react'; 
+import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye, LayoutGrid, List as ListIcon, ExternalLink, Image as ImageIcon, CheckCircle2, FilterX, X as XIcon, Settings as SettingsIcon, Edit3, Workflow as WorkflowIconLucide, CalendarIcon as CalendarIconLucideLucide, Star, RefreshCw, Loader2, Kanban as KanbanIcon, Rows, Columns as ColumnsIcon, User as UserIcon } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -89,10 +89,10 @@ interface SortConfig {
 }
 
 interface IncomingRelationColumn {
-  id: string; 
-  headerLabel: string; 
-  referencingModel: Model; 
-  referencingProperty: Property; 
+  id: string;
+  headerLabel: string;
+  referencingModel: Model;
+  referencingProperty: Property;
 }
 
 const INTERNAL_NO_REFERENCES_VALUE = "__NO_REFERENCES__";
@@ -100,6 +100,7 @@ const INTERNAL_WORKFLOW_STATE_UPDATE_KEY = "__workflowStateUpdate__";
 const INTERNAL_CLEAR_RELATIONSHIP_VALUE = "__CLEAR_RELATIONSHIP__";
 const NO_GROUPING_VALUE = "__NO_GROUPING__";
 const WORKFLOW_STATE_GROUPING_KEY = "__WORKFLOW_STATE_GROUPING__";
+const OWNER_COLUMN_KEY = "__OWNER_COLUMN_KEY__";
 
 // Keys for column visibility toggling
 const WORKFLOW_STATE_DISPLAY_COLUMN_KEY = "__WORKFLOW_STATE_DISPLAY_COLUMN__";
@@ -116,13 +117,15 @@ export default function DataObjectsPage() {
   const dataContext = useData();
   const {
     models: allModels,
-    objects, 
+    objects,
     getModelById,
     getObjectsByModelId,
     deleteObject,
-    updateObject, 
+    updateObject,
     getAllObjects,
     getWorkflowById,
+    allUsers, // Added for owner info
+    getUserById, // Added for owner info
     isReady: dataContextIsReady,
     fetchData,
     lastChangedInfo,
@@ -168,7 +171,7 @@ export default function DataObjectsPage() {
         } else {
             setGroupingPropertyKey(null);
         }
-        
+
         const savedHiddenCols = sessionStorage.getItem(`codexStructure-hiddenColumns-${foundModel.id}`);
         if (savedHiddenCols) {
             try {
@@ -192,9 +195,9 @@ export default function DataObjectsPage() {
           setCurrentWorkflow(wf || null);
           if (savedViewMode && (['table', 'gallery', 'kanban'] as ViewMode[]).includes(savedViewMode)) {
             setViewMode(savedViewMode);
-          } else if (wf && !savedViewMode) { 
+          } else if (wf && !savedViewMode) {
              setViewMode('kanban');
-          } else { 
+          } else {
              setViewMode(savedViewMode || 'table');
           }
         } else {
@@ -268,18 +271,20 @@ export default function DataObjectsPage() {
 
   const groupableProperties = useMemo(() => {
     if (!currentModel) return [];
-    const props: Array<{id: string; name: string; isWorkflowState?: boolean; isIncomingRelation?: boolean}> = currentModel.properties.filter(
+    const props: Array<{id: string; name: string; isWorkflowState?: boolean; isIncomingRelation?: boolean, isOwnerColumn?: boolean}> = currentModel.properties.filter(
       p => ['string', 'number', 'boolean', 'date', 'rating'].includes(p.type) ||
            (p.type === 'relationship' && p.relationshipType === 'one')
-    ).map(p => ({ id: p.id, name: p.name, isWorkflowState: false, isIncomingRelation: false }))
+    ).map(p => ({ id: p.id, name: p.name, isWorkflowState: false, isIncomingRelation: false, isOwnerColumn: false }))
      .sort((a,b) => a.name.localeCompare(b.name));
 
     if (currentWorkflow && currentWorkflow.states.length > 0) {
-        props.unshift({ id: WORKFLOW_STATE_GROUPING_KEY, name: "Workflow State", isWorkflowState: true, isIncomingRelation: false });
+        props.unshift({ id: WORKFLOW_STATE_GROUPING_KEY, name: "Workflow State", isWorkflowState: true, isIncomingRelation: false, isOwnerColumn: false });
     }
+    props.unshift({ id: OWNER_COLUMN_KEY, name: "Owned By", isWorkflowState: false, isIncomingRelation: false, isOwnerColumn: true });
+
 
     virtualIncomingRelationColumns.forEach(vCol => {
-        props.push({ id: vCol.id, name: vCol.headerLabel, isWorkflowState: false, isIncomingRelation: true });
+        props.push({ id: vCol.id, name: vCol.headerLabel, isWorkflowState: false, isIncomingRelation: true, isOwnerColumn: false });
     });
 
     return props;
@@ -287,11 +292,10 @@ export default function DataObjectsPage() {
 
   const allAvailableColumnsForToggle = useMemo(() => {
     if (!currentModel) return [];
-    const columnsToToggle: Array<{ id: string; label: string; type: 'action' | 'property' | 'workflow' | 'virtual' }> = [];
-    
+    const columnsToToggle: Array<{ id: string; label: string; type: 'action' | 'property' | 'workflow' | 'virtual' | 'owner' }> = [];
+
     columnsToToggle.push({ id: SELECT_ALL_CHECKBOX_COLUMN_KEY, label: 'Select Row', type: 'action' });
     columnsToToggle.push({ id: VIEW_ACTION_COLUMN_KEY, label: 'View Details', type: 'action' });
-
 
     currentModel.properties.sort((a,b) => a.orderIndex - b.orderIndex).forEach(p => {
         columnsToToggle.push({ id: p.id, label: p.name, type: 'property'});
@@ -300,6 +304,7 @@ export default function DataObjectsPage() {
     if (currentWorkflow) {
       columnsToToggle.push({ id: WORKFLOW_STATE_DISPLAY_COLUMN_KEY, label: 'Workflow State', type: 'workflow' });
     }
+    columnsToToggle.push({ id: OWNER_COLUMN_KEY, label: 'Owned By', type: 'owner' }); // Add Owner column
     virtualIncomingRelationColumns.forEach(vc => {
       columnsToToggle.push({ id: vc.id, label: vc.headerLabel, type: 'virtual' });
     });
@@ -407,7 +412,6 @@ export default function DataObjectsPage() {
   }, [relatedModelForBatchUpdate, getObjectsByModelId, allModels, allDbObjects]);
 
 
-
   const handleViewModeChange = (newMode: ViewMode) => {
     setViewMode(newMode);
     if (currentModel) {
@@ -439,8 +443,15 @@ export default function DataObjectsPage() {
     return state ? state.name : 'Unknown State';
   }, [currentWorkflow]);
 
+  const getOwnerUsername = useCallback((ownerId: string | null | undefined): string => {
+    if (!ownerId) return 'N/A';
+    const user = getUserById(ownerId);
+    return user ? user.username : 'Unknown User';
+  }, [getUserById]);
+
+
   const getFilterDisplayDetails = useCallback((columnKey: string, filter: ColumnFilterValue): { columnName: string; displayValue: string; operator: string } | null => {
-    if (!currentModel && !virtualIncomingRelationColumns.some(vc => vc.id === columnKey)) return null;
+    if (!currentModel && !virtualIncomingRelationColumns.some(vc => vc.id === columnKey) && columnKey !== OWNER_COLUMN_KEY) return null;
 
     let columnName = '';
     let displayValue = String(filter.value);
@@ -449,10 +460,13 @@ export default function DataObjectsPage() {
     const property = currentModel?.properties.find(p => p.id === columnKey);
     const virtualCol = virtualIncomingRelationColumns.find(vc => vc.id === columnKey);
 
-    if (columnKey === WORKFLOW_STATE_GROUPING_KEY || columnKey === WORKFLOW_STATE_DISPLAY_COLUMN_KEY) { 
+    if (columnKey === WORKFLOW_STATE_GROUPING_KEY || columnKey === WORKFLOW_STATE_DISPLAY_COLUMN_KEY) {
       columnName = 'State';
       const state = currentWorkflow?.states.find(s => s.id === filter.value);
       displayValue = state ? state.name : 'Unknown State';
+    } else if (columnKey === OWNER_COLUMN_KEY) {
+      columnName = 'Owned By';
+      displayValue = getOwnerUsername(String(filter.value));
     } else if (property) {
       columnName = property.name;
       switch (property.type) {
@@ -489,7 +503,7 @@ export default function DataObjectsPage() {
                 displayValue = getObjectDisplayValue(referencingObject, virtualCol.referencingModel, allModels, allDbObjects);
                 operator = "by";
             }
-        } else { 
+        } else {
             if (filter.value === true) displayValue = "Yes";
             else if (filter.value === false) displayValue = "No";
             else displayValue = "Any";
@@ -507,7 +521,7 @@ export default function DataObjectsPage() {
     operator = operatorDisplayMap[operator] || operator;
 
     return { columnName, displayValue, operator };
-  }, [currentModel, currentWorkflow, getModelById, allDbObjects, allModels, virtualIncomingRelationColumns]);
+  }, [currentModel, currentWorkflow, getModelById, allDbObjects, allModels, virtualIncomingRelationColumns, getOwnerUsername]);
 
 
   const handleCreateNew = useCallback(() => {
@@ -551,7 +565,7 @@ export default function DataObjectsPage() {
       direction = 'desc';
     }
     setSortConfig({ key, direction });
-    setCurrentPage(1); 
+    setCurrentPage(1);
   };
 
   const getSortIcon = (columnKey: string) => {
@@ -564,7 +578,7 @@ export default function DataObjectsPage() {
 
   const filteredObjects = useMemo(() => {
     if (!currentModel) return [];
-    let searchableObjects = [...localObjects]; 
+    let searchableObjects = [...localObjects];
 
     if (searchTerm) {
       searchableObjects = searchableObjects.filter(obj => {
@@ -597,6 +611,12 @@ export default function DataObjectsPage() {
                 return true;
             }
         }
+        if (obj.ownerId) {
+            const ownerName = getOwnerUsername(obj.ownerId);
+            if (ownerName.toLowerCase().includes(searchTerm.toLowerCase())) {
+                return true;
+            }
+        }
         return false;
       });
     }
@@ -606,7 +626,8 @@ export default function DataObjectsPage() {
       const property = currentModel.properties.find(p => p.id === columnKey);
       const virtualColumnDef = virtualIncomingRelationColumns.find(vc => vc.id === columnKey);
       searchableObjects = searchableObjects.filter(obj => {
-        if (columnKey === WORKFLOW_STATE_GROUPING_KEY || columnKey === WORKFLOW_STATE_DISPLAY_COLUMN_KEY) return obj.currentStateId === filter.value; 
+        if (columnKey === WORKFLOW_STATE_GROUPING_KEY || columnKey === WORKFLOW_STATE_DISPLAY_COLUMN_KEY) return obj.currentStateId === filter.value;
+        if (columnKey === OWNER_COLUMN_KEY) return obj.ownerId === filter.value;
         if (property) {
             const value = obj[property.name];
             switch (property.type) {
@@ -648,7 +669,7 @@ export default function DataObjectsPage() {
                 return virtualColumnDef.referencingProperty.relationshipType === 'many'
                     ? (Array.isArray(linkedValueOnSpecific) && linkedValueOnSpecific.includes(obj.id)) : linkedValueOnSpecific === obj.id;
             }
-        } else if (virtualColumnDef && filter.operator === 'eq') { 
+        } else if (virtualColumnDef && filter.operator === 'eq') {
             const referencingData = allDbObjects[virtualColumnDef.referencingModel.id] || [];
             const count = referencingData.filter(refObj => {
                 const linkedValue = refObj[virtualColumnDef.referencingProperty.name];
@@ -661,18 +682,20 @@ export default function DataObjectsPage() {
       });
     });
     return searchableObjects;
-  }, [localObjects, searchTerm, currentModel, columnFilters, getModelById, allDbObjects, allModels, currentWorkflow, getWorkflowStateName, virtualIncomingRelationColumns]); 
+  }, [localObjects, searchTerm, currentModel, columnFilters, getModelById, allDbObjects, allModels, currentWorkflow, getWorkflowStateName, virtualIncomingRelationColumns, getOwnerUsername]);
 
   const sortedObjects = useMemo(() => {
-    if (!currentModel) return filteredObjects; 
+    if (!currentModel) return filteredObjects;
     let objectsToSort = [...filteredObjects];
-    if (!sortConfig) return objectsToSort; 
+    if (!sortConfig) return objectsToSort;
 
     return objectsToSort.sort((a, b) => {
       let aValue: any; let bValue: any;
       const directPropertyToSort = currentModel.properties.find(p => p.id === sortConfig.key);
       const virtualColumnToSort = virtualIncomingRelationColumns.find(vc => vc.id === sortConfig.key);
-      const isWorkflowStateSort = sortConfig.key === WORKFLOW_STATE_GROUPING_KEY || sortConfig.key === WORKFLOW_STATE_DISPLAY_COLUMN_KEY; 
+      const isWorkflowStateSort = sortConfig.key === WORKFLOW_STATE_GROUPING_KEY || sortConfig.key === WORKFLOW_STATE_DISPLAY_COLUMN_KEY;
+      const isOwnerSort = sortConfig.key === OWNER_COLUMN_KEY;
+
       if (directPropertyToSort) {
         aValue = a[directPropertyToSort.name]; bValue = b[directPropertyToSort.name];
         switch (directPropertyToSort.type) {
@@ -701,25 +724,28 @@ export default function DataObjectsPage() {
         aValue = getRefCount(a.id); bValue = getRefCount(b.id);
       } else if (isWorkflowStateSort && currentWorkflow) {
         aValue = getWorkflowStateName(a.currentStateId).toLowerCase(); bValue = getWorkflowStateName(b.currentStateId).toLowerCase();
-      } else return 0;
+      } else if (isOwnerSort) {
+        aValue = getOwnerUsername(a.ownerId).toLowerCase(); bValue = getOwnerUsername(b.ownerId).toLowerCase();
+      }
+      else return 0;
       if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
       if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
       return String(a.id).localeCompare(String(b.id));
     });
-  }, [filteredObjects, sortConfig, currentModel, getModelById, allDbObjects, allModels, virtualIncomingRelationColumns, currentWorkflow, getWorkflowStateName]);
+  }, [filteredObjects, sortConfig, currentModel, getModelById, allDbObjects, allModels, virtualIncomingRelationColumns, currentWorkflow, getWorkflowStateName, getOwnerUsername]);
 
   const groupedDataForRender = useMemo(() => {
     if (!groupingPropertyKey || !currentModel) return null;
-    
+
     const selectedGroupablePropDef = groupableProperties.find(gp => gp.id === groupingPropertyKey);
 
     if (selectedGroupablePropDef?.isWorkflowState && currentWorkflow) {
       const groupedByState = sortedObjects.reduce((acc, obj) => {
-        const stateId = obj.currentStateId || 'null'; 
+        const stateId = obj.currentStateId || 'null';
         const state = currentWorkflow.states.find(s => s.id === stateId);
         const groupTitle = state ? state.name : 'N/A (No State)';
-        const orderIndex = state ? (state.orderIndex !== undefined ? state.orderIndex : Infinity) : Infinity; 
-        
+        const orderIndex = state ? (state.orderIndex !== undefined ? state.orderIndex : Infinity) : Infinity;
+
         if (!acc[groupTitle]) {
           acc[groupTitle] = { objects: [], orderIndex };
         }
@@ -729,9 +755,21 @@ export default function DataObjectsPage() {
 
       return Object.entries(groupedByState)
         .map(([groupTitle, data]) => ({ groupTitle, objects: data.objects, orderIndex: data.orderIndex }))
-        .sort((a, b) => a.orderIndex - b.orderIndex); 
+        .sort((a, b) => a.orderIndex - b.orderIndex);
     }
-    
+
+    if (selectedGroupablePropDef?.isOwnerColumn) {
+        const groupedByOwner = sortedObjects.reduce((acc, obj) => {
+            const ownerName = getOwnerUsername(obj.ownerId);
+            if (!acc[ownerName]) acc[ownerName] = [];
+            acc[ownerName].push(obj);
+            return acc;
+        }, {} as Record<string, DataObject[]>);
+        return Object.entries(groupedByOwner)
+            .map(([groupTitle, objectsInGroup]) => ({ groupTitle, objects: objectsInGroup}))
+            .sort((a,b) => a.groupTitle.localeCompare(b.groupTitle));
+    }
+
     const groupingProperty = currentModel.properties.find(p => p.id === groupingPropertyKey);
     const groupingVirtualColumn = virtualIncomingRelationColumns.find(vc => vc.id === groupingPropertyKey);
 
@@ -745,22 +783,22 @@ export default function DataObjectsPage() {
 
       return Object.entries(grouped)
         .map(([groupTitle, objectsInGroup]) => ({ groupTitle, objects: objectsInGroup }))
-        .sort((a, b) => a.groupTitle.localeCompare(b.groupTitle)); 
+        .sort((a, b) => a.groupTitle.localeCompare(b.groupTitle));
     } else if (groupingVirtualColumn) {
       const grouped = sortedObjects.reduce((acc, obj) => {
         const referencingData = allDbObjects[groupingVirtualColumn.referencingModel.id] || [];
         const linkedItems = referencingData.filter(refObj => {
           const linkedValue = refObj[groupingVirtualColumn.referencingProperty.name];
-          return groupingVirtualColumn.referencingProperty.relationshipType === 'many' 
-                 ? (Array.isArray(linkedValue) && linkedValue.includes(obj.id)) 
+          return groupingVirtualColumn.referencingProperty.relationshipType === 'many'
+                 ? (Array.isArray(linkedValue) && linkedValue.includes(obj.id))
                  : linkedValue === obj.id;
         });
-        
+
         let groupTitle = `Not Referenced by ${groupingVirtualColumn.referencingModel.name}`;
         if (linkedItems.length > 0) {
           groupTitle = `Referenced by: ${linkedItems.map(item => getObjectDisplayValue(item, groupingVirtualColumn.referencingModel, allModels, allDbObjects)).slice(0,3).join(', ')}${linkedItems.length > 3 ? `...and ${linkedItems.length-3} more` : ''}`;
         }
-        
+
         if (!acc[groupTitle]) acc[groupTitle] = [];
         acc[groupTitle].push(obj);
         return acc;
@@ -771,7 +809,7 @@ export default function DataObjectsPage() {
         .sort((a, b) => a.groupTitle.localeCompare(b.groupTitle));
     }
     return null;
-  }, [groupingPropertyKey, sortedObjects, currentModel, currentWorkflow, allModels, allDbObjects, virtualIncomingRelationColumns, groupableProperties]);
+  }, [groupingPropertyKey, sortedObjects, currentModel, currentWorkflow, allModels, allDbObjects, virtualIncomingRelationColumns, groupableProperties, getOwnerUsername]);
 
 
   const totalItemsForPagination = groupedDataForRender ? groupedDataForRender.length : sortedObjects.length;
@@ -816,7 +854,7 @@ export default function DataObjectsPage() {
       return newSet;
     });
   };
-  
+
   const isAllPaginatedSelected = useMemo(() => {
     if (groupedDataForRender) {
       if (!paginatedDataToRender || (paginatedDataToRender as { groupTitle: string; objects: DataObject[] }[]).length === 0) return false;
@@ -989,22 +1027,27 @@ export default function DataObjectsPage() {
   };
 
   const handleExportCSV = () => {
-    if (!currentModel || filteredObjects.length === 0) { 
+    if (!currentModel || filteredObjects.length === 0) {
       toast({ title: "No Data to Export", description: "There is no data available for the current selection to export.", variant: "destructive" });
       return;
     }
-    const headers: string[] = []; currentModel.properties.forEach(prop => headers.push(prop.name));
-    if (currentWorkflow) headers.push("Workflow State");
-    virtualIncomingRelationColumns.forEach(col => headers.push(col.headerLabel));
+    const headers: string[] = [];
+    if (!hiddenColumns.has(OWNER_COLUMN_KEY)) headers.push("Owned By");
+    currentModel.properties.forEach(prop => { if (!hiddenColumns.has(prop.id)) headers.push(prop.name); });
+    if (currentWorkflow && !hiddenColumns.has(WORKFLOW_STATE_DISPLAY_COLUMN_KEY)) headers.push("Workflow State");
+    virtualIncomingRelationColumns.forEach(col => { if (!hiddenColumns.has(col.id)) headers.push(col.headerLabel); });
+
     const csvRows: string[] = [headers.map(escapeCsvCell).join(',')];
-    
+
     const objectsToExport = groupingPropertyKey && groupedDataForRender
-      ? groupedDataForRender.flatMap(g => g.objects) 
-      : sortedObjects; 
+      ? groupedDataForRender.flatMap(g => g.objects)
+      : sortedObjects;
 
     objectsToExport.forEach(obj => {
       const row: string[] = [];
+      if (!hiddenColumns.has(OWNER_COLUMN_KEY)) row.push(escapeCsvCell(getOwnerUsername(obj.ownerId)));
       currentModel.properties.forEach(prop => {
+        if (hiddenColumns.has(prop.id)) return;
         const value = obj[prop.name]; let cellValue = '';
         if (value === null || typeof value === 'undefined') cellValue = '';
         else {
@@ -1024,8 +1067,9 @@ export default function DataObjectsPage() {
           }
         } row.push(escapeCsvCell(cellValue));
       });
-      if (currentWorkflow) row.push(escapeCsvCell(getWorkflowStateName(obj.currentStateId)));
+      if (currentWorkflow && !hiddenColumns.has(WORKFLOW_STATE_DISPLAY_COLUMN_KEY)) row.push(escapeCsvCell(getWorkflowStateName(obj.currentStateId)));
       virtualIncomingRelationColumns.forEach(colDef => {
+        if (hiddenColumns.has(colDef.id)) return;
         const referencingData = allDbObjects[colDef.referencingModel.id] || [];
         const linkedItems = referencingData.filter(refObj => { const linkedValue = refObj[colDef.referencingProperty.name]; if (colDef.referencingProperty.relationshipType === 'many') return Array.isArray(linkedValue) && linkedValue.includes(obj.id); return linkedValue === obj.id; });
         if (linkedItems.length > 0) row.push(escapeCsvCell(linkedItems.map(item => getObjectDisplayValue(item, colDef.referencingModel, allModels, allDbObjects)).join('; ')));
@@ -1090,25 +1134,26 @@ export default function DataObjectsPage() {
     }
     if (isValidTransition) {
       try {
-        setIsRefreshing(true); 
+        setIsRefreshing(true);
         await updateObject(currentModel.id, objectId, { currentStateId: newPotentialStateId });
         toast({ title: "State Updated", description: `Object moved to "${targetStateDef.name}".` });
       } catch (error: any) {
         toast({ variant: "destructive", title: "Error Updating State", description: error.message });
         await fetchData('Error Reverting Kanban State Update');
       } finally {
-        setIsRefreshing(false); 
+        setIsRefreshing(false);
       }
     } else {
-       await fetchData('Invalid Transition Revert'); 
+       await fetchData('Invalid Transition Revert');
     }
   }, [currentModel, currentWorkflow, localObjects, updateObject, toast, fetchData]);
 
   const hasActiveColumnFilters = Object.keys(columnFilters).length > 0;
-  
+
   const currentGroupingPropertyDisplayName = useMemo(() => {
     if (!groupingPropertyKey) return "None";
     if (groupingPropertyKey === WORKFLOW_STATE_GROUPING_KEY) return "Workflow State";
+    if (groupingPropertyKey === OWNER_COLUMN_KEY) return "Owned By";
     const selectedGroupableProp = groupableProperties.find(gp => gp.id === groupingPropertyKey);
     return selectedGroupableProp ? selectedGroupableProp.name : "None";
   }, [groupingPropertyKey, groupableProperties]);
@@ -1131,7 +1176,7 @@ export default function DataObjectsPage() {
       </div>
     );
   }
-  
+
   return (
     <div className="container mx-auto py-8">
       <Button variant="outline" onClick={() => router.push('/models')} className="mb-6"><ArrowLeft className="mr-2 h-4 w-4" /> Back to Model Admin</Button>
@@ -1421,6 +1466,7 @@ export default function DataObjectsPage() {
                           !hiddenColumns.has(prop.id) && <TableHead key={prop.id}> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(prop.id)} className="px-1 text-left justify-start flex-grow"> {prop.name} {getSortIcon(prop.id)} </Button> <ColumnFilterPopover columnKey={prop.id} columnName={prop.name} property={prop} currentFilter={columnFilters[prop.id] || null} onFilterChange={handleColumnFilterChange} /> </div> </TableHead>
                         ))}
                         {currentWorkflow && !hiddenColumns.has(WORKFLOW_STATE_DISPLAY_COLUMN_KEY) && ( <TableHead> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(WORKFLOW_STATE_DISPLAY_COLUMN_KEY)} className="px-1 text-left justify-start flex-grow"> State {getSortIcon(WORKFLOW_STATE_DISPLAY_COLUMN_KEY)} </Button> <ColumnFilterPopover columnKey={WORKFLOW_STATE_DISPLAY_COLUMN_KEY} columnName="State" currentWorkflow={currentWorkflow} currentFilter={columnFilters[WORKFLOW_STATE_DISPLAY_COLUMN_KEY] || null} onFilterChange={handleColumnFilterChange} /> </div> </TableHead> )}
+                        {!hiddenColumns.has(OWNER_COLUMN_KEY) && ( <TableHead> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(OWNER_COLUMN_KEY)} className="px-1 text-left justify-start flex-grow"> Owned By {getSortIcon(OWNER_COLUMN_KEY)} </Button> <ColumnFilterPopover columnKey={OWNER_COLUMN_KEY} columnName="Owned By" filterTypeOverride="relationship" currentFilter={columnFilters[OWNER_COLUMN_KEY] || null} onFilterChange={handleColumnFilterChange} /> </div> </TableHead> )}
                         {virtualIncomingRelationColumns.map((col) => (
                            !hiddenColumns.has(col.id) && <TableHead key={col.id} className="text-xs"> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(col.id)} className="px-1 text-xs text-left justify-start flex-grow"> {col.headerLabel} {getSortIcon(col.id)} </Button> <ColumnFilterPopover columnKey={col.id} columnName={col.headerLabel} currentFilter={columnFilters[col.id] || null} onFilterChange={handleColumnFilterChange} filterTypeOverride="specificIncomingReference" referencingModel={col.referencingModel} referencingProperty={col.referencingProperty} /> </div> </TableHead>
                         ))}
@@ -1437,6 +1483,7 @@ export default function DataObjectsPage() {
                             {!hiddenColumns.has(VIEW_ACTION_COLUMN_KEY) && <TableCell className="text-center"> <Button variant="ghost" size="sm" onClick={() => handleView(obj)} className="px-2 hover:text-primary"> <Eye className="h-4 w-4" /> </Button> </TableCell>}
                             {directPropertiesToShowInTable.map((prop) => ( !hiddenColumns.has(prop.id) && <TableCell key={`${obj.id}-${prop.id}`}> {displayCellContent(obj, prop)} </TableCell> ))}
                             {currentWorkflow && !hiddenColumns.has(WORKFLOW_STATE_DISPLAY_COLUMN_KEY) && ( <TableCell> <Badge variant={obj.currentStateId ? "outline" : "secondary"}> {getWorkflowStateName(obj.currentStateId)} </Badge> </TableCell> )}
+                            {!hiddenColumns.has(OWNER_COLUMN_KEY) && <TableCell>{getOwnerUsername(obj.ownerId)}</TableCell>}
                             {virtualIncomingRelationColumns.map((colDef) => { if(hiddenColumns.has(colDef.id)) return null; const referencingData = allDbObjects[colDef.referencingModel.id] || []; const linkedItems = referencingData.filter(refObj => { const linkedValue = refObj[colDef.referencingProperty.name]; if (colDef.referencingProperty.relationshipType === 'many') return Array.isArray(linkedValue) && linkedValue.includes(obj.id); return linkedValue === obj.id; }); if (linkedItems.length === 0) return <TableCell key={colDef.id}><span className="text-muted-foreground">N/A</span></TableCell>; return ( <TableCell key={colDef.id} className="space-x-1 space-y-1"> {linkedItems.map(item => ( <Link key={item.id} href={`/data/${colDef.referencingModel.id}/edit/${item.id}`} className="inline-block"> <Badge variant="secondary" className="hover:bg-muted cursor-pointer"> {getObjectDisplayValue(item, colDef.referencingModel, allModels, allDbObjects)} </Badge> </Link> ))} </TableCell> ); })}
                             {!hiddenColumns.has(ACTIONS_COLUMN_KEY) && <TableCell className="text-right"> <Button variant="ghost" size="sm" onClick={() => handleEdit(obj)} className="px-2 mr-1 hover:text-primary"> <Edit className="h-4 w-4" /> </Button> <AlertDialog> <AlertDialogTrigger className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "px-2 hover:text-destructive")}><Trash2 className="h-4 w-4" /></AlertDialogTrigger> <AlertDialogContent> <AlertDialogHeader> <AlertDialogTitle>Are you sure?</AlertDialogTitle> <AlertDialogDescription> This action cannot be undone. This will permanently delete this {currentModel?.name.toLowerCase()} object. </AlertDialogDescription> </AlertDialogHeader> <AlertDialogFooter> <AlertDialogCancel>Cancel</AlertDialogCancel> <AlertDialogAction onClick={() => handleDelete(obj.id)}> Delete </AlertDialogAction> </AlertDialogFooter> </AlertDialogContent> </AlertDialog> </TableCell>}
                           </TableRow> );
@@ -1449,7 +1496,7 @@ export default function DataObjectsPage() {
               )}
             </div>
           ))
-        ) : ( 
+        ) : (
           <Card className="shadow-lg">
             <Table>
               <TableHeader>
@@ -1458,6 +1505,7 @@ export default function DataObjectsPage() {
                   {!hiddenColumns.has(VIEW_ACTION_COLUMN_KEY) && <TableHead className="w-[60px] text-center">View</TableHead>}
                   {directPropertiesToShowInTable.map((prop) => ( !hiddenColumns.has(prop.id) && <TableHead key={prop.id}> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(prop.id)} className="px-1 text-left justify-start flex-grow"> {prop.name} {getSortIcon(prop.id)} </Button> <ColumnFilterPopover columnKey={prop.id} columnName={prop.name} property={prop} currentFilter={columnFilters[prop.id] || null} onFilterChange={handleColumnFilterChange} /> </div> </TableHead> ))}
                   {currentWorkflow && !hiddenColumns.has(WORKFLOW_STATE_DISPLAY_COLUMN_KEY) && ( <TableHead> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(WORKFLOW_STATE_DISPLAY_COLUMN_KEY)} className="px-1 text-left justify-start flex-grow"> State {getSortIcon(WORKFLOW_STATE_DISPLAY_COLUMN_KEY)} </Button> <ColumnFilterPopover columnKey={WORKFLOW_STATE_DISPLAY_COLUMN_KEY} columnName="State" currentWorkflow={currentWorkflow} currentFilter={columnFilters[WORKFLOW_STATE_DISPLAY_COLUMN_KEY] || null} onFilterChange={handleColumnFilterChange} /> </div> </TableHead> )}
+                  {!hiddenColumns.has(OWNER_COLUMN_KEY) && ( <TableHead> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(OWNER_COLUMN_KEY)} className="px-1 text-left justify-start flex-grow"> Owned By {getSortIcon(OWNER_COLUMN_KEY)} </Button> <ColumnFilterPopover columnKey={OWNER_COLUMN_KEY} columnName="Owned By" filterTypeOverride="relationship" currentFilter={columnFilters[OWNER_COLUMN_KEY] || null} onFilterChange={handleColumnFilterChange} /> </div> </TableHead> )}
                   {virtualIncomingRelationColumns.map((col) => ( !hiddenColumns.has(col.id) && <TableHead key={col.id} className="text-xs"> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(col.id)} className="px-1 text-xs text-left justify-start flex-grow"> {col.headerLabel} {getSortIcon(col.id)} </Button> <ColumnFilterPopover columnKey={col.id} columnName={col.headerLabel} currentFilter={columnFilters[col.id] || null} onFilterChange={handleColumnFilterChange} filterTypeOverride="specificIncomingReference" referencingModel={col.referencingModel} referencingProperty={col.referencingProperty} /> </div> </TableHead> ))}
                   {!hiddenColumns.has(ACTIONS_COLUMN_KEY) && <TableHead className="text-right w-[120px]">Actions</TableHead>}
                 </TableRow>
@@ -1472,6 +1520,7 @@ export default function DataObjectsPage() {
                     {!hiddenColumns.has(VIEW_ACTION_COLUMN_KEY) && <TableCell className="text-center"> <Button variant="ghost" size="sm" onClick={() => handleView(obj)} className="px-2 hover:text-primary"> <Eye className="h-4 w-4" /> </Button> </TableCell>}
                     {directPropertiesToShowInTable.map((prop) => ( !hiddenColumns.has(prop.id) && <TableCell key={`${obj.id}-${prop.id}`}> {displayCellContent(obj, prop)} </TableCell> ))}
                     {currentWorkflow && !hiddenColumns.has(WORKFLOW_STATE_DISPLAY_COLUMN_KEY) && ( <TableCell> <Badge variant={obj.currentStateId ? "outline" : "secondary"}> {getWorkflowStateName(obj.currentStateId)} </Badge> </TableCell> )}
+                    {!hiddenColumns.has(OWNER_COLUMN_KEY) && <TableCell>{getOwnerUsername(obj.ownerId)}</TableCell>}
                     {virtualIncomingRelationColumns.map((colDef) => { if(hiddenColumns.has(colDef.id)) return null; const referencingData = allDbObjects[colDef.referencingModel.id] || []; const linkedItems = referencingData.filter(refObj => { const linkedValue = refObj[colDef.referencingProperty.name]; if (colDef.referencingProperty.relationshipType === 'many') return Array.isArray(linkedValue) && linkedValue.includes(obj.id); return linkedValue === obj.id; }); if (linkedItems.length === 0) return <TableCell key={colDef.id}><span className="text-muted-foreground">N/A</span></TableCell>; return ( <TableCell key={colDef.id} className="space-x-1 space-y-1"> {linkedItems.map(item => ( <Link key={item.id} href={`/data/${colDef.referencingModel.id}/edit/${item.id}`} className="inline-block"> <Badge variant="secondary" className="hover:bg-muted cursor-pointer"> {getObjectDisplayValue(item, colDef.referencingModel, allModels, allDbObjects)} </Badge> </Link> ))} </TableCell> ); })}
                     {!hiddenColumns.has(ACTIONS_COLUMN_KEY) && <TableCell className="text-right"> <Button variant="ghost" size="sm" onClick={() => handleEdit(obj)} className="px-2 mr-1 hover:text-primary"> <Edit className="h-4 w-4" /> </Button> <AlertDialog> <AlertDialogTrigger className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "px-2 hover:text-destructive")}><Trash2 className="h-4 w-4" /></AlertDialogTrigger> <AlertDialogContent> <AlertDialogHeader> <AlertDialogTitle>Are you sure?</AlertDialogTitle> <AlertDialogDescription> This action cannot be undone. This will permanently delete this {currentModel?.name.toLowerCase()} object. </AlertDialogDescription> </AlertDialogHeader> <AlertDialogFooter> <AlertDialogCancel>Cancel</AlertDialogCancel> <AlertDialogAction onClick={() => handleDelete(obj.id)}> Delete </AlertDialogAction> </AlertDialogFooter> </AlertDialogContent> </AlertDialog> </TableCell>}
                   </TableRow> );
@@ -1489,13 +1538,13 @@ export default function DataObjectsPage() {
         <KanbanBoard
           model={currentModel!}
           workflow={currentWorkflow}
-          objects={sortedObjects} 
+          objects={sortedObjects}
           allModels={allModels}
           allObjects={allDbObjects}
           onObjectUpdate={handleStateChangeViaDrag}
           onViewObject={handleView}
           onEditObject={handleEdit}
-          onDeleteObject={handleDelete} 
+          onDeleteObject={handleDelete}
         />
       ) : null }
       { (viewMode === 'table' || viewMode === 'gallery') && totalPages > 1 && (
@@ -1508,8 +1557,3 @@ export default function DataObjectsPage() {
     </div>
   );
 }
-    
-
-    
-
-
