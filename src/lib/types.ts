@@ -101,13 +101,16 @@ export interface PropertyChangeDetail {
   newLabel?: string;
 }
 
+export type ChangelogEventType = 'CREATE' | 'UPDATE' | 'DELETE' | 'RESTORE' | 'REVERT_UPDATE' | 'REVERT_DELETE' | 'REVERT_RESTORE';
+
 export interface ChangelogEventData {
-  type: 'CREATE' | 'UPDATE' | 'DELETE' | 'RESTORE';
+  type: ChangelogEventType;
   status?: 'deleted' | 'restored'; // For DELETE/RESTORE types
   timestamp?: string; // For DELETE/RESTORE types
   initialData?: Record<string, any>; // For CREATE type
-  modifiedProperties?: PropertyChangeDetail[]; // For UPDATE type
-  snapshot?: Record<string, any>; // For DELETE to store pre-delete state
+  modifiedProperties?: PropertyChangeDetail[]; // For UPDATE type, also for REVERT_UPDATE
+  snapshot?: Record<string, any>; // For DELETE to store pre-delete state, also used by REVERT_DELETE
+  revertedFromChangelogEntryId?: string; // For REVERT_* types, to link back to the entry that was reverted
 }
 
 export interface ChangelogEntry {
@@ -117,7 +120,7 @@ export interface ChangelogEntry {
   changedAt: string; // ISO 8601
   changedByUserId: string | null;
   changedByUsername?: string; // Populated by API when fetching
-  changeType: 'CREATE' | 'UPDATE' | 'DELETE' | 'RESTORE';
+  changeType: ChangelogEventType;
   changes: ChangelogEventData; // Parsed JSON from DB
 }
 
