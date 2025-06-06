@@ -25,23 +25,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel as UiSelectLabel,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Table,
   TableBody,
   TableCell,
@@ -55,10 +38,10 @@ import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useData } from '@/contexts/data-context';
 import type { Model, DataObject, Property, WorkflowWithDetails, WorkflowStateWithSuccessors, DataContextType } from '@/lib/types';
-import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye, LayoutGrid, List as ListIcon, ExternalLink, Image as ImageIcon, CheckCircle2, FilterX, X as XIcon, Settings as SettingsIcon, Edit3, Workflow as WorkflowIconLucide, CalendarIcon as CalendarIconLucideLucide, Star, RefreshCw, Loader2, Kanban as KanbanIcon, Rows, Columns as ColumnsIcon, User as UserIcon, Clock, ArchiveRestore, ArchiveX } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, Search, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye, LayoutGrid, List as ListIcon, ExternalLink, Image as ImageIcon, CheckCircle2, FilterX, X as XIcon, Edit3, Workflow as WorkflowIconLucide, CalendarIcon as CalendarIconLucideLucide, Star, RefreshCw, Loader2, Kanban as KanbanIcon, ArchiveRestore, ArchiveX } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { format as formatDateFns, isValid as isDateValidFn, startOfDay, isEqual as isEqualDate } from 'date-fns';
 import Link from 'next/link';
 import { getObjectDisplayValue, cn, getObjectGroupValue } from '@/lib/utils';
@@ -77,10 +60,10 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import KanbanBoard from '@/components/objects/kanban-board';
+import DataObjectsPageHeader, { type GroupablePropertyOption, type ColumnToggleOption } from '@/components/objects/data-objects-page-header';
 
 
-const ITEMS_PER_PAGE = 10;
-type ViewMode = 'table' | 'gallery' | 'kanban';
+export type ViewMode = 'table' | 'gallery' | 'kanban';
 
 type SortDirection = 'asc' | 'desc';
 interface SortConfig {
@@ -98,7 +81,7 @@ interface IncomingRelationColumn {
 const INTERNAL_NO_REFERENCES_VALUE = "__NO_REFERENCES__";
 const INTERNAL_WORKFLOW_STATE_UPDATE_KEY = "__workflowStateUpdate__";
 const INTERNAL_CLEAR_RELATIONSHIP_VALUE = "__CLEAR_RELATIONSHIP__";
-const NO_GROUPING_VALUE = "__NO_GROUPING__";
+
 const WORKFLOW_STATE_GROUPING_KEY = "__WORKFLOW_STATE_GROUPING__";
 const OWNER_COLUMN_KEY = "__OWNER_COLUMN_KEY__";
 const CREATED_AT_COLUMN_KEY = "__CREATED_AT_COLUMN_KEY__";
@@ -121,10 +104,10 @@ export default function DataObjectsPage() {
   const dataContext = useData();
   const {
     models: allModels,
-    objects: activeObjectsFromContext, // Renamed for clarity
-    deletedObjects: deletedObjectsFromContext, // Renamed for clarity
+    objects: activeObjectsFromContext,
+    deletedObjects: deletedObjectsFromContext,
     getModelById,
-    getObjectsByModelId, // This now takes includeDeleted
+    getObjectsByModelId,
     deleteObject,
     restoreObject,
     updateObject,
@@ -159,6 +142,8 @@ export default function DataObjectsPage() {
   const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
   const [viewingRecycleBin, setViewingRecycleBin] = useState(false);
 
+  const ITEMS_PER_PAGE = viewMode === 'gallery' ? 12 : 10;
+
 
   const previousModelIdRef = useRef<string | null>(null);
 
@@ -170,10 +155,7 @@ export default function DataObjectsPage() {
         const isTrulyDifferentModel = previousModelIdRef.current !== modelIdFromUrl;
         setCurrentModel(foundModel);
         
-        // Logic for setting localObjects is now in a separate effect below,
-        // dependent on viewingRecycleBin
-
-        const defaultHiddenColumnsSet = new Set([
+        const defaultHiddenCols = new Set([
           CREATED_AT_COLUMN_KEY,
           UPDATED_AT_COLUMN_KEY,
           OWNER_COLUMN_KEY,
@@ -187,17 +169,19 @@ export default function DataObjectsPage() {
             if (Array.isArray(parsedHidden) && parsedHidden.every(item => typeof item === 'string')) {
               setHiddenColumns(new Set(parsedHidden)); 
             } else {
-              setHiddenColumns(defaultHiddenColumnsSet); 
+              setHiddenColumns(defaultHiddenCols); 
             }
           } catch (e) {
-            setHiddenColumns(defaultHiddenColumnsSet); 
+            setHiddenColumns(defaultHiddenCols); 
           }
         } else {
-          setHiddenColumns(defaultHiddenColumnsSet); 
+          setHiddenColumns(defaultHiddenCols); 
         }
         
         const savedViewMode = sessionStorage.getItem(`codexStructure-viewMode-${foundModel.id}`) as ViewMode | null;
         const savedGroupingKey = sessionStorage.getItem(`codexStructure-grouping-${foundModel.id}`);
+        
+        const NO_GROUPING_VALUE = "__NO_GROUPING__"; // Define or import this
         if (savedGroupingKey && savedGroupingKey !== NO_GROUPING_VALUE) {
             setGroupingPropertyKey(savedGroupingKey);
         } else {
@@ -256,6 +240,7 @@ export default function DataObjectsPage() {
     if (currentModel && groupingPropertyKey !== null) {
       sessionStorage.setItem(`codexStructure-grouping-${currentModel.id}`, groupingPropertyKey);
     } else if (currentModel && groupingPropertyKey === null) {
+      const NO_GROUPING_VALUE = "__NO_GROUPING__"; // Define or import this
       sessionStorage.setItem(`codexStructure-grouping-${currentModel.id}`, NO_GROUPING_VALUE);
     }
   }, [groupingPropertyKey, currentModel]);
@@ -287,7 +272,7 @@ export default function DataObjectsPage() {
   }, [currentModel, allModels, dataContextIsReady]);
 
 
-  const groupableProperties = useMemo(() => {
+  const groupableProperties: GroupablePropertyOption[] = useMemo(() => {
     if (!currentModel) return [];
     const props: Array<{id: string; name: string; isWorkflowState?: boolean; isIncomingRelation?: boolean, isOwnerColumn?: boolean, isDateColumn?: boolean}> = currentModel.properties.filter(
       p => ['string', 'number', 'boolean', 'date', 'rating'].includes(p.type) ||
@@ -311,9 +296,9 @@ export default function DataObjectsPage() {
     return props;
   }, [currentModel, currentWorkflow, virtualIncomingRelationColumns]);
 
-  const allAvailableColumnsForToggle = useMemo(() => {
+  const allAvailableColumnsForToggle: ColumnToggleOption[] = useMemo(() => {
     if (!currentModel) return [];
-    const columnsToToggle: Array<{ id: string; label: string; type: 'action' | 'property' | 'workflow' | 'virtual' | 'owner' | 'metadata' }> = [];
+    const columnsToToggle: ColumnToggleOption[] = [];
 
     columnsToToggle.push({ id: SELECT_ALL_CHECKBOX_COLUMN_KEY, label: 'Select Row', type: 'action' });
     columnsToToggle.push({ id: VIEW_ACTION_COLUMN_KEY, label: 'View Details', type: 'action' });
@@ -371,7 +356,7 @@ export default function DataObjectsPage() {
     }));
 
     if (currentWorkflow && currentWorkflow.states.length > 0) {
-        updatable.unshift({ name: INTERNAL_WORKFLOW_STATE_UPDATE_KEY, type: 'workflow_state', id: INTERNAL_WORKFLOW_STATE_UPDATE_KEY, label: 'Workflow State', relationshipType: undefined, relatedModelId: undefined });
+        updatable.unshift({ name: INTERNAL_WORKFLOW_STATE_UPDATE_KEY, type: 'workflow_state' as Property['type'], id: INTERNAL_WORKFLOW_STATE_UPDATE_KEY, label: 'Workflow State', relationshipType: undefined, relatedModelId: undefined });
     }
     return updatable;
   }, [currentModel, currentWorkflow, getModelById]);
@@ -404,11 +389,11 @@ export default function DataObjectsPage() {
     return undefined;
   }, [selectedBatchPropertyDetails, getModelById]);
 
-  const allDbObjects = useMemo(() => getAllObjects(true), [getAllObjects, dataContextIsReady]); // Include deleted for relationship lookups
+  const allDbObjects = useMemo(() => getAllObjects(true), [getAllObjects, dataContextIsReady]);
 
   const relatedObjectsForBatchUpdateOptions = useMemo(() => {
     if (relatedModelForBatchUpdate && relatedModelForBatchUpdate.id) {
-        const relatedObjects = getObjectsByModelId(relatedModelForBatchUpdate.id); // Only active related objects for selection
+        const relatedObjects = getObjectsByModelId(relatedModelForBatchUpdate.id); 
         return relatedObjects.map(obj => ({
             value: obj.id,
             label: getObjectDisplayValue(obj, relatedModelForBatchUpdate, allModels, allDbObjects),
@@ -419,7 +404,7 @@ export default function DataObjectsPage() {
 
   const relatedObjectsForBatchUpdateGrouped = useMemo(() => {
     if (relatedModelForBatchUpdate && relatedModelForBatchUpdate.id) {
-        const relatedObjects = getObjectsByModelId(relatedModelForBatchUpdate.id); // Only active related objects for selection
+        const relatedObjects = getObjectsByModelId(relatedModelForBatchUpdate.id); 
         return relatedObjects.reduce((acc, obj) => {
             const namespace = allModels.find(m => m.id === relatedModelForBatchUpdate.id)?.namespace || 'Default';
             if (!acc[namespace]) {
@@ -627,7 +612,7 @@ export default function DataObjectsPage() {
 
   const filteredObjects = useMemo(() => {
     if (!currentModel) return [];
-    let searchableObjects = [...localObjects]; // localObjects is now correctly active OR deleted based on viewingRecycleBin
+    let searchableObjects = [...localObjects]; 
 
     if (searchTerm) {
       searchableObjects = searchableObjects.filter(obj => {
@@ -811,6 +796,7 @@ export default function DataObjectsPage() {
 
   const groupedDataForRender = useMemo(() => {
     if (!groupingPropertyKey || !currentModel) return null;
+    const NO_GROUPING_VALUE = "__NO_GROUPING__"; // Define or import this
 
     const selectedGroupablePropDef = groupableProperties.find(gp => gp.id === groupingPropertyKey);
 
@@ -915,7 +901,7 @@ export default function DataObjectsPage() {
     const itemsToPaginate = groupedDataForRender ? groupedDataForRender : sortedObjects;
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
     return itemsToPaginate.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-  }, [groupedDataForRender, sortedObjects, currentPage]);
+  }, [groupedDataForRender, sortedObjects, currentPage, ITEMS_PER_PAGE]);
 
 
   const handleSelectAll = (checked: boolean) => {
@@ -1110,10 +1096,10 @@ export default function DataObjectsPage() {
           if (!Array.isArray(value) || value.length === 0) return <span className="text-muted-foreground">N/A</span>;
           const relatedItems = value.map(itemId => { const relatedObj = (allDbObjects[property.relatedModelId!] || []).find(o => o.id === itemId); return { id: itemId, name: getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects), obj: relatedObj }; });
           if (relatedItems.length > 2) return <Badge variant="outline" title={relatedItems.map(i=>i.name).join(', ')}>{relatedItems.length} {relatedModel.name}(s)</Badge>;
-          return relatedItems.map(item => item.obj ? ( <Link key={item.id} href={`/data/${relatedModel.id}/${viewingRecycleBin ? 'view' : 'edit'}/${item.obj.id}`} className="inline-block"> <Badge variant="outline" className="mr-1 mb-1 hover:bg-secondary">{item.name}</Badge> </Link> ) : ( <Badge key={item.id} variant="outline" className="mr-1 mb-1">{item.name}</Badge> ));
+          return relatedItems.map(item => item.obj ? ( <Link key={item.id} href={`/data/${relatedModel.id}/view/${item.obj.id}`} className="inline-block"> <Badge variant="outline" className="mr-1 mb-1 hover:bg-secondary">{item.name}</Badge> </Link> ) : ( <Badge key={item.id} variant="outline" className="mr-1 mb-1">{item.name}</Badge> ));
         } else {
           const relatedObj = (allDbObjects[property.relatedModelId] || []).find(o => o.id === value); const displayVal = getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
-          return relatedObj ? ( <Link href={`/data/${relatedModel.id}/${viewingRecycleBin ? 'view' : 'edit'}/${relatedObj.id}`} className="inline-block"> <Badge variant="outline" className="hover:bg-secondary">{displayVal}</Badge> </Link> ) : <span className="text-xs font-mono" title={String(value)}>{displayVal}</span>;
+          return relatedObj ? ( <Link href={`/data/${relatedModel.id}/view/${relatedObj.id}`} className="inline-block"> <Badge variant="outline" className="hover:bg-secondary">{displayVal}</Badge> </Link> ) : <span className="text-xs font-mono" title={String(value)}>{displayVal}</span>;
         }
       default: const strValue = String(value); return strValue.length > 50 ? <span title={strValue}>{strValue.substring(0, 47) + '...'}</span> : strValue;
     }
@@ -1271,6 +1257,7 @@ export default function DataObjectsPage() {
   const hasActiveColumnFilters = Object.keys(columnFilters).length > 0;
 
   const currentGroupingPropertyDisplayName = useMemo(() => {
+    const NO_GROUPING_VALUE = "__NO_GROUPING__"; // Define or import this
     if (!groupingPropertyKey) return "None";
     if (groupingPropertyKey === WORKFLOW_STATE_GROUPING_KEY) return "Workflow State";
     if (groupingPropertyKey === OWNER_COLUMN_KEY) return "Owned By";
@@ -1302,83 +1289,28 @@ export default function DataObjectsPage() {
 
   return (
     <div className="container mx-auto py-8">
-      <Button variant="outline" onClick={() => router.push('/models')} className="mb-6"><ArrowLeft className="mr-2 h-4 w-4" /> Back to Model Admin</Button>
-      <header className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
-        <div className="text-center md:text-left">
-          <h1 className="text-3xl font-bold text-primary">Data for: {currentModel.name}</h1>
-          <p className="text-muted-foreground">{currentModel.description || 'Manage data entries for this model.'}</p>
-          {currentWorkflow && <Badge variant="secondary" className="mt-1">Workflow: {currentWorkflow.name}</Badge>}
-        </div>
-         <div className="flex flex-wrap gap-2 w-full md:w-auto justify-center md:justify-end">
-            <div className="relative flex-grow md:flex-grow-0">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                <Input type="search" placeholder={`Search ${currentModel.name.toLowerCase()}s...`} value={searchTerm} onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1);}} className="pl-10 w-full md:w-64" />
-            </div>
-            <div className="flex items-center border rounded-md">
-              <Button variant={viewMode === 'table' ? 'secondary' : 'ghost'} size="sm" onClick={() => handleViewModeChange('table')} className="rounded-r-none" aria-label="Table View"><ListIcon className="h-5 w-5" /></Button>
-              <Button variant={viewMode === 'gallery' ? 'secondary' : 'ghost'} size="sm" onClick={() => handleViewModeChange('gallery')} className={cn("rounded-l-none border-l", currentWorkflow ? "" : "rounded-r-md")} aria-label="Gallery View"><LayoutGrid className="h-5 w-5" /></Button>
-              {currentWorkflow && (
-                 <Button variant={viewMode === 'kanban' ? 'secondary' : 'ghost'} size="sm" onClick={() => handleViewModeChange('kanban')} className="rounded-l-none border-l rounded-r-md" aria-label="Kanban View" disabled={viewingRecycleBin}><KanbanIcon className="h-5 w-5" /></Button>
-              )}
-            </div>
-            {viewMode === 'table' && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm">
-                    <ColumnsIcon className="mr-2 h-4 w-4" /> Columns
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-64 max-h-[70vh] overflow-y-auto">
-                  <DropdownMenuLabel>Toggle Columns</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  {allAvailableColumnsForToggle.map(col => (
-                    <DropdownMenuCheckboxItem
-                      key={col.id}
-                      checked={!hiddenColumns.has(col.id)}
-                      onCheckedChange={(checked) => toggleColumnVisibility(col.id, !checked)}
-                      disabled={col.id === DELETED_AT_COLUMN_KEY && !viewingRecycleBin} // Disable "Deleted At" if not in recycle bin
-                    >
-                      {col.label} {col.id === DELETED_AT_COLUMN_KEY && !viewingRecycleBin ? "(Recycle Bin only)" : ""}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-            {viewMode === 'table' && groupableProperties.length > 0 && (
-              <div className="min-w-[180px]">
-                 <Select
-                  value={groupingPropertyKey ?? NO_GROUPING_VALUE}
-                  onValueChange={(value) => {
-                    setGroupingPropertyKey(value === NO_GROUPING_VALUE ? null : value);
-                    setCurrentPage(1);
-                  }}
-                >
-                  <SelectTrigger className="h-9">
-                    <Rows className="mr-2 h-4 w-4 text-muted-foreground" />
-                    <SelectValue placeholder="Group by..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NO_GROUPING_VALUE}>No Grouping</SelectItem>
-                    <SelectGroup>
-                      <UiSelectLabel>Group by Property</UiSelectLabel>
-                      {groupableProperties.map(prop => (
-                        <SelectItem key={prop.id} value={prop.id} disabled={prop.id === DELETED_AT_COLUMN_KEY && !viewingRecycleBin}>{prop.name} {prop.id === DELETED_AT_COLUMN_KEY && !viewingRecycleBin ? "(Recycle Bin only)" : ""}</SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            <Button onClick={handleRefreshData} variant="outline" size="sm" disabled={isRefreshing}>
-              {isRefreshing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-              {isRefreshing ? "Refreshing..." : "Refresh"}
-            </Button>
-            <Button onClick={handleEditModelStructure} variant="outline" size="sm"><SettingsIcon className="mr-2 h-4 w-4" /> Edit Model</Button>
-            <Button onClick={handleExportCSV} variant="outline" size="sm"><Download className="mr-2 h-4 w-4" /> Export CSV</Button>
-            <Button onClick={handleCreateNew} size="sm" className="bg-accent text-accent-foreground hover:bg-accent/90" disabled={viewingRecycleBin}><PlusCircle className="mr-2 h-4 w-4" /> Create New</Button>
-        </div>
-      </header>
-
+      <DataObjectsPageHeader
+        currentModel={currentModel}
+        currentWorkflow={currentWorkflow}
+        searchTerm={searchTerm}
+        onSearchTermChange={(term) => { setSearchTerm(term); setCurrentPage(1); }}
+        viewMode={viewMode}
+        onViewModeChange={handleViewModeChange}
+        allAvailableColumnsForToggle={allAvailableColumnsForToggle}
+        hiddenColumns={hiddenColumns}
+        onToggleColumnVisibility={toggleColumnVisibility}
+        groupableProperties={groupableProperties}
+        groupingPropertyKey={groupingPropertyKey}
+        onGroupingPropertyKeyChange={(key) => { setGroupingPropertyKey(key); setCurrentPage(1); }}
+        isRefreshing={isRefreshing}
+        onRefreshData={handleRefreshData}
+        onEditModelStructure={handleEditModelStructure}
+        onExportCSV={handleExportCSV}
+        onCreateNew={handleCreateNew}
+        onNavigateBack={() => router.push('/models')}
+        viewingRecycleBin={viewingRecycleBin}
+      />
+      
       <div className="flex items-center justify-end space-x-2 mb-4">
         <Label htmlFor="recycle-bin-toggle" className={cn("text-sm font-medium", viewingRecycleBin ? "text-destructive" : "text-muted-foreground")}>
           {viewingRecycleBin ? "Viewing Recycle Bin" : "Viewing Active Items"}
@@ -1389,14 +1321,10 @@ export default function DataObjectsPage() {
           onCheckedChange={(checked) => {
             setViewingRecycleBin(checked);
             setCurrentPage(1);
-            setSelectedObjectIds(new Set()); // Clear selection when switching views
-            if (checked && viewMode === 'kanban') setViewMode('table'); // Switch from Kanban if entering recycle bin
+            setSelectedObjectIds(new Set()); 
+            if (checked && viewMode === 'kanban') setViewMode('table'); 
             if (checked && !hiddenColumns.has(DELETED_AT_COLUMN_KEY)) {
-                // If deleted_at is hidden and we switch to recycle bin, unhide it
                 toggleColumnVisibility(DELETED_AT_COLUMN_KEY, false);
-            } else if (!checked && hiddenColumns.has(DELETED_AT_COLUMN_KEY) && groupableProperties.some(p => p.id === DELETED_AT_COLUMN_KEY && !p.isDateColumn)) {
-                // If we switch away from recycle bin and deleted_at was shown (and not hidden by default settings for other reasons), hide it
-                // This might need more nuance if user explicitly unhid it before
             }
           }}
         />
@@ -1607,7 +1535,6 @@ export default function DataObjectsPage() {
                     <TableHeader>
                       <TableRow>
                         {!hiddenColumns.has(SELECT_ALL_CHECKBOX_COLUMN_KEY) && <TableHead className="w-[60px] text-center">
-                           {/* No group-specific select-all, use main one for all visible on page */}
                         </TableHead>}
                         {!hiddenColumns.has(VIEW_ACTION_COLUMN_KEY) && <TableHead className="w-[60px] text-center">View</TableHead>}
                         {directPropertiesToShowInTable.map((prop) => (
@@ -1639,14 +1566,14 @@ export default function DataObjectsPage() {
                             {viewingRecycleBin && !hiddenColumns.has(DELETED_AT_COLUMN_KEY) && <TableCell>{displayDateCellContent(obj.deletedAt)}</TableCell>}
                             {currentWorkflow && !hiddenColumns.has(WORKFLOW_STATE_DISPLAY_COLUMN_KEY) && ( <TableCell> <Badge variant={obj.currentStateId ? "outline" : "secondary"}> {getWorkflowStateName(obj.currentStateId)} </Badge> </TableCell> )}
                             {!hiddenColumns.has(OWNER_COLUMN_KEY) && <TableCell>{getOwnerUsername(obj.ownerId)}</TableCell>}
-                            {virtualIncomingRelationColumns.map((colDef) => { if(hiddenColumns.has(colDef.id)) return null; const referencingData = allDbObjects[colDef.referencingModel.id] || []; const linkedItems = referencingData.filter(refObj => { const linkedValue = refObj[colDef.referencingProperty.name]; if (colDef.referencingProperty.relationshipType === 'many') return Array.isArray(linkedValue) && linkedValue.includes(obj.id); return linkedValue === obj.id; }); if (linkedItems.length === 0) return <TableCell key={colDef.id}><span className="text-muted-foreground">N/A</span></TableCell>; return ( <TableCell key={colDef.id} className="space-x-1 space-y-1"> {linkedItems.map(item => ( <Link key={item.id} href={`/data/${colDef.referencingModel.id}/${viewingRecycleBin ? 'view' : 'edit'}/${item.id}`} className="inline-block"> <Badge variant="secondary" className="hover:bg-muted cursor-pointer"> {getObjectDisplayValue(item, colDef.referencingModel, allModels, allDbObjects)} </Badge> </Link> ))} </TableCell> ); })}
+                            {virtualIncomingRelationColumns.map((colDef) => { if(hiddenColumns.has(colDef.id)) return null; const referencingData = allDbObjects[colDef.referencingModel.id] || []; const linkedItems = referencingData.filter(refObj => { const linkedValue = refObj[colDef.referencingProperty.name]; if (colDef.referencingProperty.relationshipType === 'many') return Array.isArray(linkedValue) && linkedValue.includes(obj.id); return linkedValue === obj.id; }); if (linkedItems.length === 0) return <TableCell key={colDef.id}><span className="text-muted-foreground">N/A</span></TableCell>; return ( <TableCell key={colDef.id} className="space-x-1 space-y-1"> {linkedItems.map(item => ( <Link key={item.id} href={`/data/${colDef.referencingModel.id}/view/${item.id}`} className="inline-block"> <Badge variant="secondary" className="hover:bg-muted cursor-pointer"> {getObjectDisplayValue(item, colDef.referencingModel, allModels, allDbObjects)} </Badge> </Link> ))} </TableCell> ); })}
                             {!hiddenColumns.has(ACTIONS_COLUMN_KEY) && <TableCell className="text-right">
                               {viewingRecycleBin ? (
                                 <Button variant="outline" size="sm" onClick={() => handleRestoreObject(obj.id)} className="text-green-600 border-green-600/50 hover:bg-green-600/10 hover:text-green-600"> <ArchiveRestore className="h-4 w-4 mr-1" /> Restore </Button>
                               ) : (
                                 <>
                                   <Button variant="ghost" size="sm" onClick={() => handleEdit(obj)} className="px-2 mr-1 hover:text-primary"> <Edit className="h-4 w-4" /> </Button>
-                                  <AlertDialog> <AlertDialogTrigger className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "px-2 hover:text-destructive")}><Trash2 className="h-4 w-4" /></AlertDialogTrigger> <AlertDialogContent> <AlertDialogHeader> <AlertDialogTitle>Are you sure?</AlertDialogTitle> <AlertDialogDescription> This action will move this {currentModel?.name.toLowerCase()} object to the recycle bin. </AlertDialogDescription> </AlertDialogHeader> <AlertDialogFooter> <AlertDialogCancel>Cancel</AlertDialogCancel> <AlertDialogAction onClick={() => handleDeleteObject(obj.id)}> Delete </AlertDialogAction> </AlertDialogFooter> </AlertDialogContent> </AlertDialog>
+                                  <AlertDialog> <AlertDialogTrigger asChild><Button variant="ghost" size="sm" className="px-2 hover:text-destructive"><Trash2 className="h-4 w-4" /></Button></AlertDialogTrigger> <AlertDialogContent> <AlertDialogHeader> <AlertDialogTitle>Are you sure?</AlertDialogTitle> <AlertDialogDescription> This action will move this {currentModel?.name.toLowerCase()} object to the recycle bin. </AlertDialogDescription> </AlertDialogHeader> <AlertDialogFooter> <AlertDialogCancel>Cancel</AlertDialogCancel> <AlertDialogAction onClick={() => handleDeleteObject(obj.id)}> Delete </AlertDialogAction> </AlertDialogFooter> </AlertDialogContent> </AlertDialog>
                                 </>
                               )}
                             </TableCell>}
@@ -1692,14 +1619,14 @@ export default function DataObjectsPage() {
                     {viewingRecycleBin && !hiddenColumns.has(DELETED_AT_COLUMN_KEY) && <TableCell>{displayDateCellContent(obj.deletedAt)}</TableCell>}
                     {currentWorkflow && !hiddenColumns.has(WORKFLOW_STATE_DISPLAY_COLUMN_KEY) && ( <TableCell> <Badge variant={obj.currentStateId ? "outline" : "secondary"}> {getWorkflowStateName(obj.currentStateId)} </Badge> </TableCell> )}
                     {!hiddenColumns.has(OWNER_COLUMN_KEY) && <TableCell>{getOwnerUsername(obj.ownerId)}</TableCell>}
-                    {virtualIncomingRelationColumns.map((colDef) => { if(hiddenColumns.has(colDef.id)) return null; const referencingData = allDbObjects[colDef.referencingModel.id] || []; const linkedItems = referencingData.filter(refObj => { const linkedValue = refObj[colDef.referencingProperty.name]; if (colDef.referencingProperty.relationshipType === 'many') return Array.isArray(linkedValue) && linkedValue.includes(obj.id); return linkedValue === obj.id; }); if (linkedItems.length === 0) return <TableCell key={colDef.id}><span className="text-muted-foreground">N/A</span></TableCell>; return ( <TableCell key={colDef.id} className="space-x-1 space-y-1"> {linkedItems.map(item => ( <Link key={item.id} href={`/data/${colDef.referencingModel.id}/${viewingRecycleBin ? 'view' : 'edit'}/${item.id}`} className="inline-block"> <Badge variant="secondary" className="hover:bg-muted cursor-pointer"> {getObjectDisplayValue(item, colDef.referencingModel, allModels, allDbObjects)} </Badge> </Link> ))} </TableCell> ); })}
+                    {virtualIncomingRelationColumns.map((colDef) => { if(hiddenColumns.has(colDef.id)) return null; const referencingData = allDbObjects[colDef.referencingModel.id] || []; const linkedItems = referencingData.filter(refObj => { const linkedValue = refObj[colDef.referencingProperty.name]; if (colDef.referencingProperty.relationshipType === 'many') return Array.isArray(linkedValue) && linkedValue.includes(obj.id); return linkedValue === obj.id; }); if (linkedItems.length === 0) return <TableCell key={colDef.id}><span className="text-muted-foreground">N/A</span></TableCell>; return ( <TableCell key={colDef.id} className="space-x-1 space-y-1"> {linkedItems.map(item => ( <Link key={item.id} href={`/data/${colDef.referencingModel.id}/view/${item.id}`} className="inline-block"> <Badge variant="secondary" className="hover:bg-muted cursor-pointer"> {getObjectDisplayValue(item, colDef.referencingModel, allModels, allDbObjects)} </Badge> </Link> ))} </TableCell> ); })}
                     {!hiddenColumns.has(ACTIONS_COLUMN_KEY) && <TableCell className="text-right">
                         {viewingRecycleBin ? (
                             <Button variant="outline" size="sm" onClick={() => handleRestoreObject(obj.id)} className="text-green-600 border-green-600/50 hover:bg-green-600/10 hover:text-green-600"> <ArchiveRestore className="h-4 w-4 mr-1" /> Restore </Button>
                         ) : (
                             <>
                             <Button variant="ghost" size="sm" onClick={() => handleEdit(obj)} className="px-2 mr-1 hover:text-primary"> <Edit className="h-4 w-4" /> </Button>
-                            <AlertDialog> <AlertDialogTrigger className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "px-2 hover:text-destructive")}><Trash2 className="h-4 w-4" /></AlertDialogTrigger> <AlertDialogContent> <AlertDialogHeader> <AlertDialogTitle>Are you sure?</AlertDialogTitle> <AlertDialogDescription> This action will move this {currentModel?.name.toLowerCase()} object to the recycle bin. </AlertDialogDescription> </AlertDialogHeader> <AlertDialogFooter> <AlertDialogCancel>Cancel</AlertDialogCancel> <AlertDialogAction onClick={() => handleDeleteObject(obj.id)}> Delete </AlertDialogAction> </AlertDialogFooter> </AlertDialogContent> </AlertDialog>
+                            <AlertDialog> <AlertDialogTrigger asChild><Button variant="ghost" size="sm" className="px-2 hover:text-destructive"><Trash2 className="h-4 w-4" /></Button></AlertDialogTrigger> <AlertDialogContent> <AlertDialogHeader> <AlertDialogTitle>Are you sure?</AlertDialogTitle> <AlertDialogDescription> This action will move this {currentModel?.name.toLowerCase()} object to the recycle bin. </AlertDialogDescription> </AlertDialogHeader> <AlertDialogFooter> <AlertDialogCancel>Cancel</AlertDialogCancel> <AlertDialogAction onClick={() => handleDeleteObject(obj.id)}> Delete </AlertDialogAction> </AlertDialogFooter> </AlertDialogContent> </AlertDialog>
                             </>
                         )}
                     </TableCell>}
@@ -1714,11 +1641,11 @@ export default function DataObjectsPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
            {(paginatedDataToRender as DataObject[]).map((obj) => ( <GalleryCard key={obj.id} obj={obj} model={currentModel!} allModels={allModels} allObjects={allDbObjects} currentWorkflow={currentWorkflow} getWorkflowStateName={getWorkflowStateName} onView={handleView} onEdit={handleEdit} onDelete={handleDeleteObject} viewingRecycleBin={viewingRecycleBin} onRestore={handleRestoreObject} lastChangedInfo={lastChangedInfo} /> ))}
         </div>
-      ) : viewMode === 'kanban' && currentWorkflow && !viewingRecycleBin ? ( // Kanban only for active items
+      ) : viewMode === 'kanban' && currentWorkflow && !viewingRecycleBin ? ( 
         <KanbanBoard
           model={currentModel!}
           workflow={currentWorkflow}
-          objects={sortedObjects} // Kanban always gets active objects through sortedObjects which is based on localObjects (filtered by viewingRecycleBin)
+          objects={sortedObjects} 
           allModels={allModels}
           allObjects={allDbObjects}
           onObjectUpdate={handleStateChangeViaDrag}
