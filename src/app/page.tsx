@@ -47,7 +47,7 @@ export default function HomePage() {
   return (
     <div className="container mx-auto py-8">
       <header className="mb-12 text-center">
-        <h1 className="text-5xl font-bold tracking-tight text-primary">CodexStructure</h1>
+        <h1 className="text-5xl font-bold tracking-tight text-primary">Dynamic Data Weaver</h1>
         <p className="mt-4 text-xl text-muted-foreground">
           Your flexible solution for dynamic data definition and management.
         </p>
@@ -93,9 +93,9 @@ export default function HomePage() {
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground">
-              New to CodexStructure? Start by defining your first data model.
+              New to Dynamic Data Weaver? Start by defining your first data model.
             </p>
-            <Link href="/models" passHref className="mt-4 block">
+            <Link href="/models/new" passHref className="mt-4 block">
               <Button variant="default" className="w-full bg-accent text-accent-foreground hover:bg-accent/90">Create a Model</Button>
             </Link>
           </CardContent>
