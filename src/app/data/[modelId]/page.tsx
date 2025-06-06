@@ -268,7 +268,7 @@ export default function DataObjectsPage() {
 
   const groupableProperties = useMemo(() => {
     if (!currentModel) return [];
-    const props = currentModel.properties.filter(
+    const props: Array<{id: string; name: string; isWorkflowState: boolean; isIncomingRelation: boolean}> = currentModel.properties.filter(
       p => ['string', 'number', 'boolean', 'date', 'rating'].includes(p.type) ||
            (p.type === 'relationship' && p.relationshipType === 'one')
     ).map(p => ({ id: p.id, name: p.name, isWorkflowState: false, isIncomingRelation: false }))
@@ -289,7 +289,6 @@ export default function DataObjectsPage() {
     if (!currentModel) return [];
     const columnsToToggle: Array<{ id: string; label: string; type: 'action' | 'property' | 'workflow' | 'virtual' }> = [];
     
-    // Standard action columns first
     columnsToToggle.push({ id: SELECT_ALL_CHECKBOX_COLUMN_KEY, label: 'Select Row', type: 'action' });
     columnsToToggle.push({ id: VIEW_ACTION_COLUMN_KEY, label: 'View Details', type: 'action' });
 
@@ -304,7 +303,6 @@ export default function DataObjectsPage() {
     virtualIncomingRelationColumns.forEach(vc => {
       columnsToToggle.push({ id: vc.id, label: vc.headerLabel, type: 'virtual' });
     });
-     // Actions column last
     columnsToToggle.push({ id: ACTIONS_COLUMN_KEY, label: 'Actions (Edit/Delete)', type: 'action' });
 
     return columnsToToggle;
@@ -1152,7 +1150,7 @@ export default function DataObjectsPage() {
             {viewMode === 'table' && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline">
+                  <Button variant="outline" size="sm">
                     <ColumnsIcon className="mr-2 h-4 w-4" /> Columns
                   </Button>
                 </DropdownMenuTrigger>
@@ -1180,7 +1178,7 @@ export default function DataObjectsPage() {
                     setCurrentPage(1);
                   }}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="h-9">
                     <Rows className="mr-2 h-4 w-4 text-muted-foreground" />
                     <SelectValue placeholder="Group by..." />
                   </SelectTrigger>
@@ -1196,13 +1194,13 @@ export default function DataObjectsPage() {
                 </Select>
               </div>
             )}
-            <Button onClick={handleRefreshData} variant="outline" disabled={isRefreshing}>
+            <Button onClick={handleRefreshData} variant="outline" size="sm" disabled={isRefreshing}>
               {isRefreshing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
               {isRefreshing ? "Refreshing..." : "Refresh"}
             </Button>
-            <Button onClick={handleEditModelStructure} variant="outline"><SettingsIcon className="mr-2 h-4 w-4" /> Edit Model</Button>
-            <Button onClick={handleExportCSV} variant="outline"><Download className="mr-2 h-4 w-4" /> Export CSV</Button>
-            <Button onClick={handleCreateNew} className="bg-accent text-accent-foreground hover:bg-accent/90"><PlusCircle className="mr-2 h-4 w-4" /> Create New</Button>
+            <Button onClick={handleEditModelStructure} variant="outline" size="sm"><SettingsIcon className="mr-2 h-4 w-4" /> Edit Model</Button>
+            <Button onClick={handleExportCSV} variant="outline" size="sm"><Download className="mr-2 h-4 w-4" /> Export CSV</Button>
+            <Button onClick={handleCreateNew} size="sm" className="bg-accent text-accent-foreground hover:bg-accent/90"><PlusCircle className="mr-2 h-4 w-4" /> Create New</Button>
         </div>
       </header>
 
