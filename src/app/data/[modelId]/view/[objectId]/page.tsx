@@ -4,10 +4,10 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useData } from '@/contexts/data-context';
-import type { Model, DataObject, Property, WorkflowWithDetails, ValidationRuleset } from '@/lib/types';
+import type { Model, DataObject, Property, WorkflowWithDetails, ValidationRuleset, ChangelogEntry, PropertyChangeDetail } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Edit, Loader2, ExternalLink, ImageIcon, CheckCircle2, ShieldAlert, ShieldCheck, UserCircle, CalendarClock } from 'lucide-react'; // Added UserCircle, CalendarClock
+import { ArrowLeft, Edit, Loader2, ExternalLink, ImageIcon, CheckCircle2, ShieldAlert, ShieldCheck, UserCircle, CalendarClock, History, FileText, Users as UsersIconLucide } from 'lucide-react';
 import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
 import Link from 'next/link';
 import { getObjectDisplayValue } from '@/lib/utils';
@@ -23,6 +23,16 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { ScrollArea } from '@/components/ui/scroll-area';
+
 
 export default function ViewObjectPage() {
   const router = useRouter();
@@ -36,8 +46,11 @@ export default function ViewObjectPage() {
   const [currentModel, setCurrentModel] = useState<Model | null>(null);
   const [viewingObject, setViewingObject] = useState<DataObject | null>(null);
   const [currentWorkflow, setCurrentWorkflow] = useState<WorkflowWithDetails | null>(null);
+  const [changelog, setChangelog] = useState<ChangelogEntry[]>([]);
   const [isLoadingPageData, setIsLoadingPageData] = useState(true);
+  const [isLoadingChangelog, setIsLoadingChangelog] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
+  const [changelogError, setChangelogError] = useState<string | null>(null);
 
 
   const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects, dataContextIsReady]);
@@ -100,6 +113,32 @@ export default function ViewObjectPage() {
 
     loadObjectData();
   }, [modelId, objectId, dataContextIsReady, getModelById, getWorkflowById, router, toast, formatApiError]);
+
+  useEffect(() => {
+    const fetchChangelog = async () => {
+      if (!objectId) return;
+      setIsLoadingChangelog(true);
+      setChangelogError(null);
+      try {
+        const response = await fetch(`/api/codex-structure/objects/${objectId}/changelog`);
+        if (!response.ok) {
+           const errorMsg = await formatApiError(response, `Failed to fetch changelog for object ${objectId}.`);
+           throw new Error(errorMsg);
+        }
+        const data: ChangelogEntry[] = await response.json();
+        setChangelog(data);
+      } catch (error: any) {
+        setChangelogError(error.message);
+        toast({ variant: "destructive", title: "Error Loading Changelog", description: error.message });
+      } finally {
+        setIsLoadingChangelog(false);
+      }
+    };
+
+    if (viewingObject) {
+      fetchChangelog();
+    }
+  }, [viewingObject, objectId, toast, formatApiError]);
 
 
   const displayFieldValue = (property: Property, value: any) => {
@@ -231,6 +270,48 @@ export default function ViewObjectPage() {
     }
   };
 
+
+  const formatChangelogValue = (value: any): string => {
+    if (value === null || value === undefined) return 'Not Set';
+    if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+    if (Array.isArray(value)) return value.length > 0 ? `[${value.join(', ')}]` : 'Empty List';
+    if (typeof value === 'object') return JSON.stringify(value); // Fallback for other objects
+    const strValue = String(value);
+    return strValue.length > 50 ? strValue.substring(0, 47) + '...' : strValue;
+  };
+
+
+  const renderChangeDetail = (detail: PropertyChangeDetail): React.ReactNode => {
+    const { propertyName, oldValue, newValue, oldLabel, newLabel } = detail;
+    let propertyDisplayName = propertyName;
+    let finalOldValue = oldValue;
+    let finalNewValue = newValue;
+
+    if (propertyName === '__workflowState__') {
+      propertyDisplayName = "Workflow State";
+      finalOldValue = oldLabel || formatChangelogValue(oldValue);
+      finalNewValue = newLabel || formatChangelogValue(newValue);
+    } else if (propertyName === '__owner__') {
+      propertyDisplayName = "Owner";
+      finalOldValue = oldLabel || formatChangelogValue(oldValue);
+      finalNewValue = newLabel || formatChangelogValue(newValue);
+    } else {
+      const propDef = currentModel?.properties.find(p => p.name === propertyName);
+      propertyDisplayName = propDef?.name || propertyName;
+      finalOldValue = formatChangelogValue(oldValue);
+      finalNewValue = formatChangelogValue(newValue);
+    }
+
+    return (
+      <>
+        <span className="font-semibold">{propertyDisplayName}:</span>
+        <span className="text-destructive line-through mx-1" title={String(oldValue)}>{finalOldValue}</span>
+        <span className="text-green-600 font-medium" title={String(newValue)}>{finalNewValue}</span>
+      </>
+    );
+  };
+
+
   if (isLoadingPageData) {
     return (
       <div className="flex flex-col justify-center items-center h-screen">
@@ -286,7 +367,7 @@ export default function ViewObjectPage() {
           <Edit className="mr-2 h-4 w-4" /> Edit This {currentModel.name}
         </Button>
       </div>
-      <Card className="max-w-4xl mx-auto shadow-lg">
+      <Card className="max-w-4xl mx-auto shadow-lg mb-8">
         <CardHeader>
           <CardTitle className="text-3xl text-primary">{getObjectDisplayValue(viewingObject, currentModel, allModels, allDbObjects)}</CardTitle>
           <CardDescription>Detailed view of this {currentModel.name.toLowerCase()} object.</CardDescription>
@@ -354,6 +435,87 @@ export default function ViewObjectPage() {
           })}
         </CardContent>
         </TooltipProvider>
+      </Card>
+
+      <Card className="max-w-4xl mx-auto shadow-lg">
+        <CardHeader>
+            <CardTitle className="text-2xl text-primary flex items-center">
+                <History className="mr-2 h-6 w-6" /> Object Changelog
+            </CardTitle>
+            <CardDescription>History of changes made to this object.</CardDescription>
+        </CardHeader>
+        <CardContent>
+            {isLoadingChangelog && (
+                 <div className="flex items-center justify-center py-6">
+                    <Loader2 className="h-6 w-6 animate-spin text-primary mr-2" />
+                    <p className="text-muted-foreground">Loading changelog...</p>
+                </div>
+            )}
+            {changelogError && !isLoadingChangelog && (
+                <div className="text-destructive text-center py-6">
+                    <ShieldAlert className="h-8 w-8 mx-auto mb-2" />
+                    <p>Error loading changelog: {changelogError}</p>
+                </div>
+            )}
+            {!isLoadingChangelog && !changelogError && changelog.length === 0 && (
+                <p className="text-muted-foreground text-center py-6">No changes recorded for this object yet.</p>
+            )}
+            {!isLoadingChangelog && !changelogError && changelog.length > 0 && (
+                <ScrollArea className="max-h-[500px]">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead className="w-[180px]">Date & Time</TableHead>
+                                <TableHead className="w-[150px]">User</TableHead>
+                                <TableHead className="w-[100px]">Action</TableHead>
+                                <TableHead>Details</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {changelog.map(entry => (
+                                <TableRow key={entry.id}>
+                                    <TableCell className="text-xs">
+                                        {formatDateFns(new Date(entry.changedAt), 'MMM d, yyyy, HH:mm:ss')}
+                                    </TableCell>
+                                    <TableCell>
+                                        <Badge variant="outline" className="text-xs">
+                                            <UsersIconLucide className="mr-1.5 h-3 w-3" />
+                                            {entry.changedByUsername || 'System'}
+                                        </Badge>
+                                    </TableCell>
+                                    <TableCell>
+                                        <Badge variant={entry.changeType === 'CREATE' ? 'default' : 'secondary'} className="capitalize">
+                                            {entry.changeType.toLowerCase()}
+                                        </Badge>
+                                    </TableCell>
+                                    <TableCell className="text-xs">
+                                        {entry.changeType === 'CREATE' && (
+                                            <div className="flex items-center">
+                                                <FileText className="h-3.5 w-3.5 mr-1.5 text-green-600" />
+                                                Object created with initial data.
+                                            </div>
+                                        )}
+                                        {entry.changeType === 'UPDATE' && entry.changes.modifiedProperties && entry.changes.modifiedProperties.length > 0 && (
+                                            <ul className="space-y-1">
+                                                {entry.changes.modifiedProperties.map((modProp, idx) => (
+                                                    <li key={idx} className="flex items-start">
+                                                        <Edit className="h-3.5 w-3.5 mr-1.5 mt-0.5 text-blue-500 shrink-0" />
+                                                        <div>{renderChangeDetail(modProp)}</div>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        )}
+                                        {entry.changeType === 'UPDATE' && (!entry.changes.modifiedProperties || entry.changes.modifiedProperties.length === 0) && (
+                                             <span className="italic text-muted-foreground">Object updated, but no specific property changes logged (possibly meta-data update).</span>
+                                        )}
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </ScrollArea>
+            )}
+        </CardContent>
       </Card>
     </div>
   );
