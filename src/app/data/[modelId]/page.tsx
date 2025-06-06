@@ -55,7 +55,7 @@ import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useData } from '@/contexts/data-context';
 import type { Model, DataObject, Property, WorkflowWithDetails, WorkflowStateWithSuccessors, DataContextType } from '@/lib/types';
-import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye, LayoutGrid, List as ListIcon, ExternalLink, Image as ImageIcon, CheckCircle2, FilterX, X as XIcon, Settings as SettingsIcon, Edit3, Workflow as WorkflowIconLucide, CalendarIcon as CalendarIconLucideLucide, Star, RefreshCw, Loader2, Kanban as KanbanIcon, Rows, Columns as ColumnsIcon, User as UserIcon, Clock } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye, LayoutGrid, List as ListIcon, ExternalLink, Image as ImageIcon, CheckCircle2, FilterX, X as XIcon, Settings as SettingsIcon, Edit3, Workflow as WorkflowIconLucide, CalendarIcon as CalendarIconLucideLucide, Star, RefreshCw, Loader2, Kanban as KanbanIcon, Rows, Columns as ColumnsIcon, User as UserIcon, Clock, ArchiveRestore, ArchiveX } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -103,6 +103,7 @@ const WORKFLOW_STATE_GROUPING_KEY = "__WORKFLOW_STATE_GROUPING__";
 const OWNER_COLUMN_KEY = "__OWNER_COLUMN_KEY__";
 const CREATED_AT_COLUMN_KEY = "__CREATED_AT_COLUMN_KEY__";
 const UPDATED_AT_COLUMN_KEY = "__UPDATED_AT_COLUMN_KEY__";
+const DELETED_AT_COLUMN_KEY = "__DELETED_AT_COLUMN_KEY__";
 
 
 // Keys for column visibility toggling
@@ -120,10 +121,12 @@ export default function DataObjectsPage() {
   const dataContext = useData();
   const {
     models: allModels,
-    objects,
+    objects: activeObjectsFromContext, // Renamed for clarity
+    deletedObjects: deletedObjectsFromContext, // Renamed for clarity
     getModelById,
-    getObjectsByModelId,
+    getObjectsByModelId, // This now takes includeDeleted
     deleteObject,
+    restoreObject,
     updateObject,
     getAllObjects,
     getWorkflowById,
@@ -154,6 +157,7 @@ export default function DataObjectsPage() {
 
   const [groupingPropertyKey, setGroupingPropertyKey] = useState<string | null>(null);
   const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
+  const [viewingRecycleBin, setViewingRecycleBin] = useState(false);
 
 
   const previousModelIdRef = useRef<string | null>(null);
@@ -165,13 +169,13 @@ export default function DataObjectsPage() {
       if (foundModel) {
         const isTrulyDifferentModel = previousModelIdRef.current !== modelIdFromUrl;
         setCurrentModel(foundModel);
-        setLocalObjects(getObjectsByModelId(foundModel.id));
+        // Local objects will now be set based on viewingRecycleBin state in another effect
 
-        // Define the new default set of hidden columns
         const defaultHiddenColumnsSet = new Set([
           CREATED_AT_COLUMN_KEY,
           UPDATED_AT_COLUMN_KEY,
           OWNER_COLUMN_KEY,
+          DELETED_AT_COLUMN_KEY, // Hide Deleted At by default as well
         ]);
 
         const savedHiddenColsJson = sessionStorage.getItem(`codexStructure-hiddenColumns-${foundModel.id}`);
@@ -179,17 +183,15 @@ export default function DataObjectsPage() {
           try {
             const parsedHidden = JSON.parse(savedHiddenColsJson);
             if (Array.isArray(parsedHidden) && parsedHidden.every(item => typeof item === 'string')) {
-              setHiddenColumns(new Set(parsedHidden)); // User's preference loaded
+              setHiddenColumns(new Set(parsedHidden)); 
             } else {
-              console.warn("Invalid hidden columns format in session storage. Applying defaults.");
-              setHiddenColumns(defaultHiddenColumnsSet); // Fallback to new default
+              setHiddenColumns(defaultHiddenColumnsSet); 
             }
           } catch (e) {
-            console.warn("Failed to parse hidden columns from session storage. Applying defaults:", e);
-            setHiddenColumns(defaultHiddenColumnsSet); // Fallback to new default
+            setHiddenColumns(defaultHiddenColumnsSet); 
           }
         } else {
-          setHiddenColumns(defaultHiddenColumnsSet); // No session state, apply new default
+          setHiddenColumns(defaultHiddenColumnsSet); 
         }
         
         const savedViewMode = sessionStorage.getItem(`codexStructure-viewMode-${foundModel.id}`) as ViewMode | null;
@@ -226,7 +228,7 @@ export default function DataObjectsPage() {
           setSortConfig(null);
           setColumnFilters({});
           setSelectedObjectIds(new Set());
-          // Hidden columns are already handled above by the logic that checks sessionStorage for the new foundModel.id
+          setViewingRecycleBin(false); // Reset recycle bin view when model changes
           previousModelIdRef.current = modelIdFromUrl;
         }
       } else {
@@ -235,13 +237,14 @@ export default function DataObjectsPage() {
         previousModelIdRef.current = null;
       }
     }
-  }, [modelIdFromUrl, dataContextIsReady, getModelById, getWorkflowById, getObjectsByModelId, fetchData, toast, router]);
+  }, [modelIdFromUrl, dataContextIsReady, getModelById, getWorkflowById, fetchData, toast, router]);
 
   useEffect(() => {
     if (dataContextIsReady && currentModel) {
-      setLocalObjects(getObjectsByModelId(currentModel.id));
+      // getObjectsByModelId now fetches based on viewingRecycleBin
+      setLocalObjects(getObjectsByModelId(currentModel.id, viewingRecycleBin));
     }
-  }, [objects, currentModel, dataContextIsReady, getObjectsByModelId]);
+  }, [activeObjectsFromContext, deletedObjectsFromContext, currentModel, dataContextIsReady, getObjectsByModelId, viewingRecycleBin]);
 
 
   useEffect(() => {
@@ -293,6 +296,7 @@ export default function DataObjectsPage() {
     props.unshift({ id: OWNER_COLUMN_KEY, name: "Owned By", isOwnerColumn: true });
     props.unshift({ id: CREATED_AT_COLUMN_KEY, name: "Created At", isDateColumn: true });
     props.unshift({ id: UPDATED_AT_COLUMN_KEY, name: "Updated At", isDateColumn: true });
+    props.unshift({ id: DELETED_AT_COLUMN_KEY, name: "Deleted At", isDateColumn: true });
 
 
     virtualIncomingRelationColumns.forEach(vCol => {
@@ -315,6 +319,7 @@ export default function DataObjectsPage() {
 
     columnsToToggle.push({ id: CREATED_AT_COLUMN_KEY, label: 'Created At', type: 'metadata' });
     columnsToToggle.push({ id: UPDATED_AT_COLUMN_KEY, label: 'Updated At', type: 'metadata' });
+    columnsToToggle.push({ id: DELETED_AT_COLUMN_KEY, label: 'Deleted At', type: 'metadata' });
     if (currentWorkflow) {
       columnsToToggle.push({ id: WORKFLOW_STATE_DISPLAY_COLUMN_KEY, label: 'Workflow State', type: 'workflow' });
     }
@@ -322,7 +327,7 @@ export default function DataObjectsPage() {
     virtualIncomingRelationColumns.forEach(vc => {
       columnsToToggle.push({ id: vc.id, label: vc.headerLabel, type: 'virtual' });
     });
-    columnsToToggle.push({ id: ACTIONS_COLUMN_KEY, label: 'Actions (Edit/Delete)', type: 'action' });
+    columnsToToggle.push({ id: ACTIONS_COLUMN_KEY, label: 'Actions (Edit/Delete/Restore)', type: 'action' });
 
     return columnsToToggle;
   }, [currentModel, currentWorkflow, virtualIncomingRelationColumns]);
@@ -394,11 +399,11 @@ export default function DataObjectsPage() {
     return undefined;
   }, [selectedBatchPropertyDetails, getModelById]);
 
-  const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects, dataContextIsReady]);
+  const allDbObjects = useMemo(() => getAllObjects(true), [getAllObjects, dataContextIsReady]); // Include deleted for relationship lookups
 
   const relatedObjectsForBatchUpdateOptions = useMemo(() => {
     if (relatedModelForBatchUpdate && relatedModelForBatchUpdate.id) {
-        const relatedObjects = getObjectsByModelId(relatedModelForBatchUpdate.id);
+        const relatedObjects = getObjectsByModelId(relatedModelForBatchUpdate.id); // Only active related objects for selection
         return relatedObjects.map(obj => ({
             value: obj.id,
             label: getObjectDisplayValue(obj, relatedModelForBatchUpdate, allModels, allDbObjects),
@@ -409,7 +414,7 @@ export default function DataObjectsPage() {
 
   const relatedObjectsForBatchUpdateGrouped = useMemo(() => {
     if (relatedModelForBatchUpdate && relatedModelForBatchUpdate.id) {
-        const relatedObjects = getObjectsByModelId(relatedModelForBatchUpdate.id);
+        const relatedObjects = getObjectsByModelId(relatedModelForBatchUpdate.id); // Only active related objects for selection
         return relatedObjects.reduce((acc, obj) => {
             const namespace = allModels.find(m => m.id === relatedModelForBatchUpdate.id)?.namespace || 'Default';
             if (!acc[namespace]) {
@@ -465,7 +470,7 @@ export default function DataObjectsPage() {
 
 
   const getFilterDisplayDetails = useCallback((columnKey: string, filter: ColumnFilterValue): { columnName: string; displayValue: string; operator: string } | null => {
-    if (!currentModel && !virtualIncomingRelationColumns.some(vc => vc.id === columnKey) && ![OWNER_COLUMN_KEY, CREATED_AT_COLUMN_KEY, UPDATED_AT_COLUMN_KEY].includes(columnKey)) return null;
+    if (!currentModel && !virtualIncomingRelationColumns.some(vc => vc.id === columnKey) && ![OWNER_COLUMN_KEY, CREATED_AT_COLUMN_KEY, UPDATED_AT_COLUMN_KEY, DELETED_AT_COLUMN_KEY].includes(columnKey)) return null;
 
     let columnName = '';
     let displayValue = String(filter.value);
@@ -486,6 +491,9 @@ export default function DataObjectsPage() {
       try { displayValue = formatDateFns(new Date(filter.value), 'PP'); } catch { displayValue = 'Invalid Date'; }
     } else if (columnKey === UPDATED_AT_COLUMN_KEY) {
       columnName = 'Updated At';
+      try { displayValue = formatDateFns(new Date(filter.value), 'PP'); } catch { displayValue = 'Invalid Date'; }
+    } else if (columnKey === DELETED_AT_COLUMN_KEY) {
+      columnName = 'Deleted At';
       try { displayValue = formatDateFns(new Date(filter.value), 'PP'); } catch { displayValue = 'Invalid Date'; }
     } else if (property) {
       columnName = property.name;
@@ -564,7 +572,7 @@ export default function DataObjectsPage() {
     router.push(`/data/${currentModel.id}/view/${obj.id}`);
   }, [currentModel, router]);
 
-  const handleDelete = useCallback(async (objectId: string) => {
+  const handleDeleteObject = useCallback(async (objectId: string) => {
     if (!currentModel) return;
     try {
         await deleteObject(currentModel.id, objectId);
@@ -573,11 +581,27 @@ export default function DataObjectsPage() {
           newSet.delete(objectId);
           return newSet;
         });
-        toast({ title: `${currentModel.name} Deleted`, description: `The ${currentModel.name.toLowerCase()} has been deleted.` });
+        toast({ title: `${currentModel.name} Deleted`, description: `The ${currentModel.name.toLowerCase()} has been moved to the recycle bin.` });
     } catch (error: any) {
         toast({ variant: "destructive", title: "Error Deleting Object", description: error.message || "An unexpected error occurred." });
     }
   }, [currentModel, deleteObject, toast]);
+
+  const handleRestoreObject = useCallback(async (objectId: string) => {
+    if (!currentModel) return;
+    try {
+      await restoreObject(currentModel.id, objectId);
+      setSelectedObjectIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(objectId);
+        return newSet;
+      });
+      toast({ title: `${currentModel.name} Restored`, description: `The ${currentModel.name.toLowerCase()} has been restored from the recycle bin.` });
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Error Restoring Object", description: error.message || "An unexpected error occurred." });
+    }
+  }, [currentModel, restoreObject, toast]);
+
 
   const requestSort = (key: string) => {
     let direction: SortDirection = 'asc';
@@ -598,7 +622,7 @@ export default function DataObjectsPage() {
 
   const filteredObjects = useMemo(() => {
     if (!currentModel) return [];
-    let searchableObjects = [...localObjects];
+    let searchableObjects = [...localObjects]; // localObjects is already filtered by viewingRecycleBin
 
     if (searchTerm) {
       searchableObjects = searchableObjects.filter(obj => {
@@ -639,6 +663,8 @@ export default function DataObjectsPage() {
         }
         if (obj.createdAt && formatDateFns(new Date(obj.createdAt), 'PPpp').toLowerCase().includes(searchTerm.toLowerCase())) return true;
         if (obj.updatedAt && formatDateFns(new Date(obj.updatedAt), 'PPpp').toLowerCase().includes(searchTerm.toLowerCase())) return true;
+        if (obj.deletedAt && formatDateFns(new Date(obj.deletedAt), 'PPpp').toLowerCase().includes(searchTerm.toLowerCase())) return true;
+
 
         return false;
       });
@@ -651,8 +677,8 @@ export default function DataObjectsPage() {
       searchableObjects = searchableObjects.filter(obj => {
         if (columnKey === WORKFLOW_STATE_GROUPING_KEY || columnKey === WORKFLOW_STATE_DISPLAY_COLUMN_KEY) return obj.currentStateId === filter.value;
         if (columnKey === OWNER_COLUMN_KEY) return obj.ownerId === filter.value;
-        if (columnKey === CREATED_AT_COLUMN_KEY || columnKey === UPDATED_AT_COLUMN_KEY) {
-            const dateValue = columnKey === CREATED_AT_COLUMN_KEY ? obj.createdAt : obj.updatedAt;
+        if (columnKey === CREATED_AT_COLUMN_KEY || columnKey === UPDATED_AT_COLUMN_KEY || columnKey === DELETED_AT_COLUMN_KEY) {
+            const dateValue = columnKey === CREATED_AT_COLUMN_KEY ? obj.createdAt : columnKey === UPDATED_AT_COLUMN_KEY ? obj.updatedAt : obj.deletedAt;
             if (!dateValue || !filter.value) return false;
             try {
                 const objDate = startOfDay(new Date(dateValue)); const filterDate = startOfDay(new Date(filter.value));
@@ -728,6 +754,7 @@ export default function DataObjectsPage() {
       const isOwnerSort = sortConfig.key === OWNER_COLUMN_KEY;
       const isCreatedAtSort = sortConfig.key === CREATED_AT_COLUMN_KEY;
       const isUpdatedAtSort = sortConfig.key === UPDATED_AT_COLUMN_KEY;
+      const isDeletedAtSort = sortConfig.key === DELETED_AT_COLUMN_KEY;
 
 
       if (directPropertyToSort) {
@@ -766,6 +793,9 @@ export default function DataObjectsPage() {
       } else if (isUpdatedAtSort) {
         aValue = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
         bValue = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+      } else if (isDeletedAtSort) {
+        aValue = a.deletedAt ? new Date(a.deletedAt).getTime() : 0;
+        bValue = b.deletedAt ? new Date(b.deletedAt).getTime() : 0;
       }
       else return 0;
       if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
@@ -813,7 +843,7 @@ export default function DataObjectsPage() {
     if (selectedGroupablePropDef?.isDateColumn) {
         const groupedByDate = sortedObjects.reduce((acc, obj) => {
             let dateValueStr = "Not Set";
-            const dateFieldValue = groupingPropertyKey === CREATED_AT_COLUMN_KEY ? obj.createdAt : obj.updatedAt;
+            const dateFieldValue = groupingPropertyKey === CREATED_AT_COLUMN_KEY ? obj.createdAt : groupingPropertyKey === UPDATED_AT_COLUMN_KEY ? obj.updatedAt : obj.deletedAt;
             if (dateFieldValue) {
                 try { dateValueStr = formatDateFns(new Date(dateFieldValue), 'PPP'); } catch { dateValueStr = "Invalid Date"; }
             }
@@ -824,7 +854,6 @@ export default function DataObjectsPage() {
         return Object.entries(groupedByDate)
             .map(([groupTitle, objectsInGroup]) => ({ groupTitle, objects: objectsInGroup}))
             .sort((a,b) => {
-                // Attempt to sort by date properly if possible
                 try { const dateA = new Date(a.groupTitle); const dateB = new Date(b.groupTitle);
                       if (isDateValidFn(dateA) && isDateValidFn(dateB)) return dateA.getTime() - dateB.getTime();
                 } catch {} return a.groupTitle.localeCompare(b.groupTitle);
@@ -933,6 +962,10 @@ export default function DataObjectsPage() {
     if (!currentModel || !selectedBatchPropertyDetails || selectedObjectIds.size === 0) {
         toast({ variant: "destructive", title: "Batch Update Error", description: "Please select a property and at least one record." });
         return;
+    }
+    if (viewingRecycleBin) {
+      toast({ variant: "destructive", title: "Action Denied", description: "Batch update is not allowed for items in the recycle bin." });
+      return;
     }
 
     setIsBatchUpdating(true);
@@ -1072,16 +1105,16 @@ export default function DataObjectsPage() {
           if (!Array.isArray(value) || value.length === 0) return <span className="text-muted-foreground">N/A</span>;
           const relatedItems = value.map(itemId => { const relatedObj = (allDbObjects[property.relatedModelId!] || []).find(o => o.id === itemId); return { id: itemId, name: getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects), obj: relatedObj }; });
           if (relatedItems.length > 2) return <Badge variant="outline" title={relatedItems.map(i=>i.name).join(', ')}>{relatedItems.length} {relatedModel.name}(s)</Badge>;
-          return relatedItems.map(item => item.obj ? ( <Link key={item.id} href={`/data/${relatedModel.id}/edit/${item.obj.id}`} className="inline-block"> <Badge variant="outline" className="mr-1 mb-1 hover:bg-secondary">{item.name}</Badge> </Link> ) : ( <Badge key={item.id} variant="outline" className="mr-1 mb-1">{item.name}</Badge> ));
+          return relatedItems.map(item => item.obj ? ( <Link key={item.id} href={`/data/${relatedModel.id}/${viewingRecycleBin ? 'view' : 'edit'}/${item.obj.id}`} className="inline-block"> <Badge variant="outline" className="mr-1 mb-1 hover:bg-secondary">{item.name}</Badge> </Link> ) : ( <Badge key={item.id} variant="outline" className="mr-1 mb-1">{item.name}</Badge> ));
         } else {
           const relatedObj = (allDbObjects[property.relatedModelId] || []).find(o => o.id === value); const displayVal = getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
-          return relatedObj ? ( <Link href={`/data/${relatedModel.id}/edit/${relatedObj.id}`} className="inline-block"> <Badge variant="outline" className="hover:bg-secondary">{displayVal}</Badge> </Link> ) : <span className="text-xs font-mono" title={String(value)}>{displayVal}</span>;
+          return relatedObj ? ( <Link href={`/data/${relatedModel.id}/${viewingRecycleBin ? 'view' : 'edit'}/${relatedObj.id}`} className="inline-block"> <Badge variant="outline" className="hover:bg-secondary">{displayVal}</Badge> </Link> ) : <span className="text-xs font-mono" title={String(value)}>{displayVal}</span>;
         }
       default: const strValue = String(value); return strValue.length > 50 ? <span title={strValue}>{strValue.substring(0, 47) + '...'}</span> : strValue;
     }
   };
 
-  const displayDateCellContent = (isoDateString: string | undefined) => {
+  const displayDateCellContent = (isoDateString: string | undefined | null) => {
     if (!isoDateString) return <span className="text-muted-foreground">N/A</span>;
     try {
       const date = new Date(isoDateString);
@@ -1106,6 +1139,7 @@ export default function DataObjectsPage() {
     const headers: string[] = [];
     if (!hiddenColumns.has(CREATED_AT_COLUMN_KEY)) headers.push("Created At");
     if (!hiddenColumns.has(UPDATED_AT_COLUMN_KEY)) headers.push("Updated At");
+    if (viewingRecycleBin && !hiddenColumns.has(DELETED_AT_COLUMN_KEY)) headers.push("Deleted At");
     if (!hiddenColumns.has(OWNER_COLUMN_KEY)) headers.push("Owned By");
     currentModel.properties.forEach(prop => { if (!hiddenColumns.has(prop.id)) headers.push(prop.name); });
     if (currentWorkflow && !hiddenColumns.has(WORKFLOW_STATE_DISPLAY_COLUMN_KEY)) headers.push("Workflow State");
@@ -1121,6 +1155,7 @@ export default function DataObjectsPage() {
       const row: string[] = [];
       if (!hiddenColumns.has(CREATED_AT_COLUMN_KEY)) row.push(escapeCsvCell(obj.createdAt ? formatDateFns(new Date(obj.createdAt), 'yyyy-MM-dd HH:mm:ss') : ''));
       if (!hiddenColumns.has(UPDATED_AT_COLUMN_KEY)) row.push(escapeCsvCell(obj.updatedAt ? formatDateFns(new Date(obj.updatedAt), 'yyyy-MM-dd HH:mm:ss') : ''));
+      if (viewingRecycleBin && !hiddenColumns.has(DELETED_AT_COLUMN_KEY)) row.push(escapeCsvCell(obj.deletedAt ? formatDateFns(new Date(obj.deletedAt), 'yyyy-MM-dd HH:mm:ss') : ''));
       if (!hiddenColumns.has(OWNER_COLUMN_KEY)) row.push(escapeCsvCell(getOwnerUsername(obj.ownerId)));
       currentModel.properties.forEach(prop => {
         if (hiddenColumns.has(prop.id)) return;
@@ -1156,7 +1191,7 @@ export default function DataObjectsPage() {
     const csvString = csvRows.join('\n'); const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     if (link.download !== undefined) {
-      const url = URL.createObjectURL(blob); link.setAttribute('href', url); link.setAttribute('download', `${currentModel.name}-data.csv`);
+      const url = URL.createObjectURL(blob); link.setAttribute('href', url); link.setAttribute('download', `${currentModel.name}-data${viewingRecycleBin ? '-deleted' : ''}.csv`);
       link.style.visibility = 'hidden'; document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(url);
       toast({ title: "Export Successful", description: `${currentModel.name} data has been exported to CSV.` });
     } else toast({ variant: "destructive", title: "Export Failed", description: "Your browser doesn't support this feature." });
@@ -1182,6 +1217,10 @@ export default function DataObjectsPage() {
     const objectToUpdate = localObjects.find(obj => obj.id === objectId);
     if (!objectToUpdate) {
       toast({ variant: "destructive", title: "Error", description: `Object with ID ${objectId} not found.` });
+      return;
+    }
+     if (objectToUpdate.isDeleted) {
+      toast({ variant: "destructive", title: "Action Denied", description: "Cannot change state of a deleted item." });
       return;
     }
     const currentObjectStateDef = objectToUpdate.currentStateId
@@ -1232,6 +1271,7 @@ export default function DataObjectsPage() {
     if (groupingPropertyKey === OWNER_COLUMN_KEY) return "Owned By";
     if (groupingPropertyKey === CREATED_AT_COLUMN_KEY) return "Created At";
     if (groupingPropertyKey === UPDATED_AT_COLUMN_KEY) return "Updated At";
+    if (groupingPropertyKey === DELETED_AT_COLUMN_KEY) return "Deleted At";
     const selectedGroupableProp = groupableProperties.find(gp => gp.id === groupingPropertyKey);
     return selectedGroupableProp ? selectedGroupableProp.name : "None";
   }, [groupingPropertyKey, groupableProperties]);
@@ -1273,7 +1313,7 @@ export default function DataObjectsPage() {
               <Button variant={viewMode === 'table' ? 'secondary' : 'ghost'} size="sm" onClick={() => handleViewModeChange('table')} className="rounded-r-none" aria-label="Table View"><ListIcon className="h-5 w-5" /></Button>
               <Button variant={viewMode === 'gallery' ? 'secondary' : 'ghost'} size="sm" onClick={() => handleViewModeChange('gallery')} className={cn("rounded-l-none border-l", currentWorkflow ? "" : "rounded-r-md")} aria-label="Gallery View"><LayoutGrid className="h-5 w-5" /></Button>
               {currentWorkflow && (
-                 <Button variant={viewMode === 'kanban' ? 'secondary' : 'ghost'} size="sm" onClick={() => handleViewModeChange('kanban')} className="rounded-l-none border-l rounded-r-md" aria-label="Kanban View"><KanbanIcon className="h-5 w-5" /></Button>
+                 <Button variant={viewMode === 'kanban' ? 'secondary' : 'ghost'} size="sm" onClick={() => handleViewModeChange('kanban')} className="rounded-l-none border-l rounded-r-md" aria-label="Kanban View" disabled={viewingRecycleBin}><KanbanIcon className="h-5 w-5" /></Button>
               )}
             </div>
             {viewMode === 'table' && (
@@ -1291,8 +1331,9 @@ export default function DataObjectsPage() {
                       key={col.id}
                       checked={!hiddenColumns.has(col.id)}
                       onCheckedChange={(checked) => toggleColumnVisibility(col.id, !checked)}
+                      disabled={col.id === DELETED_AT_COLUMN_KEY && !viewingRecycleBin} // Disable "Deleted At" if not in recycle bin
                     >
-                      {col.label}
+                      {col.label} {col.id === DELETED_AT_COLUMN_KEY && !viewingRecycleBin ? "(Recycle Bin only)" : ""}
                     </DropdownMenuCheckboxItem>
                   ))}
                 </DropdownMenuContent>
@@ -1316,7 +1357,7 @@ export default function DataObjectsPage() {
                     <SelectGroup>
                       <UiSelectLabel>Group by Property</UiSelectLabel>
                       {groupableProperties.map(prop => (
-                        <SelectItem key={prop.id} value={prop.id}>{prop.name}</SelectItem>
+                        <SelectItem key={prop.id} value={prop.id} disabled={prop.id === DELETED_AT_COLUMN_KEY && !viewingRecycleBin}>{prop.name} {prop.id === DELETED_AT_COLUMN_KEY && !viewingRecycleBin ? "(Recycle Bin only)" : ""}</SelectItem>
                       ))}
                     </SelectGroup>
                   </SelectContent>
@@ -1329,11 +1370,35 @@ export default function DataObjectsPage() {
             </Button>
             <Button onClick={handleEditModelStructure} variant="outline" size="sm"><SettingsIcon className="mr-2 h-4 w-4" /> Edit Model</Button>
             <Button onClick={handleExportCSV} variant="outline" size="sm"><Download className="mr-2 h-4 w-4" /> Export CSV</Button>
-            <Button onClick={handleCreateNew} size="sm" className="bg-accent text-accent-foreground hover:bg-accent/90"><PlusCircle className="mr-2 h-4 w-4" /> Create New</Button>
+            <Button onClick={handleCreateNew} size="sm" className="bg-accent text-accent-foreground hover:bg-accent/90" disabled={viewingRecycleBin}><PlusCircle className="mr-2 h-4 w-4" /> Create New</Button>
         </div>
       </header>
 
-      {selectedObjectIds.size > 0 && viewMode === 'table' && (
+      <div className="flex items-center justify-end space-x-2 mb-4">
+        <Label htmlFor="recycle-bin-toggle" className={cn("text-sm font-medium", viewingRecycleBin ? "text-destructive" : "text-muted-foreground")}>
+          {viewingRecycleBin ? "Viewing Recycle Bin" : "Viewing Active Items"}
+        </Label>
+        <Switch
+          id="recycle-bin-toggle"
+          checked={viewingRecycleBin}
+          onCheckedChange={(checked) => {
+            setViewingRecycleBin(checked);
+            setCurrentPage(1);
+            setSelectedObjectIds(new Set()); // Clear selection when switching views
+            if (checked && viewMode === 'kanban') setViewMode('table'); // Switch from Kanban if entering recycle bin
+            if (checked && !hiddenColumns.has(DELETED_AT_COLUMN_KEY)) {
+                // If deleted_at is hidden and we switch to recycle bin, unhide it
+                toggleColumnVisibility(DELETED_AT_COLUMN_KEY, false);
+            } else if (!checked && hiddenColumns.has(DELETED_AT_COLUMN_KEY) && groupableProperties.some(p => p.id === DELETED_AT_COLUMN_KEY && !p.isDateColumn)) {
+                // If we switch away from recycle bin and deleted_at was shown (and not hidden by default settings for other reasons), hide it
+                // This might need more nuance if user explicitly unhid it before
+            }
+          }}
+        />
+      </div>
+
+
+      {selectedObjectIds.size > 0 && viewMode === 'table' && !viewingRecycleBin && (
         <div className="mb-4 flex items-center gap-2 p-3 bg-secondary rounded-md shadow">
             <span className="text-sm font-medium text-secondary-foreground">{selectedObjectIds.size} item(s) selected</span>
             <Dialog open={isBatchUpdateDialogOpen} onOpenChange={(open) => {
@@ -1520,9 +1585,9 @@ export default function DataObjectsPage() {
         </div>
       )}
       {filteredObjects.length === 0 && !searchTerm && !hasActiveColumnFilters ? (
-        <Card className="text-center py-12"> <CardContent> <ListChecks size={48} className="mx-auto text-muted-foreground mb-4" /> <h3 className="text-xl font-semibold">No Data Objects Found</h3> <p className="text-muted-foreground mb-4"> There are no data objects for the model "{currentModel.name}" yet. </p> <Button onClick={handleCreateNew} variant="default"> <PlusCircle className="mr-2 h-4 w-4" /> Create First Object </Button> </CardContent> </Card>
+        <Card className="text-center py-12"> <CardContent> <ListChecks size={48} className="mx-auto text-muted-foreground mb-4" /> <h3 className="text-xl font-semibold">No {viewingRecycleBin ? 'Deleted' : 'Active'} Objects Found</h3> <p className="text-muted-foreground mb-4"> There are no {viewingRecycleBin ? 'deleted' : 'active'} data objects for the model "{currentModel.name}" yet. </p> {!viewingRecycleBin && <Button onClick={handleCreateNew} variant="default"> <PlusCircle className="mr-2 h-4 w-4" /> Create First Object </Button>} </CardContent> </Card>
       ) : sortedObjects.length === 0 && (searchTerm || hasActiveColumnFilters) ? (
-         <Card className="text-center py-12"> <CardContent> <Search size={48} className="mx-auto text-muted-foreground mb-4" /> <h3 className="text-xl font-semibold">No Results Found</h3> <p className="text-muted-foreground mb-4"> Your {searchTerm && hasActiveColumnFilters ? "search and column filters" : searchTerm ? "search" : "column filters"} did not match any {currentModel.name.toLowerCase()}s. </p> </CardContent> </Card>
+         <Card className="text-center py-12"> <CardContent> <Search size={48} className="mx-auto text-muted-foreground mb-4" /> <h3 className="text-xl font-semibold">No Results Found</h3> <p className="text-muted-foreground mb-4"> Your {searchTerm && hasActiveColumnFilters ? "search and column filters" : searchTerm ? "search" : "column filters"} did not match any {viewingRecycleBin ? 'deleted' : 'active'} {currentModel.name.toLowerCase()}s. </p> </CardContent> </Card>
       ) : viewMode === 'table' ? (
         <>
         {groupingPropertyKey && groupedDataForRender ? (
@@ -1545,6 +1610,7 @@ export default function DataObjectsPage() {
                         ))}
                         {!hiddenColumns.has(CREATED_AT_COLUMN_KEY) && ( <TableHead> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(CREATED_AT_COLUMN_KEY)} className="px-1 text-left justify-start flex-grow"> Created At {getSortIcon(CREATED_AT_COLUMN_KEY)} </Button> <ColumnFilterPopover columnKey={CREATED_AT_COLUMN_KEY} columnName="Created At" property={{type: 'date'} as Property} currentFilter={columnFilters[CREATED_AT_COLUMN_KEY] || null} onFilterChange={handleColumnFilterChange} /> </div> </TableHead> )}
                         {!hiddenColumns.has(UPDATED_AT_COLUMN_KEY) && ( <TableHead> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(UPDATED_AT_COLUMN_KEY)} className="px-1 text-left justify-start flex-grow"> Updated At {getSortIcon(UPDATED_AT_COLUMN_KEY)} </Button> <ColumnFilterPopover columnKey={UPDATED_AT_COLUMN_KEY} columnName="Updated At" property={{type: 'date'} as Property} currentFilter={columnFilters[UPDATED_AT_COLUMN_KEY] || null} onFilterChange={handleColumnFilterChange} /> </div> </TableHead> )}
+                        {viewingRecycleBin && !hiddenColumns.has(DELETED_AT_COLUMN_KEY) && ( <TableHead> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(DELETED_AT_COLUMN_KEY)} className="px-1 text-left justify-start flex-grow"> Deleted At {getSortIcon(DELETED_AT_COLUMN_KEY)} </Button> <ColumnFilterPopover columnKey={DELETED_AT_COLUMN_KEY} columnName="Deleted At" property={{type: 'date'} as Property} currentFilter={columnFilters[DELETED_AT_COLUMN_KEY] || null} onFilterChange={handleColumnFilterChange} /> </div> </TableHead> )}
                         {currentWorkflow && !hiddenColumns.has(WORKFLOW_STATE_DISPLAY_COLUMN_KEY) && ( <TableHead> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(WORKFLOW_STATE_DISPLAY_COLUMN_KEY)} className="px-1 text-left justify-start flex-grow"> State {getSortIcon(WORKFLOW_STATE_DISPLAY_COLUMN_KEY)} </Button> <ColumnFilterPopover columnKey={WORKFLOW_STATE_DISPLAY_COLUMN_KEY} columnName="State" currentWorkflow={currentWorkflow} currentFilter={columnFilters[WORKFLOW_STATE_DISPLAY_COLUMN_KEY] || null} onFilterChange={handleColumnFilterChange} /> </div> </TableHead> )}
                         {!hiddenColumns.has(OWNER_COLUMN_KEY) && ( <TableHead> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(OWNER_COLUMN_KEY)} className="px-1 text-left justify-start flex-grow"> Owned By {getSortIcon(OWNER_COLUMN_KEY)} </Button> <ColumnFilterPopover columnKey={OWNER_COLUMN_KEY} columnName="Owned By" filterTypeOverride="relationship" currentFilter={columnFilters[OWNER_COLUMN_KEY] || null} onFilterChange={handleColumnFilterChange} /> </div> </TableHead> )}
                         {virtualIncomingRelationColumns.map((col) => (
@@ -1557,17 +1623,28 @@ export default function DataObjectsPage() {
                       {group.objects.map((obj) => {
                         const isHighlightedAdded = lastChangedInfo?.objectId === obj.id && lastChangedInfo?.modelId === currentModel?.id && lastChangedInfo?.changeType === 'added';
                         const isHighlightedUpdated = lastChangedInfo?.objectId === obj.id && lastChangedInfo?.modelId === currentModel?.id && lastChangedInfo?.changeType === 'updated';
+                        const isHighlightedRestored = lastChangedInfo?.objectId === obj.id && lastChangedInfo?.modelId === currentModel?.id && lastChangedInfo?.changeType === 'restored';
                         return (
-                          <TableRow key={obj.id} data-state={selectedObjectIds.has(obj.id) ? "selected" : ""} className={cn( isHighlightedAdded && "animate-highlight-green", isHighlightedUpdated && "animate-highlight-yellow" )}>
+                          <TableRow key={obj.id} data-state={selectedObjectIds.has(obj.id) ? "selected" : ""} className={cn( isHighlightedAdded && "animate-highlight-green", isHighlightedUpdated && "animate-highlight-yellow", isHighlightedRestored && "animate-highlight-blue" )}>
                             {!hiddenColumns.has(SELECT_ALL_CHECKBOX_COLUMN_KEY) && <TableCell className="text-center"> <Checkbox checked={selectedObjectIds.has(obj.id)} onCheckedChange={(checked) => handleRowSelect(obj.id, !!checked)} aria-label={`Select row ${obj.id}`} /> </TableCell>}
                             {!hiddenColumns.has(VIEW_ACTION_COLUMN_KEY) && <TableCell className="text-center"> <Button variant="ghost" size="sm" onClick={() => handleView(obj)} className="px-2 hover:text-primary"> <Eye className="h-4 w-4" /> </Button> </TableCell>}
                             {directPropertiesToShowInTable.map((prop) => ( !hiddenColumns.has(prop.id) && <TableCell key={`${obj.id}-${prop.id}`}> {displayCellContent(obj, prop)} </TableCell> ))}
                             {!hiddenColumns.has(CREATED_AT_COLUMN_KEY) && <TableCell>{displayDateCellContent(obj.createdAt)}</TableCell>}
                             {!hiddenColumns.has(UPDATED_AT_COLUMN_KEY) && <TableCell>{displayDateCellContent(obj.updatedAt)}</TableCell>}
+                            {viewingRecycleBin && !hiddenColumns.has(DELETED_AT_COLUMN_KEY) && <TableCell>{displayDateCellContent(obj.deletedAt)}</TableCell>}
                             {currentWorkflow && !hiddenColumns.has(WORKFLOW_STATE_DISPLAY_COLUMN_KEY) && ( <TableCell> <Badge variant={obj.currentStateId ? "outline" : "secondary"}> {getWorkflowStateName(obj.currentStateId)} </Badge> </TableCell> )}
                             {!hiddenColumns.has(OWNER_COLUMN_KEY) && <TableCell>{getOwnerUsername(obj.ownerId)}</TableCell>}
-                            {virtualIncomingRelationColumns.map((colDef) => { if(hiddenColumns.has(colDef.id)) return null; const referencingData = allDbObjects[colDef.referencingModel.id] || []; const linkedItems = referencingData.filter(refObj => { const linkedValue = refObj[colDef.referencingProperty.name]; if (colDef.referencingProperty.relationshipType === 'many') return Array.isArray(linkedValue) && linkedValue.includes(obj.id); return linkedValue === obj.id; }); if (linkedItems.length === 0) return <TableCell key={colDef.id}><span className="text-muted-foreground">N/A</span></TableCell>; return ( <TableCell key={colDef.id} className="space-x-1 space-y-1"> {linkedItems.map(item => ( <Link key={item.id} href={`/data/${colDef.referencingModel.id}/edit/${item.id}`} className="inline-block"> <Badge variant="secondary" className="hover:bg-muted cursor-pointer"> {getObjectDisplayValue(item, colDef.referencingModel, allModels, allDbObjects)} </Badge> </Link> ))} </TableCell> ); })}
-                            {!hiddenColumns.has(ACTIONS_COLUMN_KEY) && <TableCell className="text-right"> <Button variant="ghost" size="sm" onClick={() => handleEdit(obj)} className="px-2 mr-1 hover:text-primary"> <Edit className="h-4 w-4" /> </Button> <AlertDialog> <AlertDialogTrigger className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "px-2 hover:text-destructive")}><Trash2 className="h-4 w-4" /></AlertDialogTrigger> <AlertDialogContent> <AlertDialogHeader> <AlertDialogTitle>Are you sure?</AlertDialogTitle> <AlertDialogDescription> This action cannot be undone. This will permanently delete this {currentModel?.name.toLowerCase()} object. </AlertDialogDescription> </AlertDialogHeader> <AlertDialogFooter> <AlertDialogCancel>Cancel</AlertDialogCancel> <AlertDialogAction onClick={() => handleDelete(obj.id)}> Delete </AlertDialogAction> </AlertDialogFooter> </AlertDialogContent> </AlertDialog> </TableCell>}
+                            {virtualIncomingRelationColumns.map((colDef) => { if(hiddenColumns.has(colDef.id)) return null; const referencingData = allDbObjects[colDef.referencingModel.id] || []; const linkedItems = referencingData.filter(refObj => { const linkedValue = refObj[colDef.referencingProperty.name]; if (colDef.referencingProperty.relationshipType === 'many') return Array.isArray(linkedValue) && linkedValue.includes(obj.id); return linkedValue === obj.id; }); if (linkedItems.length === 0) return <TableCell key={colDef.id}><span className="text-muted-foreground">N/A</span></TableCell>; return ( <TableCell key={colDef.id} className="space-x-1 space-y-1"> {linkedItems.map(item => ( <Link key={item.id} href={`/data/${colDef.referencingModel.id}/${viewingRecycleBin ? 'view' : 'edit'}/${item.id}`} className="inline-block"> <Badge variant="secondary" className="hover:bg-muted cursor-pointer"> {getObjectDisplayValue(item, colDef.referencingModel, allModels, allDbObjects)} </Badge> </Link> ))} </TableCell> ); })}
+                            {!hiddenColumns.has(ACTIONS_COLUMN_KEY) && <TableCell className="text-right">
+                              {viewingRecycleBin ? (
+                                <Button variant="outline" size="sm" onClick={() => handleRestoreObject(obj.id)} className="text-green-600 border-green-600/50 hover:bg-green-600/10 hover:text-green-600"> <ArchiveRestore className="h-4 w-4 mr-1" /> Restore </Button>
+                              ) : (
+                                <>
+                                  <Button variant="ghost" size="sm" onClick={() => handleEdit(obj)} className="px-2 mr-1 hover:text-primary"> <Edit className="h-4 w-4" /> </Button>
+                                  <AlertDialog> <AlertDialogTrigger className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "px-2 hover:text-destructive")}><Trash2 className="h-4 w-4" /></AlertDialogTrigger> <AlertDialogContent> <AlertDialogHeader> <AlertDialogTitle>Are you sure?</AlertDialogTitle> <AlertDialogDescription> This action will move this {currentModel?.name.toLowerCase()} object to the recycle bin. </AlertDialogDescription> </AlertDialogHeader> <AlertDialogFooter> <AlertDialogCancel>Cancel</AlertDialogCancel> <AlertDialogAction onClick={() => handleDeleteObject(obj.id)}> Delete </AlertDialogAction> </AlertDialogFooter> </AlertDialogContent> </AlertDialog>
+                                </>
+                              )}
+                            </TableCell>}
                           </TableRow> );
                       })}
                     </TableBody>
@@ -1588,6 +1665,7 @@ export default function DataObjectsPage() {
                   {directPropertiesToShowInTable.map((prop) => ( !hiddenColumns.has(prop.id) && <TableHead key={prop.id}> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(prop.id)} className="px-1 text-left justify-start flex-grow"> {prop.name} {getSortIcon(prop.id)} </Button> <ColumnFilterPopover columnKey={prop.id} columnName={prop.name} property={prop} currentFilter={columnFilters[prop.id] || null} onFilterChange={handleColumnFilterChange} /> </div> </TableHead> ))}
                   {!hiddenColumns.has(CREATED_AT_COLUMN_KEY) && ( <TableHead> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(CREATED_AT_COLUMN_KEY)} className="px-1 text-left justify-start flex-grow"> Created At {getSortIcon(CREATED_AT_COLUMN_KEY)} </Button> <ColumnFilterPopover columnKey={CREATED_AT_COLUMN_KEY} columnName="Created At" property={{type: 'date'} as Property} currentFilter={columnFilters[CREATED_AT_COLUMN_KEY] || null} onFilterChange={handleColumnFilterChange} /> </div> </TableHead> )}
                   {!hiddenColumns.has(UPDATED_AT_COLUMN_KEY) && ( <TableHead> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(UPDATED_AT_COLUMN_KEY)} className="px-1 text-left justify-start flex-grow"> Updated At {getSortIcon(UPDATED_AT_COLUMN_KEY)} </Button> <ColumnFilterPopover columnKey={UPDATED_AT_COLUMN_KEY} columnName="Updated At" property={{type: 'date'} as Property} currentFilter={columnFilters[UPDATED_AT_COLUMN_KEY] || null} onFilterChange={handleColumnFilterChange} /> </div> </TableHead> )}
+                  {viewingRecycleBin && !hiddenColumns.has(DELETED_AT_COLUMN_KEY) && ( <TableHead> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(DELETED_AT_COLUMN_KEY)} className="px-1 text-left justify-start flex-grow"> Deleted At {getSortIcon(DELETED_AT_COLUMN_KEY)} </Button> <ColumnFilterPopover columnKey={DELETED_AT_COLUMN_KEY} columnName="Deleted At" property={{type: 'date'} as Property} currentFilter={columnFilters[DELETED_AT_COLUMN_KEY] || null} onFilterChange={handleColumnFilterChange} /> </div> </TableHead> )}
                   {currentWorkflow && !hiddenColumns.has(WORKFLOW_STATE_DISPLAY_COLUMN_KEY) && ( <TableHead> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(WORKFLOW_STATE_DISPLAY_COLUMN_KEY)} className="px-1 text-left justify-start flex-grow"> State {getSortIcon(WORKFLOW_STATE_DISPLAY_COLUMN_KEY)} </Button> <ColumnFilterPopover columnKey={WORKFLOW_STATE_DISPLAY_COLUMN_KEY} columnName="State" currentWorkflow={currentWorkflow} currentFilter={columnFilters[WORKFLOW_STATE_DISPLAY_COLUMN_KEY] || null} onFilterChange={handleColumnFilterChange} /> </div> </TableHead> )}
                   {!hiddenColumns.has(OWNER_COLUMN_KEY) && ( <TableHead> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(OWNER_COLUMN_KEY)} className="px-1 text-left justify-start flex-grow"> Owned By {getSortIcon(OWNER_COLUMN_KEY)} </Button> <ColumnFilterPopover columnKey={OWNER_COLUMN_KEY} columnName="Owned By" filterTypeOverride="relationship" currentFilter={columnFilters[OWNER_COLUMN_KEY] || null} onFilterChange={handleColumnFilterChange} /> </div> </TableHead> )}
                   {virtualIncomingRelationColumns.map((col) => ( !hiddenColumns.has(col.id) && <TableHead key={col.id} className="text-xs"> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(col.id)} className="px-1 text-xs text-left justify-start flex-grow"> {col.headerLabel} {getSortIcon(col.id)} </Button> <ColumnFilterPopover columnKey={col.id} columnName={col.headerLabel} currentFilter={columnFilters[col.id] || null} onFilterChange={handleColumnFilterChange} filterTypeOverride="specificIncomingReference" referencingModel={col.referencingModel} referencingProperty={col.referencingProperty} /> </div> </TableHead> ))}
@@ -1598,17 +1676,28 @@ export default function DataObjectsPage() {
                 {(paginatedDataToRender as DataObject[]).map((obj) => {
                   const isHighlightedAdded = lastChangedInfo?.objectId === obj.id && lastChangedInfo?.modelId === currentModel?.id && lastChangedInfo?.changeType === 'added';
                   const isHighlightedUpdated = lastChangedInfo?.objectId === obj.id && lastChangedInfo?.modelId === currentModel?.id && lastChangedInfo?.changeType === 'updated';
+                  const isHighlightedRestored = lastChangedInfo?.objectId === obj.id && lastChangedInfo?.modelId === currentModel?.id && lastChangedInfo?.changeType === 'restored';
                   return (
-                  <TableRow key={obj.id} data-state={selectedObjectIds.has(obj.id) ? "selected" : ""} className={cn( isHighlightedAdded && "animate-highlight-green", isHighlightedUpdated && "animate-highlight-yellow" )}>
+                  <TableRow key={obj.id} data-state={selectedObjectIds.has(obj.id) ? "selected" : ""} className={cn( isHighlightedAdded && "animate-highlight-green", isHighlightedUpdated && "animate-highlight-yellow", isHighlightedRestored && "animate-highlight-blue" )}>
                     {!hiddenColumns.has(SELECT_ALL_CHECKBOX_COLUMN_KEY) && <TableCell className="text-center"> <Checkbox checked={selectedObjectIds.has(obj.id)} onCheckedChange={(checked) => handleRowSelect(obj.id, !!checked)} aria-label={`Select row ${obj.id}`} /> </TableCell>}
                     {!hiddenColumns.has(VIEW_ACTION_COLUMN_KEY) && <TableCell className="text-center"> <Button variant="ghost" size="sm" onClick={() => handleView(obj)} className="px-2 hover:text-primary"> <Eye className="h-4 w-4" /> </Button> </TableCell>}
                     {directPropertiesToShowInTable.map((prop) => ( !hiddenColumns.has(prop.id) && <TableCell key={`${obj.id}-${prop.id}`}> {displayCellContent(obj, prop)} </TableCell> ))}
                     {!hiddenColumns.has(CREATED_AT_COLUMN_KEY) && <TableCell>{displayDateCellContent(obj.createdAt)}</TableCell>}
                     {!hiddenColumns.has(UPDATED_AT_COLUMN_KEY) && <TableCell>{displayDateCellContent(obj.updatedAt)}</TableCell>}
+                    {viewingRecycleBin && !hiddenColumns.has(DELETED_AT_COLUMN_KEY) && <TableCell>{displayDateCellContent(obj.deletedAt)}</TableCell>}
                     {currentWorkflow && !hiddenColumns.has(WORKFLOW_STATE_DISPLAY_COLUMN_KEY) && ( <TableCell> <Badge variant={obj.currentStateId ? "outline" : "secondary"}> {getWorkflowStateName(obj.currentStateId)} </Badge> </TableCell> )}
                     {!hiddenColumns.has(OWNER_COLUMN_KEY) && <TableCell>{getOwnerUsername(obj.ownerId)}</TableCell>}
-                    {virtualIncomingRelationColumns.map((colDef) => { if(hiddenColumns.has(colDef.id)) return null; const referencingData = allDbObjects[colDef.referencingModel.id] || []; const linkedItems = referencingData.filter(refObj => { const linkedValue = refObj[colDef.referencingProperty.name]; if (colDef.referencingProperty.relationshipType === 'many') return Array.isArray(linkedValue) && linkedValue.includes(obj.id); return linkedValue === obj.id; }); if (linkedItems.length === 0) return <TableCell key={colDef.id}><span className="text-muted-foreground">N/A</span></TableCell>; return ( <TableCell key={colDef.id} className="space-x-1 space-y-1"> {linkedItems.map(item => ( <Link key={item.id} href={`/data/${colDef.referencingModel.id}/edit/${item.id}`} className="inline-block"> <Badge variant="secondary" className="hover:bg-muted cursor-pointer"> {getObjectDisplayValue(item, colDef.referencingModel, allModels, allDbObjects)} </Badge> </Link> ))} </TableCell> ); })}
-                    {!hiddenColumns.has(ACTIONS_COLUMN_KEY) && <TableCell className="text-right"> <Button variant="ghost" size="sm" onClick={() => handleEdit(obj)} className="px-2 mr-1 hover:text-primary"> <Edit className="h-4 w-4" /> </Button> <AlertDialog> <AlertDialogTrigger className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "px-2 hover:text-destructive")}><Trash2 className="h-4 w-4" /></AlertDialogTrigger> <AlertDialogContent> <AlertDialogHeader> <AlertDialogTitle>Are you sure?</AlertDialogTitle> <AlertDialogDescription> This action cannot be undone. This will permanently delete this {currentModel?.name.toLowerCase()} object. </AlertDialogDescription> </AlertDialogHeader> <AlertDialogFooter> <AlertDialogCancel>Cancel</AlertDialogCancel> <AlertDialogAction onClick={() => handleDelete(obj.id)}> Delete </AlertDialogAction> </AlertDialogFooter> </AlertDialogContent> </AlertDialog> </TableCell>}
+                    {virtualIncomingRelationColumns.map((colDef) => { if(hiddenColumns.has(colDef.id)) return null; const referencingData = allDbObjects[colDef.referencingModel.id] || []; const linkedItems = referencingData.filter(refObj => { const linkedValue = refObj[colDef.referencingProperty.name]; if (colDef.referencingProperty.relationshipType === 'many') return Array.isArray(linkedValue) && linkedValue.includes(obj.id); return linkedValue === obj.id; }); if (linkedItems.length === 0) return <TableCell key={colDef.id}><span className="text-muted-foreground">N/A</span></TableCell>; return ( <TableCell key={colDef.id} className="space-x-1 space-y-1"> {linkedItems.map(item => ( <Link key={item.id} href={`/data/${colDef.referencingModel.id}/${viewingRecycleBin ? 'view' : 'edit'}/${item.id}`} className="inline-block"> <Badge variant="secondary" className="hover:bg-muted cursor-pointer"> {getObjectDisplayValue(item, colDef.referencingModel, allModels, allDbObjects)} </Badge> </Link> ))} </TableCell> ); })}
+                    {!hiddenColumns.has(ACTIONS_COLUMN_KEY) && <TableCell className="text-right">
+                        {viewingRecycleBin ? (
+                            <Button variant="outline" size="sm" onClick={() => handleRestoreObject(obj.id)} className="text-green-600 border-green-600/50 hover:bg-green-600/10 hover:text-green-600"> <ArchiveRestore className="h-4 w-4 mr-1" /> Restore </Button>
+                        ) : (
+                            <>
+                            <Button variant="ghost" size="sm" onClick={() => handleEdit(obj)} className="px-2 mr-1 hover:text-primary"> <Edit className="h-4 w-4" /> </Button>
+                            <AlertDialog> <AlertDialogTrigger className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "px-2 hover:text-destructive")}><Trash2 className="h-4 w-4" /></AlertDialogTrigger> <AlertDialogContent> <AlertDialogHeader> <AlertDialogTitle>Are you sure?</AlertDialogTitle> <AlertDialogDescription> This action will move this {currentModel?.name.toLowerCase()} object to the recycle bin. </AlertDialogDescription> </AlertDialogHeader> <AlertDialogFooter> <AlertDialogCancel>Cancel</AlertDialogCancel> <AlertDialogAction onClick={() => handleDeleteObject(obj.id)}> Delete </AlertDialogAction> </AlertDialogFooter> </AlertDialogContent> </AlertDialog>
+                            </>
+                        )}
+                    </TableCell>}
                   </TableRow> );
                 })}
               </TableBody>
@@ -1618,20 +1707,22 @@ export default function DataObjectsPage() {
         </>
       ) : viewMode === 'gallery' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-          {(paginatedDataToRender as DataObject[]).map((obj) => ( <GalleryCard key={obj.id} obj={obj} model={currentModel!} allModels={allModels} allObjects={allDbObjects} currentWorkflow={currentWorkflow} getWorkflowStateName={getWorkflowStateName} onView={handleView} onEdit={handleEdit} onDelete={handleDelete} lastChangedInfo={lastChangedInfo}/> ))}
+          {(paginatedDataToRender as DataObject[]).map((obj) => ( <GalleryCard key={obj.id} obj={obj} model={currentModel!} allModels={allModels} allObjects={allDbObjects} currentWorkflow={currentWorkflow} getWorkflowStateName={getWorkflowStateName} onView={handleView} onEdit={handleEdit} onDelete={handleDeleteObject} onRestore={handleRestoreObject} viewingRecycleBin={viewingRecycleBin} lastChangedInfo={lastChangedInfo}/> ))}
         </div>
-      ) : viewMode === 'kanban' && currentWorkflow ? (
+      ) : viewMode === 'kanban' && currentWorkflow && !viewingRecycleBin ? ( // Kanban only for active items
         <KanbanBoard
           model={currentModel!}
           workflow={currentWorkflow}
-          objects={sortedObjects}
+          objects={sortedObjects} // Kanban always gets active objects through sortedObjects which is based on localObjects (filtered by viewingRecycleBin)
           allModels={allModels}
           allObjects={allDbObjects}
           onObjectUpdate={handleStateChangeViaDrag}
           onViewObject={handleView}
           onEditObject={handleEdit}
-          onDeleteObject={handleDelete}
+          onDeleteObject={handleDeleteObject}
         />
+      ) : viewMode === 'kanban' && viewingRecycleBin ? (
+        <Card className="text-center py-12"> <CardContent> <ArchiveX size={48} className="mx-auto text-muted-foreground mb-4" /> <h3 className="text-xl font-semibold">Kanban View Not Available</h3> <p className="text-muted-foreground mb-4"> The Kanban board is not available for items in the recycle bin. </p> <Button onClick={() => setViewingRecycleBin(false)} variant="default"> View Active Items </Button> </CardContent> </Card>
       ) : null }
       { (viewMode === 'table' || viewMode === 'gallery') && totalPages > 1 && (
         <div className="flex justify-center items-center space-x-2 mt-8">
@@ -1643,3 +1734,4 @@ export default function DataObjectsPage() {
     </div>
   );
 }
+

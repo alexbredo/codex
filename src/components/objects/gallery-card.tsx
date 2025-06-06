@@ -5,7 +5,7 @@ import * as React from 'react'; // Import React
 import type { DataObject, Model, Property, WorkflowWithDetails } from '@/lib/types';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Eye, Edit, Trash2, CheckCircle2 } from 'lucide-react';
+import { Eye, Edit, Trash2, CheckCircle2, ArchiveRestore } from 'lucide-react'; // Added ArchiveRestore
 import { getObjectDisplayValue, cn } from '@/lib/utils'; // Added cn
 import Image from 'next/image';
 import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
@@ -40,7 +40,9 @@ interface GalleryCardProps {
   onView: (obj: DataObject) => void;
   onEdit: (obj: DataObject) => void;
   onDelete: (objId: string) => void;
-  lastChangedInfo?: { modelId: string, objectId: string, changeType: 'added' | 'updated' } | null;
+  onRestore?: (objId: string) => void; // New prop for restoring
+  viewingRecycleBin?: boolean; // New prop to indicate if card is in recycle bin context
+  lastChangedInfo?: { modelId: string, objectId: string, changeType: 'added' | 'updated' | 'deleted' | 'restored' } | null;
 }
 
 // Wrap with React.memo
@@ -54,6 +56,8 @@ const GalleryCard = React.memo(function GalleryCard({
   onView,
   onEdit,
   onDelete,
+  onRestore,
+  viewingRecycleBin,
   lastChangedInfo,
 }: GalleryCardProps) {
   const displayName = getObjectDisplayValue(obj, model, allModels, allObjects);
@@ -157,13 +161,15 @@ const GalleryCard = React.memo(function GalleryCard({
 
   const isHighlightedAdded = lastChangedInfo?.objectId === obj.id && lastChangedInfo?.modelId === model.id && lastChangedInfo?.changeType === 'added';
   const isHighlightedUpdated = lastChangedInfo?.objectId === obj.id && lastChangedInfo?.modelId === model.id && lastChangedInfo?.changeType === 'updated';
+  const isHighlightedRestored = lastChangedInfo?.objectId === obj.id && lastChangedInfo?.modelId === model.id && lastChangedInfo?.changeType === 'restored';
 
 
   return (
     <Card className={cn(
         "flex flex-col overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300",
         isHighlightedAdded && "animate-highlight-green",
-        isHighlightedUpdated && "animate-highlight-yellow"
+        isHighlightedUpdated && "animate-highlight-yellow",
+        isHighlightedRestored && "animate-highlight-blue" // Or another color for restored
       )}>
       <CardHeader className="p-0">
         <div className="aspect-[3/2] relative w-full">
@@ -178,11 +184,14 @@ const GalleryCard = React.memo(function GalleryCard({
               (e.target as HTMLImageElement).dataset.aiHint = 'placeholder image';
             }}
           />
+           {viewingRecycleBin && (
+            <Badge variant="destructive" className="absolute top-2 right-2">Deleted</Badge>
+          )}
         </div>
       </CardHeader>
       <CardContent className="p-4 flex-grow">
         <CardTitle className="text-lg mb-1 truncate" title={displayName}>{displayName}</CardTitle>
-        {stateName && stateName !== 'N/A' && (
+        {stateName && stateName !== 'N/A' && !viewingRecycleBin && (
             <Badge variant={obj.currentStateId ? "outline" : "secondary"} className="text-xs mb-2">
                  <CheckCircle2 className="mr-1 h-3 w-3" /> {stateName}
             </Badge>
@@ -193,38 +202,52 @@ const GalleryCard = React.memo(function GalleryCard({
             {displayPropertyValue(prop, obj[prop.name])}
           </div>
         ))}
+        {obj.deletedAt && viewingRecycleBin && (
+          <p className="text-xs text-destructive mt-2">
+            Deleted on: {formatDateFns(new Date(obj.deletedAt), 'PP p')}
+          </p>
+        )}
       </CardContent>
       <CardFooter className="p-3 border-t bg-muted/50 flex justify-end space-x-2">
-        <Button variant="ghost" size="icon" onClick={() => onView(obj)} title="View Details">
-          <Eye className="h-4 w-4" />
-        </Button>
-        <Button variant="ghost" size="icon" onClick={() => onEdit(obj)} title="Edit Object">
-          <Edit className="h-4 w-4" />
-        </Button>
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button variant="ghost" size="icon" className="hover:text-destructive" title="Delete Object">
-              <Trash2 className="h-4 w-4" />
+        {viewingRecycleBin && onRestore ? (
+          <Button variant="outline" size="sm" onClick={() => onRestore(obj.id)} title="Restore Object">
+            <ArchiveRestore className="h-4 w-4 mr-1" /> Restore
+          </Button>
+        ) : (
+          <>
+            <Button variant="ghost" size="icon" onClick={() => onView(obj)} title="View Details">
+              <Eye className="h-4 w-4" />
             </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-              <AlertDialogDescription>
-                This action cannot be undone. This will permanently delete the object "{displayName}".
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={() => onDelete(obj.id)}>
-                Delete
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+            <Button variant="ghost" size="icon" onClick={() => onEdit(obj)} title="Edit Object">
+              <Edit className="h-4 w-4" />
+            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="ghost" size="icon" className="hover:text-destructive" title="Delete Object">
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This action cannot be undone. This will {viewingRecycleBin ? 'permanently delete' : 'move to recycle bin'} the object "{displayName}".
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => onDelete(obj.id)}>
+                    Delete
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </>
+        )}
       </CardFooter>
     </Card>
   );
 });
 
 export default GalleryCard;
+
