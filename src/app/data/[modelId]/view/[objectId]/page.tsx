@@ -7,7 +7,7 @@ import { useData } from '@/contexts/data-context';
 import type { Model, DataObject, Property, WorkflowWithDetails, ValidationRuleset } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Edit, Loader2, ExternalLink, ImageIcon, CheckCircle2, ShieldAlert, ShieldCheck, UserCircle } from 'lucide-react'; // Added UserCircle
+import { ArrowLeft, Edit, Loader2, ExternalLink, ImageIcon, CheckCircle2, ShieldAlert, ShieldCheck, UserCircle, CalendarClock } from 'lucide-react'; // Added UserCircle, CalendarClock
 import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
 import Link from 'next/link';
 import { getObjectDisplayValue } from '@/lib/utils';
@@ -266,6 +266,16 @@ export default function ViewObjectPage() {
   const sortedProperties = [...currentModel.properties].sort((a,b) => a.orderIndex - b.orderIndex);
   const objectStateName = getWorkflowStateName(viewingObject.currentStateId);
 
+  const formattedDate = (dateString: string | undefined) => {
+    if (!dateString) return <span className="text-muted-foreground italic">Not set</span>;
+    try {
+      const date = new Date(dateString);
+      return isDateValid(date) ? formatDateFns(date, 'PPP p') : <span className="text-muted-foreground italic">Invalid date</span>;
+    } catch {
+      return <span className="text-muted-foreground italic">Invalid date format</span>;
+    }
+  };
+
   return (
     <div className="container mx-auto py-8">
       <div className="flex justify-between items-center mb-6">
@@ -294,6 +304,16 @@ export default function ViewObjectPage() {
                 <UserCircle className="mr-2 h-4 w-4 text-muted-foreground" />
                 Owned By: {ownerUsername}
               </Badge>
+            </div>
+            <div className="flex flex-wrap gap-2 items-center text-xs text-muted-foreground">
+              <div className="flex items-center">
+                <CalendarClock size={14} className="mr-1.5" />
+                Created: {formattedDate(viewingObject.createdAt)}
+              </div>
+              <div className="flex items-center">
+                <CalendarClock size={14} className="mr-1.5" />
+                Last Modified: {formattedDate(viewingObject.updatedAt)}
+              </div>
             </div>
           </div>
         </CardHeader>
