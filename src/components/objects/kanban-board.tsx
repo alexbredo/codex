@@ -230,21 +230,15 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
         <div className="flex gap-4 p-4 min-h-[calc(100vh-20rem)]">
           {columns.map(column => (
             <Card key={column.id} className="w-80 flex-shrink-0 h-full flex flex-col bg-muted/50 relative">
-               {column.color && (
-                <div 
-                  className="absolute left-0 top-0 bottom-0 w-1.5 rounded-l-md" 
-                  style={{ backgroundColor: column.color }}
-                  aria-hidden="true"
-                />
-              )}
-              <CardHeader className={cn("p-3 border-b sticky top-0 bg-muted/80 backdrop-blur-sm z-10", column.color && "pl-5")}>
+              {/* Column color bar removed */}
+              <CardHeader className={cn("p-3 border-b sticky top-0 bg-muted/80 backdrop-blur-sm z-10")}>
                 <CardTitle className="text-base flex justify-between items-center">
                   {column.title}
                   <Badge variant="secondary">{column.objects.length}</Badge>
                 </CardTitle>
               </CardHeader>
               <SortableContext id={column.id} items={column.objects.map(obj => obj.id)} strategy={verticalListSortingStrategy}>
-                <CardContent className={cn("p-3 flex-grow overflow-y-auto min-h-[200px] flex flex-col", column.color && "pl-5")}>
+                <CardContent className={cn("p-3 flex-grow overflow-y-auto min-h-[200px] flex flex-col")}>
                   {column.objects.length > 0 ? (
                     column.objects.map(object => (
                       <SortableKanbanItem
@@ -257,7 +251,7 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
                         onViewObject={onViewObject}
                         onEditObject={onEditObject}
                         onDeleteObject={onDeleteObject}
-                        workflowStates={workflow.states} // Pass all states
+                        workflowStates={workflow.states}
                       />
                     ))
                   ) : (
@@ -280,7 +274,7 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
             onViewObject={() => {}}
             onEditObject={() => {}}
             onDeleteObject={() => {}}
-            stateColor={activeStateColor} // Pass color for overlay
+            stateColor={activeStateColor} 
             className="ring-2 ring-primary shadow-xl opacity-100 cursor-grabbing"
           />
         ) : null}
