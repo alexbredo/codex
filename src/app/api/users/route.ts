@@ -11,15 +11,19 @@ const createUserSchema = z.object({
   role: z.enum(['user', 'administrator']),
 });
 
-// GET all users (existing functionality)
+// GET all users
 export async function GET(request: Request) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || currentUser.role !== 'administrator') {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+  // Allow any authenticated user to fetch the list (for owner display etc.)
+  // Admins can see more, or this endpoint can be further restricted if needed later.
+  if (!currentUser) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
     const db = await getDb();
+    // Return only id, username, and role for general listing.
+    // Sensitive info like password hash should never be returned here.
     const users = await db.all('SELECT id, username, role FROM users ORDER BY username ASC');
     return NextResponse.json(users);
   } catch (error: any) {
@@ -32,7 +36,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const adminUser = await getCurrentUserFromCookie();
   if (!adminUser || adminUser.role !== 'administrator') {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    return NextResponse.json({ error: 'Unauthorized to create user' }, { status: 403 });
   }
 
   try {

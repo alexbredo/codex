@@ -21,11 +21,12 @@ export async function GET(request: Request, { params }: Params) {
       return NextResponse.json({ error: 'Model not found' }, { status: 404 });
     }
 
-    // Include currentStateId in the SELECT statement
-    const rows = await db.all('SELECT id, data, currentStateId FROM data_objects WHERE model_id = ?', params.modelId);
+    // Include currentStateId and ownerId in the SELECT statement
+    const rows = await db.all('SELECT id, data, currentStateId, ownerId FROM data_objects WHERE model_id = ?', params.modelId);
     const objects: DataObject[] = rows.map(row => ({
       id: row.id,
-      currentStateId: row.currentStateId, // Add currentStateId here
+      currentStateId: row.currentStateId,
+      ownerId: row.ownerId,
       ...JSON.parse(row.data),
     }));
     return NextResponse.json(objects);
@@ -42,7 +43,7 @@ export async function POST(request: Request, { params }: Params) {
     return NextResponse.json({ error: 'Unauthorized to create objects' }, { status: 403 });
   }
   try {
-    const { id: objectId, currentStateId: _clientSuppliedStateId, ...objectData }: Omit<DataObject, 'id'> & { id: string } = await request.json();
+    const { id: objectId, currentStateId: _clientSuppliedStateId, ownerId: _clientSuppliedOwnerId, ...objectData }: Omit<DataObject, 'id' | 'currentStateId' | 'ownerId'> & { id: string, currentStateId?: string, ownerId?: string } = await request.json();
     const db = await getDb();
 
     const modelRow: Model | undefined = await db.get('SELECT id, workflowId FROM models WHERE id = ?', params.modelId);
@@ -117,15 +118,18 @@ export async function POST(request: Request, { params }: Params) {
         }
     }
 
+    const finalOwnerId = currentUser?.id || null;
+
     await db.run(
-      'INSERT INTO data_objects (id, model_id, data, currentStateId) VALUES (?, ?, ?, ?)',
+      'INSERT INTO data_objects (id, model_id, data, currentStateId, ownerId) VALUES (?, ?, ?, ?, ?)',
       objectId,
       params.modelId,
       JSON.stringify(objectData),
-      finalCurrentStateId
+      finalCurrentStateId,
+      finalOwnerId
     );
     
-    const createdObject: DataObject = { id: objectId, currentStateId: finalCurrentStateId, ...objectData };
+    const createdObject: DataObject = { id: objectId, currentStateId: finalCurrentStateId, ownerId: finalOwnerId, ...objectData };
     return NextResponse.json(createdObject, { status: 201 });
   } catch (error: any) {
     console.error(`Failed to create object for model ${params.modelId}:`, error);

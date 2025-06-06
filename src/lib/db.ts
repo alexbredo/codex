@@ -152,6 +152,17 @@ async function initializeDb(): Promise<Database> {
     }
   }
 
+  // Users Table (for placeholder authentication)
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      username TEXT NOT NULL UNIQUE,
+      password TEXT NOT NULL, -- WARNING: Storing plaintext passwords. Highly insecure. For demo only.
+      role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('user', 'administrator'))
+    );
+  `);
+  console.log("Users table (for placeholder auth) ensured.");
+
 
   // Data Objects Table
   await db.exec(`
@@ -160,8 +171,10 @@ async function initializeDb(): Promise<Database> {
       model_id TEXT NOT NULL,
       data TEXT NOT NULL, -- Stores the object's key-value pairs as a JSON string
       currentStateId TEXT, -- FK to workflow_states table
+      ownerId TEXT, -- FK to users table
       FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE,
-      FOREIGN KEY (currentStateId) REFERENCES workflow_states(id) ON DELETE SET NULL
+      FOREIGN KEY (currentStateId) REFERENCES workflow_states(id) ON DELETE SET NULL,
+      FOREIGN KEY (ownerId) REFERENCES users(id) ON DELETE SET NULL
     );
   `);
    try {
@@ -171,18 +184,14 @@ async function initializeDb(): Promise<Database> {
       console.error("Migration: Error trying to add 'currentStateId' column to 'data_objects' table:", e.message);
     }
   }
+   try {
+    await db.run("ALTER TABLE data_objects ADD COLUMN ownerId TEXT REFERENCES users(id) ON DELETE SET NULL");
+  } catch (e: any) {
+    if (!(e.message && (e.message.toLowerCase().includes('duplicate column name') || e.message.toLowerCase().includes('already has a column named ownerid')))) {
+      console.error("Migration: Error trying to add 'ownerId' column to 'data_objects' table:", e.message);
+    }
+  }
 
-
-  // Users Table (for placeholder authentication)
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY,
-      username TEXT NOT NULL UNIQUE,
-      password TEXT NOT NULL, -- WARNING: Storing plaintext passwords. Highly insecure. For demo only.
-      role TEXT NOT NULL DEFAULT 'user' -- 'user' or 'administrator'
-    );
-  `);
-  console.log("Users table (for placeholder auth) ensured.");
 
   // Workflow Tables
   await db.exec(`

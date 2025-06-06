@@ -39,6 +39,7 @@ export interface ModelGroup {
 export interface DataObject {
   id: string;
   currentStateId?: string | null; // ID of the current workflow state
+  ownerId?: string | null; // ID of the user who owns/created the record
   [key: string]: any; // Dynamic properties based on the model
 }
 
@@ -104,8 +105,9 @@ export type PropertyFormData = Omit<Property, 'id' | 'orderIndex'> & {
   minValue?: number | null;
   maxValue?: number | null;
 };
-export type ObjectFormData = Omit<DataObject, 'id' | 'currentStateId'> & { // Allow currentStateId to be part of form data
+export type ObjectFormData = Omit<DataObject, 'id' | 'currentStateId' | 'ownerId'> & {
   currentStateId?: string | null;
+  ownerId?: string | null;
 };
 
 

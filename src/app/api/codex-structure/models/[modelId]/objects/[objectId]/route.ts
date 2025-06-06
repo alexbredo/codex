@@ -16,12 +16,12 @@ export async function GET(request: Request, { params }: Params) {
   }
   try {
     const db = await getDb();
-    const row = await db.get('SELECT id, data, currentStateId FROM data_objects WHERE id = ? AND model_id = ?', params.objectId, params.modelId);
+    const row = await db.get('SELECT id, data, currentStateId, ownerId FROM data_objects WHERE id = ? AND model_id = ?', params.objectId, params.modelId);
 
     if (!row) {
       return NextResponse.json({ error: 'Object not found' }, { status: 404 });
     }
-    const object: DataObject = { id: row.id, currentStateId: row.currentStateId, ...JSON.parse(row.data) };
+    const object: DataObject = { id: row.id, currentStateId: row.currentStateId, ownerId: row.ownerId, ...JSON.parse(row.data) };
     return NextResponse.json(object);
   } catch (error) {
     console.error(`Failed to fetch object ${params.objectId}:`, error);
@@ -37,15 +37,16 @@ export async function PUT(request: Request, { params }: Params) {
   }
   try {
     const requestBody = await request.clone().json(); 
-    const { id: _id, model_id: _model_id, currentStateId: newCurrentStateIdFromRequest, ...updates }: Partial<DataObject> & {id?: string, model_id?:string} = requestBody;
+    const { id: _id, model_id: _model_id, currentStateId: newCurrentStateIdFromRequest, ownerId: newOwnerIdFromRequest, ...updates }: Partial<DataObject> & {id?: string, model_id?:string, currentStateId?: string | null, ownerId?: string | null} = requestBody;
 
     const db = await getDb();
 
-    const existingObjectRecord = await db.get('SELECT data, currentStateId, model_id FROM data_objects WHERE id = ? AND model_id = ?', params.objectId, params.modelId);
+    const existingObjectRecord = await db.get('SELECT data, currentStateId, ownerId, model_id FROM data_objects WHERE id = ? AND model_id = ?', params.objectId, params.modelId);
     if (!existingObjectRecord) {
       return NextResponse.json({ error: 'Object not found' }, { status: 404 });
     }
     const currentObjectStateId = existingObjectRecord.currentStateId;
+    const currentOwnerId = existingObjectRecord.ownerId;
     
     const properties: Property[] = await db.all('SELECT * FROM properties WHERE model_id = ?', params.modelId);
     const currentData = JSON.parse(existingObjectRecord.data);
@@ -162,20 +163,43 @@ export async function PUT(request: Request, { params }: Params) {
         }
     }
 
+    let finalOwnerIdToSave: string | null = currentOwnerId;
+    if (currentUser.role === 'administrator' && Object.prototype.hasOwnProperty.call(requestBody, 'ownerId')) {
+      if (newOwnerIdFromRequest === null || newOwnerIdFromRequest === '') {
+        finalOwnerIdToSave = null;
+      } else {
+        const userExists = await db.get('SELECT id FROM users WHERE id = ?', newOwnerIdFromRequest);
+        if (!userExists) {
+          return NextResponse.json({ error: `Invalid user ID provided for owner: ${newOwnerIdFromRequest}. User does not exist.` }, { status: 400 });
+        }
+        finalOwnerIdToSave = newOwnerIdFromRequest;
+      }
+    } else if (Object.prototype.hasOwnProperty.call(requestBody, 'ownerId')) {
+      // Non-admin tried to change owner, keep original owner
+      finalOwnerIdToSave = currentOwnerId;
+      console.warn(`User ${currentUser.username} (not admin) attempted to change ownerId for object ${params.objectId}. Change ignored.`);
+    }
+
+
     const newData = { ...currentData, ...updates };
     if (Object.prototype.hasOwnProperty.call(requestBody, 'currentStateId')) {
       delete newData.currentStateId; 
     }
+    if (Object.prototype.hasOwnProperty.call(requestBody, 'ownerId')) {
+      delete newData.ownerId;
+    }
+
 
     await db.run(
-      'UPDATE data_objects SET data = ?, currentStateId = ? WHERE id = ? AND model_id = ?',
+      'UPDATE data_objects SET data = ?, currentStateId = ?, ownerId = ? WHERE id = ? AND model_id = ?',
       JSON.stringify(newData),
       finalCurrentStateIdToSave,
+      finalOwnerIdToSave,
       params.objectId,
       params.modelId
     );
     
-    const updatedObject: DataObject = { id: params.objectId, currentStateId: finalCurrentStateIdToSave, ...newData };
+    const updatedObject: DataObject = { id: params.objectId, currentStateId: finalCurrentStateIdToSave, ownerId: finalOwnerIdToSave, ...newData };
     return NextResponse.json(updatedObject);
   } catch (error: any) {
     console.error(`API Error (PUT /models/${params.modelId}/objects/${params.objectId}) - Error updating object. Message: ${error.message}, Stack: ${error.stack}`, error);
