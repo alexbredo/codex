@@ -25,6 +25,14 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Select, 
   SelectContent,
   SelectGroup,
@@ -47,7 +55,7 @@ import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useData } from '@/contexts/data-context';
 import type { Model, DataObject, Property, WorkflowWithDetails, WorkflowStateWithSuccessors, DataContextType } from '@/lib/types';
-import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye, LayoutGrid, List as ListIcon, ExternalLink, Image as ImageIcon, CheckCircle2, FilterX, X as XIcon, Settings as SettingsIcon, Edit3, Workflow as WorkflowIconLucide, CalendarIcon as CalendarIconLucideLucide, Star, RefreshCw, Loader2, Kanban as KanbanIcon, Rows } from 'lucide-react'; 
+import { PlusCircle, Edit, Trash2, Search, ArrowLeft, ListChecks, ArrowUp, ArrowDown, ChevronsUpDown, Download, Eye, LayoutGrid, List as ListIcon, ExternalLink, Image as ImageIcon, CheckCircle2, FilterX, X as XIcon, Settings as SettingsIcon, Edit3, Workflow as WorkflowIconLucide, CalendarIcon as CalendarIconLucideLucide, Star, RefreshCw, Loader2, Kanban as KanbanIcon, Rows, Columns as ColumnsIcon } from 'lucide-react'; 
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -81,10 +89,10 @@ interface SortConfig {
 }
 
 interface IncomingRelationColumn {
-  id: string; // Unique ID for the virtual column, e.g., `incoming-${referencingModel.id}-${referencingProperty.name}`
-  headerLabel: string; // Label for the table header, e.g., "Ref. by Orders (via Customer)"
-  referencingModel: Model; // The model that is pointing to the currentModel
-  referencingProperty: Property; // The 'relationship' property in referencingModel that points here
+  id: string; 
+  headerLabel: string; 
+  referencingModel: Model; 
+  referencingProperty: Property; 
 }
 
 const INTERNAL_NO_REFERENCES_VALUE = "__NO_REFERENCES__";
@@ -92,6 +100,7 @@ const INTERNAL_WORKFLOW_STATE_UPDATE_KEY = "__workflowStateUpdate__";
 const INTERNAL_CLEAR_RELATIONSHIP_VALUE = "__CLEAR_RELATIONSHIP__";
 const NO_GROUPING_VALUE = "__NO_GROUPING__";
 const WORKFLOW_STATE_GROUPING_KEY = "__WORKFLOW_STATE_GROUPING__";
+const WORKFLOW_STATE_DISPLAY_COLUMN_KEY = "__WORKFLOW_STATE_DISPLAY_COLUMN__";
 
 
 export default function DataObjectsPage() {
@@ -133,6 +142,7 @@ export default function DataObjectsPage() {
   const [batchUpdateDate, setBatchUpdateDate] = useState<Date | undefined>(undefined);
 
   const [groupingPropertyKey, setGroupingPropertyKey] = useState<string | null>(null);
+  const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
 
 
   const previousModelIdRef = useRef<string | null>(null);
@@ -152,6 +162,13 @@ export default function DataObjectsPage() {
             setGroupingPropertyKey(savedGroupingKey);
         } else {
             setGroupingPropertyKey(null);
+        }
+        
+        const savedHiddenCols = sessionStorage.getItem(`codexStructure-hiddenColumns-${foundModel.id}`);
+        if (savedHiddenCols) {
+            setHiddenColumns(new Set(JSON.parse(savedHiddenCols)));
+        } else {
+            setHiddenColumns(new Set());
         }
 
 
@@ -206,6 +223,12 @@ export default function DataObjectsPage() {
     }
   }, [groupingPropertyKey, currentModel]);
 
+  useEffect(() => {
+    if (currentModel) {
+        sessionStorage.setItem(`codexStructure-hiddenColumns-${currentModel.id}`, JSON.stringify(Array.from(hiddenColumns)));
+    }
+  }, [hiddenColumns, currentModel]);
+
 
   const virtualIncomingRelationColumns: IncomingRelationColumn[] = useMemo(() => {
     if (!currentModel || !dataContextIsReady) return [];
@@ -246,6 +269,34 @@ export default function DataObjectsPage() {
     return props;
   }, [currentModel, currentWorkflow, virtualIncomingRelationColumns]);
 
+  const allAvailableColumnsForToggle = useMemo(() => {
+    if (!currentModel) return [];
+    const columnsToToggle: Array<{ id: string; label: string; type: 'property' | 'workflow' | 'virtual' }> = [];
+    
+    currentModel.properties.sort((a,b) => a.orderIndex - b.orderIndex).forEach(p => {
+        columnsToToggle.push({ id: p.id, label: p.name, type: 'property'});
+    });
+
+    if (currentWorkflow) {
+      columnsToToggle.push({ id: WORKFLOW_STATE_DISPLAY_COLUMN_KEY, label: 'Workflow State', type: 'workflow' });
+    }
+    virtualIncomingRelationColumns.forEach(vc => {
+      columnsToToggle.push({ id: vc.id, label: vc.headerLabel, type: 'virtual' });
+    });
+    return columnsToToggle;
+  }, [currentModel, currentWorkflow, virtualIncomingRelationColumns]);
+
+  const toggleColumnVisibility = (columnId: string, hide: boolean) => {
+    setHiddenColumns(prev => {
+      const newSet = new Set(prev);
+      if (hide) {
+        newSet.add(columnId);
+      } else {
+        newSet.delete(columnId);
+      }
+      return newSet;
+    });
+  };
 
 
   const batchUpdatableProperties = useMemo(() => {
@@ -376,7 +427,7 @@ export default function DataObjectsPage() {
     const property = currentModel?.properties.find(p => p.id === columnKey);
     const virtualCol = virtualIncomingRelationColumns.find(vc => vc.id === columnKey);
 
-    if (columnKey === WORKFLOW_STATE_GROUPING_KEY) { 
+    if (columnKey === WORKFLOW_STATE_GROUPING_KEY || columnKey === WORKFLOW_STATE_DISPLAY_COLUMN_KEY) { 
       columnName = 'State';
       const state = currentWorkflow?.states.find(s => s.id === filter.value);
       displayValue = state ? state.name : 'Unknown State';
@@ -434,7 +485,7 @@ export default function DataObjectsPage() {
     operator = operatorDisplayMap[operator] || operator;
 
     return { columnName, displayValue, operator };
-  }, [currentModel, currentWorkflow, getModelById, allDbObjects, allModels, virtualIncomingRelationColumns, getWorkflowStateName]);
+  }, [currentModel, currentWorkflow, getModelById, allDbObjects, allModels, virtualIncomingRelationColumns]);
 
 
   const handleCreateNew = useCallback(() => {
@@ -533,7 +584,7 @@ export default function DataObjectsPage() {
       const property = currentModel.properties.find(p => p.id === columnKey);
       const virtualColumnDef = virtualIncomingRelationColumns.find(vc => vc.id === columnKey);
       searchableObjects = searchableObjects.filter(obj => {
-        if (columnKey === WORKFLOW_STATE_GROUPING_KEY) return obj.currentStateId === filter.value; 
+        if (columnKey === WORKFLOW_STATE_GROUPING_KEY || columnKey === WORKFLOW_STATE_DISPLAY_COLUMN_KEY) return obj.currentStateId === filter.value; 
         if (property) {
             const value = obj[property.name];
             switch (property.type) {
@@ -599,7 +650,7 @@ export default function DataObjectsPage() {
       let aValue: any; let bValue: any;
       const directPropertyToSort = currentModel.properties.find(p => p.id === sortConfig.key);
       const virtualColumnToSort = virtualIncomingRelationColumns.find(vc => vc.id === sortConfig.key);
-      const isWorkflowStateSort = sortConfig.key === WORKFLOW_STATE_GROUPING_KEY; 
+      const isWorkflowStateSort = sortConfig.key === WORKFLOW_STATE_GROUPING_KEY || sortConfig.key === WORKFLOW_STATE_DISPLAY_COLUMN_KEY; 
       if (directPropertyToSort) {
         aValue = a[directPropertyToSort.name]; bValue = b[directPropertyToSort.name];
         switch (directPropertyToSort.type) {
@@ -638,7 +689,9 @@ export default function DataObjectsPage() {
   const groupedDataForRender = useMemo(() => {
     if (!groupingPropertyKey || !currentModel) return null;
     
-    if (groupingPropertyKey === WORKFLOW_STATE_GROUPING_KEY && currentWorkflow) {
+    const selectedGroupableProp = groupableProperties.find(gp => gp.id === groupingPropertyKey);
+
+    if (selectedGroupableProp?.isWorkflowState && currentWorkflow) { // Grouping by Workflow State
       const groupedByState = sortedObjects.reduce((acc, obj) => {
         const stateId = obj.currentStateId || 'null'; 
         const state = currentWorkflow.states.find(s => s.id === stateId);
@@ -683,7 +736,7 @@ export default function DataObjectsPage() {
         
         let groupTitle = `Not Referenced by ${groupingVirtualColumn.referencingModel.name}`;
         if (linkedItems.length > 0) {
-          groupTitle = `Referenced by: ${linkedItems.map(item => getObjectDisplayValue(item, groupingVirtualColumn.referencingModel, allModels, allDbObjects)).join(', ')}`;
+          groupTitle = `Referenced by: ${linkedItems.map(item => getObjectDisplayValue(item, groupingVirtualColumn.referencingModel, allModels, allDbObjects)).slice(0,3).join(', ')}${linkedItems.length > 3 ? `...and ${linkedItems.length-3} more` : ''}`;
         }
         
         if (!acc[groupTitle]) acc[groupTitle] = [];
@@ -695,8 +748,8 @@ export default function DataObjectsPage() {
         .map(([groupTitle, objectsInGroup]) => ({ groupTitle, objects: objectsInGroup }))
         .sort((a, b) => a.groupTitle.localeCompare(b.groupTitle));
     }
-    return null; // Should not happen if groupingPropertyKey is valid
-  }, [groupingPropertyKey, sortedObjects, currentModel, currentWorkflow, allModels, allDbObjects, getWorkflowStateName, virtualIncomingRelationColumns]);
+    return null;
+  }, [groupingPropertyKey, sortedObjects, currentModel, currentWorkflow, allModels, allDbObjects, virtualIncomingRelationColumns, groupableProperties]);
 
 
   const totalItemsForPagination = groupedDataForRender ? groupedDataForRender.length : sortedObjects.length;
@@ -1033,16 +1086,10 @@ export default function DataObjectsPage() {
   
   const currentGroupingPropertyDisplayName = useMemo(() => {
     if (!groupingPropertyKey) return "None";
-    if (groupingPropertyKey === WORKFLOW_STATE_GROUPING_KEY) return "Workflow State";
-    
-    const directProp = currentModel?.properties.find(p => p.id === groupingPropertyKey);
-    if (directProp) return directProp.name;
+    const selectedGroupableProp = groupableProperties.find(gp => gp.id === groupingPropertyKey);
+    return selectedGroupableProp ? selectedGroupableProp.name : "None";
+  }, [groupingPropertyKey, groupableProperties]);
 
-    const virtualProp = virtualIncomingRelationColumns.find(vc => vc.id === groupingPropertyKey);
-    if (virtualProp) return virtualProp.headerLabel;
-    
-    return "None";
-  }, [groupingPropertyKey, currentModel, virtualIncomingRelationColumns]);
 
   const directPropertiesToShowInTable = currentModel?.properties.sort((a,b) => a.orderIndex - b.orderIndex) || [];
 
@@ -1077,6 +1124,28 @@ export default function DataObjectsPage() {
                  <Button variant={viewMode === 'kanban' ? 'secondary' : 'ghost'} size="sm" onClick={() => handleViewModeChange('kanban')} className="rounded-l-none border-l rounded-r-md" aria-label="Kanban View"><KanbanIcon className="h-5 w-5" /></Button>
               )}
             </div>
+            {viewMode === 'table' && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline">
+                    <ColumnsIcon className="mr-2 h-4 w-4" /> Columns
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>Toggle Columns</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {allAvailableColumnsForToggle.map(col => (
+                    <DropdownMenuCheckboxItem
+                      key={col.id}
+                      checked={!hiddenColumns.has(col.id)}
+                      onCheckedChange={(checked) => toggleColumnVisibility(col.id, !checked)}
+                    >
+                      {col.label}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
             {viewMode === 'table' && groupableProperties.length > 0 && (
               <div className="min-w-[180px]">
                  <Select
@@ -1315,16 +1384,18 @@ export default function DataObjectsPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-[60px] text-center">
+                        {!hiddenColumns.has('select-all-checkbox') && <TableHead className="w-[60px] text-center">
                            {/* No group-specific select-all, use main one for all visible on page */}
-                        </TableHead>
-                        <TableHead className="w-[60px] text-center">View</TableHead>
+                        </TableHead>}
+                        {!hiddenColumns.has('view-action') && <TableHead className="w-[60px] text-center">View</TableHead>}
                         {directPropertiesToShowInTable.map((prop) => (
-                          <TableHead key={prop.id}> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(prop.id)} className="px-1 text-left justify-start flex-grow"> {prop.name} {getSortIcon(prop.id)} </Button> <ColumnFilterPopover columnKey={prop.id} columnName={prop.name} property={prop} currentFilter={columnFilters[prop.id] || null} onFilterChange={handleColumnFilterChange} /> </div> </TableHead>
+                          !hiddenColumns.has(prop.id) && <TableHead key={prop.id}> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(prop.id)} className="px-1 text-left justify-start flex-grow"> {prop.name} {getSortIcon(prop.id)} </Button> <ColumnFilterPopover columnKey={prop.id} columnName={prop.name} property={prop} currentFilter={columnFilters[prop.id] || null} onFilterChange={handleColumnFilterChange} /> </div> </TableHead>
                         ))}
-                        {currentWorkflow && ( <TableHead> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(WORKFLOW_STATE_GROUPING_KEY)} className="px-1 text-left justify-start flex-grow"> State {getSortIcon(WORKFLOW_STATE_GROUPING_KEY)} </Button> <ColumnFilterPopover columnKey={WORKFLOW_STATE_GROUPING_KEY} columnName="State" currentWorkflow={currentWorkflow} currentFilter={columnFilters[WORKFLOW_STATE_GROUPING_KEY] || null} onFilterChange={handleColumnFilterChange} /> </div> </TableHead> )}
-                        {virtualIncomingRelationColumns.map((col) => ( <TableHead key={col.id} className="text-xs"> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(col.id)} className="px-1 text-xs text-left justify-start flex-grow"> {col.headerLabel} {getSortIcon(col.id)} </Button> <ColumnFilterPopover columnKey={col.id} columnName={col.headerLabel} currentFilter={columnFilters[col.id] || null} onFilterChange={handleColumnFilterChange} filterTypeOverride="specificIncomingReference" referencingModel={col.referencingModel} referencingProperty={col.referencingProperty} /> </div> </TableHead> ))}
-                        <TableHead className="text-right w-[120px]">Actions</TableHead>
+                        {currentWorkflow && !hiddenColumns.has(WORKFLOW_STATE_DISPLAY_COLUMN_KEY) && ( <TableHead> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(WORKFLOW_STATE_DISPLAY_COLUMN_KEY)} className="px-1 text-left justify-start flex-grow"> State {getSortIcon(WORKFLOW_STATE_DISPLAY_COLUMN_KEY)} </Button> <ColumnFilterPopover columnKey={WORKFLOW_STATE_DISPLAY_COLUMN_KEY} columnName="State" currentWorkflow={currentWorkflow} currentFilter={columnFilters[WORKFLOW_STATE_DISPLAY_COLUMN_KEY] || null} onFilterChange={handleColumnFilterChange} /> </div> </TableHead> )}
+                        {virtualIncomingRelationColumns.map((col) => (
+                           !hiddenColumns.has(col.id) && <TableHead key={col.id} className="text-xs"> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(col.id)} className="px-1 text-xs text-left justify-start flex-grow"> {col.headerLabel} {getSortIcon(col.id)} </Button> <ColumnFilterPopover columnKey={col.id} columnName={col.headerLabel} currentFilter={columnFilters[col.id] || null} onFilterChange={handleColumnFilterChange} filterTypeOverride="specificIncomingReference" referencingModel={col.referencingModel} referencingProperty={col.referencingProperty} /> </div> </TableHead>
+                        ))}
+                        {!hiddenColumns.has('actions') && <TableHead className="text-right w-[120px]">Actions</TableHead>}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1333,12 +1404,12 @@ export default function DataObjectsPage() {
                         const isHighlightedUpdated = lastChangedInfo?.objectId === obj.id && lastChangedInfo?.modelId === currentModel?.id && lastChangedInfo?.changeType === 'updated';
                         return (
                           <TableRow key={obj.id} data-state={selectedObjectIds.has(obj.id) ? "selected" : ""} className={cn( isHighlightedAdded && "animate-highlight-green", isHighlightedUpdated && "animate-highlight-yellow" )}>
-                            <TableCell className="text-center"> <Checkbox checked={selectedObjectIds.has(obj.id)} onCheckedChange={(checked) => handleRowSelect(obj.id, !!checked)} aria-label={`Select row ${obj.id}`} /> </TableCell>
-                            <TableCell className="text-center"> <Button variant="ghost" size="icon" onClick={() => handleView(obj)} className="hover:text-primary"> <Eye className="h-4 w-4" /> </Button> </TableCell>
-                            {directPropertiesToShowInTable.map((prop) => ( <TableCell key={`${obj.id}-${prop.id}`}> {displayCellContent(obj, prop)} </TableCell> ))}
-                            {currentWorkflow && ( <TableCell> <Badge variant={obj.currentStateId ? "outline" : "secondary"}> {getWorkflowStateName(obj.currentStateId)} </Badge> </TableCell> )}
-                            {virtualIncomingRelationColumns.map((colDef) => { const referencingData = allDbObjects[colDef.referencingModel.id] || []; const linkedItems = referencingData.filter(refObj => { const linkedValue = refObj[colDef.referencingProperty.name]; if (colDef.referencingProperty.relationshipType === 'many') return Array.isArray(linkedValue) && linkedValue.includes(obj.id); return linkedValue === obj.id; }); if (linkedItems.length === 0) return <TableCell key={colDef.id}><span className="text-muted-foreground">N/A</span></TableCell>; return ( <TableCell key={colDef.id} className="space-x-1 space-y-1"> {linkedItems.map(item => ( <Link key={item.id} href={`/data/${colDef.referencingModel.id}/edit/${item.id}`} className="inline-block"> <Badge variant="secondary" className="hover:bg-muted cursor-pointer"> {getObjectDisplayValue(item, colDef.referencingModel, allModels, allDbObjects)} </Badge> </Link> ))} </TableCell> ); })}
-                            <TableCell className="text-right"> <Button variant="ghost" size="icon" onClick={() => handleEdit(obj)} className="mr-2 hover:text-primary"> <Edit className="h-4 w-4" /> </Button> <AlertDialog> <AlertDialogTrigger className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "hover:text-destructive")}><Trash2 className="h-4 w-4" /></AlertDialogTrigger> <AlertDialogContent> <AlertDialogHeader> <AlertDialogTitle>Are you sure?</AlertDialogTitle> <AlertDialogDescription> This action cannot be undone. This will permanently delete this {currentModel?.name.toLowerCase()} object. </AlertDialogDescription> </AlertDialogHeader> <AlertDialogFooter> <AlertDialogCancel>Cancel</AlertDialogCancel> <AlertDialogAction onClick={() => handleDelete(obj.id)}> Delete </AlertDialogAction> </AlertDialogFooter> </AlertDialogContent> </AlertDialog> </TableCell>
+                            {!hiddenColumns.has('select-all-checkbox') && <TableCell className="text-center"> <Checkbox checked={selectedObjectIds.has(obj.id)} onCheckedChange={(checked) => handleRowSelect(obj.id, !!checked)} aria-label={`Select row ${obj.id}`} /> </TableCell>}
+                            {!hiddenColumns.has('view-action') && <TableCell className="text-center"> <Button variant="ghost" size="icon" onClick={() => handleView(obj)} className="hover:text-primary"> <Eye className="h-4 w-4" /> </Button> </TableCell>}
+                            {directPropertiesToShowInTable.map((prop) => ( !hiddenColumns.has(prop.id) && <TableCell key={`${obj.id}-${prop.id}`}> {displayCellContent(obj, prop)} </TableCell> ))}
+                            {currentWorkflow && !hiddenColumns.has(WORKFLOW_STATE_DISPLAY_COLUMN_KEY) && ( <TableCell> <Badge variant={obj.currentStateId ? "outline" : "secondary"}> {getWorkflowStateName(obj.currentStateId)} </Badge> </TableCell> )}
+                            {virtualIncomingRelationColumns.map((colDef) => { if(hiddenColumns.has(colDef.id)) return null; const referencingData = allDbObjects[colDef.referencingModel.id] || []; const linkedItems = referencingData.filter(refObj => { const linkedValue = refObj[colDef.referencingProperty.name]; if (colDef.referencingProperty.relationshipType === 'many') return Array.isArray(linkedValue) && linkedValue.includes(obj.id); return linkedValue === obj.id; }); if (linkedItems.length === 0) return <TableCell key={colDef.id}><span className="text-muted-foreground">N/A</span></TableCell>; return ( <TableCell key={colDef.id} className="space-x-1 space-y-1"> {linkedItems.map(item => ( <Link key={item.id} href={`/data/${colDef.referencingModel.id}/edit/${item.id}`} className="inline-block"> <Badge variant="secondary" className="hover:bg-muted cursor-pointer"> {getObjectDisplayValue(item, colDef.referencingModel, allModels, allDbObjects)} </Badge> </Link> ))} </TableCell> ); })}
+                            {!hiddenColumns.has('actions') && <TableCell className="text-right"> <Button variant="ghost" size="icon" onClick={() => handleEdit(obj)} className="mr-2 hover:text-primary"> <Edit className="h-4 w-4" /> </Button> <AlertDialog> <AlertDialogTrigger className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "hover:text-destructive")}><Trash2 className="h-4 w-4" /></AlertDialogTrigger> <AlertDialogContent> <AlertDialogHeader> <AlertDialogTitle>Are you sure?</AlertDialogTitle> <AlertDialogDescription> This action cannot be undone. This will permanently delete this {currentModel?.name.toLowerCase()} object. </AlertDialogDescription> </AlertDialogHeader> <AlertDialogFooter> <AlertDialogCancel>Cancel</AlertDialogCancel> <AlertDialogAction onClick={() => handleDelete(obj.id)}> Delete </AlertDialogAction> </AlertDialogFooter> </AlertDialogContent> </AlertDialog> </TableCell>}
                           </TableRow> );
                       })}
                     </TableBody>
@@ -1354,12 +1425,12 @@ export default function DataObjectsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[60px] text-center"> <Checkbox checked={isAllPaginatedSelected} onCheckedChange={handleSelectAll} aria-label="Select all rows on current page" className="mx-auto" /> </TableHead>
-                  <TableHead className="w-[60px] text-center">View</TableHead>
-                  {directPropertiesToShowInTable.map((prop) => ( <TableHead key={prop.id}> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(prop.id)} className="px-1 text-left justify-start flex-grow"> {prop.name} {getSortIcon(prop.id)} </Button> <ColumnFilterPopover columnKey={prop.id} columnName={prop.name} property={prop} currentFilter={columnFilters[prop.id] || null} onFilterChange={handleColumnFilterChange} /> </div> </TableHead> ))}
-                  {currentWorkflow && ( <TableHead> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(WORKFLOW_STATE_GROUPING_KEY)} className="px-1 text-left justify-start flex-grow"> State {getSortIcon(WORKFLOW_STATE_GROUPING_KEY)} </Button> <ColumnFilterPopover columnKey={WORKFLOW_STATE_GROUPING_KEY} columnName="State" currentWorkflow={currentWorkflow} currentFilter={columnFilters[WORKFLOW_STATE_GROUPING_KEY] || null} onFilterChange={handleColumnFilterChange} /> </div> </TableHead> )}
-                  {virtualIncomingRelationColumns.map((col) => ( <TableHead key={col.id} className="text-xs"> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(col.id)} className="px-1 text-xs text-left justify-start flex-grow"> {col.headerLabel} {getSortIcon(col.id)} </Button> <ColumnFilterPopover columnKey={col.id} columnName={col.headerLabel} currentFilter={columnFilters[col.id] || null} onFilterChange={handleColumnFilterChange} filterTypeOverride="specificIncomingReference" referencingModel={col.referencingModel} referencingProperty={col.referencingProperty} /> </div> </TableHead> ))}
-                  <TableHead className="text-right w-[120px]">Actions</TableHead>
+                  {!hiddenColumns.has('select-all-checkbox') && <TableHead className="w-[60px] text-center"> <Checkbox checked={isAllPaginatedSelected} onCheckedChange={handleSelectAll} aria-label="Select all rows on current page" className="mx-auto" /> </TableHead>}
+                  {!hiddenColumns.has('view-action') && <TableHead className="w-[60px] text-center">View</TableHead>}
+                  {directPropertiesToShowInTable.map((prop) => ( !hiddenColumns.has(prop.id) && <TableHead key={prop.id}> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(prop.id)} className="px-1 text-left justify-start flex-grow"> {prop.name} {getSortIcon(prop.id)} </Button> <ColumnFilterPopover columnKey={prop.id} columnName={prop.name} property={prop} currentFilter={columnFilters[prop.id] || null} onFilterChange={handleColumnFilterChange} /> </div> </TableHead> ))}
+                  {currentWorkflow && !hiddenColumns.has(WORKFLOW_STATE_DISPLAY_COLUMN_KEY) && ( <TableHead> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(WORKFLOW_STATE_DISPLAY_COLUMN_KEY)} className="px-1 text-left justify-start flex-grow"> State {getSortIcon(WORKFLOW_STATE_DISPLAY_COLUMN_KEY)} </Button> <ColumnFilterPopover columnKey={WORKFLOW_STATE_DISPLAY_COLUMN_KEY} columnName="State" currentWorkflow={currentWorkflow} currentFilter={columnFilters[WORKFLOW_STATE_DISPLAY_COLUMN_KEY] || null} onFilterChange={handleColumnFilterChange} /> </div> </TableHead> )}
+                  {virtualIncomingRelationColumns.map((col) => ( !hiddenColumns.has(col.id) && <TableHead key={col.id} className="text-xs"> <div className="flex items-center"> <Button variant="ghost" onClick={() => requestSort(col.id)} className="px-1 text-xs text-left justify-start flex-grow"> {col.headerLabel} {getSortIcon(col.id)} </Button> <ColumnFilterPopover columnKey={col.id} columnName={col.headerLabel} currentFilter={columnFilters[col.id] || null} onFilterChange={handleColumnFilterChange} filterTypeOverride="specificIncomingReference" referencingModel={col.referencingModel} referencingProperty={col.referencingProperty} /> </div> </TableHead> ))}
+                  {!hiddenColumns.has('actions') && <TableHead className="text-right w-[120px]">Actions</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1368,12 +1439,12 @@ export default function DataObjectsPage() {
                   const isHighlightedUpdated = lastChangedInfo?.objectId === obj.id && lastChangedInfo?.modelId === currentModel?.id && lastChangedInfo?.changeType === 'updated';
                   return (
                   <TableRow key={obj.id} data-state={selectedObjectIds.has(obj.id) ? "selected" : ""} className={cn( isHighlightedAdded && "animate-highlight-green", isHighlightedUpdated && "animate-highlight-yellow" )}>
-                    <TableCell className="text-center"> <Checkbox checked={selectedObjectIds.has(obj.id)} onCheckedChange={(checked) => handleRowSelect(obj.id, !!checked)} aria-label={`Select row ${obj.id}`} /> </TableCell>
-                    <TableCell className="text-center"> <Button variant="ghost" size="icon" onClick={() => handleView(obj)} className="hover:text-primary"> <Eye className="h-4 w-4" /> </Button> </TableCell>
-                    {directPropertiesToShowInTable.map((prop) => ( <TableCell key={`${obj.id}-${prop.id}`}> {displayCellContent(obj, prop)} </TableCell> ))}
-                    {currentWorkflow && ( <TableCell> <Badge variant={obj.currentStateId ? "outline" : "secondary"}> {getWorkflowStateName(obj.currentStateId)} </Badge> </TableCell> )}
-                    {virtualIncomingRelationColumns.map((colDef) => { const referencingData = allDbObjects[colDef.referencingModel.id] || []; const linkedItems = referencingData.filter(refObj => { const linkedValue = refObj[colDef.referencingProperty.name]; if (colDef.referencingProperty.relationshipType === 'many') return Array.isArray(linkedValue) && linkedValue.includes(obj.id); return linkedValue === obj.id; }); if (linkedItems.length === 0) return <TableCell key={colDef.id}><span className="text-muted-foreground">N/A</span></TableCell>; return ( <TableCell key={colDef.id} className="space-x-1 space-y-1"> {linkedItems.map(item => ( <Link key={item.id} href={`/data/${colDef.referencingModel.id}/edit/${item.id}`} className="inline-block"> <Badge variant="secondary" className="hover:bg-muted cursor-pointer"> {getObjectDisplayValue(item, colDef.referencingModel, allModels, allDbObjects)} </Badge> </Link> ))} </TableCell> ); })}
-                    <TableCell className="text-right"> <Button variant="ghost" size="icon" onClick={() => handleEdit(obj)} className="mr-2 hover:text-primary"> <Edit className="h-4 w-4" /> </Button> <AlertDialog> <AlertDialogTrigger className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "hover:text-destructive")}><Trash2 className="h-4 w-4" /></AlertDialogTrigger> <AlertDialogContent> <AlertDialogHeader> <AlertDialogTitle>Are you sure?</AlertDialogTitle> <AlertDialogDescription> This action cannot be undone. This will permanently delete this {currentModel?.name.toLowerCase()} object. </AlertDialogDescription> </AlertDialogHeader> <AlertDialogFooter> <AlertDialogCancel>Cancel</AlertDialogCancel> <AlertDialogAction onClick={() => handleDelete(obj.id)}> Delete </AlertDialogAction> </AlertDialogFooter> </AlertDialogContent> </AlertDialog> </TableCell>
+                    {!hiddenColumns.has('select-all-checkbox') && <TableCell className="text-center"> <Checkbox checked={selectedObjectIds.has(obj.id)} onCheckedChange={(checked) => handleRowSelect(obj.id, !!checked)} aria-label={`Select row ${obj.id}`} /> </TableCell>}
+                    {!hiddenColumns.has('view-action') && <TableCell className="text-center"> <Button variant="ghost" size="icon" onClick={() => handleView(obj)} className="hover:text-primary"> <Eye className="h-4 w-4" /> </Button> </TableCell>}
+                    {directPropertiesToShowInTable.map((prop) => ( !hiddenColumns.has(prop.id) && <TableCell key={`${obj.id}-${prop.id}`}> {displayCellContent(obj, prop)} </TableCell> ))}
+                    {currentWorkflow && !hiddenColumns.has(WORKFLOW_STATE_DISPLAY_COLUMN_KEY) && ( <TableCell> <Badge variant={obj.currentStateId ? "outline" : "secondary"}> {getWorkflowStateName(obj.currentStateId)} </Badge> </TableCell> )}
+                    {virtualIncomingRelationColumns.map((colDef) => { if(hiddenColumns.has(colDef.id)) return null; const referencingData = allDbObjects[colDef.referencingModel.id] || []; const linkedItems = referencingData.filter(refObj => { const linkedValue = refObj[colDef.referencingProperty.name]; if (colDef.referencingProperty.relationshipType === 'many') return Array.isArray(linkedValue) && linkedValue.includes(obj.id); return linkedValue === obj.id; }); if (linkedItems.length === 0) return <TableCell key={colDef.id}><span className="text-muted-foreground">N/A</span></TableCell>; return ( <TableCell key={colDef.id} className="space-x-1 space-y-1"> {linkedItems.map(item => ( <Link key={item.id} href={`/data/${colDef.referencingModel.id}/edit/${item.id}`} className="inline-block"> <Badge variant="secondary" className="hover:bg-muted cursor-pointer"> {getObjectDisplayValue(item, colDef.referencingModel, allModels, allDbObjects)} </Badge> </Link> ))} </TableCell> ); })}
+                    {!hiddenColumns.has('actions') && <TableCell className="text-right"> <Button variant="ghost" size="icon" onClick={() => handleEdit(obj)} className="mr-2 hover:text-primary"> <Edit className="h-4 w-4" /> </Button> <AlertDialog> <AlertDialogTrigger className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "hover:text-destructive")}><Trash2 className="h-4 w-4" /></AlertDialogTrigger> <AlertDialogContent> <AlertDialogHeader> <AlertDialogTitle>Are you sure?</AlertDialogTitle> <AlertDialogDescription> This action cannot be undone. This will permanently delete this {currentModel?.name.toLowerCase()} object. </AlertDialogDescription> </AlertDialogHeader> <AlertDialogFooter> <AlertDialogCancel>Cancel</AlertDialogCancel> <AlertDialogAction onClick={() => handleDelete(obj.id)}> Delete </AlertDialogAction> </AlertDialogFooter> </AlertDialogContent> </AlertDialog> </TableCell>}
                   </TableRow> );
                 })}
               </TableBody>
