@@ -169,13 +169,15 @@ export default function DataObjectsPage() {
       if (foundModel) {
         const isTrulyDifferentModel = previousModelIdRef.current !== modelIdFromUrl;
         setCurrentModel(foundModel);
-        // Local objects will now be set based on viewingRecycleBin state in another effect
+        
+        // Logic for setting localObjects is now in a separate effect below,
+        // dependent on viewingRecycleBin
 
         const defaultHiddenColumnsSet = new Set([
           CREATED_AT_COLUMN_KEY,
           UPDATED_AT_COLUMN_KEY,
           OWNER_COLUMN_KEY,
-          DELETED_AT_COLUMN_KEY, // Hide Deleted At by default as well
+          DELETED_AT_COLUMN_KEY, 
         ]);
 
         const savedHiddenColsJson = sessionStorage.getItem(`codexStructure-hiddenColumns-${foundModel.id}`);
@@ -228,7 +230,7 @@ export default function DataObjectsPage() {
           setSortConfig(null);
           setColumnFilters({});
           setSelectedObjectIds(new Set());
-          setViewingRecycleBin(false); // Reset recycle bin view when model changes
+          setViewingRecycleBin(false); 
           previousModelIdRef.current = modelIdFromUrl;
         }
       } else {
@@ -241,10 +243,13 @@ export default function DataObjectsPage() {
 
   useEffect(() => {
     if (dataContextIsReady && currentModel) {
-      // getObjectsByModelId now fetches based on viewingRecycleBin
-      setLocalObjects(getObjectsByModelId(currentModel.id, viewingRecycleBin));
+      if (viewingRecycleBin) {
+        setLocalObjects(deletedObjectsFromContext[currentModel.id] || []);
+      } else {
+        setLocalObjects(activeObjectsFromContext[currentModel.id] || []);
+      }
     }
-  }, [activeObjectsFromContext, deletedObjectsFromContext, currentModel, dataContextIsReady, getObjectsByModelId, viewingRecycleBin]);
+  }, [activeObjectsFromContext, deletedObjectsFromContext, currentModel, dataContextIsReady, viewingRecycleBin]);
 
 
   useEffect(() => {
@@ -622,7 +627,7 @@ export default function DataObjectsPage() {
 
   const filteredObjects = useMemo(() => {
     if (!currentModel) return [];
-    let searchableObjects = [...localObjects]; // localObjects is already filtered by viewingRecycleBin
+    let searchableObjects = [...localObjects]; // localObjects is now correctly active OR deleted based on viewingRecycleBin
 
     if (searchTerm) {
       searchableObjects = searchableObjects.filter(obj => {
@@ -1707,7 +1712,7 @@ export default function DataObjectsPage() {
         </>
       ) : viewMode === 'gallery' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-          {(paginatedDataToRender as DataObject[]).map((obj) => ( <GalleryCard key={obj.id} obj={obj} model={currentModel!} allModels={allModels} allObjects={allDbObjects} currentWorkflow={currentWorkflow} getWorkflowStateName={getWorkflowStateName} onView={handleView} onEdit={handleEdit} onDelete={handleDeleteObject} onRestore={handleRestoreObject} viewingRecycleBin={viewingRecycleBin} lastChangedInfo={lastChangedInfo}/> ))}
+           {(paginatedDataToRender as DataObject[]).map((obj) => ( <GalleryCard key={obj.id} obj={obj} model={currentModel!} allModels={allModels} allObjects={allDbObjects} currentWorkflow={currentWorkflow} getWorkflowStateName={getWorkflowStateName} onView={handleView} onEdit={handleEdit} onDelete={handleDeleteObject} viewingRecycleBin={viewingRecycleBin} onRestore={handleRestoreObject} lastChangedInfo={lastChangedInfo} /> ))}
         </div>
       ) : viewMode === 'kanban' && currentWorkflow && !viewingRecycleBin ? ( // Kanban only for active items
         <KanbanBoard
