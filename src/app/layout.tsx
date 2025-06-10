@@ -1,3 +1,4 @@
+
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
@@ -26,9 +27,9 @@ export default function RootLayout({
 }>) {
   return (
     // Apply font variables to HTML for global CSS access
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
-      {/* Apply the primary font class directly to body */}
-      <body className={`${geistSans.className} antialiased`}>
+    <html lang="en">
+      {/* Apply the primary font class and font variables directly to body */}
+      <body className={`${geistSans.className} ${geistSans.variable} ${geistMono.variable} antialiased`}>
         <AppProviders>
           {children}
         </AppProviders>
