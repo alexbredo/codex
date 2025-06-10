@@ -1,45 +1,58 @@
-# Dockerfile for CodexStructure
 
-# ---- Builder Stage ----
-FROM node:20-alpine AS builder
+# Stage 1: Build the application
+FROM node:20-slim AS builder
 
-# Set working directory
 WORKDIR /app
 
+# Install necessary build tools for native modules (like sqlite3)
+# and ca-certificates for potential SSL issues during downloads
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    python3 \
+    make \
+    g++ \
+    ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
 # Install dependencies
+# Copy package.json and package-lock.json (or yarn.lock)
 COPY package.json package-lock.json* ./
+# Using npm ci for cleaner installs from lock file
 RUN npm ci
 
 # Copy application code
 COPY . .
 
-# Set NEXT_TELEMETRY_DISABLED to 1 to disable telemetry during build
-ENV NEXT_TELEMETRY_DISABLED 1
-
 # Build the Next.js application
 RUN npm run build
 
-# ---- Runner Stage ----
-FROM node:20-alpine AS runner
+# Stage 2: Production image
+# Use a slim Node.js image for the final stage
+FROM node:20-slim AS runner
 
 WORKDIR /app
 
+# Set environment to production
 ENV NODE_ENV production
-# Disable telemetry in the running container
-ENV NEXT_TELEMETRY_DISABLED 1
 
-# Automatically leverage output traces to reduce image size
-# https://nextjs.org/docs/advanced-features/output-file-tracing
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/public ./public
+# Create a non-root user for security
+RUN addgroup --system --gid 1001 appgroup && \
+    adduser --system --uid 1001 appuser
 
-# The SQLite database will be expected in /app/data/database.sqlite
-# This directory will be created by the application if it doesn't exist,
-# and should be mounted as a volume from the host for persistence.
+# Copy built assets from the builder stage
+COPY --from=builder --chown=appuser:appgroup /app/.next/standalone ./
+COPY --from=builder --chown=appuser:appgroup /app/.next/static ./.next/static
+COPY --from=builder --chown=appuser:appgroup /app/public ./public
+
+# Create the data directory and set permissions if it doesn't exist
+# This directory will be used for the SQLite database and uploads
+# Ensure the appuser has write permissions if the volume isn't mounted or is empty
+RUN mkdir -p /app/data/uploads && \
+    chown -R appuser:appgroup /app/data
+
+USER appuser
 
 EXPOSE 3000
 
-# CMD to run the application
-# The standalone output creates a server.js file.
+# Start the Next.js application
 CMD ["node", "server.js"]

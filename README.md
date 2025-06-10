@@ -6,7 +6,7 @@ CodexStructure is a web application designed to empower users to dynamically def
 ## Prerequisites
 
 Before you begin, ensure you have the following installed:
-- Node.js (v18.x or v20.x recommended)
+- Node.js (v20.x recommended, as used in Dockerfile)
 - npm (usually comes with Node.js) or yarn
 - Docker (optional, for containerized deployment)
 
@@ -62,36 +62,37 @@ Follow these steps to get the project up and running on your local machine:
 
 ## Running with Docker (Production)
 
-This project includes a `Dockerfile` to build a production-ready container.
+This project includes a `Dockerfile` to build a production-ready container. The Dockerfile uses Node.js 20.
 
 1.  **Build the Docker Image**:
     Navigate to the project's root directory in your terminal and run:
     ```bash
     docker build -t codex-structure .
     ```
-    Replace `codex-structure` with your desired image name.
+    Replace `codex-structure` with your desired image name. The Dockerfile includes the necessary build tools (like Python and g++) for compiling native Node.js modules such as `sqlite3`.
 
 2.  **Run the Docker Container**:
-    To run the container and persist the SQLite database outside of it, you'll need to mount a volume.
+    To run the container and persist the SQLite database and uploaded files outside of it, you'll need to mount a volume.
 
-    *   Create a directory on your host machine to store the database, for example:
+    *   Create a directory on your host machine to store the application data (database and uploads), for example:
         ```bash
-        mkdir -p ./codex_data
+        mkdir -p ./codex_data_prod
         ```
+        (Using a different name like `codex_data_prod` to avoid conflict with local dev `data/` if you run both from the same root).
     *   Run the Docker container with a volume mount:
         ```bash
         docker run -d -p 3000:3000 \
-          -v "$(pwd)/codex_data:/app/data" \
+          -v "$(pwd)/codex_data_prod:/app/data" \
           --name codex-structure-app \
           codex-structure
         ```
         -   `-d`: Run in detached mode.
         -   `-p 3000:3000`: Maps port 3000 on your host to port 3000 in the container (Next.js production server defaults to port 3000).
-        -   `-v "$(pwd)/codex_data:/app/data"`: This is crucial. It mounts the `codex_data` directory from your current working directory on the host to `/app/data` inside the container. The application is configured to store its `database.sqlite` file within this `/app/data` directory.
+        -   `-v "$(pwd)/codex_data_prod:/app/data"`: This is crucial. It mounts the `codex_data_prod` directory from your current working directory on the host to `/app/data` inside the container. The application is configured to store its `database.sqlite` file and any file uploads (e.g., images) within this `/app/data` directory.
         -   `--name codex-structure-app`: Assigns a name to the running container for easier management.
         -   `codex-structure`: The name of the image you built.
 
-    The application will then be accessible at `http://localhost:3000`. The `database.sqlite` file will be created and stored in your host's `./codex_data` directory.
+    The application will then be accessible at `http://localhost:3000`. The `database.sqlite` file and `uploads` subdirectory will be created and stored in your host's `./codex_data_prod` directory.
 
 ## Project Structure Highlights
 
@@ -101,7 +102,8 @@ This project includes a `Dockerfile` to build a production-ready container.
 -   `src/contexts/`: React Context providers (e.g., `DataContext`).
 -   `src/lib/`: Utility functions, database setup (`db.ts`), and type definitions (`types.ts`).
 -   `src/ai/`: Genkit related files for AI functionalities.
--   `data/database.sqlite`: The SQLite database file (will be created automatically in local dev, or in the mounted volume for Docker).
+-   `data/database.sqlite`: The SQLite database file for local development.
+-   `data/uploads/`: Directory for image uploads during local development.
 -   `Dockerfile`: For building the production Docker image.
 -   `.dockerignore`: Specifies files to exclude from the Docker build context.
 
@@ -111,7 +113,7 @@ To create a production build without Docker, run:
 ```bash
 npm run build
 ```
-And to start the production server (this will also create `data/database.sqlite` if it doesn't exist):
+And to start the production server (this will also create `data/database.sqlite` and `data/uploads` if they don't exist):
 ```bash
 npm run start
 ```
