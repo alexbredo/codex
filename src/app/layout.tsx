@@ -27,7 +27,7 @@ export default function RootLayout({
 }>) {
   return (
     // Apply font variables to HTML for global CSS access
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning={true}>
       {/* Apply the primary font class and font variables directly to body */}
       <body className={`${geistSans.className} ${geistSans.variable} ${geistMono.variable} antialiased`}>
         <AppProviders>
