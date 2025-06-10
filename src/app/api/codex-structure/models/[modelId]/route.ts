@@ -1,8 +1,8 @@
 
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import type { Model, Property, WorkflowWithDetails, WorkflowState } from '@/lib/types';
-import { getCurrentUserFromCookie } from '@/lib/auth'; // Auth helper
+import type { Model, Property, WorkflowWithDetails, WorkflowState, StructuralChangeDetail } from '@/lib/types';
+import { getCurrentUserFromCookie } from '@/lib/auth';
 
 interface Params {
   params: { modelId: string };
@@ -28,11 +28,10 @@ function parseDefaultValueForStorage(value: string | undefined | null, type: Pro
     case 'date':
       try {
         const date = new Date(value);
-        // Check if it's a valid date string, not just "Invalid Date" from new Date("")
-        if (isNaN(date.getTime()) && String(value).trim() !== '') return String(value).trim(); // Keep original invalid string if not empty
-        return isNaN(date.getTime()) ? undefined : date.toISOString(); // Return ISO or undefined if really invalid/empty
+        if (isNaN(date.getTime()) && String(value).trim() !== '') return String(value).trim(); 
+        return isNaN(date.getTime()) ? undefined : date.toISOString();
       } catch {
-        return String(value).trim(); // Fallback if new Date throws (should be rare)
+        return String(value).trim();
       }
     case 'relationship':
       if (relationshipType === 'many') {
@@ -150,17 +149,21 @@ export async function PUT(request: Request, { params }: Params) {
 
   try {
     const body: Partial<Omit<Model, 'id'>> & { properties?: Property[], workflowId?: string | null } = await request.json();
-    console.log(`[API PUT /models/${params.modelId}] Received payload for update:`, JSON.stringify(body, null, 2));
+    const currentTimestamp = new Date().toISOString();
     
     const { name, description, namespace, displayPropertyNames, properties: updatedPropertiesInput } = body;
 
-    const existingModel = await db.get('SELECT * FROM models WHERE id = ?', params.modelId);
-    if (!existingModel) {
+    // Fetch old model state for changelog
+    const oldModelRow = await db.get('SELECT * FROM models WHERE id = ?', params.modelId);
+    if (!oldModelRow) {
       await db.run('ROLLBACK');
       return NextResponse.json({ error: 'Model not found' }, { status: 404 });
     }
+    const oldPropertiesFromDb = await db.all('SELECT * FROM properties WHERE model_id = ? ORDER BY orderIndex ASC', params.modelId);
+    const oldModelSnapshot = { ...oldModelRow, properties: oldPropertiesFromDb.map(p => ({...p})) }; // Deep copy properties
 
-    if (name && name !== existingModel.name) {
+
+    if (name && name !== oldModelRow.name) {
         const nameCheck = await db.get('SELECT id FROM models WHERE name = ? AND id != ?', name, params.modelId);
         if (nameCheck) {
             await db.run('ROLLBACK');
@@ -168,7 +171,7 @@ export async function PUT(request: Request, { params }: Params) {
         }
     }
 
-    const oldEffectiveWorkflowId = existingModel.workflowId || null; 
+    const oldEffectiveWorkflowId = oldModelRow.workflowId || null; 
     let newEffectiveWorkflowId: string | null; 
     let workflowAssignmentActuallyChanged = false;
 
@@ -185,30 +188,30 @@ export async function PUT(request: Request, { params }: Params) {
     const updateModelFields: string[] = [];
     const updateModelValues: any[] = [];
 
-    if (name !== undefined && name !== existingModel.name) {
+    if (name !== undefined && name !== oldModelRow.name) {
       updateModelFields.push('name = ?');
       updateModelValues.push(name);
     }
-    if (description !== undefined && description !== existingModel.description) {
+    if (description !== undefined && description !== oldModelRow.description) {
       updateModelFields.push('description = ?');
       updateModelValues.push(description);
     }
     
     const finalNamespace = (namespace === undefined || namespace.trim() === '') ? 'Default' : namespace.trim();
-    if (finalNamespace !== existingModel.namespace) {
+    if (finalNamespace !== oldModelRow.namespace) {
         updateModelFields.push('namespace = ?');
         updateModelValues.push(finalNamespace);
     }
 
     if (displayPropertyNames !== undefined) {
         const newDpnJson = JSON.stringify(displayPropertyNames || []);
-        if (newDpnJson !== existingModel.displayPropertyNames) {
+        if (newDpnJson !== oldModelRow.displayPropertyNames) {
             updateModelFields.push('displayPropertyNames = ?');
             updateModelValues.push(newDpnJson);
         }
     }
     
-    if (Object.prototype.hasOwnProperty.call(body, 'workflowId') && newEffectiveWorkflowId !== existingModel.workflowId) {
+    if (Object.prototype.hasOwnProperty.call(body, 'workflowId') && newEffectiveWorkflowId !== oldModelRow.workflowId) {
       updateModelFields.push('workflowId = ?');
       updateModelValues.push(newEffectiveWorkflowId);
     }
@@ -219,23 +222,13 @@ export async function PUT(request: Request, { params }: Params) {
       await db.run(updateModelSql, ...updateModelValues);
     }
 
-    // Properties update logic
+    const newProcessedProperties: Property[] = [];
     if (updatedPropertiesInput) {
-      const oldDbProperties = await db.all('SELECT id, name FROM properties WHERE model_id = ?', params.modelId);
-      const oldPropertyIds = new Set(oldDbProperties.map(p => p.id));
-      
-      const propertiesToApplyDefaultsFor: Property[] = [];
-
-      // Delete existing properties and re-insert them to handle order changes and deletions
       await db.run('DELETE FROM properties WHERE model_id = ?', params.modelId);
-      
       for (const prop of updatedPropertiesInput) {
         const propertyId = prop.id || crypto.randomUUID();
-        console.log(`[API PUT /models/${params.modelId}] DB Prep - Property to insert/update:`, JSON.stringify(prop, null, 2));
-        
         const propMinValueForDb = (prop.type === 'number' && typeof prop.minValue === 'number' && !isNaN(prop.minValue)) ? Number(prop.minValue) : null;
         const propMaxValueForDb = (prop.type === 'number' && typeof prop.maxValue === 'number' && !isNaN(prop.maxValue)) ? Number(prop.maxValue) : null;
-        console.log(`[API PUT /models/${params.modelId}] Values for DB - minValue: ${propMinValueForDb}, maxValue: ${propMaxValueForDb} for property ${prop.name}`);
         
         await db.run(
           'INSERT INTO properties (id, model_id, name, type, relatedModelId, required, relationshipType, unit, precision, autoSetOnCreate, autoSetOnUpdate, isUnique, orderIndex, defaultValue, validationRulesetId, minValue, maxValue) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -247,28 +240,15 @@ export async function PUT(request: Request, { params }: Params) {
           propMinValueForDb,
           propMaxValueForDb
         );
-
-        if (!oldPropertyIds.has(propertyId) && prop.defaultValue !== undefined && prop.defaultValue !== null && String(prop.defaultValue).trim() !== '') {
-          propertiesToApplyDefaultsFor.push({ ...prop, id: propertyId });
-        }
+        newProcessedProperties.push({
+            ...prop, id: propertyId, model_id: params.modelId, 
+            required: !!prop.required, autoSetOnCreate: !!prop.autoSetOnCreate, autoSetOnUpdate: !!prop.autoSetOnUpdate, isUnique: !!prop.isUnique,
+            defaultValue: prop.defaultValue, validationRulesetId: prop.validationRulesetId ?? null, minValue: propMinValueForDb, maxValue: propMaxValueForDb
+        } as Property);
       }
-
-      if (propertiesToApplyDefaultsFor.length > 0) {
-        const existingDataObjects = await db.all('SELECT id, data FROM data_objects WHERE model_id = ?', params.modelId);
-        for (const newPropWithDefault of propertiesToApplyDefaultsFor) {
-          const parsedDefaultValue = parseDefaultValueForStorage(newPropWithDefault.defaultValue, newPropWithDefault.type, newPropWithDefault.relationshipType);
-          
-          if (parsedDefaultValue !== undefined) {
-            for (const dataObj of existingDataObjects) {
-              let currentData = JSON.parse(dataObj.data);
-              if (!Object.prototype.hasOwnProperty.call(currentData, newPropWithDefault.name)) {
-                currentData[newPropWithDefault.name] = parsedDefaultValue;
-                await db.run('UPDATE data_objects SET data = ? WHERE id = ?', JSON.stringify(currentData), dataObj.id);
-              }
-            }
-          }
-        }
-      }
+    } else {
+      // If updatedPropertiesInput is not provided, newProcessedProperties should be the old ones
+      newProcessedProperties.push(...oldPropertiesFromDb);
     }
 
     if (workflowAssignmentActuallyChanged) {
@@ -277,18 +257,47 @@ export async function PUT(request: Request, { params }: Params) {
         if (workflowForUpdate) {
           const statesForUpdate: WorkflowState[] = await db.all('SELECT id, isInitial FROM workflow_states WHERE workflowId = ?', newEffectiveWorkflowId);
           const initialStateForUpdate = statesForUpdate.find(s => s.isInitial === 1 || s.isInitial === true);
-
-          if (initialStateForUpdate && initialStateForUpdate.id) {
-            await db.run("UPDATE data_objects SET currentStateId = ? WHERE model_id = ?", initialStateForUpdate.id, params.modelId);
-          } else {
-            await db.run("UPDATE data_objects SET currentStateId = NULL WHERE model_id = ?", params.modelId);
-          }
+          await db.run("UPDATE data_objects SET currentStateId = ? WHERE model_id = ?", initialStateForUpdate?.id || null, params.modelId);
         } else {
           await db.run("UPDATE data_objects SET currentStateId = NULL WHERE model_id = ?", params.modelId);
         }
       } else { 
         await db.run("UPDATE data_objects SET currentStateId = NULL WHERE model_id = ?", params.modelId);
       }
+    }
+    
+    // Log structural change for model update
+    const changelogId = crypto.randomUUID();
+    const changesDetail: StructuralChangeDetail[] = [];
+    const newModelDataAfterUpdate = await db.get('SELECT * FROM models WHERE id = ?', params.modelId);
+    
+    if (newModelDataAfterUpdate.name !== oldModelRow.name) changesDetail.push({ field: 'name', oldValue: oldModelRow.name, newValue: newModelDataAfterUpdate.name });
+    if (newModelDataAfterUpdate.description !== oldModelRow.description) changesDetail.push({ field: 'description', oldValue: oldModelRow.description, newValue: newModelDataAfterUpdate.description });
+    if (newModelDataAfterUpdate.namespace !== oldModelRow.namespace) changesDetail.push({ field: 'namespace', oldValue: oldModelRow.namespace, newValue: newModelDataAfterUpdate.namespace });
+    if (newModelDataAfterUpdate.displayPropertyNames !== oldModelRow.displayPropertyNames) changesDetail.push({ field: 'displayPropertyNames', oldValue: JSON.parse(oldModelRow.displayPropertyNames || '[]'), newValue: JSON.parse(newModelDataAfterUpdate.displayPropertyNames || '[]') });
+    if (newModelDataAfterUpdate.workflowId !== oldModelRow.workflowId) changesDetail.push({ field: 'workflowId', oldValue: oldModelRow.workflowId, newValue: newModelDataAfterUpdate.workflowId });
+
+    // For properties, log the before and after arrays due to delete/re-insert strategy
+    // A more granular diff is complex here but this provides a snapshot of change.
+    changesDetail.push({ 
+        field: 'properties', 
+        oldValue: oldModelSnapshot.properties.map(p => ({name: p.name, type: p.type, orderIndex: p.orderIndex, required: !!p.required})), // Simplified snapshot
+        newValue: newProcessedProperties.map(p => ({name: p.name, type: p.type, orderIndex: p.orderIndex, required: !!p.required}))  // Simplified snapshot
+    });
+
+
+    if (changesDetail.length > 0) {
+        await db.run(
+          'INSERT INTO structural_changelog (id, timestamp, userId, entityType, entityId, entityName, action, changes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          changelogId,
+          currentTimestamp,
+          currentUser.id,
+          'Model',
+          params.modelId,
+          newModelDataAfterUpdate.name, 
+          'UPDATE',
+          JSON.stringify(changesDetail)
+        );
     }
 
     await db.run('COMMIT');
@@ -329,7 +338,8 @@ export async function PUT(request: Request, { params }: Params) {
     return NextResponse.json(returnedModel);
 
   } catch (error: any) {
-    await db.run('ROLLBACK');
+    try { await db.run('ROLLBACK'); } catch (rbError) { console.error("Rollback failed in PUT /models/[modelId]:", rbError); }
+    
     const errorMessage = error.message || `An unknown server error occurred while updating model ${params.modelId}.`;
     const errorStack = error.stack || 'No stack trace available.';
     console.error(`API Error (PUT /models/[modelId]) - Failed to update model ${params.modelId}. Message: ${errorMessage}, Stack: ${errorStack}`, error);
@@ -349,18 +359,48 @@ export async function DELETE(request: Request, { params }: Params) {
   const db = await getDb();
   await db.run('BEGIN TRANSACTION');
   try {
-    const modelExists = await db.get('SELECT id FROM models WHERE id = ?', params.modelId);
-    if (!modelExists) {
+    const currentTimestamp = new Date().toISOString();
+    const modelToDelete = await db.get('SELECT * FROM models WHERE id = ?', params.modelId);
+    
+    if (!modelToDelete) {
       await db.run('ROLLBACK');
       return NextResponse.json({ error: 'Model not found' }, { status: 404 });
     }
+    
+    const propertiesOfModelToDelete = await db.all('SELECT * FROM properties WHERE model_id = ?', params.modelId);
+    const modelSnapshot = {
+      ...modelToDelete,
+      properties: propertiesOfModelToDelete.map(p => ({
+        name: p.name, type: p.type, orderIndex: p.orderIndex, required: !!p.required,
+        relatedModelId: p.relatedModelId, relationshipType: p.relationshipType, unit: p.unit, 
+        precision: p.precision, autoSetOnCreate: !!p.autoSetOnCreate, autoSetOnUpdate: !!p.autoSetOnUpdate, 
+        isUnique: !!p.isUnique, defaultValue: p.defaultValue, validationRulesetId: p.validationRulesetId,
+        minValue: p.minValue, maxValue: p.maxValue
+      }))
+    };
 
     await db.run('DELETE FROM models WHERE id = ?', params.modelId); // Properties and data_objects are deleted via CASCADE
+    
+    // Log structural change for model deletion
+    const changelogId = crypto.randomUUID();
+    await db.run(
+      'INSERT INTO structural_changelog (id, timestamp, userId, entityType, entityId, entityName, action, changes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      changelogId,
+      currentTimestamp,
+      currentUser.id,
+      'Model',
+      params.modelId,
+      modelToDelete.name, 
+      'DELETE',
+      JSON.stringify(modelSnapshot) 
+    );
+
     await db.run('COMMIT');
 
     return NextResponse.json({ message: 'Model deleted successfully' });
   } catch (error: any) {
-    await db.run('ROLLBACK');
+    try { await db.run('ROLLBACK'); } catch (rbError) { console.error("Rollback failed in DELETE /models/[modelId]:", rbError); }
+    
     const errorMessage = error.message || `An unknown server error occurred while deleting model ${params.modelId}.`;
     const errorStack = error.stack || 'No stack trace available.';
     console.error(`API Error (DELETE /models/[modelId]) - Failed to delete model ${params.modelId}. Message: ${errorMessage}, Stack: ${errorStack}`, error);

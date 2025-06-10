@@ -1,8 +1,8 @@
 
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import type { Model, Property } from '@/lib/types';
-import { getCurrentUserFromCookie } from '@/lib/auth'; // Auth helper
+import type { Model, Property, StructuralChangeDetail } from '@/lib/types';
+import { getCurrentUserFromCookie } from '@/lib/auth';
 
 // GET all models
 export async function GET(request: Request) {
@@ -106,13 +106,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
-  try {
-    const { id: modelId, name, description, namespace, displayPropertyNames, properties: newProperties, workflowId }: Omit<Model, 'id'> & {id: string} = await request.json();
-    console.log("[API POST /models] Received payload for create:", JSON.stringify({ id: modelId, name, description, namespace, displayPropertyNames, properties: newProperties, workflowId }, null, 2));
-    const db = await getDb();
-    const finalNamespace = (namespace && namespace.trim() !== '') ? namespace.trim() : 'Default';
+  const db = await getDb();
+  await db.run('BEGIN TRANSACTION');
 
-    await db.run('BEGIN TRANSACTION');
+  try {
+    const { id: modelId, name, description, namespace, displayPropertyNames, properties: newPropertiesInput, workflowId }: Omit<Model, 'id'> & {id: string} = await request.json();
+    console.log("[API POST /models] Received payload for create:", JSON.stringify({ id: modelId, name, description, namespace, displayPropertyNames, properties: newPropertiesInput, workflowId }, null, 2));
+    
+    const finalNamespace = (namespace && namespace.trim() !== '') ? namespace.trim() : 'Default';
+    const currentTimestamp = new Date().toISOString();
 
     await db.run(
       'INSERT INTO models (id, name, description, namespace, displayPropertyNames, workflowId) VALUES (?, ?, ?, ?, ?, ?)',
@@ -124,61 +126,95 @@ export async function POST(request: Request) {
       workflowId === undefined ? null : workflowId
     );
 
-    for (const prop of newProperties) {
-      console.log(`[API POST /models] DB Prep - Property to insert:`, JSON.stringify(prop, null, 2));
+    const processedProperties: Property[] = [];
+    for (const propInput of newPropertiesInput) {
+      const propertyId = propInput.id || crypto.randomUUID();
+      const propMinValueForDb = (propInput.type === 'number' && typeof propInput.minValue === 'number' && !isNaN(propInput.minValue)) ? Number(propInput.minValue) : null;
+      const propMaxValueForDb = (propInput.type === 'number' && typeof propInput.maxValue === 'number' && !isNaN(propInput.maxValue)) ? Number(propInput.maxValue) : null;
       
-      const propMinValueForDb = (prop.type === 'number' && typeof prop.minValue === 'number' && !isNaN(prop.minValue)) ? Number(prop.minValue) : null;
-      const propMaxValueForDb = (prop.type === 'number' && typeof prop.maxValue === 'number' && !isNaN(prop.maxValue)) ? Number(prop.maxValue) : null;
-      console.log(`[API POST /models] Values for DB - minValue: ${propMinValueForDb}, maxValue: ${propMaxValueForDb} for property ${prop.name}`);
-
       await db.run(
         'INSERT INTO properties (id, model_id, name, type, relatedModelId, required, relationshipType, unit, precision, autoSetOnCreate, autoSetOnUpdate, isUnique, orderIndex, defaultValue, validationRulesetId, minValue, maxValue) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        prop.id || crypto.randomUUID(),
+        propertyId,
         modelId,
-        prop.name,
-        prop.type,
-        prop.relatedModelId,
-        prop.required ? 1 : 0,
-        prop.relationshipType,
-        prop.unit,
-        prop.precision,
-        prop.autoSetOnCreate ? 1 : 0,
-        prop.autoSetOnUpdate ? 1 : 0,
-        prop.isUnique ? 1 : 0,
-        prop.orderIndex,
-        prop.defaultValue ?? null,
-        prop.validationRulesetId ?? null,
+        propInput.name,
+        propInput.type,
+        propInput.relatedModelId,
+        propInput.required ? 1 : 0,
+        propInput.relationshipType,
+        propInput.unit,
+        propInput.precision,
+        propInput.autoSetOnCreate ? 1 : 0,
+        propInput.autoSetOnUpdate ? 1 : 0,
+        propInput.isUnique ? 1 : 0,
+        propInput.orderIndex,
+        propInput.defaultValue ?? null,
+        propInput.validationRulesetId ?? null,
         propMinValueForDb,
         propMaxValueForDb
       );
+      processedProperties.push({
+        ...propInput,
+        id: propertyId,
+        model_id: modelId, // Ensure model_id is set for the log
+        required: !!propInput.required,
+        autoSetOnCreate: !!propInput.autoSetOnCreate,
+        autoSetOnUpdate: !!propInput.autoSetOnUpdate,
+        isUnique: !!propInput.isUnique,
+        defaultValue: propInput.defaultValue,
+        validationRulesetId: propInput.validationRulesetId ?? null,
+        minValue: propMinValueForDb,
+        maxValue: propMaxValueForDb,
+      } as Property);
     }
+
+    // Log structural change for model creation
+    const changelogId = crypto.randomUUID();
+    const createdModelSnapshot = {
+      id: modelId,
+      name,
+      description,
+      namespace: finalNamespace,
+      displayPropertyNames: displayPropertyNames || [],
+      workflowId: workflowId === undefined ? null : workflowId,
+      properties: processedProperties.map(p => ({ // Log processed properties
+        name: p.name, type: p.type, relatedModelId: p.relatedModelId, required: p.required, 
+        relationshipType: p.relationshipType, unit: p.unit, precision: p.precision, 
+        autoSetOnCreate: p.autoSetOnCreate, autoSetOnUpdate: p.autoSetOnUpdate, 
+        isUnique: p.isUnique, orderIndex: p.orderIndex, defaultValue: p.defaultValue,
+        validationRulesetId: p.validationRulesetId, minValue: p.minValue, maxValue: p.maxValue,
+      }))
+    };
+
+    await db.run(
+      'INSERT INTO structural_changelog (id, timestamp, userId, entityType, entityId, entityName, action, changes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      changelogId,
+      currentTimestamp,
+      currentUser.id,
+      'Model',
+      modelId,
+      name,
+      'CREATE',
+      JSON.stringify(createdModelSnapshot)
+    );
 
     await db.run('COMMIT');
     
-    const createdModel: Model = {
+    const createdModelForResponse: Model = {
         id: modelId,
         name,
         description,
         namespace: finalNamespace,
         displayPropertyNames: displayPropertyNames || [],
-        properties: newProperties.map(p => ({
-            ...p,
-            required: !!p.required,
-            autoSetOnCreate: !!p.autoSetOnCreate,
-            autoSetOnUpdate: !!p.autoSetOnUpdate,
-            isUnique: !!p.isUnique,
-            defaultValue: p.defaultValue,
-            validationRulesetId: p.validationRulesetId ?? null,
-            minValue: p.minValue ?? null,
-            maxValue: p.maxValue ?? null,
-        })),
+        properties: processedProperties,
         workflowId: workflowId === undefined ? null : workflowId,
     };
 
-    return NextResponse.json(createdModel, { status: 201 });
+    return NextResponse.json(createdModelForResponse, { status: 201 });
   } catch (error: any) {
-    const db = await getDb();
-    await db.run('ROLLBACK');
+    // Ensure rollback even if db was not explicitly awaited inside the try.
+    // If db instance wasn't available, this might fail, but that's a deeper issue.
+    try { await db.run('ROLLBACK'); } catch (rbError) { console.error("Rollback failed in POST /models:", rbError); }
+    
     const errorMessage = error.message || 'An unknown server error occurred while creating the model.';
     const errorStack = error.stack || 'No stack trace available.';
     console.error(`API Error (POST /models) - Failed to create model. Message: ${errorMessage}, Stack: ${errorStack}`, error);
