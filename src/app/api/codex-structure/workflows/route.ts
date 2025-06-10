@@ -1,7 +1,7 @@
 
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import type { WorkflowWithDetails, WorkflowStateInput } from '@/lib/types';
+import type { WorkflowWithDetails, WorkflowStateInput, StructuralChangeDetail } from '@/lib/types';
 import { getCurrentUserFromCookie } from '@/lib/auth';
 
 // GET all workflows with their states and transitions
@@ -57,27 +57,31 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
+  const db = await getDb();
+  await db.run('BEGIN TRANSACTION');
+
   try {
     const { name, description, states: statesInput }: { name: string; description?: string; states: WorkflowStateInput[] } = await request.json();
-    const db = await getDb();
+    const currentTimestamp = new Date().toISOString();
 
     if (!name || name.trim() === '') {
+      await db.run('ROLLBACK');
       return NextResponse.json({ error: 'Workflow name cannot be empty.' }, { status: 400 });
     }
     if (!statesInput || statesInput.length === 0) {
+        await db.run('ROLLBACK');
         return NextResponse.json({ error: 'Workflow must have at least one state.' }, { status: 400 });
     }
 
     const initialStates = statesInput.filter(s => s.isInitial);
-    if (initialStates.length === 0 && statesInput.length > 0) { // Ensure at least one initial state if states are present
+    if (initialStates.length === 0 && statesInput.length > 0) {
+        await db.run('ROLLBACK');
         return NextResponse.json({ error: 'Workflow must have one initial state defined.' }, { status: 400 });
     }
     if (initialStates.length > 1) {
+        await db.run('ROLLBACK');
         return NextResponse.json({ error: 'Workflow can only have one initial state.' }, { status: 400 });
     }
-
-
-    await db.run('BEGIN TRANSACTION');
 
     const workflowId = crypto.randomUUID();
     await db.run(
@@ -85,9 +89,8 @@ export async function POST(request: Request) {
       workflowId, name.trim(), description
     );
 
-    // Map state names to their newly created IDs for setting up transitions
     const stateNameToIdMap: Record<string, string> = {};
-    const createdStatesForResponse = [];
+    const createdStatesForResponseAndLog = [];
 
     for (const [index, sInput] of statesInput.entries()) {
       if (!sInput.name || sInput.name.trim() === '') {
@@ -102,7 +105,7 @@ export async function POST(request: Request) {
         'INSERT INTO workflow_states (id, workflowId, name, description, color, isInitial, orderIndex) VALUES (?, ?, ?, ?, ?, ?, ?)',
         stateId, workflowId, sInput.name.trim(), sInput.description, sInput.color ?? null, sInput.isInitial ? 1 : 0, orderIndex
       );
-      createdStatesForResponse.push({
+      createdStatesForResponseAndLog.push({
         id: stateId,
         workflowId,
         name: sInput.name.trim(),
@@ -110,58 +113,77 @@ export async function POST(request: Request) {
         color: sInput.color ?? null,
         isInitial: !!sInput.isInitial,
         orderIndex: orderIndex,
-        successorStateIds: [], // Will be populated below
+        successorStateIds: [], // Will be populated below by name then mapped to IDs for response
+        successorStateNames: sInput.successorStateNames || [], // Store names for logging snapshot
       });
     }
 
-    // Create transitions
-    for (const sInput of statesInput) {
-      const fromStateId = stateNameToIdMap[sInput.name.trim()];
-      const currentCreatedState = createdStatesForResponse.find(s => s.id === fromStateId);
-
-      if (sInput.successorStateNames && sInput.successorStateNames.length > 0) {
-        for (const successorName of sInput.successorStateNames) {
+    for (const sState of createdStatesForResponseAndLog) {
+      if (sState.successorStateNames && sState.successorStateNames.length > 0) {
+        for (const successorName of sState.successorStateNames) {
           const toStateId = stateNameToIdMap[successorName.trim()];
           if (!toStateId) {
             await db.run('ROLLBACK');
-            return NextResponse.json({ error: `Successor state "${successorName}" not found for state "${sInput.name}".` }, { status: 400 });
+            return NextResponse.json({ error: `Successor state "${successorName}" not found for state "${sState.name}".` }, { status: 400 });
           }
           const transitionId = crypto.randomUUID();
           await db.run(
             'INSERT INTO workflow_state_transitions (id, workflowId, fromStateId, toStateId) VALUES (?, ?, ?, ?)',
-            transitionId, workflowId, fromStateId, toStateId
+            transitionId, workflowId, sState.id, toStateId
           );
-          if (currentCreatedState) {
-            currentCreatedState.successorStateIds.push(toStateId);
-          }
+          sState.successorStateIds.push(toStateId); // Populate IDs for direct response if needed
         }
       }
     }
+    
+    // Log structural change for workflow creation
+    const changelogId = crypto.randomUUID();
+    const createdWorkflowSnapshot = {
+      id: workflowId,
+      name: name.trim(),
+      description,
+      states: createdStatesForResponseAndLog.map(s => ({ // Log simplified state info
+        name: s.name,
+        description: s.description,
+        color: s.color,
+        isInitial: s.isInitial,
+        orderIndex: s.orderIndex,
+        successorStateNames: s.successorStateNames,
+      })),
+    };
+
+    await db.run(
+      'INSERT INTO structural_changelog (id, timestamp, userId, entityType, entityId, entityName, action, changes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      changelogId,
+      currentTimestamp,
+      currentUser.id,
+      'Workflow',
+      workflowId,
+      name.trim(),
+      'CREATE',
+      JSON.stringify(createdWorkflowSnapshot)
+    );
 
     await db.run('COMMIT');
 
     const initialDbState = await db.get('SELECT id FROM workflow_states WHERE workflowId = ? AND isInitial = 1', workflowId);
-    // Re-fetch states in correct order to return
-    const finalStatesForResponse = await db.all('SELECT * FROM workflow_states WHERE workflowId = ? ORDER BY orderIndex ASC', workflowId);
-    const finalStatesWithSuccessors = [];
-    for (const s of finalStatesForResponse) {
-        const transitions = await db.all('SELECT toStateId FROM workflow_state_transitions WHERE fromStateId = ? AND workflowId = ?', s.id, workflowId);
-        finalStatesWithSuccessors.push({...s, color: s.color ?? null, isInitial: !!s.isInitial, successorStateIds: transitions.map(t => t.toStateId)});
-    }
-
+    const finalStatesForResponse = createdStatesForResponseAndLog.map(s => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { successorStateNames, ...rest } = s; // Remove names from final API response, keep IDs
+      return rest;
+    });
 
     const createdWorkflow: WorkflowWithDetails = {
       id: workflowId,
       name: name.trim(),
       description,
-      states: finalStatesWithSuccessors,
+      states: finalStatesForResponse,
       initialStateId: initialDbState?.id || null,
     };
 
     return NextResponse.json(createdWorkflow, { status: 201 });
 
   } catch (error: any) {
-    const db = await getDb();
     await db.run('ROLLBACK');
     console.error('API Error (POST /workflows):', error);
     if (error.message && error.message.includes('UNIQUE constraint failed: workflows.name')) {
@@ -170,3 +192,5 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Failed to create workflow', details: error.message }, { status: 500 });
   }
 }
+
+    
