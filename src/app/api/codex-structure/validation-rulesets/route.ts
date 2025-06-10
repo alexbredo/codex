@@ -1,7 +1,7 @@
 
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import type { ValidationRuleset } from '@/lib/types';
+import type { ValidationRuleset, StructuralChangeDetail } from '@/lib/types';
 import { getCurrentUserFromCookie } from '@/lib/auth';
 
 // GET all validation rulesets
@@ -29,37 +29,64 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
+  const db = await getDb();
+  await db.run('BEGIN TRANSACTION');
+
   try {
     const { name, description, regexPattern }: Omit<ValidationRuleset, 'id'> = await request.json();
-    const db = await getDb();
+    const currentTimestamp = new Date().toISOString();
 
     if (!name || name.trim() === '') {
+      await db.run('ROLLBACK');
       return NextResponse.json({ error: 'Ruleset name cannot be empty.' }, { status: 400 });
     }
     if (!regexPattern || regexPattern.trim() === '') {
+      await db.run('ROLLBACK');
       return NextResponse.json({ error: 'Regex pattern cannot be empty.' }, { status: 400 });
     }
     try {
       new RegExp(regexPattern);
     } catch (e: any) {
+      await db.run('ROLLBACK');
       return NextResponse.json({ error: 'Invalid regex pattern.', details: e.message }, { status: 400 });
     }
 
     const rulesetId = crypto.randomUUID();
+    const trimmedName = name.trim();
+    const trimmedRegexPattern = regexPattern.trim();
+
     await db.run(
       'INSERT INTO validation_rulesets (id, name, description, regexPattern) VALUES (?, ?, ?, ?)',
-      rulesetId, name.trim(), description, regexPattern.trim()
+      rulesetId, trimmedName, description, trimmedRegexPattern
     );
+
+    // Log structural change
+    const changelogId = crypto.randomUUID();
+    const createdRulesetSnapshot: Partial<ValidationRuleset> = { name: trimmedName, description, regexPattern: trimmedRegexPattern };
+    await db.run(
+      'INSERT INTO structural_changelog (id, timestamp, userId, entityType, entityId, entityName, action, changes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      changelogId,
+      currentTimestamp,
+      currentUser.id,
+      'ValidationRuleset',
+      rulesetId,
+      trimmedName,
+      'CREATE',
+      JSON.stringify(createdRulesetSnapshot)
+    );
+
+    await db.run('COMMIT');
 
     const createdRuleset: ValidationRuleset = {
       id: rulesetId,
-      name: name.trim(),
+      name: trimmedName,
       description,
-      regexPattern: regexPattern.trim(),
+      regexPattern: trimmedRegexPattern,
     };
     return NextResponse.json(createdRuleset, { status: 201 });
 
   } catch (error: any) {
+    await db.run('ROLLBACK');
     console.error('API Error (POST /validation-rulesets):', error);
     if (error.message && error.message.includes('UNIQUE constraint failed: validation_rulesets.name')) {
       return NextResponse.json({ error: 'A validation ruleset with this name already exists.', details: error.message }, { status: 409 });
