@@ -145,7 +145,7 @@ export interface StructuralChangelogEntry {
   entityId: string;
   entityName?: string; // Name of the entity (e.g., Model Group name, Model name)
   action: StructuralChangelogActionType;
-  changes?: StructuralChangeDetail[] | Record<string, any>; // JSON detailing the changes or a snapshot for DELETE
+  changes: StructuralChangeDetail[] | Record<string, any>; // Parsed JSON object from DB
 }
 
 
@@ -175,3 +175,10 @@ export type ObjectFormData = Omit<DataObject, 'id' | 'currentStateId' | 'ownerId
 export type ModelGroupFormData = Omit<ModelGroup, 'id'>;
 export type ValidationRulesetFormData = Omit<ValidationRuleset, 'id'>;
 
+// Response type for paginated structural changelog
+export interface PaginatedStructuralChangelogResponse {
+  entries: StructuralChangelogEntry[];
+  totalEntries: number;
+  totalPages: number;
+  currentPage: number;
+}

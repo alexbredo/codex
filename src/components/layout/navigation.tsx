@@ -12,7 +12,7 @@ import {
   SidebarGroup,
   SidebarGroupLabel,
 } from '@/components/ui/sidebar';
-import { LayoutDashboard, DatabaseZap, ListChecks, FolderOpen, FolderKanban, Users, Workflow as WorkflowIcon, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, DatabaseZap, ListChecks, FolderOpen, FolderKanban, Users, Workflow as WorkflowIcon, ShieldCheck, History } from 'lucide-react'; // Added History
 import { useData } from '@/contexts/data-context';
 import { useAuth } from '@/contexts/auth-context';
 import type { Model } from '@/lib/types';
@@ -27,6 +27,7 @@ const adminNavItems = [
   { href: '/admin/workflows', label: 'Workflow Admin', icon: WorkflowIcon, roles: ['administrator'] },
   { href: '/admin/validation-rules', label: 'Validation Rules', icon: ShieldCheck, roles: ['administrator'] },
   { href: '/admin/users', label: 'User Admin', icon: Users, roles: ['administrator'] },
+  { href: '/admin/structural-changelog', label: 'Struct. Changelog', icon: History, roles: ['administrator'] }, // Added new item
 ];
 
 export default function Navigation() {
@@ -36,7 +37,9 @@ export default function Navigation() {
 
   const visibleStaticNavItems = React.useMemo(() => {
     if (authIsLoading || !user) return staticNavItemsBase.filter(item => !item.roles || item.roles.length === 0);
-    return [...staticNavItemsBase, ...adminNavItems].filter(item => item.roles.includes(user.role)).sort((a,b) => a.label.localeCompare(b.label));
+    // Combine and sort admin items alphabetically for consistent order
+    const combinedAdminItems = [...adminNavItems].sort((a,b) => a.label.localeCompare(b.label));
+    return [...staticNavItemsBase, ...combinedAdminItems].filter(item => item.roles.includes(user.role));
   }, [user, authIsLoading]);
 
 
