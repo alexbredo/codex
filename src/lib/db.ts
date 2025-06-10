@@ -288,6 +288,22 @@ async function initializeDb(): Promise<Database> {
   `);
   console.log("Data Object Changelog table ensured.");
 
+  // Structural Changelog Table
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS structural_changelog (
+      id TEXT PRIMARY KEY,
+      timestamp TEXT NOT NULL,
+      userId TEXT,
+      entityType TEXT NOT NULL, -- e.g., 'ModelGroup', 'Model', 'Property', 'Workflow', 'WorkflowState', 'ValidationRuleset'
+      entityId TEXT NOT NULL,
+      entityName TEXT, -- e.g., name of the ModelGroup, Model, Property, etc.
+      action TEXT NOT NULL, -- 'CREATE', 'UPDATE', 'DELETE'
+      changes TEXT, -- JSON blob detailing changes, e.g., [{ field: 'name', oldValue: 'Old', newValue: 'New' }] or snapshot for DELETE
+      FOREIGN KEY (userId) REFERENCES users(id) ON DELETE SET NULL
+    );
+  `);
+  console.log("Structural Changelog table ensured.");
+
 
   // Ensure mock admin user exists if in DEBUG_MODE
   if (DEBUG_MODE) {

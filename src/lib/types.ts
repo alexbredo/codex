@@ -91,7 +91,7 @@ export interface ValidationRuleset {
   regexPattern: string;
 }
 
-// Changelog Types
+// Changelog Types for Data Objects
 export interface PropertyChangeDetail {
   propertyName: string;
   oldValue: any;
@@ -122,6 +122,30 @@ export interface ChangelogEntry {
   changedByUsername?: string; // Populated by API when fetching
   changeType: ChangelogEventType;
   changes: ChangelogEventData; // Parsed JSON from DB
+}
+
+// Structural Changelog Types
+export type StructuralChangelogEntityType = 'ModelGroup' | 'Model' | 'Property' | 'Workflow' | 'WorkflowState' | 'ValidationRuleset';
+export type StructuralChangelogActionType = 'CREATE' | 'UPDATE' | 'DELETE';
+
+export interface StructuralChangeDetail {
+  field: string; // e.g., 'name', 'description', 'propertyAdded', 'propertyRemoved', 'propertyUpdated'
+  oldValue?: any;
+  newValue?: any;
+  propertyId?: string; // If change relates to a specific property within a model
+  propertyName?: string; // If change relates to a specific property within a model
+}
+
+export interface StructuralChangelogEntry {
+  id: string;
+  timestamp: string; // ISO 8601
+  userId: string | null;
+  username?: string; // To be populated on fetch for display
+  entityType: StructuralChangelogEntityType;
+  entityId: string;
+  entityName?: string; // Name of the entity (e.g., Model Group name, Model name)
+  action: StructuralChangelogActionType;
+  changes?: StructuralChangeDetail[] | Record<string, any>; // JSON detailing the changes or a snapshot for DELETE
 }
 
 
