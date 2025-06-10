@@ -1,11 +1,12 @@
 
-# Stage 1: Build the application
+# Stage 1: Builder
 FROM node:20-slim AS builder
+LABEL authors="firebase-studio"
 
+# Set working directory
 WORKDIR /app
 
-# Install necessary build tools for native modules (like sqlite3)
-# and ca-certificates for potential SSL issues during downloads
+# Install build dependencies for native modules (like sqlite3)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     python3 \
@@ -15,9 +16,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Install dependencies
-# Copy package.json and package-lock.json (or yarn.lock)
 COPY package.json package-lock.json* ./
-# Using npm ci for cleaner installs from lock file
 RUN npm ci
 
 # Copy application code
@@ -26,33 +25,40 @@ COPY . .
 # Build the Next.js application
 RUN npm run build
 
-# Stage 2: Production image
-# Use a slim Node.js image for the final stage
+# Stage 2: Runner
 FROM node:20-slim AS runner
+LABEL authors="firebase-studio"
 
 WORKDIR /app
 
-# Set environment to production
-ENV NODE_ENV production
-
-# Create a non-root user for security
+# Create a non-root user and group
 RUN addgroup --system --gid 1001 appgroup && \
-    adduser --system --uid 1001 appuser
+    adduser --system --uid 1001 --ingroup appgroup appuser
 
-# Copy built assets from the builder stage
+# Set environment variables
+ENV NODE_ENV=production
+# The Next.js server will run on port 3000 by default
+ENV PORT=3000
+
+# Copy only necessary files from the builder stage
+COPY --from=builder --chown=appuser:appgroup /app/package.json ./package.json
 COPY --from=builder --chown=appuser:appgroup /app/.next/standalone ./
 COPY --from=builder --chown=appuser:appgroup /app/.next/static ./.next/static
-COPY --from=builder --chown=appuser:appgroup /app/public ./public
+# The /app/public directory is often not present or needed with output: 'standalone'
+# as assets are typically served from .next/server/public or handled differently.
+# COPY --from=builder --chown=appuser:appgroup /app/public ./public
 
-# Create the data directory and set permissions if it doesn't exist
-# This directory will be used for the SQLite database and uploads
-# Ensure the appuser has write permissions if the volume isn't mounted or is empty
+# Create the data directory and uploads subdirectory and set permissions
+# This ensures the directory exists and is writable by the appuser
+# The volume mount will then correctly map to this pre-existing, permissioned directory.
 RUN mkdir -p /app/data/uploads && \
     chown -R appuser:appgroup /app/data
 
+# Switch to the non-root user
 USER appuser
 
+# Expose port 3000
 EXPOSE 3000
 
-# Start the Next.js application
+# Command to run the application
 CMD ["node", "server.js"]
