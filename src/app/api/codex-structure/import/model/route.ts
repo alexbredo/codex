@@ -22,10 +22,12 @@ const exportedModelBundleSchema = z.object({
       // other property fields are assumed to be present as per Property type
     })).min(1, "Model must have at least one property."),
   }),
-  dataObjects: z.array(z.object({ // Basic data object structure
-    id: z.string().uuid("Data Object ID must be a valid UUID."),
-    // data blob content varies, rely on good export
-  })),
+  dataObjects: z.array(
+    z.object({ // Basic data object structure
+      id: z.string().uuid("Data Object ID must be a valid UUID."),
+      // data blob content varies, rely on good export
+    }).passthrough() // <--- ***** ADDED .passthrough() HERE *****
+  ),
 });
 
 
@@ -270,4 +272,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Failed to process model import due to an unexpected server error.', details: error.message }, { status: 500 });
   }
 }
+    
+
     
