@@ -104,11 +104,9 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
         setImagePreviewUrl(fieldValue);
       }
     }
-    if (formContext === 'edit' && property.type === 'fileAttachment' && typeof fieldValue === 'string' && fieldValue) {
-      // For file attachments, if it's an existing file path, we might display its name
-      // No actual file object exists for preview, just the path string.
-      // setCurrentFileAttachment(null); // Clear any potentially selected new file
-    }
+    // For file attachments, if it's an existing file path, we might display its name
+    // No actual file object exists for preview, just the path string.
+    // setCurrentFileAttachment(null); // Clear any potentially selected new file
   }, [formContext, property.type, fieldName, form]);
 
   useEffect(() => {
@@ -175,7 +173,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
           </div>
         );
       case 'fileAttachment':
-        const currentFileValue = controllerField.value; // This would be the path string for existing files, or a File object for new selection
+        const currentFileValue = controllerField.value;
 
         return (
           <div className="space-y-2">
@@ -191,7 +189,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
             {currentFileAttachment ? (
               <FormDescription>Selected file: <Paperclip className="inline-block h-4 w-4 mr-1" /> {currentFileAttachment.name}</FormDescription>
             ) : (formContext === 'edit' && typeof currentFileValue === 'string' && currentFileValue && (
-              <FormDescription>Current file: <Paperclip className="inline-block h-4 w-4 mr-1" /> <a href={currentFileValue} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{currentFileValue.split('/').pop()}</a></FormDescription>
+              <FormDescription>Current file: <Paperclip className="inline-block h-4 w-4 mr-1" /> <a href={currentFileValue} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline" download>{currentFileValue.split('/').pop()}</a></FormDescription>
             ))}
             {!controllerField.value && !currentFileAttachment && property.required && <FormMessage>This file is required.</FormMessage>}
           </div>

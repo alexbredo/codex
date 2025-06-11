@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { getCurrentUserFromCookie, DEBUG_MODE } from '@/lib/auth';
 import fs from 'fs/promises';
 import path from 'path';
+import { v4 as uuidv4 } from 'uuid';
 
 const UPLOADS_DIR = path.join(process.cwd(), 'data', 'uploads');
 
@@ -49,23 +50,26 @@ export async function POST(request: Request) {
     const safeModelId = modelId.replace(/[^a-z0-9_-]/gi, '');
     const safeObjectId = objectId.replace(/[^a-z0-9_-]/gi, '');
     const safePropertyName = propertyName.replace(/[^a-z0-9_-]/gi, '');
-    const safeFileName = file.name.replace(/[^a-z0-9_.-]/gi, ''); // Allow dots and hyphens in filename
+    
+    // Generate a unique filename using UUID and preserve the original extension
+    const fileExtension = path.extname(file.name);
+    const uniqueFileName = `${uuidv4()}${fileExtension}`;
 
-    if (!safeModelId || !safeObjectId || !safePropertyName || !safeFileName) {
+    if (!safeModelId || !safeObjectId || !safePropertyName || !uniqueFileName) {
         return NextResponse.json({ error: 'Invalid characters in path components or filename.' }, { status: 400 });
     }
     
     const propertyUploadPath = path.join(UPLOADS_DIR, safeModelId, safeObjectId, safePropertyName);
     await ensureDirExists(propertyUploadPath);
 
-    const filePath = path.join(propertyUploadPath, safeFileName);
+    const filePath = path.join(propertyUploadPath, uniqueFileName);
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
     await fs.writeFile(filePath, buffer);
     console.log(`File saved to: ${filePath}`);
 
-    const publicUrl = `/uploads/${safeModelId}/${safeObjectId}/${safePropertyName}/${safeFileName}`;
+    const publicUrl = `/uploads/${safeModelId}/${safeObjectId}/${safePropertyName}/${uniqueFileName}`;
 
     return NextResponse.json({ success: true, url: publicUrl });
 

@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { getCurrentUserFromCookie, DEBUG_MODE } from '@/lib/auth';
 import fs from 'fs/promises';
 import path from 'path';
+import { v4 as uuidv4 } from 'uuid';
 
 const UPLOADS_DIR = path.join(process.cwd(), 'data', 'uploads');
 
@@ -36,38 +37,37 @@ export async function POST(request: Request) {
 
     if (DEBUG_MODE) {
       console.log(`DEBUG_MODE: Simulating file upload for ${file.name}.`);
-      // For general files, a generic placeholder or just the name might be sufficient
       const placeholderUrl = `/uploads/debug/${encodeURIComponent(file.name)}`; 
       return NextResponse.json({ success: true, url: placeholderUrl });
     }
 
-    // Non-Debug mode: Actual file saving
     if (!modelId || !objectId || !propertyName) {
       return NextResponse.json({ error: 'Missing modelId, objectId, or propertyName for file storage path.' }, { status: 400 });
     }
 
     // Sanitize inputs for path construction (basic example)
-    // Be more rigorous in a production environment if these come from untrusted user input
     const safeModelId = modelId.replace(/[^a-z0-9_-]/gi, '');
     const safeObjectId = objectId.replace(/[^a-z0-9_-]/gi, '');
     const safePropertyName = propertyName.replace(/[^a-z0-9_-]/gi, '');
-    const safeFileName = file.name.replace(/[^a-z0-9_.-]/gi, ''); // Allow dots, underscores, and hyphens in filename
+    
+    const fileExtension = path.extname(file.name);
+    const uniqueFileName = `${uuidv4()}${fileExtension}`;
 
-    if (!safeModelId || !safeObjectId || !safePropertyName || !safeFileName) {
+    if (!safeModelId || !safeObjectId || !safePropertyName || !uniqueFileName) {
         return NextResponse.json({ error: 'Invalid characters in path components or filename.' }, { status: 400 });
     }
     
     const propertyUploadPath = path.join(UPLOADS_DIR, safeModelId, safeObjectId, safePropertyName);
     await ensureDirExists(propertyUploadPath);
 
-    const filePath = path.join(propertyUploadPath, safeFileName);
+    const filePath = path.join(propertyUploadPath, uniqueFileName);
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
     await fs.writeFile(filePath, buffer);
     console.log(`File saved to: ${filePath}`);
 
-    const publicUrl = `/uploads/${safeModelId}/${safeObjectId}/${safePropertyName}/${safeFileName}`;
+    const publicUrl = `/uploads/${safeModelId}/${safeObjectId}/${safePropertyName}/${uniqueFileName}`;
 
     return NextResponse.json({ success: true, url: publicUrl });
 
