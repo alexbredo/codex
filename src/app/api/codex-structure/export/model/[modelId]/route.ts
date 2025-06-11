@@ -67,19 +67,17 @@ export async function GET(request: Request, { params }: Params) {
     };
 
     // Fetch data objects for the model (active ones only)
-    const objectRows = await db.all('SELECT id, data, currentStateId, ownerId, createdAt, updatedAt, isDeleted, deletedAt FROM data_objects WHERE model_id = ? AND (isDeleted = 0 OR isDeleted IS NULL)', modelId);
+    // Removed direct selection of createdAt, updatedAt from here
+    const objectRows = await db.all('SELECT id, data, currentStateId, ownerId, isDeleted, deletedAt FROM data_objects WHERE model_id = ? AND (isDeleted = 0 OR isDeleted IS NULL)', modelId);
     const dataObjects: DataObject[] = objectRows.map(row => {
-      const parsedData = JSON.parse(row.data);
+      const parsedData = JSON.parse(row.data); // createdAt and updatedAt are inside this blob
       return {
         id: row.id,
         currentStateId: row.currentStateId,
         ownerId: row.ownerId,
-        // createdAt and updatedAt are inside the JSON blob, no need to map row.createdAt/updatedAt directly here
-        // unless we decide to change how they are stored/retrieved.
-        // The ...parsedData will correctly bring them if they exist in the blob.
-        ...parsedData,
-        isDeleted: false, // Explicitly set as we are fetching non-deleted items
+        isDeleted: false, 
         deletedAt: null,
+        ...parsedData, // This will spread createdAt, updatedAt, and other properties from the JSON
       };
     });
 
