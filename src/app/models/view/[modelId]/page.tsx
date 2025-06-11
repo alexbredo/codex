@@ -1,11 +1,12 @@
 
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import { useData } from '@/contexts/data-context';
 import { useAuth } from '@/contexts/auth-context';
-import type { Model, Property, WorkflowWithDetails, ValidationRuleset } from '@/lib/types';
+import type { Model, Property, WorkflowWithDetails, ValidationRuleset, StructuralChangelogEntry, PaginatedStructuralChangelogResponse } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -35,16 +36,26 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import {
+  Dialog,
+  DialogContent as DetailsDialogContent,
+  DialogHeader as DetailsDialogHeader,
+  DialogTitle as DetailsDialogTitle,
+  DialogDescription as DetailsDialogDescription,
+} from "@/components/ui/dialog";
+import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Edit, Trash2, DownloadCloud, PlusCircle, Loader2, DatabaseZap, FileText, ListFilter, CheckCircle, ShieldCheck, AlertTriangle, Settings2, Workflow as WorkflowIconLucide } from 'lucide-react';
+import { ArrowLeft, Edit, Trash2, DownloadCloud, PlusCircle, Loader2, DatabaseZap, FileText, ListFilter, CheckCircle, ShieldCheck, AlertTriangle, Settings2, Workflow as WorkflowIconLucide, History as HistoryIcon, User as UserIcon, Layers, Edit2 as Edit2Icon } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
 import { withAuth } from '@/contexts/auth-context';
+import { format } from 'date-fns';
+import ReactJson from 'react18-json-view';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 function ViewModelPageInternal() {
   const router = useRouter();
@@ -56,14 +67,19 @@ function ViewModelPageInternal() {
     getWorkflowById,
     validationRulesets,
     isReady: dataContextIsReady,
+    formatApiError,
   } = useData();
-  const { user, isLoading: authIsLoading } = useAuth(); // Not directly used for permissions here as withAuth handles it.
+  const { user, isLoading: authIsLoading } = useAuth();
   const { toast } = useToast();
 
   const [currentModel, setCurrentModel] = useState<Model | null>(null);
   const [workflow, setWorkflow] = useState<WorkflowWithDetails | null>(null);
   const [isLoadingPageData, setIsLoadingPageData] = useState(true);
   const [pageError, setPageError] = useState<string | null>(null);
+
+  // State for model-specific changelog
+  const [selectedEntryDetails, setSelectedEntryDetails] = useState<StructuralChangelogEntry | null>(null);
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
 
   useEffect(() => {
     if (dataContextIsReady && modelId) {
@@ -82,6 +98,48 @@ function ViewModelPageInternal() {
       setIsLoadingPageData(false);
     }
   }, [modelId, getModelById, getWorkflowById, dataContextIsReady, toast]);
+
+  const fetchChangelogForModel = async (): Promise<PaginatedStructuralChangelogResponse> => {
+    const response = await fetch(`/api/structural-changelog?entityId=${modelId}&entityType=Model&limit=20`); // Fetch last 20 for this model
+    if (!response.ok) {
+      const errorMsg = await formatApiError(response, 'Failed to fetch structural changelog for this model');
+      throw new Error(errorMsg);
+    }
+    return response.json();
+  };
+
+  const { data: changelogData, isLoading: isLoadingChangelog, error: changelogError, refetch: refetchChangelog } = useQuery<PaginatedStructuralChangelogResponse, Error>({
+    queryKey: ['structuralChangelog', modelId, 'Model'],
+    queryFn: fetchChangelogForModel,
+    enabled: !!currentModel && dataContextIsReady, // Only fetch if model is loaded
+  });
+  
+  const modelChangelogEntries = changelogData?.entries || [];
+
+  const renderChangeDetailsSummary = (details: StructuralChangelogEntry['changes']) => {
+    if (!details) return <span className="text-muted-foreground italic">No specific changes logged.</span>;
+    if (Array.isArray(details)) { // Usually for UPDATE
+      return (
+        <ul className="list-disc pl-4 space-y-0.5 text-xs">
+          {details.slice(0, 3).map((change, index) => ( // Show first 3 changes
+            <li key={index} className="truncate" title={`${change.field}: ${String(change.oldValue)} -> ${String(change.newValue)}`}>
+              <strong>{change.field}:</strong>
+              {change.oldValue !== undefined && (
+                <span className="text-destructive line-through mx-1">{String(change.oldValue).substring(0,15)}{String(change.oldValue).length > 15 ? '...' : ''}</span>
+              )}
+              {' -> '}
+              <span className="text-green-600">{String(change.newValue).substring(0,15)}{String(change.newValue).length > 15 ? '...' : ''}</span>
+            </li>
+          ))}
+          {details.length > 3 && <li>...and {details.length - 3} more.</li>}
+        </ul>
+      );
+    } else if (typeof details === 'object') { // Usually for CREATE or DELETE (snapshot)
+      return <span className="text-xs italic">Snapshot taken. Click view for details.</span>;
+    }
+    return <span className="text-xs italic">{String(details).substring(0,50)}{String(details).length > 50 ? '...' : ''}</span>;
+  };
+
 
   const handleDelete = async () => {
     if (!currentModel) return;
@@ -295,7 +353,114 @@ function ViewModelPageInternal() {
           )}
         </CardContent>
       </Card>
+
+      <Card className="shadow-lg">
+        <CardHeader>
+          <CardTitle className="text-xl flex items-center">
+            <HistoryIcon className="mr-2 h-5 w-5 text-primary" />
+            Model Change History (Last 20)
+          </CardTitle>
+          <CardDescription>Tracks structural changes made to this model.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isLoadingChangelog && (
+            <div className="flex items-center justify-center py-6">
+              <Loader2 className="h-6 w-6 animate-spin text-primary mr-2" />
+              <p className="text-muted-foreground">Loading changelog...</p>
+            </div>
+          )}
+          {changelogError && !isLoadingChangelog && (
+            <div className="text-destructive text-center py-6">
+              <AlertTriangle className="h-8 w-8 mx-auto mb-2" />
+              <p>Error loading model changelog: {changelogError.message}</p>
+            </div>
+          )}
+          {!isLoadingChangelog && !changelogError && modelChangelogEntries.length === 0 && (
+            <p className="text-muted-foreground text-center py-6">No structural changes recorded for this model yet.</p>
+          )}
+          {!isLoadingChangelog && !changelogError && modelChangelogEntries.length > 0 && (
+            <ScrollArea className="max-h-[400px] pr-3">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[160px]">Timestamp</TableHead>
+                    <TableHead className="w-[120px]">User</TableHead>
+                    <TableHead className="w-[100px]">Action</TableHead>
+                    <TableHead>Changes Summary</TableHead>
+                    <TableHead className="w-[80px] text-right">Details</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {modelChangelogEntries.map((entry) => (
+                    <TableRow key={entry.id}>
+                      <TableCell className="text-xs">{format(new Date(entry.timestamp), 'PPpp')}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-xs flex items-center gap-1">
+                          <UserIcon className="h-3 w-3" /> {entry.username || 'System'}
+                        </Badge>
+                      </TableCell>
+                       <TableCell>
+                        <Badge variant={entry.action === 'DELETE' ? 'destructive' : entry.action === 'CREATE' ? 'default' : 'outline'} className="capitalize">
+                           <Edit2Icon className="mr-1 h-3 w-3" /> {entry.action.toLowerCase()}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-xs max-w-md truncate">{renderChangeDetailsSummary(entry.changes)}</TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedEntryDetails(entry);
+                            setIsDetailsModalOpen(true);
+                          }}
+                        >
+                          View
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </ScrollArea>
+          )}
+           {changelogData && changelogData.totalEntries > 20 && (
+             <p className="text-xs text-muted-foreground mt-2 text-center">
+                Showing last 20 changes. For the full history, visit the <Link href="/admin/structural-changelog" className="text-primary hover:underline">main Structural Changelog page</Link>.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      <DetailsDialog open={isDetailsModalOpen} onOpenChange={setIsDetailsModalOpen}>
+        <DetailsDialogContent className="max-w-3xl">
+          <DetailsDialogHeader>
+            <DetailsDialogTitle>Change Details</DetailsDialogTitle>
+            {selectedEntryDetails && (
+                 <DetailsDialogDescription>
+                    Details for {selectedEntryDetails.action} action on {selectedEntryDetails.entityType} <span className="font-mono text-xs">{selectedEntryDetails.entityName || selectedEntryDetails.entityId}</span> by {selectedEntryDetails.username} at {format(new Date(selectedEntryDetails.timestamp), 'PPpp')}.
+                </DetailsDialogDescription>
+            )}
+          </DetailsDialogHeader>
+          {selectedEntryDetails && (
+            <ScrollArea className="max-h-[60vh] mt-4 bg-muted/50 p-4 rounded-md border">
+              <ReactJson
+                src={selectedEntryDetails.changes}
+                name={false}
+                collapsed={1}
+                displayObjectSize={false}
+                displayDataTypes={false}
+                enableClipboard={false}
+                theme="rjv-default" 
+                style={{ fontSize: '0.8rem', backgroundColor: 'transparent' }}
+              />
+            </ScrollArea>
+          )}
+        </DetailsDialogContent>
+      </DetailsDialog>
+
     </div>
   );
 }
 export default withAuth(ViewModelPageInternal, ['administrator']);
+
+```)
