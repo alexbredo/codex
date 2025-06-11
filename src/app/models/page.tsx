@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react'; // Added useRef
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog,
@@ -14,6 +14,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog"; // Added Dialog components
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -25,7 +26,7 @@ import {
 import { useData } from '@/contexts/data-context';
 import { withAuth } from '@/contexts/auth-context';
 import type { Model } from '@/lib/types';
-import { PlusCircle, Edit, Trash2, Eye, DatabaseZap, ListChecks, Search, Info, Code2, StickyNote, FolderOpen, Loader2, RefreshCw, ShieldCheck, DownloadCloud } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, Eye, DatabaseZap, ListChecks, Search, Info, Code2, StickyNote, FolderOpen, Loader2, RefreshCw, ShieldCheck, DownloadCloud, UploadCloud } from 'lucide-react'; // Added UploadCloud
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useToast } from "@/hooks/use-toast";
@@ -38,14 +39,22 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Label } from '@/components/ui/label'; // Added Label
 
 function ModelsPageInternal() {
-  const { models, deleteModel, validationRulesets, isReady: dataContextIsReady, fetchData } = useData();
+  const { models, deleteModel, validationRulesets, isReady: dataContextIsReady, fetchData, formatApiError } = useData();
   const { toast } = useToast();
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState('');
   const [openAccordionItems, setOpenAccordionItems] = useState<string[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // State for Import Dialog
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
 
   useEffect(() => {
     fetchData('Navigated to Model Admin');
@@ -116,6 +125,56 @@ function ModelsPageInternal() {
     }
   };
 
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files && event.target.files[0]) {
+      setSelectedFile(event.target.files[0]);
+    } else {
+      setSelectedFile(null);
+    }
+  };
+
+  const handleImportSubmit = async () => {
+    if (!selectedFile) {
+      toast({ variant: "destructive", title: "No File Selected", description: "Please select a JSON file to import." });
+      return;
+    }
+    setIsImporting(true);
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const fileContent = e.target?.result as string;
+      try {
+        const response = await fetch('/api/codex-structure/import/model', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }, // Sending content as JSON string
+          body: JSON.stringify({ fileContent }), // Wrap content in an object
+        });
+
+        const responseData = await response.json();
+
+        if (!response.ok) {
+          const errorMsg = await formatApiError(response, responseData.error || 'Import failed');
+          throw new Error(errorMsg);
+        }
+
+        toast({ title: "Import Started", description: responseData.message || "File received by server. Further processing to be implemented." });
+        setIsImportDialogOpen(false);
+        setSelectedFile(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        await fetchData('After Model Import Attempt'); // Refresh data in case future steps modify it
+      } catch (error: any) {
+        console.error("Import Error:", error);
+        toast({ variant: "destructive", title: "Import Error", description: error.message || "Failed to import model." });
+      } finally {
+        setIsImporting(false);
+      }
+    };
+    reader.onerror = () => {
+      toast({ variant: "destructive", title: "File Read Error", description: "Could not read the selected file." });
+      setIsImporting(false);
+    };
+    reader.readAsText(selectedFile);
+  };
+
 
   if (!dataContextIsReady) {
     return (
@@ -148,6 +207,55 @@ function ModelsPageInternal() {
               {isRefreshing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
               {isRefreshing ? "Refreshing..." : "Refresh"}
             </Button>
+            <Dialog open={isImportDialogOpen} onOpenChange={(open) => {
+                setIsImportDialogOpen(open);
+                if (!open) {
+                    setSelectedFile(null);
+                    if (fileInputRef.current) fileInputRef.current.value = "";
+                }
+            }}>
+                <DialogTrigger asChild>
+                    <Button variant="outline">
+                        <UploadCloud className="mr-2 h-4 w-4" /> Import Model
+                    </Button>
+                </DialogTrigger>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Import Model from JSON</DialogTitle>
+                        <DialogDescription>
+                            Select a JSON file previously exported from CodexStructure. This will attempt to import the model structure and its data.
+                            Ensure the file format is correct.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="model-json-file" className="text-right col-span-1">
+                                JSON File
+                            </Label>
+                            <Input
+                                id="model-json-file"
+                                type="file"
+                                accept=".json"
+                                onChange={handleFileSelect}
+                                ref={fileInputRef}
+                                className="col-span-3"
+                            />
+                        </div>
+                        {selectedFile && (
+                            <p className="text-xs text-muted-foreground col-span-4 text-center">Selected: {selectedFile.name}</p>
+                        )}
+                    </div>
+                    <DialogFooter>
+                        <DialogClose asChild>
+                            <Button type="button" variant="outline" disabled={isImporting}>Cancel</Button>
+                        </DialogClose>
+                        <Button type="button" onClick={handleImportSubmit} disabled={!selectedFile || isImporting}>
+                            {isImporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UploadCloud className="mr-2 h-4 w-4" />}
+                            {isImporting ? "Importing..." : "Import"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
             <Button onClick={handleCreateNew} className="bg-accent text-accent-foreground hover:bg-accent/90">
                 <PlusCircle className="mr-2 h-4 w-4" /> Create Model
             </Button>
@@ -331,3 +439,4 @@ function ModelsPageInternal() {
 }
 
 export default withAuth(ModelsPageInternal, ['administrator']);
+
