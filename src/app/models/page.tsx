@@ -25,8 +25,8 @@ import {
 } from "@/components/ui/accordion";
 import { useData } from '@/contexts/data-context';
 import { withAuth } from '@/contexts/auth-context';
-import type { Model } from '@/lib/types';
-import { PlusCircle, Edit, Trash2, Eye, DatabaseZap, ListChecks, Search, Info, Code2, StickyNote, FolderOpen, Loader2, RefreshCw, ShieldCheck, DownloadCloud, UploadCloud } from 'lucide-react';
+import type { Model, ValidationRuleset } from '@/lib/types';
+import { PlusCircle, Eye, DatabaseZap, ListChecks, Search, Info, Code2, StickyNote, FolderOpen, Loader2, RefreshCw, ShieldCheck, DownloadCloud, UploadCloud, Settings2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useToast } from "@/hooks/use-toast";
@@ -51,7 +51,7 @@ function ModelsPageInternal() {
 
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [fileStringContent, setFileStringContent] = useState<string | null>(null); // For JSON preview
+  const [fileStringContent, setFileStringContent] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -100,19 +100,6 @@ function ModelsPageInternal() {
     router.push('/models/new');
   };
 
-  const handleEdit = (model: Model) => {
-    router.push(`/models/edit/${model.id}`);
-  };
-
-  const handleDelete = async (modelId: string, modelName: string) => {
-    try {
-      await deleteModel(modelId);
-      toast({ title: "Model Deleted", description: `Model "${modelName}" and its associated data have been successfully deleted.` });
-    } catch (error: any) {
-       toast({ variant: "destructive", title: "Error Deleting Model", description: error.message || "Failed to delete model." });
-    }
-  };
-
   const handleRefreshData = async () => {
     setIsRefreshing(true);
     try {
@@ -126,7 +113,7 @@ function ModelsPageInternal() {
   };
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setFileStringContent(null); // Clear previous preview
+    setFileStringContent(null); 
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
       setSelectedFile(file);
@@ -145,12 +132,11 @@ function ModelsPageInternal() {
   };
 
   const handleImportSubmit = async () => {
-    if (!selectedFile || !fileStringContent) { // Also check fileStringContent
+    if (!selectedFile || !fileStringContent) { 
       toast({ variant: "destructive", title: "No File Selected", description: "Please select a JSON file to import." });
       return;
     }
     setIsImporting(true);
-    // File content is already in fileStringContent state
     try {
       const response = await fetch('/api/codex-structure/import/model', {
         method: 'POST',
@@ -357,10 +343,9 @@ function ModelsPageInternal() {
                           )}
                         </CardHeader>
                         <CardContent className="flex-grow">
-                          <h4 className="font-semibold mb-2 text-sm">Properties ({model.properties.length}):</h4>
-                          {model.properties.length > 0 ? (
-                            <ScrollArea className="h-24">
-                              <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
+                           {model.properties.length > 0 ? (
+                             <ScrollArea className="h-24">
+                               <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
                                 {model.properties.sort((a,b) => a.orderIndex - b.orderIndex).slice(0, 5).map((prop) => {
                                   let validationRuleName: string | undefined;
                                   if (prop.type === 'string' && prop.validationRulesetId) {
@@ -392,32 +377,6 @@ function ModelsPageInternal() {
                           )}
                         </CardContent>
                         <CardFooter className="grid grid-cols-2 gap-2 pt-4">
-                          <Button variant="outline" size="sm" onClick={() => handleEdit(model)} className="w-full col-span-1">
-                            <Edit className="mr-1 h-3 w-3" /> Edit
-                          </Button>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button variant="destructive" size="sm" className="w-full col-span-1">
-                                <Trash2 className="mr-1 h-3 w-3" /> Delete
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  This action cannot be undone. This will permanently delete the model
-                                  "{model.name}" and all its associated data objects.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => handleDelete(model.id, model.name)}>
-                                  Delete
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-
                           <Link href={`/data/${model.id}`} passHref legacyBehavior>
                             <a className="w-full col-span-1">
                               <Button variant="default" size="sm" className="w-full">
@@ -425,17 +384,10 @@ function ModelsPageInternal() {
                               </Button>
                             </a>
                           </Link>
-                          <Link href={`/api/codex-structure/export/model/${model.id}`} download passHref legacyBehavior>
+                          <Link href={`/models/view/${model.id}`} passHref legacyBehavior>
                             <a className="w-full col-span-1">
-                              <Button variant="secondary" size="sm" className="w-full">
-                                <DownloadCloud className="mr-1 h-3 w-3" /> Export
-                              </Button>
-                            </a>
-                          </Link>
-                          <Link href={`/data/${model.id}/new`} passHref legacyBehavior>
-                            <a className="w-full col-span-2">
-                              <Button variant="default" className="bg-accent text-accent-foreground hover:bg-accent/90 w-full" size="sm">
-                                <PlusCircle className="mr-1 h-3 w-3" /> New {model.name}
+                              <Button variant="outline" size="sm" className="w-full">
+                                <Settings2 className="mr-1 h-3 w-3" /> Manage Structure
                               </Button>
                             </a>
                           </Link>
@@ -454,5 +406,3 @@ function ModelsPageInternal() {
 }
 
 export default withAuth(ModelsPageInternal, ['administrator']);
-    
-    
