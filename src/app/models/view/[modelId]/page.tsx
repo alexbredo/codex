@@ -113,7 +113,7 @@ function ViewModelPageInternal() {
     queryFn: fetchChangelogForModel,
     enabled: !!currentModel && dataContextIsReady, // Only fetch if model is loaded
   });
-  
+
   const modelChangelogEntries = changelogData?.entries || [];
 
   const renderChangeDetailsSummary = (details: StructuralChangelogEntry['changes']) => {
@@ -450,7 +450,7 @@ function ViewModelPageInternal() {
                 displayObjectSize={false}
                 displayDataTypes={false}
                 enableClipboard={false}
-                theme="rjv-default" 
+                theme="rjv-default"
                 style={{ fontSize: '0.8rem', backgroundColor: 'transparent' }}
               />
             </ScrollArea>
@@ -462,5 +462,3 @@ function ViewModelPageInternal() {
   );
 }
 export default withAuth(ViewModelPageInternal, ['administrator']);
-
-```)
