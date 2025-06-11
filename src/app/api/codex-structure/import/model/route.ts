@@ -176,7 +176,19 @@ export async function POST(request: Request) {
     let importedObjectCount = 0;
     for (const obj of importedDataObjects) {
       const newObjectId = crypto.randomUUID(); // Generate new ID for data object
-      const { id: _originalObjId, createdAt, updatedAt, ownerId, currentStateId, ...dataPayload } = obj as any;
+      
+      // Destructure known top-level fields, custom properties go into `customProperties`
+      const { 
+        id: _originalObjId, // Ignored, newObjectId will be used
+        createdAt, 
+        updatedAt, 
+        ownerId, 
+        currentStateId, 
+        isDeleted: _importedIsDeleted, // Explicitly ignore if present at top level
+        deletedAt: _importedDeletedAt, // Explicitly ignore if present at top level
+        ...customProperties // This should contain the actual data properties
+      } = obj as any;
+
 
       let finalOwnerId = ownerId || null;
       if (finalOwnerId) {
@@ -201,11 +213,23 @@ export async function POST(request: Request) {
         finalCurrentStateId = null;
       }
       
-      const objectDataToStore = {
-        ...dataPayload,
-        createdAt: createdAt || currentTimestamp, // Preserve if exists, else use current
-        updatedAt: updatedAt || currentTimestamp, // Preserve if exists, else use current
-      };
+      // Construct the data to be stored in the JSON blob
+      let objectDataToStore: Record<string, any> = { ...customProperties };
+
+      // Handle a common case where properties might be incorrectly nested under a 'data' key in the import file
+      if (typeof (objectDataToStore as any).data === 'object' && (objectDataToStore as any).data !== null) {
+        console.log(`Detected nested 'data' field for original object ID ${_originalObjId}. Hoisting properties.`);
+        // Prioritize properties from the nested 'data' field, but allow other top-level custom fields if any
+        objectDataToStore = {
+          ...objectDataToStore, // Keep other top-level custom fields if any
+          ...(objectDataToStore as any).data, // Spread the nested data, overwriting if keys conflict
+        };
+        delete (objectDataToStore as any).data; // Remove the 'data' key itself after hoisting
+      }
+      
+      // Ensure createdAt and updatedAt are at the top level of the JSON blob
+      objectDataToStore.createdAt = createdAt || currentTimestamp;
+      objectDataToStore.updatedAt = updatedAt || currentTimestamp;
 
       await db.run(
         'INSERT INTO data_objects (id, model_id, data, currentStateId, ownerId, isDeleted, deletedAt) VALUES (?, ?, ?, ?, ?, 0, NULL)',
@@ -214,12 +238,14 @@ export async function POST(request: Request) {
       
       // Log Data Object Creation
       const dataObjectChangelogId = crypto.randomUUID();
+      const objectCreationSnapshot = { ...objectDataToStore }; // Snapshot of what was actually stored
+      delete objectCreationSnapshot.createdAt; 
+      delete objectCreationSnapshot.updatedAt;
+
       const objectCreationChangelogEvent: ChangelogEventData = {
         type: 'CREATE',
-        initialData: { ...objectDataToStore } 
+        initialData: objectCreationSnapshot,
       };
-      delete objectCreationChangelogEvent.initialData?.createdAt;
-      delete objectCreationChangelogEvent.initialData?.updatedAt;
 
       await db.run(
         'INSERT INTO data_object_changelog (id, dataObjectId, modelId, changedAt, changedByUserId, changeType, changes) VALUES (?, ?, ?, ?, ?, ?, ?)',
