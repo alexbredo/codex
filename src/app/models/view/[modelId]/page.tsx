@@ -36,11 +36,11 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import {
-  Dialog,
-  DialogContent as DetailsDialogContent,
-  DialogHeader as DetailsDialogHeader,
-  DialogTitle as DetailsDialogTitle,
-  DialogDescription as DetailsDialogDescription,
+  Dialog as DetailsDialog, // Aliased import
+  DialogContent as DetailsDialogContent, // Aliased import
+  DialogHeader as DetailsDialogHeader, // Aliased import
+  DialogTitle as DetailsDialogTitle, // Aliased import
+  DialogDescription as DetailsDialogDescription, // Aliased import
 } from "@/components/ui/dialog";
 import {
   Tooltip,
