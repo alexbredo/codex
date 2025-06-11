@@ -10,6 +10,8 @@ import AdaptiveFormField from './adaptive-form-field';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/contexts/auth-context'; // For getting current user role
+import { useState } from 'react';
+import { useToast } from "@/hooks/use-toast";
 
 // User type for allUsers prop
 interface User {
@@ -47,6 +49,8 @@ export default function ObjectForm({
   currentUser,
 }: ObjectFormProps) {
   const formContext = existingObject ? 'edit' : 'create';
+  const [isUploadingFiles, setIsUploadingFiles] = useState(false);
+  const { toast } = useToast();
 
   let availableStatesForSelect: Array<{ value: string; label: string; isCurrent: boolean }> = [];
   let currentStateName: string | undefined;
@@ -79,9 +83,62 @@ export default function ObjectForm({
 
   const isAdmin = currentUser?.role === 'administrator';
 
+  const handleFormSubmit = async (values: Record<string, any>) => {
+    setIsUploadingFiles(true);
+    let updatedValues = { ...values };
+
+    try {
+      for (const property of model.properties) {
+        const fieldValue = form.getValues(property.name);
+
+        if ((property.type === 'image' || property.type === 'fileAttachment') && fieldValue instanceof File) {
+          const formData = new FormData();
+          formData.append('file', fieldValue);
+          formData.append('modelId', model.id);
+          if (formObjectId) {
+            formData.append('objectId', formObjectId);
+          } else if (existingObject?.id) {
+            formData.append('objectId', existingObject.id);
+          } else {
+             // If no objectId, create a dummy one for upload path for new objects
+            // This objectId will be replaced by the actual ID upon object creation in the backend
+            const tempObjectId = `temp-${Date.now()}`;
+            formData.append('objectId', tempObjectId);
+          }
+          formData.append('propertyName', property.name);
+
+          const uploadEndpoint = property.type === 'image' ? '/api/codex-structure/upload-image' : '/api/codex-structure/upload-file';
+          
+          const response = await fetch(uploadEndpoint, {
+            method: 'POST',
+            body: formData,
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(`File upload failed for ${property.name}: ${errorData.error || response.statusText}`);
+          }
+
+          const result = await response.json();
+          updatedValues[property.name] = result.url; // Replace File object with URL
+        }
+      }
+      onSubmit(updatedValues);
+    } catch (error: any) {
+      console.error("Error during file upload or form submission:", error);
+      toast({
+        title: "Submission Failed",
+        description: error.message || "An unexpected error occurred during file processing.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploadingFiles(false);
+    }
+  };
+
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+      <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-6">
         <ScrollArea className="max-h-[60vh] pr-3">
             <div className="space-y-4 ">
                 {formContext === 'edit' && currentWorkflow && existingObject && (
@@ -177,11 +234,11 @@ export default function ObjectForm({
             </div>
         </ScrollArea>
         <div className="flex justify-end space-x-2 pt-4 border-t">
-          <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
+          <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading || isUploadingFiles}>
             Cancel
           </Button>
-          <Button type="submit" disabled={isLoading || form.formState.isSubmitting} className="bg-primary hover:bg-primary/90">
-            {isLoading || form.formState.isSubmitting ? 'Saving...' : (existingObject ? `Update ${model.name}` : `Create ${model.name}`)}
+          <Button type="submit" disabled={isLoading || form.formState.isSubmitting || isUploadingFiles} className="bg-primary hover:bg-primary/90">
+            {isLoading || form.formState.isSubmitting || isUploadingFiles ? (isUploadingFiles ? 'Uploading Files...' : 'Saving...') : (existingObject ? `Update ${model.name}` : `Create ${model.name}`)}
           </Button>
         </div>
       </form>

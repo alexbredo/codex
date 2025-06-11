@@ -17,7 +17,7 @@ import type { Property, ValidationRuleset, Model } from '@/lib/types';
 import { useData } from '@/contexts/data-context';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
-import { CalendarIcon, ShieldCheck, ChevronsUpDown, Check, Search as SearchIcon } from 'lucide-react'; // Added SearchIcon
+import { CalendarIcon, ShieldCheck, ChevronsUpDown, Check, Search as SearchIcon, Paperclip } from 'lucide-react'; // Added Paperclip icon
 import { Calendar } from '@/components/ui/calendar';
 import { cn, getObjectDisplayValue } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -55,8 +55,9 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
   const { models: allModels, getModelById, getObjectsByModelId, getAllObjects, validationRulesets } = useData();
   const fieldName = property.name as FieldPath<TFieldValues>;
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
-  const [currentFile, setCurrentFile] = useState<File | null>(null);
-  
+  const [currentImageFile, setCurrentImageFile] = useState<File | null>(null); // For image type
+  const [currentFileAttachment, setCurrentFileAttachment] = useState<File | null>(null); // For fileAttachment type
+
   // State for custom Combobox
   const [customPopoverOpen, setCustomPopoverOpen] = useState(false);
   const [customSearchValue, setCustomSearchValue] = useState("");
@@ -103,6 +104,11 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
         setImagePreviewUrl(fieldValue);
       }
     }
+    if (formContext === 'edit' && property.type === 'fileAttachment' && typeof fieldValue === 'string' && fieldValue) {
+      // For file attachments, if it's an existing file path, we might display its name
+      // No actual file object exists for preview, just the path string.
+      // setCurrentFileAttachment(null); // Clear any potentially selected new file
+    }
   }, [formContext, property.type, fieldName, form]);
 
   useEffect(() => {
@@ -144,8 +150,8 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
               ref={controllerField.ref}
               onChange={(e) => {
                 const file = e.target.files?.[0];
-                controllerField.onChange(file || null);
-                setCurrentFile(file || null);
+                controllerField.onChange(file || null); // Pass the File object
+                setCurrentImageFile(file || null); // Store for local preview logic
                 if (file) {
                   const reader = new FileReader();
                   reader.onloadend = () => {
@@ -163,9 +169,31 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
               </div>
             )}
             {formContext === 'edit' && typeof controllerField.value === 'string' && controllerField.value && !imagePreviewUrl && (
-              <FormDescription>Current image: <a href={controllerField.value} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{controllerField.value}</a></FormDescription>
+              <FormDescription>Current image: <a href={controllerField.value} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{controllerField.value.split('/').pop()}</a></FormDescription>
             )}
-            {!controllerField.value && !currentFile && property.required && <FormMessage>This image is required.</FormMessage>}
+            {!controllerField.value && !currentImageFile && property.required && <FormMessage>This image is required.</FormMessage>}
+          </div>
+        );
+      case 'fileAttachment':
+        const currentFileValue = controllerField.value; // This would be the path string for existing files, or a File object for new selection
+
+        return (
+          <div className="space-y-2">
+            <Input
+              type="file"
+              ref={controllerField.ref}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                controllerField.onChange(file || null); // Pass the File object
+                setCurrentFileAttachment(file || null); // Store for local display logic
+              }}
+            />
+            {currentFileAttachment ? (
+              <FormDescription>Selected file: <Paperclip className="inline-block h-4 w-4 mr-1" /> {currentFileAttachment.name}</FormDescription>
+            ) : (formContext === 'edit' && typeof currentFileValue === 'string' && currentFileValue && (
+              <FormDescription>Current file: <Paperclip className="inline-block h-4 w-4 mr-1" /> <a href={currentFileValue} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{currentFileValue.split('/').pop()}</a></FormDescription>
+            ))}
+            {!controllerField.value && !currentFileAttachment && property.required && <FormMessage>This file is required.</FormMessage>}
           </div>
         );
       case 'number':
@@ -205,11 +233,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
             <PopoverTrigger asChild>
               <Button
                 variant={"outline"}
-                className={cn(
-                  "w-full justify-start text-left font-normal",
-                  !controllerField.value && !fieldIsDisabled && "text-muted-foreground",
-                  fieldIsDisabled && "cursor-not-allowed opacity-70"
-                )}
+                className={cn("w-full justify-start text-left font-normal", !controllerField.value && !fieldIsDisabled && "text-muted-foreground", fieldIsDisabled && "cursor-not-allowed opacity-70")}
                 disabled={fieldIsDisabled}
               >
                 <CalendarIcon className="mr-2 h-4 w-4" />
@@ -284,10 +308,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
                   )}
                    <div
                       key={INTERNAL_NONE_SELECT_VALUE}
-                      className={cn(
-                        "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground",
-                        (controllerField.value === "" || !controllerField.value) && "bg-accent text-accent-foreground"
-                      )}
+                      className={cn("relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground", (controllerField.value === "" || !controllerField.value) && "bg-accent text-accent-foreground")}
                       onClick={() => {
                         controllerField.onChange(""); 
                         setCustomPopoverOpen(false);
@@ -300,10 +321,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
                   {filteredCustomOptions.map((option) => (
                     <div
                       key={option.value}
-                      className={cn(
-                        "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground",
-                        controllerField.value === option.value && "bg-accent text-accent-foreground"
-                      )}
+                      className={cn("relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground", controllerField.value === option.value && "bg-accent text-accent-foreground")}
                       onClick={() => {
                         controllerField.onChange(option.value);
                         setCustomPopoverOpen(false);
@@ -347,6 +365,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
       defaultValueForController = 0;
       break;
     case 'image':
+    case 'fileAttachment': // Also initialize file attachments to null
       defaultValueForController = null;
       break;
     case 'number':
