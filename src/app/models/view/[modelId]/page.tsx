@@ -36,11 +36,11 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import {
-  Dialog as DetailsDialog, // Aliased import
-  DialogContent as DetailsDialogContent, // Aliased import
-  DialogHeader as DetailsDialogHeader, // Aliased import
-  DialogTitle as DetailsDialogTitle, // Aliased import
-  DialogDescription as DetailsDialogDescription, // Aliased import
+  Dialog as DetailsDialog,
+  DialogContent as DetailsDialogContent,
+  DialogHeader as DetailsDialogHeader,
+  DialogTitle as DetailsDialogTitle,
+  DialogDescription as DetailsDialogDescription,
 } from "@/components/ui/dialog";
 import {
   Tooltip,
@@ -121,16 +121,21 @@ function ViewModelPageInternal() {
     if (Array.isArray(details)) { // Usually for UPDATE
       return (
         <ul className="list-disc pl-4 space-y-0.5 text-xs">
-          {details.slice(0, 3).map((change, index) => ( // Show first 3 changes
-            <li key={index} className="truncate" title={`${change.field}: ${String(change.oldValue)} -> ${String(change.newValue)}`}>
-              <strong>{change.field}:</strong>
-              {change.oldValue !== undefined && (
-                <span className="text-destructive line-through mx-1">{String(change.oldValue).substring(0,15)}{String(change.oldValue).length > 15 ? '...' : ''}</span>
-              )}
-              {' -> '}
-              <span className="text-green-600">{String(change.newValue).substring(0,15)}{String(change.newValue).length > 15 ? '...' : ''}</span>
-            </li>
-          ))}
+          {details.slice(0, 3).map((change, index) => {
+            if (change.field === 'properties') {
+              return <li key={index}><strong>Properties:</strong> Modified. Click View for details.</li>;
+            }
+            return (
+              <li key={index} className="truncate" title={`${change.field}: ${String(change.oldValue)} -> ${String(change.newValue)}`}>
+                <strong>{change.field}:</strong>
+                {change.oldValue !== undefined && (
+                  <span className="text-destructive line-through mx-1">{String(change.oldValue).substring(0,15)}{String(change.oldValue).length > 15 ? '...' : ''}</span>
+                )}
+                {' -> '}
+                <span className="text-green-600">{String(change.newValue).substring(0,15)}{String(change.newValue).length > 15 ? '...' : ''}</span>
+              </li>
+            );
+          })}
           {details.length > 3 && <li>...and {details.length - 3} more.</li>}
         </ul>
       );

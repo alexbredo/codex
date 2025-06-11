@@ -111,16 +111,21 @@ function StructuralChangelogPageInternal() {
     if (Array.isArray(details)) { // Usually for UPDATE
       return (
         <ul className="list-disc pl-5 space-y-1 text-xs">
-          {details.map((change, index) => (
-            <li key={index}>
-              <strong>{change.field}:</strong>
-              {change.oldValue !== undefined && (
-                <span className="text-destructive line-through mx-1" title={JSON.stringify(change.oldValue, null, 2)}>{String(change.oldValue).substring(0,30)}{String(change.oldValue).length > 30 ? '...' : ''}</span>
-              )}
-              {' -> '}
-              <span className="text-green-600" title={JSON.stringify(change.newValue, null, 2)}>{String(change.newValue).substring(0,30)}{String(change.newValue).length > 30 ? '...' : ''}</span>
-            </li>
-          ))}
+          {details.map((change, index) => {
+            if (change.field === 'properties') {
+              return <li key={index}><strong>Properties:</strong> Modified. Click View for details.</li>;
+            }
+            return (
+              <li key={index}>
+                <strong>{change.field}:</strong>
+                {change.oldValue !== undefined && (
+                  <span className="text-destructive line-through mx-1" title={JSON.stringify(change.oldValue, null, 2)}>{String(change.oldValue).substring(0,30)}{String(change.oldValue).length > 30 ? '...' : ''}</span>
+                )}
+                {' -> '}
+                <span className="text-green-600" title={JSON.stringify(change.newValue, null, 2)}>{String(change.newValue).substring(0,30)}{String(change.newValue).length > 30 ? '...' : ''}</span>
+              </li>
+            );
+          })}
         </ul>
       );
     } else if (typeof details === 'object') { // Usually for CREATE or DELETE (snapshot)
@@ -325,7 +330,7 @@ function StructuralChangelogPageInternal() {
                 displayObjectSize={false}
                 displayDataTypes={false}
                 enableClipboard={false}
-                theme="rjv-default" // You might need to install a theme or style this
+                theme="rjv-default" 
                 style={{ fontSize: '0.8rem', backgroundColor: 'transparent' }}
               />
             </ScrollArea>
