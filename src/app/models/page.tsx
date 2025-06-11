@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect, useMemo, useRef } from 'react'; // Added useRef
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog,
@@ -14,7 +14,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog"; // Added Dialog components
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -26,7 +26,7 @@ import {
 import { useData } from '@/contexts/data-context';
 import { withAuth } from '@/contexts/auth-context';
 import type { Model } from '@/lib/types';
-import { PlusCircle, Edit, Trash2, Eye, DatabaseZap, ListChecks, Search, Info, Code2, StickyNote, FolderOpen, Loader2, RefreshCw, ShieldCheck, DownloadCloud, UploadCloud } from 'lucide-react'; // Added UploadCloud
+import { PlusCircle, Edit, Trash2, Eye, DatabaseZap, ListChecks, Search, Info, Code2, StickyNote, FolderOpen, Loader2, RefreshCw, ShieldCheck, DownloadCloud, UploadCloud } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useToast } from "@/hooks/use-toast";
@@ -39,7 +39,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Label } from '@/components/ui/label'; // Added Label
+import { Label } from '@/components/ui/label';
 
 function ModelsPageInternal() {
   const { models, deleteModel, validationRulesets, isReady: dataContextIsReady, fetchData, formatApiError } = useData();
@@ -49,9 +49,9 @@ function ModelsPageInternal() {
   const [openAccordionItems, setOpenAccordionItems] = useState<string[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // State for Import Dialog
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [fileStringContent, setFileStringContent] = useState<string | null>(null); // For JSON preview
   const [isImporting, setIsImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -126,53 +126,57 @@ function ModelsPageInternal() {
   };
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setFileStringContent(null); // Clear previous preview
     if (event.target.files && event.target.files[0]) {
-      setSelectedFile(event.target.files[0]);
+      const file = event.target.files[0];
+      setSelectedFile(file);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setFileStringContent(e.target?.result as string);
+      };
+      reader.onerror = () => {
+        toast({ variant: "destructive", title: "File Read Error", description: "Could not read the selected file for preview." });
+        setFileStringContent("Error: Could not read file content.");
+      };
+      reader.readAsText(file);
     } else {
       setSelectedFile(null);
     }
   };
 
   const handleImportSubmit = async () => {
-    if (!selectedFile) {
+    if (!selectedFile || !fileStringContent) { // Also check fileStringContent
       toast({ variant: "destructive", title: "No File Selected", description: "Please select a JSON file to import." });
       return;
     }
     setIsImporting(true);
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const fileContent = e.target?.result as string;
-      try {
-        const response = await fetch('/api/codex-structure/import/model', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' }, // Sending content as JSON string
-          body: JSON.stringify({ fileContent }), // Wrap content in an object
-        });
+    // File content is already in fileStringContent state
+    try {
+      const response = await fetch('/api/codex-structure/import/model', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileContent: fileStringContent }),
+      });
 
-        const responseData = await response.json();
+      const responseData = await response.json();
 
-        if (!response.ok) {
-          const errorMsg = await formatApiError(response, responseData.error || 'Import failed');
-          throw new Error(errorMsg);
-        }
-
-        toast({ title: "Import Started", description: responseData.message || "File received by server. Further processing to be implemented." });
-        setIsImportDialogOpen(false);
-        setSelectedFile(null);
-        if (fileInputRef.current) fileInputRef.current.value = "";
-        await fetchData('After Model Import Attempt'); // Refresh data in case future steps modify it
-      } catch (error: any) {
-        console.error("Import Error:", error);
-        toast({ variant: "destructive", title: "Import Error", description: error.message || "Failed to import model." });
-      } finally {
-        setIsImporting(false);
+      if (!response.ok) {
+        const errorMsg = await formatApiError(response, responseData.error || 'Import failed');
+        throw new Error(errorMsg);
       }
-    };
-    reader.onerror = () => {
-      toast({ variant: "destructive", title: "File Read Error", description: "Could not read the selected file." });
+
+      toast({ title: "Import Submitted", description: responseData.message || "File received by server. Further processing to be implemented." });
+      setIsImportDialogOpen(false);
+      setSelectedFile(null);
+      setFileStringContent(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      await fetchData('After Model Import Attempt');
+    } catch (error: any) {
+      console.error("Import Error:", error);
+      toast({ variant: "destructive", title: "Import Error", description: error.message || "Failed to import model." });
+    } finally {
       setIsImporting(false);
-    };
-    reader.readAsText(selectedFile);
+    }
   };
 
 
@@ -211,6 +215,7 @@ function ModelsPageInternal() {
                 setIsImportDialogOpen(open);
                 if (!open) {
                     setSelectedFile(null);
+                    setFileStringContent(null);
                     if (fileInputRef.current) fileInputRef.current.value = "";
                 }
             }}>
@@ -219,12 +224,12 @@ function ModelsPageInternal() {
                         <UploadCloud className="mr-2 h-4 w-4" /> Import Model
                     </Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent className="sm:max-w-xl">
                     <DialogHeader>
                         <DialogTitle>Import Model from JSON</DialogTitle>
                         <DialogDescription>
                             Select a JSON file previously exported from CodexStructure. This will attempt to import the model structure and its data.
-                            Ensure the file format is correct.
+                            Ensure the file format is correct. The file preview below should look like valid JSON.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
@@ -243,6 +248,16 @@ function ModelsPageInternal() {
                         </div>
                         {selectedFile && (
                             <p className="text-xs text-muted-foreground col-span-4 text-center">Selected: {selectedFile.name}</p>
+                        )}
+                        {fileStringContent && (
+                            <div className="mt-4 col-span-4">
+                                <Label className="text-sm font-medium">File Preview:</Label>
+                                <ScrollArea className="h-48 mt-1 rounded-md border p-2 bg-muted/50">
+                                    <pre className="text-xs whitespace-pre-wrap break-all">
+                                        {fileStringContent}
+                                    </pre>
+                                </ScrollArea>
+                            </div>
                         )}
                     </div>
                     <DialogFooter>
@@ -291,7 +306,7 @@ function ModelsPageInternal() {
       </Accordion>
 
 
-      {sortedNamespaces.length === 0 && models.length === 0 ? ( 
+      {sortedNamespaces.length === 0 && models.length === 0 ? (
          <Card className="col-span-full text-center py-12">
           <CardContent>
             <DatabaseZap size={48} className="mx-auto text-muted-foreground mb-4" />
@@ -402,7 +417,7 @@ function ModelsPageInternal() {
                               </AlertDialogFooter>
                             </AlertDialogContent>
                           </AlertDialog>
-                          
+
                           <Link href={`/data/${model.id}`} passHref legacyBehavior>
                             <a className="w-full col-span-1">
                               <Button variant="default" size="sm" className="w-full">
@@ -439,4 +454,5 @@ function ModelsPageInternal() {
 }
 
 export default withAuth(ModelsPageInternal, ['administrator']);
-
+    
+    
