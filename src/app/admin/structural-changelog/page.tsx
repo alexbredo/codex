@@ -38,6 +38,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 const ENTITY_TYPES = ['ModelGroup', 'Model', 'Workflow', 'ValidationRuleset'];
 const ACTION_TYPES = ['CREATE', 'UPDATE', 'DELETE'];
 
+const ALL_ENTITY_TYPES_VALUE = "__ALL_ENTITY_TYPES__";
+const ALL_ACTIONS_VALUE = "__ALL_ACTIONS__";
+const ALL_USERS_VALUE = "__ALL_USERS__";
+
 
 function StructuralChangelogPageInternal() {
   const { formatApiError, allUsers, isReady: dataContextReady } = useData();
@@ -153,27 +157,40 @@ function StructuralChangelogPageInternal() {
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <Input placeholder="Entity ID" value={filters.entityId} onChange={e => handleFilterChange('entityId', e.target.value)} />
-          <Select value={filters.entityType} onValueChange={val => handleFilterChange('entityType', val)}>
+          
+          <Select 
+            value={filters.entityType === '' ? ALL_ENTITY_TYPES_VALUE : filters.entityType} 
+            onValueChange={val => handleFilterChange('entityType', val === ALL_ENTITY_TYPES_VALUE ? "" : val)}
+          >
             <SelectTrigger><SelectValue placeholder="Entity Type..." /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Any Entity Type</SelectItem>
+              <SelectItem value={ALL_ENTITY_TYPES_VALUE}>Any Entity Type</SelectItem>
               {ENTITY_TYPES.map(et => <SelectItem key={et} value={et}>{et}</SelectItem>)}
             </SelectContent>
           </Select>
-          <Select value={filters.action} onValueChange={val => handleFilterChange('action', val)}>
+
+          <Select 
+            value={filters.action === '' ? ALL_ACTIONS_VALUE : filters.action} 
+            onValueChange={val => handleFilterChange('action', val === ALL_ACTIONS_VALUE ? "" : val)}
+          >
             <SelectTrigger><SelectValue placeholder="Action Type..." /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Any Action</SelectItem>
+              <SelectItem value={ALL_ACTIONS_VALUE}>Any Action</SelectItem>
               {ACTION_TYPES.map(at => <SelectItem key={at} value={at}>{at}</SelectItem>)}
             </SelectContent>
           </Select>
-          <Select value={filters.userId} onValueChange={val => handleFilterChange('userId', val)}>
+
+          <Select 
+            value={filters.userId === '' ? ALL_USERS_VALUE : filters.userId} 
+            onValueChange={val => handleFilterChange('userId', val === ALL_USERS_VALUE ? "" : val)}
+          >
             <SelectTrigger><SelectValue placeholder="User..." /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Any User</SelectItem>
+              <SelectItem value={ALL_USERS_VALUE}>Any User</SelectItem>
               {allUsers.map(user => <SelectItem key={user.id} value={user.id}>{user.username}</SelectItem>)}
             </SelectContent>
           </Select>
+
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="outline" className="w-full justify-start text-left font-normal">
