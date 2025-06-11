@@ -182,3 +182,9 @@ export interface PaginatedStructuralChangelogResponse {
   totalPages: number;
   currentPage: number;
 }
+
+// Type for Model Export
+export interface ExportedModelBundle {
+  model: Model;
+  dataObjects: DataObject[];
+}

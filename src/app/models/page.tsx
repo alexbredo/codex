@@ -25,7 +25,7 @@ import {
 import { useData } from '@/contexts/data-context';
 import { withAuth } from '@/contexts/auth-context';
 import type { Model } from '@/lib/types';
-import { PlusCircle, Edit, Trash2, Eye, DatabaseZap, ListChecks, Search, Info, Code2, StickyNote, FolderOpen, Loader2, RefreshCw, ShieldCheck } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, Eye, DatabaseZap, ListChecks, Search, Info, Code2, StickyNote, FolderOpen, Loader2, RefreshCw, ShieldCheck, DownloadCloud } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useToast } from "@/hooks/use-toast";
@@ -268,14 +268,13 @@ function ModelsPageInternal() {
                             <p className="text-sm text-muted-foreground">No properties defined.</p>
                           )}
                         </CardContent>
-                        <CardFooter className="grid grid-cols-3 gap-2 pt-4">
-                          <Button variant="outline" size="sm" onClick={() => handleEdit(model)} className="w-full">
+                        <CardFooter className="grid grid-cols-2 gap-2 pt-4">
+                          <Button variant="outline" size="sm" onClick={() => handleEdit(model)} className="w-full col-span-1">
                             <Edit className="mr-1 h-3 w-3" /> Edit
                           </Button>
-
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
-                              <Button variant="destructive" size="sm" className="w-full">
+                              <Button variant="destructive" size="sm" className="w-full col-span-1">
                                 <Trash2 className="mr-1 h-3 w-3" /> Delete
                               </Button>
                             </AlertDialogTrigger>
@@ -295,18 +294,25 @@ function ModelsPageInternal() {
                               </AlertDialogFooter>
                             </AlertDialogContent>
                           </AlertDialog>
-
+                          
                           <Link href={`/data/${model.id}`} passHref legacyBehavior>
-                            <a className="w-full">
+                            <a className="w-full col-span-1">
                               <Button variant="default" size="sm" className="w-full">
                                 <Eye className="mr-1 h-3 w-3" /> View Data
                               </Button>
                             </a>
                           </Link>
-                          <Link href={`/data/${model.id}/new`} passHref legacyBehavior>
-                            <a className="w-full col-span-3 mt-2">
+                          <Link href={`/api/codex-structure/export/model/${model.id}`} download passHref legacyBehavior>
+                            <a className="w-full col-span-1">
                               <Button variant="secondary" size="sm" className="w-full">
-                                <PlusCircle className="mr-1 h-3 w-3" /> Create New {model.name} Object
+                                <DownloadCloud className="mr-1 h-3 w-3" /> Export
+                              </Button>
+                            </a>
+                          </Link>
+                          <Link href={`/data/${model.id}/new`} passHref legacyBehavior>
+                            <a className="w-full col-span-2">
+                              <Button variant="default" className="bg-accent text-accent-foreground hover:bg-accent/90 w-full" size="sm">
+                                <PlusCircle className="mr-1 h-3 w-3" /> New {model.name}
                               </Button>
                             </a>
                           </Link>
