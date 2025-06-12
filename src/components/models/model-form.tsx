@@ -65,6 +65,10 @@ import { Calendar } from '@/components/ui/calendar';
 import { cn, getObjectDisplayValue } from '@/lib/utils';
 import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
 import { StarRatingInput } from '@/components/ui/star-rating-input';
+import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { modelGroupFormSchema } from '@/components/model-groups/model-group-form-schema'; // For new group dialog
+import type { ModelGroupFormValues } from '@/components/model-groups/model-group-form-schema'; // For new group dialog
+import { zodResolver } from '@hookform/resolvers/zod'; // For new group dialog
 
 
 interface ModelFormProps {
@@ -860,13 +864,41 @@ function PropertyFieldsWithDnd({
 
 
 export default function ModelForm({ form, onSubmit, onCancel, isLoading, existingModel }: ModelFormProps) {
-  const { models, modelGroups, workflows, validationRulesets, isReady: dataReady } = useData();
+  const { models, modelGroups, workflows, validationRulesets, isReady: dataReady, addModelGroup } = useData();
   const { toast } = useToast();
   const fieldArray = useFieldArray({
     control: form.control,
     name: 'properties',
     keyName: "id"
   });
+
+  const [isCreateGroupDialogOpen, setIsCreateGroupDialogOpen] = React.useState(false);
+  const [newlyCreatedGroupName, setNewlyCreatedGroupName] = React.useState<string | null>(null);
+
+  const newGroupForm = useForm<ModelGroupFormValues>({
+    resolver: zodResolver(modelGroupFormSchema),
+    defaultValues: { name: '', description: '' },
+  });
+
+  const handleCreateNewGroup = async (values: ModelGroupFormValues) => {
+    try {
+      const newGroup = await addModelGroup(values);
+      toast({ title: "Group Created", description: `Group "${newGroup.name}" created successfully.` });
+      setNewlyCreatedGroupName(newGroup.name); // Trigger effect to select
+      setIsCreateGroupDialogOpen(false);
+      newGroupForm.reset();
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Error Creating Group", description: error.message });
+    }
+  };
+
+  React.useEffect(() => {
+    if (newlyCreatedGroupName && modelGroups.some(mg => mg.name === newlyCreatedGroupName)) {
+      form.setValue('namespace', newlyCreatedGroupName, { shouldValidate: true });
+      setNewlyCreatedGroupName(null);
+    }
+  }, [newlyCreatedGroupName, modelGroups, form]);
+
 
   const modelsForRelations = useMemo(() => {
     return models.filter(m => !existingModel || m.id !== existingModel.id);
@@ -1005,24 +1037,77 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                     render={({ field }) => (
                         <FormItem>
                         <FormLabel>Namespace</FormLabel>
-                        <Select
-                            onValueChange={(value) => field.onChange(value === INTERNAL_DEFAULT_NAMESPACE_VALUE ? 'Default' : value)}
-                            value={field.value === 'Default' || !field.value ? INTERNAL_DEFAULT_NAMESPACE_VALUE : field.value}
-                        >
-                            <FormControl>
-                            <SelectTrigger>
-                                <SelectValue placeholder="Select a namespace" />
-                            </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                                <SelectItem value={INTERNAL_DEFAULT_NAMESPACE_VALUE}>-- Default --</SelectItem>
-                                {dataReady && modelGroups.sort((a,b) => a.name.localeCompare(b.name)).map((group) => (
-                                    <SelectItem key={group.id} value={group.name}>
-                                        {group.name}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                        <div className="flex items-center gap-2">
+                            <Select
+                                onValueChange={(value) => field.onChange(value === INTERNAL_DEFAULT_NAMESPACE_VALUE ? 'Default' : value)}
+                                value={field.value === 'Default' || !field.value ? INTERNAL_DEFAULT_NAMESPACE_VALUE : field.value}
+                            >
+                                <FormControl>
+                                <SelectTrigger className="flex-grow">
+                                    <SelectValue placeholder="Select a namespace" />
+                                </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                    <SelectItem value={INTERNAL_DEFAULT_NAMESPACE_VALUE}>-- Default --</SelectItem>
+                                    {dataReady && modelGroups.sort((a,b) => a.name.localeCompare(b.name)).map((group) => (
+                                        <SelectItem key={group.id} value={group.name}>
+                                            {group.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <Dialog open={isCreateGroupDialogOpen} onOpenChange={setIsCreateGroupDialogOpen}>
+                                <DialogTrigger asChild>
+                                    <Button type="button" variant="outline" size="icon" aria-label="Create new namespace">
+                                        <PlusCircle className="h-4 w-4" />
+                                    </Button>
+                                </DialogTrigger>
+                                <DialogContent>
+                                    <DialogHeader>
+                                        <DialogTitle>Create New Model Group</DialogTitle>
+                                        <DialogDescription>Define a new group to organize your models.</DialogDescription>
+                                    </DialogHeader>
+                                    <Form {...newGroupForm}>
+                                        <form onSubmit={newGroupForm.handleSubmit(handleCreateNewGroup)} className="space-y-4">
+                                            <FormField
+                                                control={newGroupForm.control}
+                                                name="name"
+                                                render={({ field: groupNameField }) => (
+                                                    <FormItem>
+                                                        <FormLabel>Group Name</FormLabel>
+                                                        <FormControl>
+                                                            <Input placeholder="e.g., Core System" {...groupNameField} />
+                                                        </FormControl>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                )}
+                                            />
+                                            <FormField
+                                                control={newGroupForm.control}
+                                                name="description"
+                                                render={({ field: groupDescField }) => (
+                                                    <FormItem>
+                                                        <FormLabel>Description (Optional)</FormLabel>
+                                                        <FormControl>
+                                                            <Textarea placeholder="Brief description..." {...groupDescField} value={groupDescField.value ?? ''} />
+                                                        </FormControl>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                )}
+                                            />
+                                            <DialogFooter>
+                                                <DialogClose asChild>
+                                                    <Button type="button" variant="outline" onClick={() => newGroupForm.reset()}>Cancel</Button>
+                                                </DialogClose>
+                                                <Button type="submit" disabled={newGroupForm.formState.isSubmitting}>
+                                                    {newGroupForm.formState.isSubmitting ? 'Creating...' : 'Create Group'}
+                                                </Button>
+                                            </DialogFooter>
+                                        </form>
+                                    </Form>
+                                </DialogContent>
+                            </Dialog>
+                        </div>
                         <FormDescription>Organize models into groups. Select an existing group or use 'Default'.</FormDescription>
                         <FormMessage />
                         </FormItem>
