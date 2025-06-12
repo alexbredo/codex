@@ -14,6 +14,9 @@ interface NumericSummaryWidgetProps {
   onConfigChange: (newConfig: NumericSummaryWidgetConfig) => void;
 }
 
+const INTERNAL_NO_MODEL_SELECTED = "__NO_MODEL_SELECTED__";
+const INTERNAL_NO_PROPERTY_SELECTED = "__NO_PROPERTY_SELECTED__";
+
 async function fetchData(modelId: string | undefined): Promise<{ model: Model | undefined, dataObjects: DataObject[] }> {
   if (!modelId) {
     return { model: undefined, dataObjects: [] };
@@ -141,14 +144,16 @@ export default function NumericSummaryWidget({ config, isEditMode, onConfigChang
   }, [models, selectedModelId, selectedPropertyId, selectedCalculationType, onConfigChange, config, queryData, widgetTitle]);
 
 
-  const handleModelChange = (newModelId: string) => {
-    setSelectedModelId(newModelId);
+  const handleModelChange = (newModelIdValue: string) => {
+    const actualModelId = newModelIdValue === INTERNAL_NO_MODEL_SELECTED ? '' : newModelIdValue;
+    setSelectedModelId(actualModelId);
     setSelectedPropertyId(''); // Reset property when model changes
     setResult(null);
   };
 
-  const handlePropertyChange = (newPropertyId: string) => {
-    setSelectedPropertyId(newPropertyId);
+  const handlePropertyChange = (newPropertyIdValue: string) => {
+    const actualPropertyId = newPropertyIdValue === INTERNAL_NO_PROPERTY_SELECTED ? '' : newPropertyIdValue;
+    setSelectedPropertyId(actualPropertyId);
     setResult(null);
   };
 
@@ -188,24 +193,31 @@ export default function NumericSummaryWidget({ config, isEditMode, onConfigChang
       <CardContent>
         {isEditMode ? (
           <div className="flex flex-col gap-3">
-            <Select value={selectedModelId} onValueChange={handleModelChange}>
+            <Select
+              value={selectedModelId || INTERNAL_NO_MODEL_SELECTED}
+              onValueChange={handleModelChange}
+            >
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select Model" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">-- Select a Model --</SelectItem>
+                <SelectItem value={INTERNAL_NO_MODEL_SELECTED}>-- Select a Model --</SelectItem>
                 {models?.map(model => (
                   <SelectItem key={model.id} value={model.id}>{model.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
 
-            <Select value={selectedPropertyId} onValueChange={handlePropertyChange} disabled={!selectedModelId || isFetching}>
+            <Select
+              value={selectedPropertyId || INTERNAL_NO_PROPERTY_SELECTED}
+              onValueChange={handlePropertyChange}
+              disabled={!selectedModelId || isFetching}
+            >
               <SelectTrigger className="w-full">
                 <SelectValue placeholder={isFetching ? "Loading Properties..." : "Select Numeric Property"} />
               </SelectTrigger>
               <SelectContent>
-                 <SelectItem value="">-- Select a Property --</SelectItem>
+                 <SelectItem value={INTERNAL_NO_PROPERTY_SELECTED}>-- Select a Property --</SelectItem>
                 {isFetching ? null : (numericProperties.length === 0 && selectedModelId ? 
                     <SelectItem disabled value="no-numeric-props">No numeric properties in model</SelectItem> 
                     : numericProperties.map(property => (
