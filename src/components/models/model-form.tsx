@@ -2,7 +2,7 @@
 'use client';
 
 import type { Control, UseFormReturn, UseFieldArrayReturn, FieldErrors } from 'react-hook-form';
-import { useFieldArray, useWatch, useForm } from 'react-hook-form'; // Added useForm here
+import { useFieldArray, useWatch, useForm } from 'react-hook-form';
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -1099,7 +1099,11 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                                                 <DialogClose asChild>
                                                     <Button type="button" variant="outline" onClick={() => newGroupForm.reset()}>Cancel</Button>
                                                 </DialogClose>
-                                                <Button type="submit" disabled={newGroupForm.formState.isSubmitting}>
+                                                <Button
+                                                  type="button"
+                                                  onClick={newGroupForm.handleSubmit(handleCreateNewGroup)}
+                                                  disabled={newGroupForm.formState.isSubmitting}
+                                                >
                                                     {newGroupForm.formState.isSubmitting ? 'Creating...' : 'Create Group'}
                                                 </Button>
                                             </DialogFooter>
