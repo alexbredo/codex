@@ -30,51 +30,64 @@ export default function EditModelPage() {
 
   const form = useForm<ModelFormValues>({
     resolver: zodResolver(modelFormSchema),
+    // Default values will be set by the useEffect when model data is loaded
   });
 
+  // Initial fetch trigger, only runs if modelId changes or on first load for this modelId
   useEffect(() => {
-    fetchData(`Navigated to Edit Model: ${modelId}`);
+    if (modelId) { // Ensure modelId is present before fetching
+      fetchData(`Navigated to Edit Model: ${modelId}`);
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelId]);
+  }, [modelId]); // Only re-run if modelId itself changes
 
   useEffect(() => {
     if (isReady && modelId) {
-      const foundModel = getModelById(modelId);
-      if (foundModel) {
-        setCurrentModel(foundModel);
-        const sortedProperties = [...foundModel.properties].sort((a, b) => a.orderIndex - b.orderIndex);
-        form.reset({
-          name: foundModel.name,
-          description: foundModel.description || '',
-          namespace: foundModel.namespace || 'Default',
-          displayPropertyNames: foundModel.displayPropertyNames || [],
-          workflowId: foundModel.workflowId || null,
-          properties: sortedProperties.map(p => ({
-              id: p.id || crypto.randomUUID(),
-              name: p.name,
-              type: p.type,
-              relatedModelId: p.type === 'relationship' ? p.relatedModelId : undefined,
-              required: !!p.required,
-              relationshipType: p.type === 'relationship' ? (p.relationshipType || 'one') : undefined,
-              unit: p.type === 'number' ? p.unit : undefined,
-              precision: p.type === 'number' ? (p.precision === undefined || p.precision === null ? 2 : p.precision) : undefined,
-              autoSetOnCreate: p.type === 'date' ? !!p.autoSetOnCreate : false,
-              autoSetOnUpdate: p.type === 'date' ? !!p.autoSetOnUpdate : false,
-              isUnique: p.type === 'string' ? !!p.isUnique : false,
-              defaultValue: p.defaultValue ?? '',
-              orderIndex: p.orderIndex,
-              validationRulesetId: p.validationRulesetId ?? null,
-              minValue: p.type === 'number' ? (p.minValue === undefined || p.minValue === null ? null : Number(p.minValue)) : null,
-              maxValue: p.type === 'number' ? (p.maxValue === undefined || p.maxValue === null ? null : Number(p.maxValue)) : null,
-            } as PropertyFormValues)),
-        });
+      // Only try to load/set model if currentModel isn't set or if modelId has changed
+      if (!currentModel || currentModel.id !== modelId) {
+        setIsLoadingModel(true);
+        const foundModel = getModelById(modelId);
+        if (foundModel) {
+          setCurrentModel(foundModel);
+          const sortedProperties = [...foundModel.properties].sort((a, b) => a.orderIndex - b.orderIndex);
+          form.reset({
+            name: foundModel.name,
+            description: foundModel.description || '',
+            namespace: foundModel.namespace || 'Default',
+            displayPropertyNames: foundModel.displayPropertyNames || [],
+            workflowId: foundModel.workflowId || null,
+            properties: sortedProperties.map(p => ({
+                id: p.id || crypto.randomUUID(),
+                name: p.name,
+                type: p.type,
+                relatedModelId: p.type === 'relationship' ? p.relatedModelId : undefined,
+                required: !!p.required,
+                relationshipType: p.type === 'relationship' ? (p.relationshipType || 'one') : undefined,
+                unit: p.type === 'number' ? p.unit : undefined,
+                precision: p.type === 'number' ? (p.precision === undefined || p.precision === null ? 2 : p.precision) : undefined,
+                autoSetOnCreate: p.type === 'date' ? !!p.autoSetOnCreate : false,
+                autoSetOnUpdate: p.type === 'date' ? !!p.autoSetOnUpdate : false,
+                isUnique: p.type === 'string' ? !!p.isUnique : false,
+                defaultValue: p.defaultValue ?? '',
+                orderIndex: p.orderIndex,
+                validationRulesetId: p.validationRulesetId ?? null,
+                minValue: p.type === 'number' ? (p.minValue === undefined || p.minValue === null ? null : Number(p.minValue)) : null,
+                maxValue: p.type === 'number' ? (p.maxValue === undefined || p.maxValue === null ? null : Number(p.maxValue)) : null,
+              } as PropertyFormValues)),
+          });
+          setIsLoadingModel(false);
+        } else {
+          // Model not found, redirect
+          toast({ variant: "destructive", title: "Error", description: `Model with ID ${modelId} not found.` });
+          router.push('/models');
+          setIsLoadingModel(false); // Ensure loading state is false
+        }
       } else {
-        toast({ variant: "destructive", title: "Error", description: "Model not found." });
-        router.push('/models');
+        // currentModel exists and matches modelId, data context might have refreshed but our model is fine.
+        setIsLoadingModel(false); // Ensure loading state is false if model already loaded
       }
-      setIsLoadingModel(false);
     }
-  }, [modelId, getModelById, isReady, form, router, toast, setCurrentModel]);
+  }, [modelId, getModelById, isReady, form, router, toast, currentModel]); // currentModel is now a dependency
 
   const onSubmit = async (values: ModelFormValues) => {
     console.log("[EditModelPage] onSubmit - received values from ModelForm:", JSON.stringify(values, null, 2));
@@ -96,6 +109,7 @@ export default function EditModelPage() {
         const propertyForApi: Property = {
           ...p_form_value, 
           id: p_form_value.id || crypto.randomUUID(),
+          model_id: currentModel.id, // ensure model_id is passed for properties
           orderIndex: index,
           required: !!p_form_value.required,
           autoSetOnCreate: !!p_form_value.autoSetOnCreate,
@@ -125,7 +139,7 @@ export default function EditModelPage() {
     }
   };
 
-  if (!isReady || isLoadingModel) {
+  if (!isReady || isLoadingModel) { // Check isLoadingModel here
     return (
       <div className="flex flex-col justify-center items-center h-screen">
         <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
@@ -134,7 +148,7 @@ export default function EditModelPage() {
     );
   }
 
-  if (!currentModel) {
+  if (!currentModel && !isLoadingModel) { // Check !isLoadingModel to show "not found" only after trying to load
     return (
       <div className="flex flex-col justify-center items-center h-screen">
          <p className="text-lg text-destructive">Model not found.</p>
@@ -142,27 +156,30 @@ export default function EditModelPage() {
       </div>
     );
   }
-
+  
+  // Render ModelForm only if currentModel is available
   return (
     <div className="container mx-auto py-8">
       <Button variant="outline" onClick={() => router.push('/models')} className="mb-6">
         <ArrowLeft className="mr-2 h-4 w-4" /> Back to Model Admin
       </Button>
-      <Card className="max-w-3xl mx-auto">
-        <CardHeader>
-          <CardTitle className="text-2xl">Edit Model: {currentModel.name}</CardTitle>
-          <CardDescription>Update the details for the "{currentModel.name}" model in namespace "{currentModel.namespace}".</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ModelForm
-            form={form}
-            onSubmit={onSubmit}
-            onCancel={() => router.push('/models')}
-            existingModel={currentModel}
-            isLoading={form.formState.isSubmitting}
-          />
-        </CardContent>
-      </Card>
+      {currentModel && (
+        <Card className="max-w-3xl mx-auto">
+          <CardHeader>
+            <CardTitle className="text-2xl">Edit Model: {currentModel.name}</CardTitle>
+            <CardDescription>Update the details for the "{currentModel.name}" model in namespace "{currentModel.namespace}".</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ModelForm
+              form={form}
+              onSubmit={onSubmit}
+              onCancel={() => router.push('/models')}
+              existingModel={currentModel}
+              isLoading={form.formState.isSubmitting}
+            />
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
