@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -22,19 +21,19 @@ export const SortableWidgetWrapper: React.FC<Props> = ({ id, children, onRemove,
   } = useSortable({ id: id });
 
   const style = {
-    transform: CSS.Transform.toString(transform), // Corrected usage
+    transform: transform ? CSS.Transform.toString(transform) : undefined,
     transition,
   };
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} >
+    <div ref={setNodeRef} style={style} {...attributes} className="relative">
       {isEditMode && (
-        <div className="absolute top-2 right-2 z-10">
-          <Button variant="destructive" size="icon" {...listeners} >
+        <div className="absolute top-2 right-2 z-10 flex space-x-1">
+          <Button variant="destructive" size="icon" {...listeners} {...attributes} className="cursor-grab p-1 h-7 w-7">
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              width="24"
-              height="24"
+              width="16"
+              height="16"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -51,11 +50,11 @@ export const SortableWidgetWrapper: React.FC<Props> = ({ id, children, onRemove,
               <path d="M12 2v20" />
             </svg>
           </Button>
-          <Button variant="destructive" size="icon" onClick={() => onRemove(id)}>
+          <Button variant="destructive" size="icon" onClick={() => onRemove(id)} className="p-1 h-7 w-7">
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              width="24"
-              height="24"
+              width="16"
+              height="16"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
