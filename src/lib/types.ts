@@ -1,5 +1,5 @@
 
-export type PropertyType = 'string' | 'number' | 'boolean' | 'date' | 'relationship' | 'markdown' | 'rating' | 'image';
+export type PropertyType = 'string' | 'number' | 'boolean' | 'date' | 'relationship' | 'markdown' | 'rating' | 'image' | 'fileAttachment';
 
 export interface Property {
   id: string;
@@ -187,4 +187,48 @@ export interface PaginatedStructuralChangelogResponse {
 export interface ExportedModelBundle {
   model: Model;
   dataObjects: DataObject[];
+}
+
+// Dashboard and Widget Types
+export type WidgetType = 'dataSummary' | 'modelCountChart' | 'quickStart';
+
+export interface WidgetConfigBase {
+  title?: string;
+}
+
+export interface DataSummaryWidgetConfig extends WidgetConfigBase {
+  summaryType: 'totalModels' | 'totalObjects' | { modelId: string; modelName?: string }; // modelName for display
+}
+
+export interface ModelCountChartWidgetConfig extends WidgetConfigBase {
+  // No specific config needed for now, shows all models
+}
+
+export interface QuickStartWidgetConfig extends WidgetConfigBase {
+  // No specific config needed for this type
+}
+
+export type SpecificWidgetConfig = DataSummaryWidgetConfig | ModelCountChartWidgetConfig | QuickStartWidgetConfig;
+
+export interface WidgetGridConfig {
+  colSpan?: number; // e.g., 1, 2, 3 for a 3-column grid
+  rowSpan?: number;
+  order?: number; // Optional for ordering if not using array index
+}
+
+export interface WidgetInstance {
+  id: string; // Unique ID for this widget instance on the dashboard
+  type: WidgetType;
+  config: SpecificWidgetConfig;
+  gridConfig: WidgetGridConfig;
+}
+
+export interface Dashboard {
+  id: string;
+  userId: string;
+  name: string; // e.g., "My Main Dashboard"
+  isDefault: boolean;
+  widgets: WidgetInstance[]; // Stored as JSON in DB, parsed on fetch
+  createdAt: string;
+  updatedAt: string;
 }

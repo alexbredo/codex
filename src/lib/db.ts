@@ -304,6 +304,22 @@ async function initializeDb(): Promise<Database> {
   `);
   console.log("Structural Changelog table ensured.");
 
+  // Dashboards Table
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS dashboards (
+      id TEXT PRIMARY KEY,
+      userId TEXT NOT NULL,
+      name TEXT NOT NULL,
+      isDefault INTEGER DEFAULT 0,
+      widgets TEXT, -- JSON storing array of WidgetInstance
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+    );
+  `);
+  await db.exec('CREATE INDEX IF NOT EXISTS idx_dashboards_userId_isDefault ON dashboards (userId, isDefault);');
+  console.log("Dashboards table ensured.");
+
 
   // Ensure mock admin user exists if in DEBUG_MODE
   if (DEBUG_MODE) {
@@ -335,4 +351,3 @@ export function getDb(): Promise<Database> {
   }
   return dbInstance;
 }
-
