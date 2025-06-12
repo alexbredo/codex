@@ -29,6 +29,17 @@ async function initializeDb(): Promise<Database> {
     driver: sqlite3.Database,
   });
 
+  // Enable WAL (Write-Ahead Logging) mode for better concurrency
+  await db.exec('PRAGMA journal_mode = WAL;');
+  console.log("SQLite WAL mode enabled.");
+
+  // Set a busy timeout (e.g., 5 seconds)
+  // This tells SQLite to wait for this duration if the database is locked,
+  // before returning SQLITE_BUSY.
+  await db.run('PRAGMA busy_timeout = 5000;');
+  console.log("SQLite busy_timeout set to 5000ms.");
+
+
   // Enable foreign key support
   await db.exec('PRAGMA foreign_keys = ON;');
 
