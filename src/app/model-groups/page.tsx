@@ -31,7 +31,7 @@ import { withAuth } from '@/contexts/auth-context';
 import type { ModelGroup, ModelGroupFormValues } from '@/lib/types';
 import { modelGroupFormSchema } from '@/components/model-groups/model-group-form-schema';
 import ModelGroupForm from '@/components/model-groups/model-group-form';
-import { PlusCircle, Edit, Trash2, Search, FolderKanban, Loader2 } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, Search, FolderKanban, Loader2, DatabaseZap } from 'lucide-react'; // Added DatabaseZap
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
@@ -40,10 +40,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Badge } from '@/components/ui/badge';
 
 
 function ModelGroupsPageInternal() {
-  const { modelGroups, addModelGroup, updateModelGroup, deleteModelGroup, getModelGroupByName, isReady, fetchData } = useData();
+  const { models, modelGroups, addModelGroup, updateModelGroup, deleteModelGroup, getModelGroupByName, isReady, fetchData } = useData();
   const { toast } = useToast();
   
   const [searchTerm, setSearchTerm] = useState('');
@@ -76,6 +77,11 @@ function ModelGroupsPageInternal() {
       (group.description && group.description.toLowerCase().includes(searchTerm.toLowerCase()))
     ).sort((a,b) => a.name.localeCompare(b.name));
   }, [modelGroups, searchTerm]);
+
+  const getModelCountForGroup = (groupName: string): number => {
+    if (!models) return 0;
+    return models.filter(model => model.namespace === groupName).length;
+  };
 
   const handleCreateNew = () => {
     setEditingGroup(null);
@@ -194,6 +200,7 @@ function ModelGroupsPageInternal() {
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Description</TableHead>
+                <TableHead className="w-[150px] text-center">Models Count</TableHead>
                 <TableHead className="text-right w-[150px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -202,6 +209,12 @@ function ModelGroupsPageInternal() {
                 <TableRow key={group.id}>
                   <TableCell className="font-medium">{group.name}</TableCell>
                   <TableCell className="text-muted-foreground truncate max-w-xs">{group.description || 'N/A'}</TableCell>
+                  <TableCell className="text-center">
+                    <Badge variant={getModelCountForGroup(group.name) === 0 ? "outline" : "secondary"} className="flex items-center justify-center gap-1.5 w-20 mx-auto">
+                      <DatabaseZap className="h-3.5 w-3.5" />
+                      {getModelCountForGroup(group.name)}
+                    </Badge>
+                  </TableCell>
                   <TableCell className="text-right">
                     <Button variant="ghost" size="icon" onClick={() => handleEdit(group)} className="mr-2 hover:text-primary">
                       <Edit className="h-4 w-4" />
@@ -242,3 +255,4 @@ function ModelGroupsPageInternal() {
 }
 
 export default withAuth(ModelGroupsPageInternal, ['administrator']);
+    
