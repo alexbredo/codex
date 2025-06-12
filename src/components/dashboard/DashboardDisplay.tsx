@@ -1,14 +1,19 @@
-
-'use client';
+ 'use client';
 
 import type { WidgetInstance } from '@/lib/types';
 import DataSummaryWidget from './widgets/DataSummaryWidget';
 import ModelCountChartWidget from './widgets/ModelCountChartWidget';
 import QuickStartWidget from './widgets/QuickStartWidget';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { DndContext, DragEndEvent, PointerSensor, useSensor, useSensors, closestCenter } from '@dnd-kit/core';
+import { SortableContext, arrayMove } from '@dnd-kit/sortable';
+import { SortableWidgetWrapper } from './SortableWidgetWrapper';
 
 interface DashboardDisplayProps {
   widgets: WidgetInstance[];
+  isEditMode: boolean;
+  onRemoveWidget: (id: string) => void;
+  onWidgetsChange: (widgets: WidgetInstance[]) => void;
 }
 
 // Helper to get column span class
@@ -32,7 +37,15 @@ const getRowSpanClass = (rowSpan?: number): string => {
 };
 
 
-export default function DashboardDisplay({ widgets }: DashboardDisplayProps) {
+export default function DashboardDisplay({ widgets, isEditMode, onRemoveWidget, onWidgetsChange }: DashboardDisplayProps) {
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    })
+  );
+
   if (!widgets || widgets.length === 0) {
     return (
       <div className="text-center text-muted-foreground py-10">
@@ -52,42 +65,71 @@ export default function DashboardDisplay({ widgets }: DashboardDisplayProps) {
     return a.id.localeCompare(b.id);
   });
 
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-      {sortedWidgets.map((widget) => {
-        const colSpanClass = getColSpanClass(widget.gridConfig.colSpan);
-        const rowSpanClass = getRowSpanClass(widget.gridConfig.rowSpan);
-        const widgetWrapperClass = `rounded-lg shadow-lg hover:shadow-xl transition-shadow duration-300 ${colSpanClass} ${rowSpanClass}`;
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
 
-        let content;
-        switch (widget.type) {
-          case 'dataSummary':
-            content = <DataSummaryWidget config={widget.config} />;
-            break;
-          case 'modelCountChart':
-            content = <ModelCountChartWidget config={widget.config} />;
-            break;
-          case 'quickStart':
-            content = <QuickStartWidget config={widget.config} />;
-            break;
-          default:
-            content = (
-              <Card className={widgetWrapperClass}>
-                <CardHeader>
-                  <CardTitle className="text-sm font-medium text-destructive">Unknown Widget Type</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-xs text-muted-foreground">Widget type "{widget.type}" is not recognized.</p>
-                </CardContent>
-              </Card>
+    if (over) {
+      const oldIndex = sortedWidgets.findIndex(widget => widget.id === active.id);
+      const newIndex = sortedWidgets.findIndex(widget => widget.id === over.id);
+
+      if (oldIndex !== newIndex) {
+        const newWidgets = arrayMove(sortedWidgets, oldIndex, newIndex).map((widget, index) => ({
+          ...widget,
+          gridConfig: { ...widget.gridConfig, order: index },
+        }));
+        onWidgetsChange(newWidgets);
+      }
+    }
+  };
+
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <SortableContext items={sortedWidgets.map(widget => widget.id)}>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {sortedWidgets.map((widget) => {
+            const colSpanClass = getColSpanClass(widget.gridConfig.colSpan);
+            const rowSpanClass = getRowSpanClass(widget.gridConfig.rowSpan);
+            const widgetWrapperClass = `rounded-lg shadow-lg hover:shadow-xl transition-shadow duration-300 ${colSpanClass} ${rowSpanClass}`;
+
+            let content;
+            switch (widget.type) {
+              case 'dataSummary':
+                content = <DataSummaryWidget config={widget.config} />;
+                break;
+              case 'modelCountChart':
+                content = <ModelCountChartWidget config={widget.config} />;
+                break;
+              case 'quickStart':
+                content = <QuickStartWidget config={widget.config} />;
+                break;
+              default:
+                content = (
+                  <Card className={widgetWrapperClass}>
+                    <CardHeader>
+                      <CardTitle className="text-sm font-medium text-destructive">Unknown Widget Type</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-xs text-muted-foreground">Widget type "{widget.type}" is not recognized.</p>
+                    </CardContent>
+                  </Card>
+                );
+                return (
+                  <SortableWidgetWrapper key={widget.id} id={widget.id} onRemove={onRemoveWidget} isEditMode={isEditMode}>
+                    <div className={widgetWrapperClass}>{content}</div>
+                  </SortableWidgetWrapper>
+                );
+            }
+            // For known widget types, their components should handle their own Card structure if needed.
+            // Or, we can wrap them in a generic Card here if they don't.
+            // For this iteration, widgets are expected to render their own Card.
+            return (
+              <SortableWidgetWrapper key={widget.id} id={widget.id} onRemove={onRemoveWidget} isEditMode={isEditMode}>
+                <div className={widgetWrapperClass}>{content}</div>
+              </SortableWidgetWrapper>
             );
-             return <div key={widget.id} className={widgetWrapperClass}>{content}</div>;
-        }
-        // For known widget types, their components should handle their own Card structure if needed.
-        // Or, we can wrap them in a generic Card here if they don't.
-        // For this iteration, widgets are expected to render their own Card.
-        return <div key={widget.id} className={widgetWrapperClass}>{content}</div>;
-      })}
-    </div>
+          })}
+        </div>
+      </SortableContext>
+    </DndContext>
   );
 }
