@@ -28,6 +28,9 @@ const AddWidgetDialog: React.FC<AddWidgetDialogProps> = ({ onAddWidget }) => {
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <Button onClick={() => handleAddWidget('dataSummary')}>Data Summary</Button>
+          <Button onClick={() => handleAddWidget('modelCountChart')}>Model Count Chart</Button>
+          <Button onClick={() => handleAddWidget('quickStart')}>Quick Start</Button>
+          <Button onClick={() => handleAddWidget('numericSummary')}>Numeric Summary</Button>
         </div>
       </DialogContent>
     </Dialog>

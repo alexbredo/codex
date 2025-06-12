@@ -2,16 +2,21 @@ import React from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Button } from "@/components/ui/button"
-
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 interface Props {
   id: string;
   children: React.ReactNode;
   onRemove: (id: string) => void;
   isEditMode: boolean;
+  colSpan: number;
+  onColSpanChange: (id: string, colSpan: number) => void;
+  className?: string;
+  onConfigChange?: (id: string, newConfig: any) => void;
+  config: any;
 }
 
-export const SortableWidgetWrapper: React.FC<Props> = ({ id, children, onRemove, isEditMode }) => {
+export const SortableWidgetWrapper: React.FC<Props> = ({ id, children, onRemove, isEditMode, colSpan, onColSpanChange, className, onConfigChange, config }) => {
   const {
     attributes,
     listeners,
@@ -21,19 +26,29 @@ export const SortableWidgetWrapper: React.FC<Props> = ({ id, children, onRemove,
   } = useSortable({ id: id });
 
   const style = {
-    transform: transform ? CSS.Transform.toString(transform) : undefined,
+    transform: CSS.Transform.toString(transform),
     transition,
   };
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} className="relative">
+    <div ref={setNodeRef} style={style} {...attributes} className={`relative ${className}`}>
       {isEditMode && (
-        <div className="absolute top-2 right-2 z-10 flex space-x-1">
-          <Button variant="destructive" size="icon" {...listeners} {...attributes} className="cursor-grab p-1 h-7 w-7">
+        <div className="absolute top-2 right-2 z-10 flex flex-col">
+          <Select value={colSpan.toString()} onValueChange={(value) => onColSpanChange(id, parseInt(value))}>
+            <SelectTrigger className="w-[120px]">
+              <SelectValue placeholder={`${colSpan} Column${colSpan > 1 ? 's' : ''}`} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="1">1 Column</SelectItem>
+              <SelectItem value="2">2 Columns</SelectItem>
+              <SelectItem value="3">3 Columns</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button variant="destructive" size="icon" {...listeners} {...attributes}>
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              width="16"
-              height="16"
+              width="24"
+              height="24"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -50,11 +65,11 @@ export const SortableWidgetWrapper: React.FC<Props> = ({ id, children, onRemove,
               <path d="M12 2v20" />
             </svg>
           </Button>
-          <Button variant="destructive" size="icon" onClick={() => onRemove(id)} className="p-1 h-7 w-7">
+          <Button variant="destructive" size="icon" onClick={() => onRemove(id)}>
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              width="16"
-              height="16"
+              width="24"
+              height="24"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -72,7 +87,7 @@ export const SortableWidgetWrapper: React.FC<Props> = ({ id, children, onRemove,
           </Button>
         </div>
       )}
-      {children}
+      {React.cloneElement(children as React.ReactElement, {isEditMode: isEditMode, onConfigChange: (newConfig: any) => onConfigChange(id, newConfig), config: config})}
     </div>
   );
 };

@@ -13,25 +13,25 @@ import { v4 as uuidv4 } from 'uuid';
 // Define a default dashboard structure if none is found for the user
 const getDefaultDashboardLayout = (): WidgetInstance[] => [
   {
-    id: 'summary-models',
+    id: uuidv4(),
     type: 'dataSummary',
     config: { title: 'Total Models Defined', summaryType: 'totalModels' },
     gridConfig: { colSpan: 1, rowSpan: 1, order: 1 },
   },
   {
-    id: 'summary-objects',
+    id: uuidv4(),
     type: 'dataSummary',
     config: { title: 'Total Data Objects', summaryType: 'totalObjects' },
     gridConfig: { colSpan: 1, rowSpan: 1, order: 2 },
   },
   {
-    id: 'quick-start',
+    id: uuidv4(),
     type: 'quickStart',
     config: { title: 'Getting Started' },
     gridConfig: { colSpan: 1, rowSpan: 1, order: 3 },
   },
   {
-    id: 'model-object-chart',
+    id: uuidv4(),
     type: 'modelCountChart',
     config: { title: 'Object Distribution by Model' },
     gridConfig: { colSpan: 3, rowSpan: 2, order: 4 },
@@ -84,6 +84,9 @@ export default function HomePage() {
       // Invalidate the query to refetch the dashboard
       queryClient.invalidateQueries({ queryKey: ['userDashboard', user?.id] });
       setIsEditMode(false);
+      if (localDashboardConfig) {
+        setDashboardConfig(localDashboardConfig);
+      }
     },
   });
 
@@ -116,6 +119,7 @@ export default function HomePage() {
 
   const handleSaveDashboard = () => {
     if (localDashboardConfig) {
+      setDashboardConfig(localDashboardConfig);
       saveDashboardMutation.mutate(localDashboardConfig);
     }
   };
@@ -141,14 +145,63 @@ export default function HomePage() {
 
   const handleAddWidget = (widgetType: string) => {
     if (localDashboardConfig) {
-      const newWidget: WidgetInstance = {
-        id: uuidv4(),
-        type: widgetType,
-        config: { title: 'New Data Summary Widget' }, // Default config
-        gridConfig: { colSpan: 1, rowSpan: 1, order: localDashboardConfig.widgets.length + 1 }, // Place at the end
-      };
+      let newWidget: WidgetInstance;
+      switch (widgetType) {
+        case 'dataSummary':
+          newWidget = {
+            id: uuidv4(),
+            type: widgetType,
+            config: { title: 'New Data Summary Widget', summaryType: 'totalModels' }, // Default config
+            gridConfig: { colSpan: 1, rowSpan: 1, order: localDashboardConfig.widgets.length + 1 }, // Place at the end
+          };
+          break;
+        case 'modelCountChart':
+          newWidget = {
+            id: uuidv4(),
+            type: widgetType,
+            config: { title: 'New Model Count Chart Widget' }, // Default config
+            gridConfig: { colSpan: 1, rowSpan: 1, order: localDashboardConfig.widgets.length + 1 }, // Place at the end
+          };
+          break;
+        case 'quickStart':
+          newWidget = {
+            id: uuidv4(),
+            type: widgetType,
+            config: { title: 'New Quick Start Widget' }, // Default config
+            gridConfig: { colSpan: 1, rowSpan: 1, order: localDashboardConfig.widgets.length + 1 }, // Place at the end
+          };
+          break;
+        case 'numericSummary':
+          newWidget = {
+            id: uuidv4(),
+            type: widgetType,
+            config: { title: 'New Numeric Summary Widget', modelId: '', propertyId: '', calculationType: 'sum' }, // Default config
+            gridConfig: { colSpan: 1, rowSpan: 1, order: localDashboardConfig.widgets.length + 1 }, // Place at the end
+          };
+          break;
+        default:
+          console.warn('Unknown widget type:', widgetType);
+          return;
+      }
+
       const updatedWidgets = [...localDashboardConfig.widgets, newWidget];
       setLocalDashboardConfig({ ...localDashboardConfig, widgets: updatedWidgets });
+    }
+  };
+
+  const handleColSpanChange = (widgetId: string, colSpan: number) => {
+    if (localDashboardConfig) {
+      const newWidgets = localDashboardConfig.widgets.map(widget => {
+        if (widget.id === widgetId) {
+          return {
+            ...widget,
+            gridConfig: { ...widget.gridConfig, colSpan: colSpan },
+          };
+        } else {
+          return widget;
+        }
+      });
+      setLocalDashboardConfig({ ...localDashboardConfig, widgets: newWidgets });
     }
   };
 

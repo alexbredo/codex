@@ -1,4 +1,3 @@
-
 export type PropertyType = 'string' | 'number' | 'boolean' | 'date' | 'relationship' | 'markdown' | 'rating' | 'image' | 'fileAttachment';
 
 export interface Property {
@@ -190,7 +189,7 @@ export interface ExportedModelBundle {
 }
 
 // Dashboard and Widget Types
-export type WidgetType = 'dataSummary' | 'modelCountChart' | 'quickStart';
+export type WidgetType = 'dataSummary' | 'modelCountChart' | 'quickStart' | 'numericSummary';
 
 export interface WidgetConfigBase {
   title?: string;
@@ -208,7 +207,13 @@ export interface QuickStartWidgetConfig extends WidgetConfigBase {
   // No specific config needed for this type
 }
 
-export type SpecificWidgetConfig = DataSummaryWidgetConfig | ModelCountChartWidgetConfig | QuickStartWidgetConfig;
+export interface NumericSummaryWidgetConfig extends WidgetConfigBase {
+  modelId: string;
+  propertyId: string;
+  calculationType: 'min' | 'max' | 'sum' | 'avg';
+}
+
+export type SpecificWidgetConfig = DataSummaryWidgetConfig | ModelCountChartWidgetConfig | QuickStartWidgetConfig | NumericSummaryWidgetConfig;
 
 export interface WidgetGridConfig {
   colSpan?: number; // e.g., 1, 2, 3 for a 3-column grid

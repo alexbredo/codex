@@ -1,9 +1,10 @@
  'use client';
 
-import type { WidgetInstance } from '@/lib/types';
+import type { WidgetInstance, SpecificWidgetConfig } from '@/lib/types';
 import DataSummaryWidget from './widgets/DataSummaryWidget';
 import ModelCountChartWidget from './widgets/ModelCountChartWidget';
 import QuickStartWidget from './widgets/QuickStartWidget';
+import NumericSummaryWidget from './widgets/NumericSummaryWidget';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DndContext, DragEndEvent, PointerSensor, useSensor, useSensors, closestCenter } from '@dnd-kit/core';
 import { SortableContext, arrayMove } from '@dnd-kit/sortable';
@@ -69,17 +70,45 @@ export default function DashboardDisplay({ widgets, isEditMode, onRemoveWidget, 
     const { active, over } = event;
 
     if (over) {
-      const oldIndex = sortedWidgets.findIndex(widget => widget.id === active.id);
-      const newIndex = sortedWidgets.findIndex(widget => widget.id === over.id);
+      const oldIndex = widgets.findIndex(widget => widget.id === active.id);
+      const newIndex = widgets.findIndex(widget => widget.id === over.id);
 
       if (oldIndex !== newIndex) {
-        const newWidgets = arrayMove(sortedWidgets, oldIndex, newIndex).map((widget, index) => ({
+        const newWidgets = arrayMove(widgets, oldIndex, newIndex).map((widget, index) => ({
           ...widget,
           gridConfig: { ...widget.gridConfig, order: index },
         }));
         onWidgetsChange(newWidgets);
       }
     }
+  };
+
+  const handleColSpanChange = (widgetId: string, colSpan: number) => {
+    const newWidgets = widgets.map(widget => {
+      if (widget.id === widgetId) {
+        return {
+          ...widget,
+          gridConfig: { ...widget.gridConfig, colSpan: colSpan },
+        };
+      } else {
+        return widget;
+      }
+    });
+    onWidgetsChange(newWidgets);
+  };
+
+  const handleConfigChange = (widgetId: string, newConfig: SpecificWidgetConfig) => {
+    const newWidgets = widgets.map(widget => {
+      if (widget.id === widgetId) {
+        return {
+          ...widget,
+          config: newConfig,
+        };
+      } else {
+        return widget;
+      }
+    });
+    onWidgetsChange(newWidgets);
   };
 
   return (
@@ -89,7 +118,7 @@ export default function DashboardDisplay({ widgets, isEditMode, onRemoveWidget, 
           {sortedWidgets.map((widget) => {
             const colSpanClass = getColSpanClass(widget.gridConfig.colSpan);
             const rowSpanClass = getRowSpanClass(widget.gridConfig.rowSpan);
-            const widgetWrapperClass = `rounded-lg shadow-lg hover:shadow-xl transition-shadow duration-300 ${colSpanClass} ${rowSpanClass}`;
+            const widgetWrapperClass = `rounded-lg shadow-lg hover:shadow-xl transition-shadow duration-300 ${rowSpanClass}`;
 
             let content;
             switch (widget.type) {
@@ -101,6 +130,9 @@ export default function DashboardDisplay({ widgets, isEditMode, onRemoveWidget, 
                 break;
               case 'quickStart':
                 content = <QuickStartWidget config={widget.config} />;
+                break;
+              case 'numericSummary':
+                content = <NumericSummaryWidget config={widget.config} isEditMode={isEditMode} onConfigChange={(newConfig) => handleConfigChange(widget.id, newConfig)} />;
                 break;
               default:
                 content = (
@@ -114,17 +146,36 @@ export default function DashboardDisplay({ widgets, isEditMode, onRemoveWidget, 
                   </Card>
                 );
                 return (
-                  <SortableWidgetWrapper key={widget.id} id={widget.id} onRemove={onRemoveWidget} isEditMode={isEditMode}>
-                    <div className={widgetWrapperClass}>{content}</div>
+                  <SortableWidgetWrapper
+                    key={widget.id}
+                    id={widget.id}
+                    onRemove={onRemoveWidget}
+                    isEditMode={isEditMode}
+                    colSpan={widget.gridConfig.colSpan ?? 1}
+                    onColSpanChange={handleColSpanChange}
+                    className={colSpanClass}
+                    config={widget.config}
+                    onConfigChange={handleConfigChange}
+                  >
+                    {content}
                   </SortableWidgetWrapper>
                 );
             }
             // For known widget types, their components should handle their own Card structure if needed.
             // Or, we can wrap them in a generic Card here if they don't.
-            // For this iteration, widgets are expected to render their own Card.
             return (
-              <SortableWidgetWrapper key={widget.id} id={widget.id} onRemove={onRemoveWidget} isEditMode={isEditMode}>
-                <div className={widgetWrapperClass}>{content}</div>
+              <SortableWidgetWrapper
+                key={widget.id}
+                id={widget.id}
+                onRemove={onRemoveWidget}
+                isEditMode={isEditMode}
+                colSpan={widget.gridConfig.colSpan ?? 1}
+                onColSpanChange={handleColSpanChange}
+                    className={colSpanClass}
+                config={widget.config}
+                onConfigChange={handleConfigChange}
+              >
+                {content}
               </SortableWidgetWrapper>
             );
           })}

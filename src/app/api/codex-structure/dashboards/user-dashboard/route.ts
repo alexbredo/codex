@@ -1,5 +1,4 @@
-
-'use server';
+ 'use server';
 
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
@@ -8,19 +7,60 @@ import type { Dashboard, WidgetInstance } from '@/lib/types';
 import { z } from 'zod';
 
 // Basic schema for widget instance validation during save
-const widgetInstanceSchema = z.object({
-  id: z.string().uuid(),
-  type: z.enum(['dataSummary', 'modelCountChart', 'quickStart']),
-  config: z.object({
-    title: z.string().optional(),
-    // Add more specific config validations if needed per type, or use passthrough
-  }).passthrough(), 
-  gridConfig: z.object({
-    colSpan: z.number().optional(),
-    rowSpan: z.number().optional(),
-    order: z.number().optional(),
+const widgetInstanceSchema = z.discriminatedUnion("type", [
+  z.object({
+    id: z.string().uuid(),
+    type: z.literal('dataSummary'),
+    config: z.object({
+      title: z.string().optional(),
+      summaryType: z.enum(['totalModels', 'totalObjects']).optional()
+    }).optional(),
+    gridConfig: z.object({
+      colSpan: z.number().optional(),
+      rowSpan: z.number().optional(),
+      order: z.number().optional(),
+    }),
   }),
-});
+  z.object({
+    id: z.string().uuid(),
+    type: z.literal('modelCountChart'),
+    config: z.object({
+      title: z.string().optional(),
+    }).optional(),
+    gridConfig: z.object({
+      colSpan: z.number().optional(),
+      rowSpan: z.number().optional(),
+      order: z.number().optional(),
+    }),
+  }),
+  z.object({
+    id: z.string().uuid(),
+    type: z.literal('quickStart'),
+    config: z.object({
+      title: z.string().optional(),
+    }).optional(),
+    gridConfig: z.object({
+      colSpan: z.number().optional(),
+      rowSpan: z.number().optional(),
+      order: z.number().optional(),
+    }),
+  }),
+  z.object({
+    id: z.string().uuid(),
+    type: z.literal('numericSummary'),
+    config: z.object({
+      title: z.string().optional(),
+      modelId: z.string().optional(),
+      propertyId: z.string().optional(),
+      calculationType: z.enum(['min', 'max', 'sum', 'avg']).optional(),
+    }).optional(),
+    gridConfig: z.object({
+      colSpan: z.number().optional(),
+      rowSpan: z.number().optional(),
+      order: z.number().optional(),
+    }),
+  })
+]);
 
 const dashboardPayloadSchema = z.object({
   name: z.string().min(1, "Dashboard name is required."),
@@ -67,6 +107,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const db = await getDb();
   try {
     const body = await request.json();
     const validation = dashboardPayloadSchema.safeParse(body);
@@ -76,48 +117,65 @@ export async function POST(request: Request) {
     }
 
     const { name, widgets } = validation.data;
-    const db = await getDb();
     const currentTimestamp = new Date().toISOString();
 
-    const existingDashboard = await db.get('SELECT id FROM dashboards WHERE userId = ?', currentUser.id);
+    // Begin transaction
+    await db.exec('BEGIN');
 
-    let dashboardId: string;
+    try {
+      const existingDashboard = await db.get('SELECT id, createdAt FROM dashboards WHERE userId = ?', currentUser.id);
 
-    if (existingDashboard) {
-      dashboardId = existingDashboard.id;
-      await db.run(
-        'UPDATE dashboards SET name = ?, widgets = ?, updatedAt = ?, isDefault = 1 WHERE id = ? AND userId = ?',
-        name,
-        JSON.stringify(widgets),
-        currentTimestamp,
-        dashboardId,
-        currentUser.id
-      );
-    } else {
-      dashboardId = crypto.randomUUID();
-      await db.run(
-        'INSERT INTO dashboards (id, userId, name, widgets, isDefault, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        dashboardId,
-        currentUser.id,
-        name,
-        JSON.stringify(widgets),
-        1, // First dashboard becomes default
-        currentTimestamp,
-        currentTimestamp
-      );
-    }
-    
-    const savedDashboard: Dashboard = {
+      let dashboardId: string;
+      let createdAt: string;
+
+      if (existingDashboard) {
+        dashboardId = existingDashboard.id;
+        createdAt = existingDashboard.createdAt;
+
+        await db.run(
+          'UPDATE dashboards SET name = ?, widgets = ?, updatedAt = ? WHERE id = ? AND userId = ?',
+          name,
+          JSON.stringify(widgets),
+          currentTimestamp,
+          dashboardId,
+          currentUser.id
+        );
+      } else {
+        dashboardId = crypto.randomUUID();
+        createdAt = currentTimestamp;
+
+        await db.run(
+          'INSERT INTO dashboards (id, userId, name, widgets, isDefault, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          dashboardId,
+          currentUser.id,
+          name,
+          JSON.stringify(widgets),
+          1, // First dashboard becomes default
+          currentTimestamp,
+          currentTimestamp
+        );
+      }
+
+      // Commit transaction
+      await db.exec('COMMIT');
+
+      const savedDashboard: Dashboard = {
         id: dashboardId,
         userId: currentUser.id,
         name,
         isDefault: true,
         widgets,
-        createdAt: existingDashboard ? (await db.get('SELECT createdAt FROM dashboards WHERE id = ?', dashboardId))?.createdAt : currentTimestamp,
+        createdAt,
         updatedAt: currentTimestamp,
-    }
+      };
 
-    return NextResponse.json(savedDashboard, { status: existingDashboard ? 200 : 201 });
+      return NextResponse.json(savedDashboard, { status: existingDashboard ? 200 : 201 });
+    } catch (transactionError: any) {
+      // Rollback transaction on error
+      await db.exec('ROLLBACK');
+      console.error('API Error (POST /user-dashboard) - Transaction failed:', transactionError);
+      return NextResponse.json({ error: 'Failed to save user dashboard due to a database error', details: transactionError.message }, { status: 500 });
+    }
   } catch (error: any) {
     console.error('API Error (POST /user-dashboard):', error);
     return NextResponse.json({ error: 'Failed to save user dashboard', details: error.message }, { status: 500 });
