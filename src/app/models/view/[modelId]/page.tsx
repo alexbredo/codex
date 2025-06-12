@@ -192,38 +192,36 @@ function ViewModelPageInternal() {
         <Button variant="outline" onClick={() => router.push('/models')}>
           <ArrowLeft className="mr-2 h-4 w-4" /> Back to Model Admin
         </Button>
-        <div className="flex items-center space-x-2">
-          <Button variant="outline" onClick={() => router.push(`/models/edit/${currentModel.id}`)}>
-            <Edit className="mr-2 h-4 w-4" /> Edit Structure
-          </Button>
-           <Link href={`/data/${currentModel.id}/new`} passHref legacyBehavior>
-              <Button variant="default" className="bg-accent text-accent-foreground hover:bg-accent/90">
-                  <PlusCircle className="mr-2 h-4 w-4" /> New {currentModel.name} Object
-              </Button>
-          </Link>
-        </div>
+        <Link href={`/data/${currentModel.id}/new`} passHref legacyBehavior>
+            <Button variant="default" className="bg-accent text-accent-foreground hover:bg-accent/90">
+                <PlusCircle className="mr-2 h-4 w-4" /> New {currentModel.name} Object
+            </Button>
+        </Link>
       </div>
 
       <Card className="shadow-lg">
         <CardHeader>
-          <div className="flex justify-between items-start">
-            <div>
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div className="flex-grow">
               <CardTitle className="text-3xl text-primary flex items-center">
                 <DatabaseZap className="mr-3 h-8 w-8" />
                 {currentModel.name}
               </CardTitle>
               <CardDescription>{currentModel.description || "No description provided."}</CardDescription>
             </div>
-            <div className="flex flex-col items-end space-y-2">
+            <div className="flex items-center space-x-2 flex-shrink-0">
+              <Button variant="outline" size="sm" onClick={() => router.push(`/models/edit/${currentModel.id}`)}>
+                <Edit className="mr-2 h-4 w-4" /> Edit Structure
+              </Button>
               <Link href={`/api/codex-structure/export/model/${currentModel.id}`} download passHref legacyBehavior>
                 <Button variant="secondary" size="sm">
-                  <DownloadCloud className="mr-2 h-4 w-4" /> Export Model & Data
+                  <DownloadCloud className="mr-2 h-4 w-4" /> Export
                 </Button>
               </Link>
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <Button variant="destructive" size="sm">
-                    <Trash2 className="mr-2 h-4 w-4" /> Delete Model
+                    <Trash2 className="mr-2 h-4 w-4" /> Delete
                   </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
