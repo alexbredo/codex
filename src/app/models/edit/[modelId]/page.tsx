@@ -35,59 +35,69 @@ export default function EditModelPage() {
 
   // Initial fetch trigger, only runs if modelId changes or on first load for this modelId
   useEffect(() => {
-    if (modelId) { // Ensure modelId is present before fetching
+    if (modelId) { 
       fetchData(`Navigated to Edit Model: ${modelId}`);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelId]); // Only re-run if modelId itself changes
 
   useEffect(() => {
-    if (isReady && modelId) {
-      // Only try to load/set model if currentModel isn't set or if modelId has changed
-      if (!currentModel || currentModel.id !== modelId) {
-        setIsLoadingModel(true);
-        const foundModel = getModelById(modelId);
-        if (foundModel) {
-          setCurrentModel(foundModel);
-          const sortedProperties = [...foundModel.properties].sort((a, b) => a.orderIndex - b.orderIndex);
-          form.reset({
-            name: foundModel.name,
-            description: foundModel.description || '',
-            namespace: foundModel.namespace || 'Default',
-            displayPropertyNames: foundModel.displayPropertyNames || [],
-            workflowId: foundModel.workflowId || null,
-            properties: sortedProperties.map(p => ({
-                id: p.id || crypto.randomUUID(),
-                name: p.name,
-                type: p.type,
-                relatedModelId: p.type === 'relationship' ? p.relatedModelId : undefined,
-                required: !!p.required,
-                relationshipType: p.type === 'relationship' ? (p.relationshipType || 'one') : undefined,
-                unit: p.type === 'number' ? p.unit : undefined,
-                precision: p.type === 'number' ? (p.precision === undefined || p.precision === null ? 2 : p.precision) : undefined,
-                autoSetOnCreate: p.type === 'date' ? !!p.autoSetOnCreate : false,
-                autoSetOnUpdate: p.type === 'date' ? !!p.autoSetOnUpdate : false,
-                isUnique: p.type === 'string' ? !!p.isUnique : false,
-                defaultValue: p.defaultValue ?? '',
-                orderIndex: p.orderIndex,
-                validationRulesetId: p.validationRulesetId ?? null,
-                minValue: p.type === 'number' ? (p.minValue === undefined || p.minValue === null ? null : Number(p.minValue)) : null,
-                maxValue: p.type === 'number' ? (p.maxValue === undefined || p.maxValue === null ? null : Number(p.maxValue)) : null,
-              } as PropertyFormValues)),
-          });
-          setIsLoadingModel(false);
-        } else {
-          // Model not found, redirect
-          toast({ variant: "destructive", title: "Error", description: `Model with ID ${modelId} not found.` });
-          router.push('/models');
-          setIsLoadingModel(false); // Ensure loading state is false
-        }
-      } else {
-        // currentModel exists and matches modelId, data context might have refreshed but our model is fine.
-        setIsLoadingModel(false); // Ensure loading state is false if model already loaded
-      }
+    // Only proceed if data context is ready and we have a modelId
+    if (!isReady || !modelId) {
+      setIsLoadingModel(true); // Keep loading if context isn't ready or no modelId
+      return;
     }
-  }, [modelId, getModelById, isReady, form, router, toast, currentModel]); // currentModel is now a dependency
+
+    // If currentModel is already set and its ID matches the URL, don't re-process unless modelId changes.
+    // This helps prevent re-fetching/redirecting when context updates for other reasons (like adding a group).
+    if (currentModel && currentModel.id === modelId) {
+      setIsLoadingModel(false);
+      return;
+    }
+
+    setIsLoadingModel(true);
+    const foundModel = getModelById(modelId);
+
+    if (foundModel) {
+      setCurrentModel(foundModel);
+      const sortedProperties = [...foundModel.properties].sort((a, b) => a.orderIndex - b.orderIndex);
+      form.reset({
+        name: foundModel.name,
+        description: foundModel.description || '',
+        namespace: foundModel.namespace || 'Default',
+        displayPropertyNames: foundModel.displayPropertyNames || [],
+        workflowId: foundModel.workflowId || null,
+        properties: sortedProperties.map(p => ({
+            id: p.id || crypto.randomUUID(),
+            name: p.name,
+            type: p.type,
+            relatedModelId: p.type === 'relationship' ? p.relatedModelId : undefined,
+            required: !!p.required,
+            relationshipType: p.type === 'relationship' ? (p.relationshipType || 'one') : undefined,
+            unit: p.type === 'number' ? p.unit : undefined,
+            precision: p.type === 'number' ? (p.precision === undefined || p.precision === null ? 2 : p.precision) : undefined,
+            autoSetOnCreate: p.type === 'date' ? !!p.autoSetOnCreate : false,
+            autoSetOnUpdate: p.type === 'date' ? !!p.autoSetOnUpdate : false,
+            isUnique: p.type === 'string' ? !!p.isUnique : false,
+            defaultValue: p.defaultValue ?? '',
+            orderIndex: p.orderIndex,
+            validationRulesetId: p.validationRulesetId ?? null,
+            minValue: p.type === 'number' ? (p.minValue === undefined || p.minValue === null ? null : Number(p.minValue)) : null,
+            maxValue: p.type === 'number' ? (p.maxValue === undefined || p.maxValue === null ? null : Number(p.maxValue)) : null,
+          } as PropertyFormValues)),
+      });
+    } else {
+      // This might happen if `fetchData` in the parent context hasn't fully populated `models` yet
+      // or if the model truly doesn't exist. We delay navigation to give context a chance.
+      // If after a short delay the model is still not found by getModelById (which uses the context's models),
+      // then it's likely a genuine "not found" case.
+      // For now, if `isReady` is true but model not found, it means context is loaded but model isn't there.
+      toast({ variant: "destructive", title: "Error", description: `Model with ID ${modelId} not found.` });
+      router.push('/models');
+    }
+    setIsLoadingModel(false);
+  }, [modelId, getModelById, isReady, form, router, toast, currentModel]); // Added currentModel here to re-evaluate if it changes externally
+
 
   const onSubmit = async (values: ModelFormValues) => {
     console.log("[EditModelPage] onSubmit - received values from ModelForm:", JSON.stringify(values, null, 2));
@@ -139,7 +149,7 @@ export default function EditModelPage() {
     }
   };
 
-  if (!isReady || isLoadingModel) { // Check isLoadingModel here
+  if (isLoadingModel) { 
     return (
       <div className="flex flex-col justify-center items-center h-screen">
         <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
@@ -148,7 +158,7 @@ export default function EditModelPage() {
     );
   }
 
-  if (!currentModel && !isLoadingModel) { // Check !isLoadingModel to show "not found" only after trying to load
+  if (!currentModel && !isLoadingModel) { 
     return (
       <div className="flex flex-col justify-center items-center h-screen">
          <p className="text-lg text-destructive">Model not found.</p>
@@ -157,7 +167,6 @@ export default function EditModelPage() {
     );
   }
   
-  // Render ModelForm only if currentModel is available
   return (
     <div className="container mx-auto py-8">
       <Button variant="outline" onClick={() => router.push('/models')} className="mb-6">
