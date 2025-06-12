@@ -2,7 +2,7 @@
 'use client';
 
 import type { Control, UseFormReturn, UseFieldArrayReturn, FieldErrors } from 'react-hook-form';
-import { useFieldArray, useWatch } from 'react-hook-form';
+import { useFieldArray, useWatch, useForm } from 'react-hook-form'; // Added useForm here
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
