@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react'; // Added useRef
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter, useParams } from 'next/navigation';
@@ -27,30 +27,31 @@ export default function EditModelPage() {
   const { toast } = useToast();
   const [currentModel, setCurrentModel] = useState<Model | null>(null);
   const [isLoadingModel, setIsLoadingModel] = useState(true);
+  const pageInitializedForCurrentModelIdRef = useRef(false); // Ref to track initialization
 
   const form = useForm<ModelFormValues>({
     resolver: zodResolver(modelFormSchema),
     // Default values will be set by the useEffect when model data is loaded
   });
 
-  // Initial fetch trigger, only runs if modelId changes or on first load for this modelId
+  // Effect to fetch data when modelId changes or on initial mount for this modelId
   useEffect(() => {
-    if (modelId) { 
+    if (modelId) {
+      pageInitializedForCurrentModelIdRef.current = false; // Reset init flag when modelId changes
       fetchData(`Navigated to Edit Model: ${modelId}`);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelId]); // Only re-run if modelId itself changes
 
+
   useEffect(() => {
-    // Only proceed if data context is ready and we have a modelId
     if (!isReady || !modelId) {
-      setIsLoadingModel(true); // Keep loading if context isn't ready or no modelId
+      setIsLoadingModel(true);
       return;
     }
 
-    // If currentModel is already set and its ID matches the URL, don't re-process unless modelId changes.
-    // This helps prevent re-fetching/redirecting when context updates for other reasons (like adding a group).
-    if (currentModel && currentModel.id === modelId) {
+    // If page is already initialized for this modelId AND currentModel matches, avoid re-processing
+    if (pageInitializedForCurrentModelIdRef.current && currentModel && currentModel.id === modelId) {
       setIsLoadingModel(false);
       return;
     }
@@ -86,17 +87,17 @@ export default function EditModelPage() {
             maxValue: p.type === 'number' ? (p.maxValue === undefined || p.maxValue === null ? null : Number(p.maxValue)) : null,
           } as PropertyFormValues)),
       });
+      pageInitializedForCurrentModelIdRef.current = true; // Mark as initialized for this modelId
     } else {
-      // This might happen if `fetchData` in the parent context hasn't fully populated `models` yet
-      // or if the model truly doesn't exist. We delay navigation to give context a chance.
-      // If after a short delay the model is still not found by getModelById (which uses the context's models),
-      // then it's likely a genuine "not found" case.
-      // For now, if `isReady` is true but model not found, it means context is loaded but model isn't there.
-      toast({ variant: "destructive", title: "Error", description: `Model with ID ${modelId} not found.` });
-      router.push('/models');
+      // Only navigate away if data is ready and we've attempted to load (pageInitializedRef is true means we expect a model)
+      // OR if this is the first attempt (pageInitializedRef is false) and model is not found after context is ready
+      if (isReady) { // Implicitly, pageInitializedRef would be false on first attempt, or true on subsequent if model disappears
+        toast({ variant: "destructive", title: "Error", description: `Model with ID ${modelId} not found.` });
+        router.push('/models');
+      }
     }
     setIsLoadingModel(false);
-  }, [modelId, getModelById, isReady, form, router, toast, currentModel]); // Added currentModel here to re-evaluate if it changes externally
+  }, [modelId, getModelById, isReady, form, router, toast]);
 
 
   const onSubmit = async (values: ModelFormValues) => {
@@ -117,7 +118,7 @@ export default function EditModelPage() {
       workflowId: values.workflowId === INTERNAL_NO_WORKFLOW_VALUE ? null : values.workflowId,
       properties: values.properties.map((p_form_value, index) => {
         const propertyForApi: Property = {
-          ...p_form_value, 
+          ...p_form_value,
           id: p_form_value.id || crypto.randomUUID(),
           model_id: currentModel.id, // ensure model_id is passed for properties
           orderIndex: index,
@@ -149,7 +150,7 @@ export default function EditModelPage() {
     }
   };
 
-  if (isLoadingModel) { 
+  if (isLoadingModel) {
     return (
       <div className="flex flex-col justify-center items-center h-screen">
         <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
@@ -158,7 +159,7 @@ export default function EditModelPage() {
     );
   }
 
-  if (!currentModel && !isLoadingModel) { 
+  if (!currentModel && !isLoadingModel) {
     return (
       <div className="flex flex-col justify-center items-center h-screen">
          <p className="text-lg text-destructive">Model not found.</p>
@@ -166,7 +167,7 @@ export default function EditModelPage() {
       </div>
     );
   }
-  
+
   return (
     <div className="container mx-auto py-8">
       <Button variant="outline" onClick={() => router.push('/models')} className="mb-6">
