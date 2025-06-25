@@ -14,7 +14,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { Eye, Edit, Trash2, ArrowUp, ArrowDown, ChevronsUpDown, ArchiveRestore, Paperclip } from 'lucide-react';
+import { Eye, Edit, Trash2, ArrowUp, ArrowDown, ChevronsUpDown, ArchiveRestore, Paperclip, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 import { format as formatDateFns, isValid as isDateValidFn } from 'date-fns';
 import { cn, getObjectDisplayValue } from '@/lib/utils';
@@ -180,10 +180,12 @@ export default function DataObjectsTable({
         return formattedValue;
       case 'markdown': return <Badge variant="outline">Markdown</Badge>;
       case 'image':
-        const imgUrl = String(value); return (
+        const imgUrl = String(value);
+        return (
           <a href={imgUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center text-xs">
-            <Link className="h-3 w-3 mr-1" href={imgUrl} /> {imgUrl.length > 30 ? imgUrl.substring(0, 27) + '...' : imgUrl} <Link className="h-3 w-3 ml-1 opacity-70" href={imgUrl} />
-          </a>);
+            <ExternalLink className="h-3 w-3 mr-1" /> {imgUrl.length > 30 ? imgUrl.substring(0, 27) + '...' : imgUrl}
+          </a>
+        );
       case 'fileAttachment':
         if (typeof value === 'object' && value.url && value.name) {
           return (
