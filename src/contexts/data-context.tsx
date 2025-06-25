@@ -90,6 +90,7 @@ const mapDbModelToClientModel = (dbModel: any): Model => {
     workflowId: dbModel.workflowId === undefined ? null : dbModel.workflowId,
     properties: (dbModel.properties || []).map((p: any) => ({
       id: p.id || crypto.randomUUID(),
+      model_id: p.model_id,
       name: p.name,
       type: p.type,
       relatedModelId: p.type === 'relationship' ? p.relatedModelId : undefined,

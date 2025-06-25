@@ -66,6 +66,7 @@ function ViewModelPageInternal() {
     deleteModel,
     getWorkflowById,
     validationRulesets,
+    modelGroups,
     isReady: dataContextIsReady,
     formatApiError,
   } = useData();
@@ -186,6 +187,8 @@ function ViewModelPageInternal() {
     return validationRulesets.find(rs => rs.id === ruleId)?.name;
   };
 
+  const groupName = modelGroups.find(g => g.id === currentModel.modelGroupId)?.name || 'Default';
+
   return (
     <div className="container mx-auto py-8 space-y-8">
       <div className="flex justify-between items-center">
@@ -242,8 +245,8 @@ function ViewModelPageInternal() {
 
           <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
             <div className="flex items-center">
-              <Badge variant="outline" className="mr-2 font-semibold px-2 py-1">Namespace:</Badge>
-              <span className="text-muted-foreground">{currentModel.namespace}</span>
+              <Badge variant="outline" className="mr-2 font-semibold px-2 py-1">Model Group:</Badge>
+              <span className="text-muted-foreground">{groupName}</span>
             </div>
             {currentModel.displayPropertyNames && currentModel.displayPropertyNames.length > 0 && (
               <div className="flex items-center">

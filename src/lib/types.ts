@@ -3,6 +3,7 @@ export type PropertyType = 'string' | 'number' | 'boolean' | 'date' | 'relations
 
 export interface Property {
   id: string;
+  model_id: string;
   name: string;
   type: PropertyType;
   relatedModelId?: string; // Only if type is 'relationship'
@@ -150,29 +151,7 @@ export interface StructuralChangelogEntry {
 
 
 // For forms
-export type ModelFormData = Omit<Model, 'id' | 'modelGroupId' | 'workflowId'> & {
-  modelGroupId?: string | null;
-  workflowId?: string | null;
-};
-export type PropertyFormData = Omit<Property, 'id' | 'orderIndex'> & {
-  id?: string; // Make ID optional for new properties in form
-  orderIndex?: number; // Optional for form, will be set programmatically
-  relationshipType?: 'one' | 'many',
-  autoSetOnCreate?: boolean,
-  autoSetOnUpdate?: boolean,
-  isUnique?: boolean,
-  defaultValue?: string;
-  validationRulesetId?: string | null;
-  minValue?: number | null;
-  maxValue?: number | null;
-};
-export type ObjectFormData = Omit<DataObject, 'id' | 'currentStateId' | 'ownerId' | 'createdAt' | 'updatedAt' | 'isDeleted' | 'deletedAt'> & {
-  currentStateId?: string | null;
-  ownerId?: string | null;
-};
-
-
-export type ModelGroupFormData = Omit<ModelGroup, 'id'>;
+export type ModelGroupFormValues = Omit<ModelGroup, 'id'>;
 export type ValidationRulesetFormData = Omit<ValidationRuleset, 'id'>;
 
 // Response type for paginated structural changelog

@@ -103,7 +103,7 @@ export async function PUT(request: Request, { params }: Params) {
   
   try {
     const body: Partial<Model> & { properties?: Property[] } = await request.json();
-    console.log(`[API PUT /models/${params.modelId}] Received raw request body:`, JSON.stringify(body, null, 2));
+    console.log(`[API PUT /models/${params.modelId}] STEP 1: Received raw request body:`, JSON.stringify(body, null, 2));
 
 
     await db.run('BEGIN TRANSACTION');
@@ -117,6 +117,7 @@ export async function PUT(request: Request, { params }: Params) {
       return NextResponse.json({ error: 'Model not found' }, { status: 404 });
     }
     const oldPropertiesFromDb = await db.all('SELECT * FROM properties WHERE model_id = ? ORDER BY orderIndex ASC', params.modelId);
+    console.log(`[API PUT /models/${params.modelId}] STEP 2: Fetched old model row from DB. Current model_group_id:`, oldModelRow.model_group_id);
 
 
     // Step 2: Explicitly build the data for the 'models' table update
@@ -135,7 +136,7 @@ export async function PUT(request: Request, { params }: Params) {
         displayPropertyNames: body.hasOwnProperty('displayPropertyNames') ? JSON.stringify(body.displayPropertyNames || []) : oldModelRow.displayPropertyNames,
         workflowId: body.hasOwnProperty('workflowId') ? body.workflowId : oldModelRow.workflowId,
     };
-    console.log(`[API PUT /models/${params.modelId}] Final data for UPDATE statement on 'models' table:`, JSON.stringify(finalUpdateData, null, 2));
+    console.log(`[API PUT /models/${params.modelId}] STEP 3: Prepared data for update. New modelGroupId:`, finalUpdateData.modelGroupId);
 
 
     // Step 3: Execute the update on the 'models' table
@@ -150,7 +151,7 @@ export async function PUT(request: Request, { params }: Params) {
       finalUpdateData.workflowId,
       params.modelId
     );
-    console.log(`[API PUT /models/${params.modelId}] 'models' table updated. Changes: ${result.changes}`);
+    console.log(`[API PUT /models/${params.modelId}] STEP 4: Database update executed. Changes: ${result.changes}`);
 
 
     // Step 4: Handle properties update
@@ -235,14 +236,14 @@ export async function PUT(request: Request, { params }: Params) {
           'UPDATE',
           JSON.stringify(changesDetail)
         );
-         console.log(`[API PUT /models/${params.modelId}] Changelog created with ID: ${changelogId}`);
+         console.log(`[API PUT /models/${params.modelId}] STEP 5: Changelog created with ID: ${changelogId}`);
     } else {
-         console.log(`[API PUT /models/${params.modelId}] No changes detected. Skipping changelog.`);
+         console.log(`[API PUT /models/${params.modelId}] STEP 5: No changes detected. Skipping changelog.`);
     }
 
     // Step 7: Commit transaction
     await db.run('COMMIT');
-    console.log(`[API PUT /models/${params.modelId}] Transaction committed successfully.`);
+    console.log(`[API PUT /models/${params.modelId}] STEP 6: Transaction committed successfully.`);
 
     // Fetch and return the fully updated model for the client
     const refreshedModelRow = await db.get('SELECT * FROM models WHERE id = ?', params.modelId);
