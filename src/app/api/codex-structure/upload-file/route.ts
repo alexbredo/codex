@@ -11,12 +11,24 @@ async function ensureDirExists(dirPath: string) {
   try {
     await fs.mkdir(dirPath, { recursive: true });
   } catch (error: any) {
-    if (error.code !== 'EEXIST') { // Ignore error if directory already exists
+    if (error.code !== 'EEXIST') {
       console.error(`Failed to create directory ${dirPath}:`, error);
-      throw error; // Rethrow if it's a different error
+      throw error;
     }
   }
 }
+
+const DISALLOWED_FILE_TYPES = [
+    'application/x-msdownload', // .exe, .dll
+    'application/x-dosexec',
+    'application/x-sh',         // .sh
+    'application/x-csh',
+    'application/x-ms-shortcut', // .lnk
+    'application/java-archive', // .jar
+    'application/javascript',   // .js (can be dangerous if served incorrectly)
+    'text/html'                 // .html
+];
+const MAX_FILE_SIZE_MB = 10;
 
 export async function POST(request: Request) {
   const currentUser = await getCurrentUserFromCookie();
@@ -34,6 +46,15 @@ export async function POST(request: Request) {
     if (!file) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
+    
+    // --- Server-side validation ---
+    if (DISALLOWED_FILE_TYPES.includes(file.type)) {
+      return NextResponse.json({ error: `File type '${file.type}' is not allowed for security reasons.` }, { status: 400 });
+    }
+    if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+      return NextResponse.json({ error: `File is too large. Maximum size is ${MAX_FILE_SIZE_MB}MB.` }, { status: 400 });
+    }
+    // --- End validation ---
 
     if (DEBUG_MODE) {
       console.log(`DEBUG_MODE: Simulating file upload for ${file.name}.`);
@@ -45,7 +66,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing modelId, objectId, or propertyName for file storage path.' }, { status: 400 });
     }
 
-    // Sanitize inputs for path construction (basic example)
     const safeModelId = modelId.replace(/[^a-z0-9_-]/gi, '');
     const safeObjectId = objectId.replace(/[^a-z0-9_-]/gi, '');
     const safePropertyName = propertyName.replace(/[^a-z0-9_-]/gi, '');

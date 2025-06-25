@@ -17,7 +17,7 @@ import type { Property, ValidationRuleset, Model } from '@/lib/types';
 import { useData } from '@/contexts/data-context';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
-import { CalendarIcon, ShieldCheck, ChevronsUpDown, Check, Search as SearchIcon, Paperclip } from 'lucide-react'; // Added Paperclip icon
+import { CalendarIcon, ShieldCheck, ChevronsUpDown, Check, Search as SearchIcon, Paperclip, UploadCloud } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { cn, getObjectDisplayValue } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/tooltip";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import * as React from 'react';
+import { Progress } from '@/components/ui/progress';
 
 
 interface AdaptiveFormFieldProps<TFieldValues extends FieldValues = FieldValues> {
@@ -41,6 +42,8 @@ interface AdaptiveFormFieldProps<TFieldValues extends FieldValues = FieldValues>
   formContext: 'create' | 'edit';
   modelId: string;
   objectId?: string | null;
+  isUploading: boolean;
+  uploadProgress: number | undefined;
 }
 
 const INTERNAL_NONE_SELECT_VALUE = "__EMPTY_SELECTION_VALUE__";
@@ -51,6 +54,8 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
   formContext,
   modelId,
   objectId,
+  isUploading,
+  uploadProgress,
 }: AdaptiveFormFieldProps<TFieldValues>) {
   const { models: allModels, getModelById, getObjectsByModelId, getAllObjects, validationRulesets } = useData();
   const fieldName = property.name as FieldPath<TFieldValues>;
@@ -58,7 +63,6 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
   const [currentImageFile, setCurrentImageFile] = useState<File | null>(null); // For image type
   const [currentFileAttachment, setCurrentFileAttachment] = useState<File | null>(null); // For fileAttachment type
 
-  // State for custom Combobox
   const [customPopoverOpen, setCustomPopoverOpen] = useState(false);
   const [customSearchValue, setCustomSearchValue] = useState("");
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -104,9 +108,6 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
         setImagePreviewUrl(fieldValue);
       }
     }
-    // For file attachments, if it's an existing file path, we might display its name
-    // No actual file object exists for preview, just the path string.
-    // setCurrentFileAttachment(null); // Clear any potentially selected new file
   }, [formContext, property.type, fieldName, form]);
 
   useEffect(() => {
@@ -130,15 +131,18 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
     if (property.type === 'date' && formContext === 'create' && property.autoSetOnCreate) {
         fieldIsDisabled = true;
     }
+     if (isUploading) { // Disable all fields during upload
+      fieldIsDisabled = true;
+    }
 
     switch (property.type) {
       case 'string':
         if (property.name.toLowerCase().includes('description') || property.name.toLowerCase().includes('notes')) {
-            return <Textarea placeholder={`Enter ${property.name}`} {...controllerField} value={controllerField.value ?? ''} />;
+            return <Textarea placeholder={`Enter ${property.name}`} {...controllerField} value={controllerField.value ?? ''} disabled={fieldIsDisabled} />;
         }
-        return <Input placeholder={`Enter ${property.name}`} {...controllerField} value={controllerField.value ?? ''} />;
+        return <Input placeholder={`Enter ${property.name}`} {...controllerField} value={controllerField.value ?? ''} disabled={fieldIsDisabled} />;
       case 'markdown':
-        return <Textarea placeholder={`Enter ${property.name} (Markdown supported)`} {...controllerField} value={controllerField.value ?? ''} rows={10} />;
+        return <Textarea placeholder={`Enter ${property.name} (Markdown supported)`} {...controllerField} value={controllerField.value ?? ''} rows={10} disabled={fieldIsDisabled} />;
       case 'image':
         return (
           <div className="space-y-2">
@@ -146,10 +150,11 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
               type="file"
               accept="image/*"
               ref={controllerField.ref}
+              disabled={isUploading}
               onChange={(e) => {
                 const file = e.target.files?.[0];
-                controllerField.onChange(file || null); // Pass the File object
-                setCurrentImageFile(file || null); // Store for local preview logic
+                controllerField.onChange(file || null);
+                setCurrentImageFile(file || null);
                 if (file) {
                   const reader = new FileReader();
                   reader.onloadend = () => {
@@ -161,7 +166,13 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
                 }
               }}
             />
-            {imagePreviewUrl && (
+            {isUploading && typeof uploadProgress === 'number' && uploadProgress >= 0 && (
+              <div className="flex items-center gap-2 mt-2">
+                <Progress value={uploadProgress} className="w-full" />
+                <span className="text-xs text-muted-foreground">{Math.round(uploadProgress)}%</span>
+              </div>
+            )}
+            {imagePreviewUrl && !isUploading && (
               <div className="mt-2 relative w-32 h-32 border rounded overflow-hidden">
                 <Image src={imagePreviewUrl} alt="Preview" layout="fill" objectFit="contain" />
               </div>
@@ -180,13 +191,20 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
             <Input
               type="file"
               ref={controllerField.ref}
+              disabled={isUploading}
               onChange={(e) => {
                 const file = e.target.files?.[0];
-                controllerField.onChange(file || null); // Pass the File object
-                setCurrentFileAttachment(file || null); // Store for local display logic
+                controllerField.onChange(file || null);
+                setCurrentFileAttachment(file || null);
               }}
             />
-            {currentFileAttachment ? (
+             {isUploading && typeof uploadProgress === 'number' && uploadProgress >= 0 && (
+              <div className="flex items-center gap-2 mt-2">
+                <Progress value={uploadProgress} className="w-full" />
+                <span className="text-xs text-muted-foreground">{Math.round(uploadProgress)}%</span>
+              </div>
+            )}
+            {currentFileAttachment && !isUploading ? (
               <FormDescription>Selected file: <Paperclip className="inline-block h-4 w-4 mr-1" /> {currentFileAttachment.name}</FormDescription>
             ) : (formContext === 'edit' && typeof currentFileValue === 'string' && currentFileValue && (
               <FormDescription>Current file: <Paperclip className="inline-block h-4 w-4 mr-1" /> <a href={currentFileValue} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline" download>{currentFileValue.split('/').pop()}</a></FormDescription>
@@ -202,6 +220,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
             placeholder={`Enter ${property.name}`}
             {...controllerField}
             value={controllerField.value ?? ''}
+            disabled={fieldIsDisabled}
             onChange={e => {
               const val = e.target.value;
               controllerField.onChange(val === '' ? null : parseFloat(val));
@@ -209,7 +228,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
           />
         );
       case 'boolean':
-        return <Switch checked={controllerField.value ?? false} onCheckedChange={controllerField.onChange} />;
+        return <Switch checked={controllerField.value ?? false} onCheckedChange={controllerField.onChange} disabled={fieldIsDisabled} />;
       case 'date':
         let dateButtonText: React.ReactNode;
         if (controllerField.value) {
@@ -363,7 +382,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
       defaultValueForController = 0;
       break;
     case 'image':
-    case 'fileAttachment': // Also initialize file attachments to null
+    case 'fileAttachment':
       defaultValueForController = null;
       break;
     case 'number':
@@ -425,4 +444,3 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
     />
   );
 }
-    

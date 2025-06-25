@@ -5,15 +5,15 @@ import type { UseFormReturn, ControllerRenderProps, FieldValues, FieldPath } fro
 import { Controller } from 'react-hook-form';
 import { Button } from '@/components/ui/button';
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage, FormDescription } from '@/components/ui/form';
-import type { Model, DataObject, WorkflowWithDetails, WorkflowStateWithSuccessors } from '@/lib/types';
+import type { Model, DataObject, WorkflowWithDetails, Property, WorkflowStateWithSuccessors } from '@/lib/types';
 import AdaptiveFormField from './adaptive-form-field';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useAuth } from '@/contexts/auth-context'; // For getting current user role
+import { useAuth } from '@/contexts/auth-context';
 import { useState } from 'react';
 import { useToast } from "@/hooks/use-toast";
+import { Loader2 } from 'lucide-react';
 
-// User type for allUsers prop
 interface User {
   id: string;
   username: string;
@@ -22,14 +22,14 @@ interface User {
 interface ObjectFormProps {
   form: UseFormReturn<Record<string, any>>;
   model: Model;
-  onSubmit: (values: Record<string, any>) => void;
+  onSubmit: (values: Record<string, any>) => Promise<void>;
   onCancel: () => void;
   isLoading?: boolean;
   existingObject?: DataObject;
   formObjectId?: string | null; 
   currentWorkflow?: WorkflowWithDetails | null;
-  allUsers?: User[]; // Make allUsers optional as it might not always be passed
-  currentUser?: User | null; // Current authenticated user
+  allUsers?: User[];
+  currentUser?: User | null;
 }
 
 const INTERNAL_NO_STATE_CHANGE = "__NO_STATE_CHANGE__";
@@ -45,12 +45,14 @@ export default function ObjectForm({
   existingObject,
   formObjectId,
   currentWorkflow,
-  allUsers = [], // Default to empty array if not provided
+  allUsers = [],
   currentUser,
 }: ObjectFormProps) {
   const formContext = existingObject ? 'edit' : 'create';
-  const [isUploadingFiles, setIsUploadingFiles] = useState(false);
   const { toast } = useToast();
+
+  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
+  const [isUploadingFiles, setIsUploadingFiles] = useState(false);
 
   let availableStatesForSelect: Array<{ value: string; label: string; isCurrent: boolean }> = [];
   let currentStateName: string | undefined;
@@ -85,45 +87,74 @@ export default function ObjectForm({
 
   const handleFormSubmit = async (values: Record<string, any>) => {
     setIsUploadingFiles(true);
-    let updatedValues = { ...values };
+    setUploadProgress({});
+    const updatedValues = { ...values };
+    const fileUploadPromises: Promise<void>[] = [];
+
+    const uploadFileWithProgress = (file: File, property: Property) => {
+      return new Promise((resolve, reject) => {
+        const endpoint = property.type === 'image' ? '/api/codex-structure/upload-image' : '/api/codex-structure/upload-file';
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('modelId', model.id);
+        const idForUpload = formObjectId || existingObject?.id;
+        if (idForUpload) {
+          formData.append('objectId', idForUpload);
+        } else {
+          toast({ title: "Error", description: "Cannot upload file without a unique object identifier.", variant: "destructive" });
+          reject(new Error("Cannot upload file without an object identifier."));
+          return;
+        }
+        formData.append('propertyName', property.name);
+
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', endpoint, true);
+
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) {
+            const percentComplete = (event.loaded / event.total) * 100;
+            setUploadProgress(prev => ({ ...prev, [property.name]: percentComplete }));
+          }
+        };
+
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            setUploadProgress(prev => ({ ...prev, [property.name]: 100 }));
+            const result = JSON.parse(xhr.responseText);
+            updatedValues[property.name] = result.url;
+            resolve();
+          } else {
+            setUploadProgress(prev => ({ ...prev, [property.name]: -1 }));
+            try {
+              const errorResponse = JSON.parse(xhr.responseText);
+              reject(new Error(errorResponse.error || `Upload for ${property.name} failed: ${xhr.statusText}`));
+            } catch {
+              reject(new Error(`Upload for ${property.name} failed with status: ${xhr.status}`));
+            }
+          }
+        };
+
+        xhr.onerror = () => {
+          setUploadProgress(prev => ({ ...prev, [property.name]: -1 }));
+          reject(new Error(`Upload for ${property.name} failed due to a network error.`));
+        };
+
+        xhr.send(formData);
+      });
+    };
+
+    for (const property of model.properties) {
+      const fieldValue = values[property.name];
+      if ((property.type === 'image' || property.type === 'fileAttachment') && fieldValue instanceof File) {
+        fileUploadPromises.push(uploadFileWithProgress(fieldValue, property));
+      }
+    }
 
     try {
-      for (const property of model.properties) {
-        const fieldValue = form.getValues(property.name);
-
-        if ((property.type === 'image' || property.type === 'fileAttachment') && fieldValue instanceof File) {
-          const formData = new FormData();
-          formData.append('file', fieldValue);
-          formData.append('modelId', model.id);
-          if (formObjectId) {
-            formData.append('objectId', formObjectId);
-          } else if (existingObject?.id) {
-            formData.append('objectId', existingObject.id);
-          } else {
-             // If no objectId, create a dummy one for upload path for new objects
-            // This objectId will be replaced by the actual ID upon object creation in the backend
-            const tempObjectId = `temp-${Date.now()}`;
-            formData.append('objectId', tempObjectId);
-          }
-          formData.append('propertyName', property.name);
-
-          const uploadEndpoint = property.type === 'image' ? '/api/codex-structure/upload-image' : '/api/codex-structure/upload-file';
-          
-          const response = await fetch(uploadEndpoint, {
-            method: 'POST',
-            body: formData,
-          });
-
-          if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(`File upload failed for ${property.name}: ${errorData.error || response.statusText}`);
-          }
-
-          const result = await response.json();
-          updatedValues[property.name] = result.url; // Replace File object with URL
-        }
+      if (fileUploadPromises.length > 0) {
+        await Promise.all(fileUploadPromises);
       }
-      onSubmit(updatedValues);
+      await onSubmit(updatedValues);
     } catch (error: any) {
       console.error("Error during file upload or form submission:", error);
       toast({
@@ -153,6 +184,7 @@ export default function ObjectForm({
                             field.onChange(value === INTERNAL_NO_STATE_CHANGE ? (existingObject?.currentStateId || null) : value)
                           }}
                           value={field.value ? String(field.value) : (existingObject?.currentStateId ? String(existingObject.currentStateId) : INTERNAL_NO_STATE_CHANGE) }
+                          disabled={isUploadingFiles}
                         >
                           <FormControl>
                             <SelectTrigger>
@@ -196,6 +228,7 @@ export default function ObjectForm({
                         <Select
                           onValueChange={(value) => field.onChange(value === INTERNAL_NO_OWNER_SELECTED ? null : value)}
                           value={field.value || INTERNAL_NO_OWNER_SELECTED}
+                          disabled={isUploadingFiles}
                         >
                           <FormControl>
                             <SelectTrigger>
@@ -229,6 +262,8 @@ export default function ObjectForm({
                     formContext={formContext}
                     modelId={model.id}
                     objectId={formObjectId || existingObject?.id}
+                    isUploading={isUploadingFiles}
+                    uploadProgress={uploadProgress[property.name]}
                 />
                 ))}
             </div>
@@ -238,7 +273,9 @@ export default function ObjectForm({
             Cancel
           </Button>
           <Button type="submit" disabled={isLoading || form.formState.isSubmitting || isUploadingFiles} className="bg-primary hover:bg-primary/90">
-            {isLoading || form.formState.isSubmitting || isUploadingFiles ? (isUploadingFiles ? 'Uploading Files...' : 'Saving...') : (existingObject ? `Update ${model.name}` : `Create ${model.name}`)}
+            {isUploadingFiles ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Uploading...</>
+              : (isLoading || form.formState.isSubmitting) ? 'Saving...' 
+              : (existingObject ? `Update ${model.name}` : `Create ${model.name}`)}
           </Button>
         </div>
       </form>

@@ -11,12 +11,15 @@ async function ensureDirExists(dirPath: string) {
   try {
     await fs.mkdir(dirPath, { recursive: true });
   } catch (error: any) {
-    if (error.code !== 'EEXIST') { // Ignore error if directory already exists
+    if (error.code !== 'EEXIST') {
       console.error(`Failed to create directory ${dirPath}:`, error);
-      throw error; // Rethrow if it's a different error
+      throw error;
     }
   }
 }
+
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
+const MAX_IMAGE_SIZE_MB = 5;
 
 export async function POST(request: Request) {
   const currentUser = await getCurrentUserFromCookie();
@@ -34,6 +37,15 @@ export async function POST(request: Request) {
     if (!file) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
+    
+    // --- Server-side validation ---
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      return NextResponse.json({ error: `Invalid file type. Allowed types are: ${ALLOWED_IMAGE_TYPES.join(', ')}` }, { status: 400 });
+    }
+    if (file.size > MAX_IMAGE_SIZE_MB * 1024 * 1024) {
+      return NextResponse.json({ error: `File is too large. Maximum size is ${MAX_IMAGE_SIZE_MB}MB.` }, { status: 400 });
+    }
+    // --- End validation ---
 
     if (DEBUG_MODE) {
       console.log(`DEBUG_MODE: Simulating image upload for ${file.name}.`);
@@ -41,17 +53,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, url: placeholderUrl });
     }
 
-    // Non-Debug mode: Actual file saving
     if (!modelId || !objectId || !propertyName) {
       return NextResponse.json({ error: 'Missing modelId, objectId, or propertyName for file storage path.' }, { status: 400 });
     }
 
-    // Sanitize inputs for path construction (basic example)
     const safeModelId = modelId.replace(/[^a-z0-9_-]/gi, '');
     const safeObjectId = objectId.replace(/[^a-z0-9_-]/gi, '');
     const safePropertyName = propertyName.replace(/[^a-z0-9_-]/gi, '');
     
-    // Generate a unique filename using UUID and preserve the original extension
     const fileExtension = path.extname(file.name);
     const uniqueFileName = `${uuidv4()}${fileExtension}`;
 
