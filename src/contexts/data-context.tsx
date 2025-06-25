@@ -14,6 +14,9 @@ interface User {
   role: 'user' | 'administrator';
 }
 
+// This defines the shape of the data passed to updateModel, ensuring modelGroupId is allowed.
+type ModelUpdatePayload = Partial<Omit<Model, 'id' | 'properties'>> & { properties?: Property[] };
+
 export interface DataContextType {
   models: Model[];
   objects: Record<string, DataObject[]>; // Stores active objects
@@ -25,7 +28,7 @@ export interface DataContextType {
   lastChangedInfo: { modelId: string, objectId: string, changeType: 'added' | 'updated' | 'restored' | 'deleted' } | null;
 
   addModel: (modelData: Omit<Model, 'id' | 'modelGroupId' | 'workflowId'> & { modelGroupId?: string | null, workflowId?: string | null }) => Promise<Model>;
-  updateModel: (modelId: string, updates: Partial<Omit<Model, 'id' | 'properties' | 'displayPropertyNames' | 'modelGroupId' | 'workflowId'>> & { properties?: Property[], displayPropertyNames?: string[], modelGroupId?: string | null, workflowId?: string | null }) => Promise<Model | undefined>;
+  updateModel: (modelId: string, updates: ModelUpdatePayload) => Promise<Model | undefined>;
   deleteModel: (modelId: string) => Promise<void>;
   getModelById: (modelId: string) => Model | undefined;
   getModelByName: (name: string) => Model | undefined;
@@ -208,7 +211,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       console.warn(`[DataContext] Fetch already in progress. New trigger: ${triggeredBy}. Skipping.`);
       return;
     }
-    console.log(`[DataContext] Starting fetchData. Trigger: ${triggeredBy || 'Unknown'}`);
+    // console.log(`[DataContext] Starting fetchData. Trigger: ${triggeredBy || 'Unknown'}`);
     isFetchingDataRef.current = true;
 
     if (initialLoadCompletedRef.current) {
@@ -292,7 +295,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       }
       setIsBackgroundFetching(false);
       isFetchingDataRef.current = false;
-      console.log(`[DataContext] Finished fetchData. Trigger: ${triggeredBy || 'Unknown'}`);
+      // console.log(`[DataContext] Finished fetchData. Trigger: ${triggeredBy || 'Unknown'}`);
     }
   }, [fetchWorkflowsInternal, fetchValidationRulesetsInternal, fetchAllUsersInternal]);
 
@@ -349,10 +352,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return mapDbModelToClientModel(newModel);
   }, [fetchData]);
 
-  const updateModel = useCallback(async (modelId: string, updates: Partial<Omit<Model, 'id' | 'properties' | 'displayPropertyNames' | 'modelGroupId' | 'workflowId'>> & { properties?: Property[], displayPropertyNames?: string[], modelGroupId?: string | null, workflowId?: string | null }): Promise<Model | undefined> => {
-    const existingModel = models.find(m => m.id === modelId);
-    if (!existingModel) throw new Error(`Model with ID ${modelId} not found for update.`);
-
+  const updateModel = useCallback(async (modelId: string, updates: ModelUpdatePayload): Promise<Model | undefined> => {
     const propertiesForApi = (updates.properties || []).map((p, index) => ({
       ...p,
       id: p.id || crypto.randomUUID(),
@@ -370,13 +370,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       minValue: p.type === 'number' ? (p.minValue === undefined || p.minValue === null || isNaN(Number(p.minValue)) ? null : Number(p.minValue)) : null,
       maxValue: p.type === 'number' ? (p.maxValue === undefined || p.maxValue === null || isNaN(Number(p.maxValue)) ? null : Number(p.maxValue)) : null,
     }));
-    
+
     const payload = {
-      name: updates.name ?? existingModel.name,
-      description: updates.description ?? existingModel.description,
-      modelGroupId: Object.prototype.hasOwnProperty.call(updates, 'modelGroupId') ? updates.modelGroupId : existingModel.modelGroupId,
-      displayPropertyNames: updates.displayPropertyNames ?? existingModel.displayPropertyNames,
-      workflowId: Object.prototype.hasOwnProperty.call(updates, 'workflowId') ? updates.workflowId : existingModel.workflowId,
+      ...updates,
       properties: propertiesForApi,
     };
 
@@ -392,7 +388,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const updatedModelFromApi: Model = await response.json();
     await fetchData('After Update Model'); 
     return mapDbModelToClientModel(updatedModelFromApi);
-  }, [fetchData, models]);
+  }, [fetchData]);
 
   const deleteModel = useCallback(async (modelId: string) => {
     const response = await fetch(`/api/codex-structure/models/${modelId}`, { method: 'DELETE' });
