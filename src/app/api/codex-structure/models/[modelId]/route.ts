@@ -103,6 +103,7 @@ export async function PUT(request: Request, { params }: Params) {
   
   try {
     const body: Partial<Model> & { properties?: Property[] } = await request.json();
+    console.log(`[API PUT /models/${params.modelId}] Received request body:`, JSON.stringify(body, null, 2));
 
     await db.run('BEGIN TRANSACTION');
 
@@ -111,8 +112,10 @@ export async function PUT(request: Request, { params }: Params) {
     const oldModelRow = await db.get('SELECT * FROM models WHERE id = ?', params.modelId);
     if (!oldModelRow) {
       await db.run('ROLLBACK');
+      console.error(`[API PUT /models/${params.modelId}] Model not found.`);
       return NextResponse.json({ error: 'Model not found' }, { status: 404 });
     }
+    console.log(`[API PUT /models/${params.modelId}] Found existing model row:`, JSON.stringify(oldModelRow, null, 2));
     
     const oldPropertiesFromDb = await db.all('SELECT * FROM properties WHERE model_id = ? ORDER BY orderIndex ASC', params.modelId);
 
@@ -124,30 +127,29 @@ export async function PUT(request: Request, { params }: Params) {
         }
     }
 
-    const finalName = body.name ?? oldModelRow.name;
-    const finalDescription = body.description ?? oldModelRow.description;
+    const finalUpdateData = {
+        name: body.name ?? oldModelRow.name,
+        description: body.description ?? oldModelRow.description,
+        modelGroupId: body.hasOwnProperty('modelGroupId') ? body.modelGroupId : oldModelRow.model_group_id,
+        displayPropertyNames: body.hasOwnProperty('displayPropertyNames') ? JSON.stringify(body.displayPropertyNames || []) : oldModelRow.displayPropertyNames,
+        workflowId: body.hasOwnProperty('workflowId') ? body.workflowId : oldModelRow.workflowId,
+    };
     
-    let finalModelGroupId;
-    if (body.hasOwnProperty('modelGroupId')) {
-        finalModelGroupId = body.modelGroupId;
-    } else {
-        finalModelGroupId = oldModelRow.model_group_id;
-    }
-    
-    const finalDisplayPropertyNames = body.hasOwnProperty('displayPropertyNames') ? JSON.stringify(body.displayPropertyNames || []) : oldModelRow.displayPropertyNames;
-    const finalWorkflowId = body.hasOwnProperty('workflowId') ? body.workflowId : oldModelRow.workflowId;
+    console.log(`[API PUT /models/${params.modelId}] Final data for UPDATE statement:`, JSON.stringify(finalUpdateData, null, 2));
 
     const result = await db.run(
       `UPDATE models 
        SET name = ?, description = ?, model_group_id = ?, displayPropertyNames = ?, workflowId = ?
        WHERE id = ?`,
-      finalName,
-      finalDescription,
-      finalModelGroupId,
-      finalDisplayPropertyNames,
-      finalWorkflowId,
+      finalUpdateData.name,
+      finalUpdateData.description,
+      finalUpdateData.modelGroupId,
+      finalUpdateData.displayPropertyNames,
+      finalUpdateData.workflowId,
       params.modelId
     );
+    console.log(`[API PUT /models/${params.modelId}] UPDATE models statement executed successfully. Changes: ${result.changes}`);
+
 
     const newProcessedProperties: Property[] = [];
     if (body.properties) {
@@ -178,11 +180,11 @@ export async function PUT(request: Request, { params }: Params) {
     }
     
     const oldEffectiveWorkflowId = oldModelRow.workflowId || null;
-    if (finalWorkflowId !== oldEffectiveWorkflowId) {
-      if (finalWorkflowId) { 
-        const workflowForUpdate: WorkflowWithDetails | undefined = await db.get('SELECT * FROM workflows WHERE id = ?', finalWorkflowId);
+    if (finalUpdateData.workflowId !== oldEffectiveWorkflowId) {
+      if (finalUpdateData.workflowId) { 
+        const workflowForUpdate: WorkflowWithDetails | undefined = await db.get('SELECT * FROM workflows WHERE id = ?', finalUpdateData.workflowId);
         if (workflowForUpdate) {
-          const statesForUpdate: WorkflowState[] = await db.all('SELECT id, isInitial FROM workflow_states WHERE workflowId = ?', finalWorkflowId);
+          const statesForUpdate: WorkflowState[] = await db.all('SELECT id, isInitial FROM workflow_states WHERE workflowId = ?', finalUpdateData.workflowId);
           const initialStateForUpdate = statesForUpdate.find(s => s.isInitial === 1 || s.isInitial === true);
           await db.run("UPDATE data_objects SET currentStateId = ? WHERE model_id = ?", initialStateForUpdate?.id || null, params.modelId);
         } else {
@@ -196,11 +198,11 @@ export async function PUT(request: Request, { params }: Params) {
     const changelogId = crypto.randomUUID();
     const changesDetail: StructuralChangeDetail[] = [];
     
-    if (finalName !== oldModelRow.name) changesDetail.push({ field: 'name', oldValue: oldModelRow.name, newValue: finalName });
-    if (finalDescription !== oldModelRow.description) changesDetail.push({ field: 'description', oldValue: oldModelRow.description, newValue: finalDescription });
-    if (finalModelGroupId !== oldModelRow.model_group_id) changesDetail.push({ field: 'modelGroupId', oldValue: oldModelRow.model_group_id, newValue: finalModelGroupId });
-    if (finalDisplayPropertyNames !== oldModelRow.displayPropertyNames) changesDetail.push({ field: 'displayPropertyNames', oldValue: JSON.parse(oldModelRow.displayPropertyNames || '[]'), newValue: JSON.parse(finalDisplayPropertyNames || '[]') });
-    if (finalWorkflowId !== oldModelRow.workflowId) changesDetail.push({ field: 'workflowId', oldValue: oldModelRow.workflowId, newValue: finalWorkflowId });
+    if (finalUpdateData.name !== oldModelRow.name) changesDetail.push({ field: 'name', oldValue: oldModelRow.name, newValue: finalUpdateData.name });
+    if (finalUpdateData.description !== oldModelRow.description) changesDetail.push({ field: 'description', oldValue: oldModelRow.description, newValue: finalUpdateData.description });
+    if (finalUpdateData.modelGroupId !== oldModelRow.model_group_id) changesDetail.push({ field: 'modelGroupId', oldValue: oldModelRow.model_group_id, newValue: finalUpdateData.modelGroupId });
+    if (finalUpdateData.displayPropertyNames !== oldModelRow.displayPropertyNames) changesDetail.push({ field: 'displayPropertyNames', oldValue: JSON.parse(oldModelRow.displayPropertyNames || '[]'), newValue: JSON.parse(finalUpdateData.displayPropertyNames || '[]') });
+    if (finalUpdateData.workflowId !== oldModelRow.workflowId) changesDetail.push({ field: 'workflowId', oldValue: oldModelRow.workflowId, newValue: finalUpdateData.workflowId });
     changesDetail.push({ 
         field: 'properties', 
         oldValue: oldPropertiesFromDb.map(p => ({name: p.name, type: p.type, orderIndex: p.orderIndex, required: !!p.required})),
@@ -215,7 +217,7 @@ export async function PUT(request: Request, { params }: Params) {
           currentUser.id,
           'Model',
           params.modelId,
-          finalName, 
+          finalUpdateData.name, 
           'UPDATE',
           JSON.stringify(changesDetail)
         );
@@ -328,5 +330,3 @@ export async function DELETE(request: Request, { params }: Params) {
     return NextResponse.json({ error: 'Failed to delete model', details: errorMessage }, { status: 500 });
   }
 }
-
-    

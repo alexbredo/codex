@@ -351,6 +351,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const updateModel = useCallback(async (modelId: string, updates: ModelUpdatePayload): Promise<Model | undefined> => {
     const payload: ModelUpdatePayload = { ...updates };
+
     const response = await fetch(`/api/codex-structure/models/${modelId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
