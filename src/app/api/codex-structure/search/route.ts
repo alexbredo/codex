@@ -9,7 +9,7 @@ interface SearchResult {
   object: DataObject;
   model: Model;
   displayValue: string;
-  matchContext?: string; // For future implementation
+  matchContext?: string;
   score: number;
 }
 
@@ -20,7 +20,7 @@ export async function GET(request: Request) {
   }
 
   const { searchParams } = new URL(request.url);
-  const query = searchParams.get('q')?.toLowerCase()?.trim();
+  const query = searchParams.get('q')?.trim() || '';
 
   if (!query) {
     return NextResponse.json([]);
@@ -29,101 +29,130 @@ export async function GET(request: Request) {
   try {
     const db = await getDb();
     
-    // Fetch all data needed for display value resolution and searching
-    const allModels: Model[] = await db.all('SELECT * FROM models');
-    const allProperties: Property[] = await db.all('SELECT * FROM properties');
-    const allObjectsRaw = await db.all('SELECT id, model_id, data FROM data_objects WHERE isDeleted = 0 OR isDeleted IS NULL');
+    // Fetch all models and properties once for processing results
+    const allModels: Model[] = await db.all('SELECT id, name, displayPropertyNames FROM models');
+    const allProperties: Property[] = await db.all('SELECT id, model_id, name, type FROM properties');
     
-    const allObjects: Record<string, DataObject[]> = {};
-    for(const row of allObjectsRaw) {
-        if (!allObjects[row.model_id]) {
-            allObjects[row.model_id] = [];
-        }
-        allObjects[row.model_id].push({ id: row.id, ...JSON.parse(row.data) });
-    }
-
     for (const model of allModels) {
-        model.properties = allProperties.filter(p => p.model_id === model.id);
         try {
-            model.displayPropertyNames = JSON.parse(model.displayPropertyNames || '[]');
+            model.displayPropertyNames = model.displayPropertyNames ? JSON.parse(model.displayPropertyNames as any) : [];
         } catch {
             model.displayPropertyNames = [];
         }
+        model.properties = allProperties.filter(p => p.model_id === model.id);
     }
 
-    let modelFilter: string | null = null;
-    const modelFilterMatch = query.match(/model:(\w+)/);
-    let searchQuery = query;
+    // --- Advanced Query Parsing ---
+    const filters: { type: 'model' | 'property'; key: string; value: string }[] = [];
+    let fullTextQuery = query;
 
-    if (modelFilterMatch) {
-        modelFilter = modelFilterMatch[1];
-        searchQuery = query.replace(modelFilterMatch[0], '').trim();
+    const filterRegex = /(\w+):(?:("([^"]+)")|(\S+))/g;
+    let match;
+    while ((match = filterRegex.exec(query)) !== null) {
+      const key = match[1].toLowerCase();
+      const value = match[3] ?? match[4];
+      
+      if (key === 'model') {
+        filters.push({ type: 'model', key, value });
+      } else {
+        filters.push({ type: 'property', key, value });
+      }
+      
+      fullTextQuery = fullTextQuery.replace(match[0], '').trim();
     }
-    
-    let objectsToSearch = allObjectsRaw;
+    const fullTextTerms = fullTextQuery.toLowerCase().split(' ').filter(Boolean);
+    // --- End Parsing ---
+
+    let sqlQuery = `SELECT d.id, d.model_id, d.data FROM data_objects d`;
+    const joins: string[] = [];
+    const whereClauses: string[] = ['(d.isDeleted = 0 OR d.isDeleted IS NULL)'];
+    const queryParams: any[] = [];
+
+    const modelFilter = filters.find(f => f.type === 'model');
     if (modelFilter) {
-        const targetModel = allModels.find(m => m.name.toLowerCase() === modelFilter);
-        if (targetModel) {
-            objectsToSearch = allObjectsRaw.filter(obj => obj.model_id === targetModel.id);
-        } else {
-            // If model filter doesn't match any model, return no results
-            return NextResponse.json([]);
-        }
+      joins.push(`JOIN models m ON d.model_id = m.id`);
+      whereClauses.push(`LOWER(m.name) = ?`);
+      queryParams.push(modelFilter.value.toLowerCase());
+    }
+
+    const propertyFilters = filters.filter(f => f.type === 'property');
+    if (propertyFilters.length > 0) {
+      propertyFilters.forEach((filter, index) => {
+        // This is a simplification. A real implementation would need to check property types for correct comparison (e.g., numbers vs strings).
+        // Using LIKE for broader matching. For exact match, use '='.
+        whereClauses.push(`LOWER(json_extract(d.data, ?)) LIKE ?`);
+        queryParams.push(`$.${filter.key}`);
+        queryParams.push(`%${filter.value.toLowerCase()}%`);
+      });
     }
     
-    if (!searchQuery) {
-        // If only a model filter was provided, return all objects for that model
-        const results: SearchResult[] = objectsToSearch.map(row => {
-            const model = allModels.find(m => m.id === row.model_id);
-            if (!model) return null;
-            const objectData = { id: row.id, ...JSON.parse(row.data) };
-            const displayValue = getObjectDisplayValue(objectData, model, allModels, allObjects);
+    sqlQuery += ` ${joins.join(' ')}`;
+    if (whereClauses.length > 0) {
+      sqlQuery += ` WHERE ${whereClauses.join(' AND ')}`;
+    }
+    sqlQuery += ` LIMIT 200`; // Limit initial results to prevent performance issues
+
+    const filteredObjectRows = await db.all(sqlQuery, ...queryParams);
+    
+    // Now, perform full-text search on the narrowed down results in JS
+    let searchResults: SearchResult[] = [];
+
+    if (fullTextTerms.length > 0) {
+        for (const row of filteredObjectRows) {
+            const objectString = JSON.stringify(row).toLowerCase();
+            let matchesAllTerms = true;
+            for (const term of fullTextTerms) {
+                if (!objectString.includes(term)) {
+                    matchesAllTerms = false;
+                    break;
+                }
+            }
+            if (matchesAllTerms) {
+                const modelForObject = allModels.find(m => m.id === row.model_id);
+                if (modelForObject) {
+                    const data: DataObject = { id: row.id, ...JSON.parse(row.data) };
+                    searchResults.push({
+                        object: data,
+                        model: modelForObject,
+                        displayValue: '', // Will be hydrated below
+                        score: 1 
+                    });
+                }
+            }
+        }
+    } else {
+        // If no full text terms, all SQL results are valid
+        searchResults = filteredObjectRows.map(row => {
+            const modelForObject = allModels.find(m => m.id === row.model_id);
+            if (!modelForObject) return null;
+            const data: DataObject = { id: row.id, ...JSON.parse(row.data) };
             return {
-                object: objectData,
-                model: model,
-                displayValue: displayValue,
-                score: 1 // Default score
+                object: data,
+                model: modelForObject,
+                displayValue: '',
+                score: 1
             };
         }).filter(Boolean) as SearchResult[];
-        return NextResponse.json(results.slice(0, 50)); // Limit results
     }
 
-    const searchResults: SearchResult[] = [];
-    const searchTerms = searchQuery.split(' ').filter(Boolean);
-
-    for (const row of objectsToSearch) {
-      const data: DataObject = { id: row.id, ...JSON.parse(row.data) };
-      const modelForObject = allModels.find(m => m.id === row.model_id);
-      if (!modelForObject) continue;
-
-      let score = 0;
-      let matchesAllTerms = true;
-
-      const objectString = JSON.stringify(data).toLowerCase();
-
-      for (const term of searchTerms) {
-        if (objectString.includes(term)) {
-            score += 1;
-        } else {
-            matchesAllTerms = false;
-            break;
+    // Hydrate display values for all results
+    // This is inefficient but necessary until we have a better display name resolution system
+    const allObjectsRawForDisplayValue = await db.all('SELECT id, model_id, data FROM data_objects WHERE isDeleted = 0 OR isDeleted IS NULL');
+    const allObjectsForDisplayValue: Record<string, DataObject[]> = {};
+    for(const row of allObjectsRawForDisplayValue) {
+        if (!allObjectsForDisplayValue[row.model_id]) {
+            allObjectsForDisplayValue[row.model_id] = [];
         }
-      }
-
-      if (matchesAllTerms && score > 0) {
-        const displayValue = getObjectDisplayValue(data, modelForObject, allModels, allObjects);
-        searchResults.push({
-          object: data,
-          model: modelForObject,
-          displayValue: displayValue,
-          score,
-        });
-      }
+        allObjectsForDisplayValue[row.model_id].push({ id: row.id, ...JSON.parse(row.data) });
     }
+
+    searchResults.forEach(result => {
+        result.displayValue = getObjectDisplayValue(result.object, result.model, allModels, allObjectsForDisplayValue);
+    });
 
     searchResults.sort((a, b) => b.score - a.score);
 
-    return NextResponse.json(searchResults.slice(0, 50)); // Limit results
+    return NextResponse.json(searchResults.slice(0, 50));
 
   } catch (error: any) {
     console.error('API Search Error:', error);
