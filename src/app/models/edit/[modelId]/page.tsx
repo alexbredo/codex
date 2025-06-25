@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
@@ -27,37 +26,39 @@ export default function EditModelPage() {
   const { toast } = useToast();
   const [currentModel, setCurrentModel] = useState<Model | null>(null);
   const [isLoadingModel, setIsLoadingModel] = useState(true);
-  const pageInitializedForCurrentModelIdRef = useRef(false);
+  const previousModelIdRef = useRef<string | null>(null); // To track if the actual model ID has changed
 
   const form = useForm<ModelFormValues>({
     resolver: zodResolver(modelFormSchema),
   });
 
-  // This effect is now specifically for initializing the page and form when the model is first available.
+  // This single, robust useEffect handles data fetching for the page and form initialization.
   useEffect(() => {
-    // Don't do anything until the data context is ready and we have a modelId.
-    if (!isReady || !modelId) {
-      return;
+    // If the modelId from the URL changes, it's a new page navigation. Reset everything.
+    if (modelId !== previousModelIdRef.current) {
+      setIsLoadingModel(true);
+      setCurrentModel(null);
+      form.reset(); // Reset form to clear old data
+      fetchData(`Navigated to Edit Model: ${modelId}`);
+      previousModelIdRef.current = modelId; // Track the new modelId
+      return; // Exit early to wait for data fetch to complete and trigger a re-render
     }
 
-    // Only run the initialization logic once per modelId.
-    if (pageInitializedForCurrentModelIdRef.current) {
-        setIsLoadingModel(false); // Ensure loader is off if we're already initialized
-        return;
-    }
+    // This part runs on subsequent re-renders, including when `isReady` becomes true.
+    // We only proceed if data is ready and we haven't successfully loaded this model yet.
+    if (isReady && !currentModel && modelId === previousModelIdRef.current) {
+      const foundModel = getModelById(modelId);
 
-    const foundModel = getModelById(modelId);
-
-    if (foundModel) {
-      setCurrentModel(foundModel);
-      const sortedProperties = [...foundModel.properties].sort((a, b) => a.orderIndex - b.orderIndex);
-      form.reset({
-        name: foundModel.name,
-        description: foundModel.description || '',
-        modelGroupId: foundModel.modelGroupId,
-        displayPropertyNames: foundModel.displayPropertyNames || [],
-        workflowId: foundModel.workflowId || null,
-        properties: sortedProperties.map(p => ({
+      if (foundModel) {
+        setCurrentModel(foundModel);
+        const sortedProperties = [...foundModel.properties].sort((a, b) => a.orderIndex - b.orderIndex);
+        form.reset({
+          name: foundModel.name,
+          description: foundModel.description || '',
+          modelGroupId: foundModel.modelGroupId,
+          displayPropertyNames: foundModel.displayPropertyNames || [],
+          workflowId: foundModel.workflowId || null,
+          properties: sortedProperties.map(p => ({
             id: p.id || crypto.randomUUID(),
             name: p.name,
             type: p.type,
@@ -75,29 +76,19 @@ export default function EditModelPage() {
             minValue: p.type === 'number' ? (p.minValue === undefined || p.minValue === null ? null : Number(p.minValue)) : null,
             maxValue: p.type === 'number' ? (p.maxValue === undefined || p.maxValue === null ? null : Number(p.maxValue)) : null,
           } as PropertyFormValues)),
-      });
-      // Mark this modelId as initialized to prevent re-running form.reset() on subsequent re-renders.
-      pageInitializedForCurrentModelIdRef.current = true;
-      setIsLoadingModel(false);
-    } else {
-      // If the model isn't found when the data context is ready, then it's a real error.
-      toast({ variant: "destructive", title: "Error", description: `Model with ID ${modelId} not found.` });
-      router.push('/models');
+        });
+        setIsLoadingModel(false); // Successfully loaded, stop the loader.
+      } else {
+        // Data is ready, but the model ID is invalid. This is an error condition.
+        toast({ variant: "destructive", title: "Error", description: `Model with ID ${modelId} not found.` });
+        router.push('/models');
+        // No need to set loading to false here as we are navigating away.
+      }
     }
-  }, [modelId, isReady, getModelById, form, router, toast]);
+  }, [modelId, isReady, currentModel, getModelById, fetchData, form, router, toast]);
   
-   // This effect specifically fetches data when the component mounts or modelId changes.
-  useEffect(() => {
-    if (modelId) {
-      pageInitializedForCurrentModelIdRef.current = false; // Reset init flag when modelId changes
-      setIsLoadingModel(true); // Set loading true when we start fetching for a new model
-      fetchData(`Navigated to Edit Model: ${modelId}`);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelId]);
 
   const onSubmit = async (values: ModelFormValues) => {
-    console.log("[EditModelPage] onSubmit - received values from ModelForm:", JSON.stringify(values, null, 2));
     if (!currentModel) return;
 
     const existingByName = getModelByName(values.name);
@@ -134,7 +125,6 @@ export default function EditModelPage() {
         return propertyForApi;
       }),
     };
-    console.log("[EditModelPage] onSubmit - modelData to be sent to updateModel:", JSON.stringify(modelData, null, 2));
 
     try {
       await updateModel(currentModel.id, modelData);
