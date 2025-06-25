@@ -6,7 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { useData } from '@/contexts/data-context';
 import { useAuth } from '@/contexts/auth-context';
-import type { Model, DataObject, Property, WorkflowWithDetails, ValidationRuleset, StructuralChangelogEntry, PaginatedStructuralChangelogResponse } from '@/lib/types';
+import type { Model, DataObject, Property, WorkflowWithDetails, ValidationRuleset, ChangelogEntry, PaginatedStructuralChangelogResponse } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -16,6 +16,14 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -707,5 +715,3 @@ function ViewObjectPageInternal() {
 }
 
 export default withAuth(ViewObjectPageInternal, ['user', 'administrator']);
-
-    
