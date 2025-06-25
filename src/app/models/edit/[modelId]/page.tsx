@@ -122,9 +122,13 @@ export default function EditModelPage() {
     };
     
     try {
-      await updateModel(currentModel.id, modelData);
-      toast({ title: "Model Updated", description: `Model "${values.name}" has been successfully updated.` });
-      router.push('/models');
+      const updatedModel = await updateModel(currentModel.id, modelData);
+      if (updatedModel) {
+        toast({ title: "Model Updated", description: `Model "${updatedModel.name}" has been successfully updated.` });
+        router.push('/models');
+      } else {
+        throw new Error("Update operation did not return the updated model.");
+      }
     } catch (error: any) {
       console.error("Error updating model:", error);
       toast({ variant: "destructive", title: "Error updating model", description: error.message || "An unknown error occurred." });

@@ -88,9 +88,13 @@ export default function CreateModelPage() {
     };
 
     try {
-      await addModel(modelData);
-      toast({ title: "Model Created", description: `Model "${values.name}" has been successfully created.` });
-      router.push('/models');
+      const newModel = await addModel(modelData);
+      if (newModel) {
+        toast({ title: "Model Created", description: `Model "${newModel.name}" has been successfully created.` });
+        router.push('/models');
+      } else {
+        throw new Error("Model creation did not return the new model.");
+      }
     } catch (error: any) {
       console.error("Error creating model:", error);
       toast({ variant: "destructive", title: "Error", description: error.message || "Failed to create model." });
@@ -123,5 +127,3 @@ export default function CreateModelPage() {
     </div>
   );
 }
-
-    
