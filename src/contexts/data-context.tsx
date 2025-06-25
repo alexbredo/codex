@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import type { ReactNode } from 'react';
@@ -85,7 +86,7 @@ const mapDbModelToClientModel = (dbModel: any): Model => {
     id: dbModel.id,
     name: dbModel.name,
     description: dbModel.description,
-    modelGroupId: dbModel.model_group_id ?? null,
+    modelGroupId: dbModel.modelGroupId ?? null,
     displayPropertyNames: parsedDisplayPropertyNames,
     workflowId: dbModel.workflowId === undefined ? null : dbModel.workflowId,
     properties: (dbModel.properties || []).map((p: any) => ({

@@ -103,24 +103,24 @@ export async function PUT(request: Request, { params }: Params) {
   const db = await getDb();
   
   try {
-    await db.run('BEGIN TRANSACTION');
     const body: Partial<Model> & { properties?: Property[] } = await request.json();
     const currentTimestamp = new Date().toISOString();
     
     const oldModelRow = await db.get('SELECT * FROM models WHERE id = ?', params.modelId);
     if (!oldModelRow) {
-      await db.run('ROLLBACK');
       return NextResponse.json({ error: 'Model not found' }, { status: 404 });
     }
     const oldPropertiesFromDb = await db.all('SELECT * FROM properties WHERE model_id = ? ORDER BY orderIndex ASC', params.modelId);
     
     // ================================================================
-    // Step 1: Update core model metadata (name, description, group, etc.) with robust logic
+    // Step 1: Update core model metadata (name, description, group, etc.)
+    // This logic is now simpler and more direct.
     // ================================================================
-    const changelogDetails: StructuralChangeDetail[] = [];
+    await db.run('BEGIN TRANSACTION');
 
     const finalName = body.name ?? oldModelRow.name;
     const finalDescription = 'description' in body ? body.description : oldModelRow.description;
+    // Explicitly use modelGroupId from body if present, otherwise keep old value.
     const finalModelGroupId = 'modelGroupId' in body ? body.modelGroupId : oldModelRow.model_group_id;
     const finalDisplayPropertyNames = 'displayPropertyNames' in body ? JSON.stringify(body.displayPropertyNames || []) : oldModelRow.displayPropertyNames;
     const finalWorkflowId = 'workflowId' in body ? body.workflowId : oldModelRow.workflowId;
@@ -137,8 +137,9 @@ export async function PUT(request: Request, { params }: Params) {
 
     // ================================================================
     // Step 2: Handle properties update
+    // This part is also wrapped in the transaction. If it fails, the model metadata update is also rolled back.
     // ================================================================
-    let newProcessedProperties: Property[] = oldPropertiesFromDb.map(p_row => ({ ...p_row, required: !!p_row.required, autoSetOnCreate: !!p_row.autoSetOnCreate, autoSetOnUpdate: !!p_row.autoSetOnUpdate, isUnique: !!p_row.isUnique } as Property));
+    let newProcessedProperties: Property[] = oldPropertiesFromDb.map(p => ({ ...p, required: !!p.required, autoSetOnCreate: !!p.autoSetOnCreate, autoSetOnUpdate: !!p.autoSetOnUpdate, isUnique: !!p.isUnique } as Property));
     
     if (body.properties) {
       await db.run('DELETE FROM properties WHERE model_id = ?', params.modelId);
@@ -188,26 +189,25 @@ export async function PUT(request: Request, { params }: Params) {
     // ================================================================
     // Step 4: Log the changes
     // ================================================================
-    // Name
+    const changelogDetails: StructuralChangeDetail[] = [];
     if (finalName !== oldModelRow.name) changelogDetails.push({ field: 'name', oldValue: oldModelRow.name, newValue: finalName });
-    // Description
     if (finalDescription !== oldModelRow.description) changelogDetails.push({ field: 'description', oldValue: oldModelRow.description, newValue: finalDescription });
-    // Model Group
     if (finalModelGroupId !== oldModelRow.model_group_id) changelogDetails.push({ field: 'modelGroupId', oldValue: oldModelRow.model_group_id, newValue: finalModelGroupId });
-    // Display Properties
+    
+    const safeJsonParse = (jsonString: string | null | undefined, defaultValue: any = []) => {
+        if (jsonString === null || jsonString === undefined) return defaultValue;
+        try { 
+          const parsed = JSON.parse(jsonString);
+          return Array.isArray(parsed) ? parsed : defaultValue;
+        } catch { return defaultValue; }
+    };
+
     if (finalDisplayPropertyNames !== oldModelRow.displayPropertyNames) {
-        const safeJsonParse = (jsonString: string | null | undefined, defaultValue: any = []) => {
-            if (jsonString === null || jsonString === undefined) return defaultValue;
-            try { 
-              const parsed = JSON.parse(jsonString);
-              return Array.isArray(parsed) ? parsed : defaultValue;
-             } catch { return defaultValue; }
-        };
         changelogDetails.push({ field: 'displayPropertyNames', oldValue: safeJsonParse(oldModelRow.displayPropertyNames), newValue: body.displayPropertyNames || [] });
     }
-    // Workflow
+    
     if (finalWorkflowId !== oldModelRow.workflowId) changelogDetails.push({ field: 'workflowId', oldValue: oldModelRow.workflowId, newValue: finalWorkflowId });
-    // Properties list
+    
     const oldPropsForLog = oldPropertiesFromDb.map(p => ({name: p.name, type: p.type, orderIndex: p.orderIndex, required: !!p.required}));
     const newPropsForLog = newProcessedProperties.map(p => ({name: p.name, type: p.type, orderIndex: p.orderIndex, required: !!p.required}));
     if(JSON.stringify(oldPropsForLog) !== JSON.stringify(newPropsForLog)){
@@ -258,7 +258,7 @@ export async function PUT(request: Request, { params }: Params) {
     return NextResponse.json(returnedModel);
 
   } catch (error: any) {
-    await db.run('ROLLBACK');
+    await db.run('ROLLBACK').catch(rbError => console.error("Rollback failed in PUT /models/[modelId]:", rbError));
     
     let errorMessage = `Failed to update model. The operation was rolled back due to an internal error.`;
     let errorDetails = (error instanceof Error) ? error.message : 'An unknown error occurred.';
@@ -266,6 +266,7 @@ export async function PUT(request: Request, { params }: Params) {
     return NextResponse.json({ error: errorMessage, details: errorDetails }, { status: 500 });
   }
 }
+
 
 // DELETE a model
 export async function DELETE(request: Request, { params }: Params) {

@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import type { Control, UseFormReturn, UseFieldArrayReturn, FieldErrors } from 'react-hook-form';
@@ -824,7 +825,7 @@ function PropertyFieldsWithDnd({
                             form={form}
                             index={index}
                             modelsForRelationsGrouped={modelsForRelationsGrouped}
-                            validationRulesetsForSelect={validationRulesetsForSelect}
+                            validationRulesetsForSelect={validationRulesets}
                         />
                     </AccordionItem>
                  )}
@@ -1037,7 +1038,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                         <div className="flex items-center gap-2">
                             <Select
                                 onValueChange={(value) => field.onChange(value === INTERNAL_DEFAULT_GROUP_ID ? null : value)}
-                                value={field.value || INTERNAL_DEFAULT_GROUP_ID}
+                                value={field.value ?? INTERNAL_DEFAULT_GROUP_ID}
                             >
                                 <FormControl>
                                 <SelectTrigger className="flex-grow">
