@@ -94,8 +94,10 @@ export async function GET(request: Request, { params }: Params) {
 
 // PUT (update) a model
 export async function PUT(request: Request, { params }: Params) {
+  console.log(`[API PUT /models/${params.modelId}] - UPDATE REQUEST RECEIVED`);
   const currentUser = await getCurrentUserFromCookie();
   if (!currentUser || currentUser.role !== 'administrator') {
+    console.error(`[API PUT /models/${params.modelId}] - UNAUTHORIZED`);
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
@@ -103,24 +105,30 @@ export async function PUT(request: Request, { params }: Params) {
   
   try {
     const body: Partial<Model> & { properties?: Property[] } = await request.json();
+    console.log(`[API PUT /models/${params.modelId}] - Received body:`, JSON.stringify(body, null, 2));
+
     const currentTimestamp = new Date().toISOString();
     
     const oldModelRow = await db.get('SELECT * FROM models WHERE id = ?', params.modelId);
     if (!oldModelRow) {
+      console.error(`[API PUT /models/${params.modelId}] - Model with ID not found.`);
       return NextResponse.json({ error: 'Model not found' }, { status: 404 });
     }
+    console.log(`[API PUT /models/${params.modelId}] - Old model row from DB:`, JSON.stringify(oldModelRow, null, 2));
     
     // ================================================================
     // Step 1: Update core model metadata (name, description, group, etc.)
-    // This is NOT in a transaction with properties, so it commits immediately.
     // ================================================================
     const updates: string[] = [];
     const values: any[] = [];
     const changelogDetails: StructuralChangeDetail[] = [];
 
-    if ('name' in body && body.name !== oldModelRow.name) {
+    // --- Name Update ---
+    if (Object.prototype.hasOwnProperty.call(body, 'name') && body.name !== oldModelRow.name) {
+      console.log(`[API PUT /models/${params.modelId}] - Preparing 'name' update.`);
       const nameCheck = await db.get('SELECT id FROM models WHERE name = ? AND id != ?', body.name, params.modelId);
       if (nameCheck) {
+          console.error(`[API PUT /models/${params.modelId}] - Name conflict found.`);
           return NextResponse.json({ error: 'A model with this name already exists.' }, { status: 409 });
       }
       updates.push('name = ?');
@@ -128,19 +136,27 @@ export async function PUT(request: Request, { params }: Params) {
       changelogDetails.push({ field: 'name', oldValue: oldModelRow.name, newValue: body.name });
     }
     
-    if ('description' in body && body.description !== oldModelRow.description) {
+    // --- Description Update ---
+    if (Object.prototype.hasOwnProperty.call(body, 'description') && body.description !== oldModelRow.description) {
+      console.log(`[API PUT /models/${params.modelId}] - Preparing 'description' update.`);
       updates.push('description = ?');
       values.push(body.description);
       changelogDetails.push({ field: 'description', oldValue: oldModelRow.description, newValue: body.description });
     }
     
-    if ('modelGroupId' in body && body.modelGroupId !== oldModelRow.model_group_id) {
+    // --- Model Group ID Update ---
+    if (Object.prototype.hasOwnProperty.call(body, 'modelGroupId')) {
+      console.log(`[API PUT /models/${params.modelId}] - Preparing 'modelGroupId' update. New value: ${body.modelGroupId}, Old value: ${oldModelRow.model_group_id}`);
       updates.push('model_group_id = ?');
-      values.push(body.modelGroupId);
-      changelogDetails.push({ field: 'modelGroupId', oldValue: oldModelRow.model_group_id, newValue: body.modelGroupId });
+      values.push(body.modelGroupId); // Directly use the value (UUID or null)
+      if (body.modelGroupId !== oldModelRow.model_group_id) {
+          changelogDetails.push({ field: 'modelGroupId', oldValue: oldModelRow.model_group_id, newValue: body.modelGroupId });
+      }
     }
 
-    if ('displayPropertyNames' in body) {
+    // --- Display Property Names Update ---
+    if (Object.prototype.hasOwnProperty.call(body, 'displayPropertyNames')) {
+      console.log(`[API PUT /models/${params.modelId}] - Preparing 'displayPropertyNames' update.`);
       const newDisplayNames = JSON.stringify(body.displayPropertyNames || []);
       const oldDisplayNames = oldModelRow.displayPropertyNames || '[]';
       if (newDisplayNames !== oldDisplayNames) {
@@ -154,7 +170,9 @@ export async function PUT(request: Request, { params }: Params) {
       }
     }
 
-    if ('workflowId' in body && body.workflowId !== oldModelRow.workflowId) {
+    // --- Workflow ID Update ---
+    if (Object.prototype.hasOwnProperty.call(body, 'workflowId') && body.workflowId !== oldModelRow.workflowId) {
+      console.log(`[API PUT /models/${params.modelId}] - Preparing 'workflowId' update.`);
       updates.push('workflowId = ?');
       values.push(body.workflowId);
       changelogDetails.push({ field: 'workflowId', oldValue: oldModelRow.workflowId, newValue: body.workflowId });
@@ -163,16 +181,21 @@ export async function PUT(request: Request, { params }: Params) {
     if (updates.length > 0) {
       const sqlQuery = `UPDATE models SET ${updates.join(', ')} WHERE id = ?`;
       values.push(params.modelId);
+      console.log(`[API PUT /models/${params.modelId}] - Executing SQL: ${sqlQuery} with values: ${JSON.stringify(values)}`);
       await db.run(sqlQuery, ...values);
+      console.log(`[API PUT /models/${params.modelId}] - Core model metadata update successful.`);
+    } else {
+        console.log(`[API PUT /models/${params.modelId}] - No changes to core model metadata. Skipping update.`);
     }
     
     // ================================================================
     // Step 2: Handle properties update in its own transaction
     // ================================================================
     const oldPropertiesFromDb = await db.all('SELECT * FROM properties WHERE model_id = ? ORDER BY orderIndex ASC', params.modelId);
-    let newProcessedProperties: Property[] = oldPropertiesFromDb.map(p => ({ ...p, required: !!p.required, autoSetOnCreate: !!p.autoSetOnCreate, autoSetOnUpdate: !!p.autoSetOnUpdate, isUnique: !!p.isUnique } as Property));
+    let newProcessedProperties: Property[] = oldPropertiesFromDb.map(p_row => ({ ...p_row, required: !!p_row.required, autoSetOnCreate: !!p_row.autoSetOnCreate, autoSetOnUpdate: !!p_row.autoSetOnUpdate, isUnique: !!p_row.isUnique } as Property));
     
     if (body.properties) {
+      console.log(`[API PUT /models/${params.modelId}] - Starting properties update.`);
       try {
         await db.run('BEGIN TRANSACTION');
         
@@ -201,18 +224,19 @@ export async function PUT(request: Request, { params }: Params) {
           } as Property);
         }
         await db.run('COMMIT');
-
+        console.log(`[API PUT /models/${params.modelId}] - Properties update transaction committed successfully.`);
       } catch (propError: any) {
         await db.run('ROLLBACK');
+        console.error(`[API PUT /models/${params.modelId}] - Properties update failed. Transaction rolled back. Error: ${propError.message}`);
         throw new Error(`Model metadata was updated, but properties failed to save: ${propError.message}`);
       }
     }
     
     // ================================================================
     // Step 3: Handle workflow side-effects (if workflow changed)
-    // This is also separate from any transaction.
     // ================================================================
-    if ('workflowId' in body && body.workflowId !== oldModelRow.workflowId) {
+    if (Object.prototype.hasOwnProperty.call(body, 'workflowId') && body.workflowId !== oldModelRow.workflowId) {
+      console.log(`[API PUT /models/${params.modelId}] - Workflow changed. Updating object states.`);
       if (body.workflowId) { 
         const workflowForUpdate: WorkflowWithDetails | undefined = await db.get('SELECT * FROM workflows WHERE id = ?', body.workflowId);
         if (workflowForUpdate) {
@@ -230,6 +254,7 @@ export async function PUT(request: Request, { params }: Params) {
     // ================================================================
     // Step 4: Log the changes
     // ================================================================
+    console.log(`[API PUT /models/${params.modelId}] - Preparing changelog.`);
     const oldPropsForLog = oldPropertiesFromDb.map(p => ({name: p.name, type: p.type, orderIndex: p.orderIndex, required: !!p.required}));
     const newPropsForLog = newProcessedProperties.map(p => ({name: p.name, type: p.type, orderIndex: p.orderIndex, required: !!p.required}));
     
@@ -255,8 +280,10 @@ export async function PUT(request: Request, { params }: Params) {
           'UPDATE',
           JSON.stringify(changelogDetails)
         );
+        console.log(`[API PUT /models/${params.modelId}] - Changelog entry created.`);
+    } else {
+        console.log(`[API PUT /models/${params.modelId}] - No changes detected for changelog.`);
     }
-    
 
     // ================================================================
     // Step 5: Fetch and return the fully updated model for the client
@@ -282,24 +309,26 @@ export async function PUT(request: Request, { params }: Params) {
       description: refreshedModelRow.description,
       modelGroupId: refreshedModelRow.model_group_id,
       displayPropertyNames: refreshedParsedDpn,
-      properties: refreshedPropertiesFromDb.map(p => ({
-        ...(p as any), 
-        required: p.required === 1,
-        autoSetOnCreate: p.autoSetOnCreate === 1,
-        autoSetOnUpdate: p.autoSetOnUpdate === 1,
-        isUnique: p.isUnique === 1,
-        validationRulesetId: p.validationRulesetId ?? null,
-        minValue: p.minValue ?? null,
-        maxValue: p.maxValue ?? null,
+      properties: refreshedPropertiesFromDb.map(p_row => ({
+        ...(p_row as any), 
+        required: p_row.required === 1,
+        autoSetOnCreate: p_row.autoSetOnCreate === 1,
+        autoSetOnUpdate: p_row.autoSetOnUpdate === 1,
+        isUnique: p_row.isUnique === 1,
+        validationRulesetId: p_row.validationRulesetId ?? null,
+        minValue: p_row.minValue ?? null,
+        maxValue: p_row.maxValue ?? null,
       }) as Property),
       workflowId: refreshedModelRow.workflowId === undefined ? null : refreshedModelRow.workflowId,
     };
+    console.log(`[API PUT /models/${params.modelId}] - UPDATE REQUEST COMPLETED SUCCESSFULLY. Returning updated model.`);
     return NextResponse.json(returnedModel);
 
   } catch (error: any) {
     let errorMessage = `Failed to update model. The operation was rolled back due to an internal error.`;
     let errorDetails = (error instanceof Error) ? error.message : 'An unknown error occurred.';
     
+    console.error(`[API PUT /models/${params.modelId}] - Unhandled error in PUT handler. Error: ${errorDetails}`, error.stack);
     return NextResponse.json({ error: errorMessage, details: errorDetails, stack: error.stack }, { status: 500 });
   }
 }
@@ -321,10 +350,10 @@ export async function DELETE(request: Request, { params }: Params) {
       return NextResponse.json({ error: 'Model not found' }, { status: 404 });
     }
     
-    const propertiesOfModelToDelete = await db.all('SELECT * FROM properties WHERE model_id = ?', params.modelId);
+    const oldPropertiesFromDb = await db.all('SELECT * FROM properties WHERE model_id = ?', params.modelId);
     const modelSnapshot = {
       ...modelToDelete,
-      properties: propertiesOfModelToDelete.map(p => ({
+      properties: oldPropertiesFromDb.map(p => ({
         name: p.name, type: p.type, orderIndex: p.orderIndex, required: !!p.required,
         relatedModelId: p.relatedModelId, relationshipType: p.relationshipType, unit: p.unit, 
         precision: p.precision, autoSetOnCreate: !!p.autoSetOnCreate, autoSetOnUpdate: !!p.autoSetOnUpdate, 
@@ -361,3 +390,5 @@ export async function DELETE(request: Request, { params }: Params) {
     return NextResponse.json({ error: 'Failed to delete model', details: errorMessage }, { status: 500 });
   }
 }
+
+    
