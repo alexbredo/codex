@@ -14,6 +14,38 @@ const dbPath = process.env.DATABASE_PATH || path.join(dataDir, 'database.sqlite'
 
 let dbInstance: Promise<Database> | null = null;
 
+async function runMigration(db: Database) {
+    const modelsTableInfo = await db.all("PRAGMA table_info(models)").catch(() => []);
+    const hasNamespace = modelsTableInfo.some(c => c.name === 'namespace');
+    const hasModelGroupId = modelsTableInfo.some(c => c.name === 'model_group_id');
+
+    if (hasNamespace && !hasModelGroupId) {
+        console.log("Migration: `namespace` column found and `model_group_id` is missing. Starting migration.");
+        try {
+            await db.exec('ALTER TABLE models ADD COLUMN model_group_id TEXT REFERENCES model_groups(id) ON DELETE SET NULL');
+            console.log("Migration: Added `model_group_id` column to `models` table.");
+        } catch (e) {
+            // Ignore if column already exists from a previously failed migration attempt
+            if (!String(e).includes('duplicate column name')) throw e;
+             console.log("Migration: `model_group_id` column already exists, proceeding.");
+        }
+
+        console.log("Migration: Populating `model_group_id` from existing `namespace` values.");
+        await db.exec(`UPDATE models SET model_group_id = (SELECT id FROM model_groups WHERE name = models.namespace) WHERE namespace IS NOT NULL`);
+        
+        console.log("Migration: Populating null `model_group_id` values with the Default group ID.");
+        const defaultGroupId = '00000000-0000-0000-0000-000000000001';
+        await db.exec('UPDATE models SET model_group_id = ? WHERE model_group_id IS NULL', defaultGroupId);
+
+        // The old `namespace` column is now deprecated. We will NOT drop it automatically to prevent data loss on older
+        // SQLite versions or in complex scenarios. The application code will simply stop using it.
+        console.log("Migration complete. The `namespace` column is now deprecated but has been left in place for safety.");
+    } else {
+        console.log("Migration: No `namespace` column found or `model_group_id` already exists. Skipping migration.");
+    }
+}
+
+
 async function initializeDb(): Promise<Database> {
   // Ensure the data directory exists
   try {
@@ -34,8 +66,6 @@ async function initializeDb(): Promise<Database> {
   console.log("SQLite WAL mode enabled.");
 
   // Set a busy timeout (e.g., 5 seconds)
-  // This tells SQLite to wait for this duration if the database is locked,
-  // before returning SQLITE_BUSY.
   await db.run('PRAGMA busy_timeout = 5000;');
   console.log("SQLite busy_timeout set to 5000ms.");
 
@@ -51,7 +81,6 @@ async function initializeDb(): Promise<Database> {
       description TEXT
     );
   `);
-  // Ensure the 'Default' group always exists with a predictable ID.
   const defaultGroupId = '00000000-0000-0000-0000-000000000001';
   await db.run(
     'INSERT OR IGNORE INTO model_groups (id, name, description) VALUES (?, ?, ?)',
@@ -70,9 +99,8 @@ async function initializeDb(): Promise<Database> {
       regexPattern TEXT NOT NULL
     );
   `);
-  console.log("Validation Rulesets table ensured.");
 
-  // Workflow Tables first due to FK dependencies from Models
+  // Workflow Tables
   await db.exec(`
     CREATE TABLE IF NOT EXISTS workflows (
       id TEXT PRIMARY KEY,
@@ -94,24 +122,8 @@ async function initializeDb(): Promise<Database> {
       UNIQUE (workflowId, name)
     );
   `);
-  try {
-    await db.run('ALTER TABLE workflow_states ADD COLUMN orderIndex INTEGER NOT NULL DEFAULT 0');
-  } catch (e: any) {
-    const msg = e.message?.toLowerCase() || "";
-    if (!(msg.includes('duplicate column name') || msg.includes('already has a column named orderindex'))) {
-        console.error("Migration Error (workflow_states.orderIndex):", e.message); throw e;
-    }
-  }
-  try {
-    await db.run('ALTER TABLE workflow_states ADD COLUMN color TEXT');
-  } catch (e: any)
-    {const msg = e.message?.toLowerCase() || "";
-    if (!(msg.includes('duplicate column name') || msg.includes('already has a column named color'))) {
-        console.error("Migration Error (workflow_states.color):", e.message); throw e;
-    }
-  }
-
-  // Models Table (Final Schema)
+  
+  // Models Table (Final Schema with model_group_id)
   await db.exec(`
     CREATE TABLE IF NOT EXISTS models (
       id TEXT PRIMARY KEY,
@@ -125,58 +137,8 @@ async function initializeDb(): Promise<Database> {
     );
   `);
   
-  // MIGRATION: Check if the old `namespace` column exists and migrate data if it does.
-  const modelsTableInfo = await db.all("PRAGMA table_info(models);").catch(() => []);
-  if (modelsTableInfo.some(col => col.name === 'namespace')) {
-      console.log("Migration needed: models.namespace column found. Migrating to model_group_id.");
-      await db.run('BEGIN TRANSACTION;');
-      try {
-          // Rename the old table
-          await db.run('ALTER TABLE models RENAME TO models_old_for_migration;');
-          
-          // Create the new table with the correct final schema
-          await db.run(`
-            CREATE TABLE models (
-              id TEXT PRIMARY KEY,
-              name TEXT NOT NULL UNIQUE,
-              description TEXT,
-              displayPropertyNames TEXT,
-              model_group_id TEXT,
-              workflowId TEXT,
-              FOREIGN KEY (model_group_id) REFERENCES model_groups(id) ON DELETE SET NULL,
-              FOREIGN KEY (workflowId) REFERENCES workflows(id) ON DELETE SET NULL
-            );
-          `);
-
-          // Copy data from the old table to the new one, looking up the group ID
-          await db.run(`
-            INSERT INTO models (id, name, description, displayPropertyNames, workflowId, model_group_id)
-            SELECT 
-              id, 
-              name, 
-              description, 
-              displayPropertyNames, 
-              workflowId,
-              (SELECT id FROM model_groups WHERE name = o.namespace)
-            FROM models_old_for_migration o;
-          `);
-          
-          // Drop the old table
-          await db.run('DROP TABLE models_old_for_migration;');
-          
-          await db.run('COMMIT;');
-          console.log("Migration successful: models table updated to use model_group_id.");
-      } catch (e: any) {
-          await db.run('ROLLBACK;');
-          console.error("Migration to model_group_id failed. Database has been rolled back.", e);
-          // Try to restore the old table name if it exists
-          const oldTableCheck = await db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='models_old_for_migration';");
-          if (oldTableCheck) {
-            await db.run('ALTER TABLE models_old_for_migration RENAME TO models;').catch(err => console.error("CRITICAL: Failed to restore original table name after migration failure.", err));
-          }
-          throw e; // Re-throw the original error
-      }
-  }
+  // Run the safe migration logic
+  await runMigration(db);
 
 
   // Properties Table
@@ -205,55 +167,6 @@ async function initializeDb(): Promise<Database> {
     );
   `);
 
-  try {
-    await db.run('ALTER TABLE properties ADD COLUMN orderIndex INTEGER NOT NULL DEFAULT 0');
-  } catch (e: any) {
-    const msg = e.message?.toLowerCase() || "";
-    if (!(msg.includes('duplicate column name') || msg.includes('already has a column named orderindex'))) {
-        console.error("Migration Error (properties.orderIndex):", e.message); throw e;
-    }
-  }
-  try {
-    await db.run('ALTER TABLE properties ADD COLUMN isUnique INTEGER DEFAULT 0');
-  } catch (e: any) {
-     const msg = e.message?.toLowerCase() || "";
-     if (!(msg.includes('duplicate column name') || msg.includes('already has a column named isunique'))) {
-        console.error("Migration Error (properties.isUnique):", e.message); throw e;
-    }
-  }
-  try {
-    await db.run('ALTER TABLE properties ADD COLUMN defaultValue TEXT');
-  } catch (e: any) {
-     const msg = e.message?.toLowerCase() || "";
-     if (!(msg.includes('duplicate column name') || msg.includes('already has a column named defaultvalue'))) {
-        console.error("Migration Error (properties.defaultValue):", e.message); throw e;
-    }
-  }
-  try {
-    await db.run('ALTER TABLE properties ADD COLUMN validationRulesetId TEXT REFERENCES validation_rulesets(id) ON DELETE SET NULL');
-  } catch (e: any) {
-    const msg = e.message?.toLowerCase() || "";
-    if (!(msg.includes('duplicate column name') || msg.includes('already has a column named validationrulesetid'))) {
-        console.error("Migration Error (properties.validationRulesetId FK):", e.message); throw e;
-    }
-  }
-  try {
-    await db.run('ALTER TABLE properties ADD COLUMN minValue REAL');
-  } catch (e: any) {
-    const msg = e.message?.toLowerCase() || "";
-    if (!(msg.includes('duplicate column name') || msg.includes('already has a column named minvalue'))) {
-        console.error("Migration Error (properties.minValue):", e.message); throw e;
-    }
-  }
-  try {
-    await db.run('ALTER TABLE properties ADD COLUMN maxValue REAL');
-  } catch (e: any) {
-    const msg = e.message?.toLowerCase() || "";
-    if (!(msg.includes('duplicate column name') || msg.includes('already has a column named maxvalue'))) {
-        console.error("Migration Error (properties.maxValue):", e.message); throw e;
-    }
-  }
-
   // Users Table (for placeholder authentication)
   await db.exec(`
     CREATE TABLE IF NOT EXISTS users (
@@ -263,8 +176,6 @@ async function initializeDb(): Promise<Database> {
       role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('user', 'administrator'))
     );
   `);
-  console.log("Users table (for placeholder auth) ensured.");
-
 
   // Data Objects Table
   await db.exec(`
@@ -281,39 +192,6 @@ async function initializeDb(): Promise<Database> {
       FOREIGN KEY (ownerId) REFERENCES users(id) ON DELETE SET NULL
     );
   `);
-   try {
-    await db.run("ALTER TABLE data_objects ADD COLUMN currentStateId TEXT REFERENCES workflow_states(id) ON DELETE SET NULL");
-  } catch (e: any) {
-    const msg = e.message?.toLowerCase() || "";
-    if (!(msg.includes('duplicate column name') || msg.includes('already has a column named currentstateid'))) {
-      console.error("Migration Error (data_objects.currentStateId FK):", e.message); throw e;
-    }
-  }
-   try {
-    await db.run("ALTER TABLE data_objects ADD COLUMN ownerId TEXT REFERENCES users(id) ON DELETE SET NULL");
-  } catch (e: any) {
-    const msg = e.message?.toLowerCase() || "";
-    if (!(msg.includes('duplicate column name') || msg.includes('already has a column named ownerid'))) {
-      console.error("Migration Error (data_objects.ownerId FK):", e.message); throw e;
-    }
-  }
-  try {
-    await db.run("ALTER TABLE data_objects ADD COLUMN isDeleted INTEGER DEFAULT 0");
-  } catch (e: any) {
-    const msg = e.message?.toLowerCase() || "";
-    if (!(msg.includes('duplicate column name') || msg.includes('already has a column named isdeleted'))) {
-      console.error("Migration Error (data_objects.isDeleted):", e.message); throw e;
-    }
-  }
-  try {
-    await db.run("ALTER TABLE data_objects ADD COLUMN deletedAt TEXT");
-  } catch (e: any) {
-    const msg = e.message?.toLowerCase() || "";
-    if (!(msg.includes('duplicate column name') || msg.includes('already has a column named deletedat'))) {
-      console.error("Migration Error (data_objects.deletedAt):", e.message); throw e;
-    }
-  }
-
 
   await db.exec(`
     CREATE TABLE IF NOT EXISTS workflow_state_transitions (
@@ -333,17 +211,16 @@ async function initializeDb(): Promise<Database> {
     CREATE TABLE IF NOT EXISTS data_object_changelog (
       id TEXT PRIMARY KEY,
       dataObjectId TEXT NOT NULL,
-      modelId TEXT NOT NULL, -- Store modelId for easier grouping/querying if needed
-      changedAt TEXT NOT NULL, -- ISO8601 timestamp
-      changedByUserId TEXT,    -- Can be NULL if system change or user deleted
-      changeType TEXT NOT NULL, -- e.g., 'CREATE', 'UPDATE', 'DELETE', 'RESTORE'
-      changes TEXT NOT NULL,    -- JSON blob detailing the changes
+      modelId TEXT NOT NULL,
+      changedAt TEXT NOT NULL,
+      changedByUserId TEXT,
+      changeType TEXT NOT NULL,
+      changes TEXT NOT NULL,
       FOREIGN KEY (dataObjectId) REFERENCES data_objects(id) ON DELETE CASCADE,
       FOREIGN KEY (modelId) REFERENCES models(id) ON DELETE CASCADE,
       FOREIGN KEY (changedByUserId) REFERENCES users(id) ON DELETE SET NULL
     );
   `);
-  console.log("Data Object Changelog table ensured.");
 
   // Structural Changelog Table
   await db.exec(`
@@ -351,15 +228,14 @@ async function initializeDb(): Promise<Database> {
       id TEXT PRIMARY KEY,
       timestamp TEXT NOT NULL,
       userId TEXT,
-      entityType TEXT NOT NULL, -- e.g., 'ModelGroup', 'Model', 'Property', 'Workflow', 'WorkflowState', 'ValidationRuleset'
+      entityType TEXT NOT NULL,
       entityId TEXT NOT NULL,
-      entityName TEXT, -- e.g., name of the ModelGroup, Model, Property, etc.
-      action TEXT NOT NULL, -- 'CREATE', 'UPDATE', 'DELETE'
-      changes TEXT, -- JSON blob detailing changes, e.g., [{ field: 'name', oldValue: 'Old', newValue: 'New' }] or snapshot for DELETE
+      entityName TEXT,
+      action TEXT NOT NULL,
+      changes TEXT,
       FOREIGN KEY (userId) REFERENCES users(id) ON DELETE SET NULL
     );
   `);
-  console.log("Structural Changelog table ensured.");
 
   // Dashboards Table
   await db.exec(`
@@ -368,14 +244,13 @@ async function initializeDb(): Promise<Database> {
       userId TEXT NOT NULL,
       name TEXT NOT NULL,
       isDefault INTEGER DEFAULT 0,
-      widgets TEXT, -- JSON storing array of WidgetInstance
+      widgets TEXT,
       createdAt TEXT NOT NULL,
       updatedAt TEXT NOT NULL,
       FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
     );
   `);
   await db.exec('CREATE INDEX IF NOT EXISTS idx_dashboards_userId_isDefault ON dashboards (userId, isDefault);');
-  console.log("Dashboards table ensured.");
 
 
   // Ensure mock admin user exists if in DEBUG_MODE
@@ -390,9 +265,7 @@ async function initializeDb(): Promise<Database> {
         placeholderPassword,
         mockAdmin.role
       );
-      console.log(`DEBUG_MODE: Ensured mock admin user '${mockAdmin.username}' (ID: ${mockAdmin.id}) exists in the database.`);
     } catch (error: any) {
-      // This error during debug user insertion should not stop DB initialization unless critical
       console.error(`DEBUG_MODE: Failed to ensure mock admin user '${mockAdmin.username}' in database:`, error.message);
     }
   }

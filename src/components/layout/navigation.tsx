@@ -32,7 +32,7 @@ const adminNavItems = [
 
 export default function Navigation() {
   const pathname = usePathname();
-  const { models, isReady: dataIsReady } = useData();
+  const { models, modelGroups, isReady: dataIsReady } = useData();
   const { user, isLoading: authIsLoading } = useAuth();
 
   const visibleStaticNavItems = React.useMemo(() => {
@@ -47,20 +47,21 @@ export default function Navigation() {
     if (!dataIsReady) return {};
     const groups: Record<string, Model[]> = {};
     models.forEach(model => {
-      const namespace = model.namespace || 'Default';
-      if (!groups[namespace]) {
-        groups[namespace] = [];
+      const group = modelGroups.find(g => g.id === model.modelGroupId);
+      const groupName = group ? group.name : 'Default';
+      if (!groups[groupName]) {
+        groups[groupName] = [];
       }
-      groups[namespace].push(model);
+      groups[groupName].push(model);
     });
 
-    for (const namespace in groups) {
-      groups[namespace].sort((a, b) => a.name.localeCompare(b.name));
+    for (const groupName in groups) {
+      groups[groupName].sort((a, b) => a.name.localeCompare(b.name));
     }
     return groups;
-  }, [models, dataIsReady]);
+  }, [models, modelGroups, dataIsReady]);
 
-  const sortedNamespaces = React.useMemo(() => {
+  const sortedGroupNames = React.useMemo(() => {
     return Object.keys(groupedModels).sort((a, b) => {
         if (a === 'Default') return -1;
         if (b === 'Default') return 1;
@@ -89,26 +90,26 @@ export default function Navigation() {
         </SidebarMenuItem>
       ))}
 
-      {dataIsReady && user && sortedNamespaces.length > 0 && (
+      {dataIsReady && user && sortedGroupNames.length > 0 && (
         <>
           <SidebarSeparator className="my-2 mx-2 !w-auto" />
           <SidebarGroupLabel className="px-2 text-xs text-sidebar-foreground/70 group-data-[collapsible=icon]:justify-center">
             <ListChecks size={16} className="mr-2 group-data-[collapsible=icon]:mr-0" />
              <span className="group-data-[collapsible=icon]:hidden">Data Objects</span>
           </SidebarGroupLabel>
-          {sortedNamespaces.map(namespace => (
-            <SidebarGroup key={namespace} className="p-0 pt-1">
+          {sortedGroupNames.map(groupName => (
+            <SidebarGroup key={groupName} className="p-0 pt-1">
               <SidebarGroupLabel className="px-2 text-xs text-sidebar-foreground/70 group-data-[collapsible=icon]:justify-center">
                 <FolderOpen size={16} className="mr-2 group-data-[collapsible=icon]:mr-0" />
-                <span className="group-data-[collapsible=icon]:hidden">{namespace}</span>
+                <span className="group-data-[collapsible=icon]:hidden">{groupName}</span>
               </SidebarGroupLabel>
-              {groupedModels[namespace].map((model: Model) => (
+              {groupedModels[groupName].map((model: Model) => (
                 <SidebarMenuItem key={model.id}>
                   <Link href={`/data/${model.id}`} passHref legacyBehavior>
                     <SidebarMenuButton
                       isActive={pathname.startsWith(`/data/${model.id}`)}
-                      tooltip={{ children: `View ${model.name} Data (${namespace})`, side: 'right', align: 'center' }}
-                      aria-label={`${model.name} (${namespace})`}
+                      tooltip={{ children: `View ${model.name} Data (${groupName})`, side: 'right', align: 'center' }}
+                      aria-label={`${model.name} (${groupName})`}
                       className="ml-2"
                     >
                       <ListChecks size={18} />
