@@ -77,7 +77,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, url: publicUrl });
 
   } catch (error: any) {
-    console.error('Image Upload Error:', error);
+    console.error('Image Upload Error (POST /api/codex-structure/upload-image):', error);
     return NextResponse.json({ error: 'Failed to process image upload', details: error.message }, { status: 500 });
   }
 }

@@ -45,9 +45,9 @@ export async function GET(request: Request, { params }: Params) {
       ...JSON.parse(row.data), // createdAt and updatedAt will be in here
     }));
     return NextResponse.json(objects);
-  } catch (error) {
-    console.error(`Failed to fetch objects for model ${params.modelId}:`, error);
-    return NextResponse.json({ error: 'Failed to fetch objects' }, { status: 500 });
+  } catch (error: any) {
+    console.error(`API Error (GET /models/${params.modelId}/objects): Failed to fetch objects.`, error);
+    return NextResponse.json({ error: 'Failed to fetch objects', details: error.message }, { status: 500 });
   }
 }
 
@@ -196,12 +196,7 @@ export async function POST(request: Request, { params }: Params) {
     return NextResponse.json(createdObject, { status: 201 });
   } catch (error: any) {
     await db.run('ROLLBACK');
-    console.error(`Failed to create object for model ${params.modelId}:`, error);
-    let errorMessage = 'Failed to create object';
-    if (error.message) {
-        errorMessage += `: ${error.message}`;
-    }
-    return NextResponse.json({ error: errorMessage, details: error.message }, { status: 500 });
+    console.error(`API Error (POST /models/${params.modelId}/objects): Failed to create object.`, error);
+    return NextResponse.json({ error: 'Failed to create object', details: error.message }, { status: 500 });
   }
 }
-

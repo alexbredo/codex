@@ -87,7 +87,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, url: publicUrl, name: file.name });
 
   } catch (error: any) {
-    console.error('File Upload Error:', error);
+    console.error('File Upload Error (POST /api/codex-structure/upload-file):', error);
     return NextResponse.json({ error: 'Failed to process file upload', details: error.message }, { status: 500 });
   }
 }

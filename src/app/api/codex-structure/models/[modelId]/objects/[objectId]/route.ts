@@ -32,9 +32,9 @@ export async function GET(request: Request, { params }: Params) {
       ...JSON.parse(row.data) // createdAt and updatedAt will be in here
     };
     return NextResponse.json(object);
-  } catch (error) {
-    console.error(`Failed to fetch object ${objectId}:`, error);
-    return NextResponse.json({ error: 'Failed to fetch object' }, { status: 500 });
+  } catch (error: any) {
+    console.error(`API Error (GET /models/${modelId}/objects/${objectId}): Failed to fetch object.`, error);
+    return NextResponse.json({ error: 'Failed to fetch object', details: error.message }, { status: 500 });
   }
 }
 
@@ -318,13 +318,15 @@ export async function PUT(request: Request, { params }: Params) {
     return NextResponse.json(updatedObject);
   } catch (error: any) {
     await db.run('ROLLBACK');
-    console.error(`API Error (PUT /models/${modelId}/objects/${objectId}) - Error updating object. Message: ${error.message}, Stack: ${error.stack}`, error);
-    let apiErrorMessage = 'Failed to update object during server processing.';
-    let errorDetails = error.message || 'No specific error message available from caught error.';
-    if (error.stack) {
-        errorDetails += ` Server Stack: ${error.stack}`;
-    }
-    return NextResponse.json({ error: apiErrorMessage, details: errorDetails }, { status: 500 });
+    console.error(`API Error (PUT /models/${modelId}/objects/${objectId}): Error updating object.`, {
+      errorMessage: error.message,
+      stack: error.stack,
+      requestBody: await request.text().catch(() => 'Could not read request body'),
+    });
+    return NextResponse.json({
+      error: `Failed to update object. ${error.message}`,
+      details: error.stack,
+    }, { status: 500 });
   }
 }
 
@@ -382,7 +384,7 @@ export async function DELETE(request: Request, { params }: Params) {
     return NextResponse.json({ message: 'Object soft deleted successfully' });
   } catch (error: any) {
     await db.run('ROLLBACK');
-    console.error(`Failed to soft delete object ${objectId}:`, error);
+    console.error(`API Error (DELETE /models/${modelId}/objects/${objectId}): Failed to soft delete object.`, error);
     return NextResponse.json({ error: 'Failed to soft delete object', details: error.message }, { status: 500 });
   }
 }

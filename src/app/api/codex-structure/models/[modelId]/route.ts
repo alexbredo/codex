@@ -88,7 +88,11 @@ export async function GET(request: Request, { params }: Params) {
   } catch (error: any) {
     const errorMessage = error.message || `An unknown server error occurred while fetching model ${params.modelId}.`;
     const errorStack = error.stack || 'No stack trace available.';
-    console.error(`API Error (GET /models/[modelId]) - Failed to fetch model ${params.modelId}. Message: ${errorMessage}, Stack: ${errorStack}`, error);
+    console.error(`API Error (GET /models/${params.modelId}): Failed to fetch model.`, {
+        message: errorMessage,
+        stack: errorStack,
+        error,
+    });
     return NextResponse.json({ error: 'Failed to fetch model', details: errorMessage }, { status: 500 });
   }
 }
@@ -103,24 +107,22 @@ export async function PUT(request: Request, { params }: Params) {
   const db = await getDb();
   
   try {
+    await db.run('BEGIN TRANSACTION');
     const body: Partial<Model> & { properties?: Property[] } = await request.json();
     const currentTimestamp = new Date().toISOString();
     
     const oldModelRow = await db.get('SELECT * FROM models WHERE id = ?', params.modelId);
     if (!oldModelRow) {
+      await db.run('ROLLBACK');
       return NextResponse.json({ error: 'Model not found' }, { status: 404 });
     }
     const oldPropertiesFromDb = await db.all('SELECT * FROM properties WHERE model_id = ? ORDER BY orderIndex ASC', params.modelId);
     
     // ================================================================
     // Step 1: Update core model metadata (name, description, group, etc.)
-    // This logic is now simpler and more direct.
     // ================================================================
-    await db.run('BEGIN TRANSACTION');
-
     const finalName = body.name ?? oldModelRow.name;
     const finalDescription = 'description' in body ? body.description : oldModelRow.description;
-    // Explicitly use modelGroupId from body if present, otherwise keep old value.
     const finalModelGroupId = 'modelGroupId' in body ? body.modelGroupId : oldModelRow.model_group_id;
     const finalDisplayPropertyNames = 'displayPropertyNames' in body ? JSON.stringify(body.displayPropertyNames || []) : oldModelRow.displayPropertyNames;
     const finalWorkflowId = 'workflowId' in body ? body.workflowId : oldModelRow.workflowId;
@@ -137,7 +139,6 @@ export async function PUT(request: Request, { params }: Params) {
 
     // ================================================================
     // Step 2: Handle properties update
-    // This part is also wrapped in the transaction. If it fails, the model metadata update is also rolled back.
     // ================================================================
     let newProcessedProperties: Property[] = oldPropertiesFromDb.map(p => ({ ...p, required: !!p.required, autoSetOnCreate: !!p.autoSetOnCreate, autoSetOnUpdate: !!p.autoSetOnUpdate, isUnique: !!p.isUnique } as Property));
     
@@ -258,12 +259,9 @@ export async function PUT(request: Request, { params }: Params) {
     return NextResponse.json(returnedModel);
 
   } catch (error: any) {
-    await db.run('ROLLBACK').catch(rbError => console.error("Rollback failed in PUT /models/[modelId]:", rbError));
-    
-    let errorMessage = `Failed to update model. The operation was rolled back due to an internal error.`;
-    let errorDetails = (error instanceof Error) ? error.message : 'An unknown error occurred.';
-    
-    return NextResponse.json({ error: errorMessage, details: errorDetails }, { status: 500 });
+    await db.run('ROLLBACK').catch(rbError => console.error("API Error (PUT /models/[modelId]): Rollback failed.", rbError));
+    console.error(`API Error (PUT /models/${params.modelId}): Failed to update model.`, error);
+    return NextResponse.json({ error: 'Failed to update model due to a server error.', details: error.message }, { status: 500 });
   }
 }
 
@@ -318,10 +316,12 @@ export async function DELETE(request: Request, { params }: Params) {
     return NextResponse.json({ message: 'Model deleted successfully' });
   } catch (error: any) {
     try { await db.run('ROLLBACK'); } catch (rbError) { console.error("Rollback failed in DELETE /models/[modelId]:", rbError); }
-    
     const errorMessage = error.message || `An unknown server error occurred while deleting model ${params.modelId}.`;
-    const errorStack = error.stack || 'No stack trace available.';
-    console.error(`API Error (DELETE /models/[modelId]) - Failed to delete model ${params.modelId}. Message: ${errorMessage}, Stack: ${errorStack}`, error);
+    console.error(`API Error (DELETE /models/${params.modelId}): Failed to delete model.`, {
+        message: errorMessage,
+        stack: error.stack,
+        error
+    });
     return NextResponse.json({ error: 'Failed to delete model', details: errorMessage }, { status: 500 });
   }
 }

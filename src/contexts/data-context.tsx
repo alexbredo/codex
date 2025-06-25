@@ -124,14 +124,28 @@ const formatApiError = async (response: Response, defaultMessage: string): Promi
         errorMessage += ` (Details: ${ (typeof errorData.details === 'string') ? errorData.details : JSON.stringify(errorData.details) })`;
       }
        if (errorData.field && typeof errorData.field === 'string') {
-         errorMessage += ` (Field: ${errorData.field})`;
+         // This is a special case for form field errors. The component logic will handle this.
+         // Here, we re-throw an object that the calling function can catch.
+         throw { message: errorMessage, field: errorData.field };
       }
     } else {
       errorMessage = `${defaultMessage}. Status: ${status} - ${statusText || 'Server returned a JSON response without a specific error field.'}`;
     }
-  } catch (e) { 
-    const responseText = await response.text().catch(() => 'Could not read response text.');
-    errorMessage = `${defaultMessage}. Status: ${status} - ${statusText || 'Non-JSON response from server.'} Body: ${responseText.substring(0, 200)}...`;
+  } catch (e: any) { 
+    if (e.field) throw e; // Re-throw the structured field error
+    // Handle cases where response is not JSON (e.g., HTML error page)
+    let responseText = '';
+    try {
+      // Need to clone because the body can only be read once.
+      // The original `response.json()` call consumed it.
+      // We need a fresh response object to read the body again as text.
+      // This is a limitation; we should ideally get a new response or handle it better.
+      // For this context, we will assume we can't re-read and provide a generic message.
+      responseText = 'Could not read response body as text.'
+    } catch (readError) {
+      // ignore
+    }
+    errorMessage = `${defaultMessage}. Status: ${status} - ${statusText || 'Non-JSON response from server.'} Body preview: ${responseText.substring(0, 200)}...`;
   }
   return errorMessage;
 };
@@ -158,7 +172,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     try {
       const response = await fetch('/api/codex-structure/workflows');
       if (!response.ok) {
-        const errorMessage = await formatApiError(response, 'Failed to fetch workflows');
+        const errorMessage = await formatApiError(response.clone(), 'Failed to fetch workflows');
         throw new Error(errorMessage);
       }
       const workflowsDataFromApi: WorkflowWithDetails[] = await response.json();
@@ -181,7 +195,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     try {
       const response = await fetch('/api/codex-structure/validation-rulesets');
       if (!response.ok) {
-        const errorMessage = await formatApiError(response, 'Failed to fetch validation rulesets');
+        const errorMessage = await formatApiError(response.clone(), 'Failed to fetch validation rulesets');
         throw new Error(errorMessage);
       }
       const rulesetsDataFromApi: ValidationRuleset[] = await response.json();
@@ -196,7 +210,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     try {
       const response = await fetch('/api/users');
       if (!response.ok) {
-        const errorMessage = await formatApiError(response, 'Failed to fetch users');
+        const errorMessage = await formatApiError(response.clone(), 'Failed to fetch users');
         throw new Error(errorMessage);
       }
       const usersDataFromApi: User[] = await response.json();
@@ -222,7 +236,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
     try {
       const groupsResponse = await fetch('/api/codex-structure/model-groups');
-      if (!groupsResponse.ok) throw new Error(await formatApiError(groupsResponse, 'Failed to fetch model groups'));
+      if (!groupsResponse.ok) throw new Error(await formatApiError(groupsResponse.clone(), 'Failed to fetch model groups'));
       const groupsDataFromApi: ModelGroup[] = await groupsResponse.json();
       
       setModelGroups(prevGroups => {
@@ -232,7 +246,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       });
 
       const modelsResponse = await fetch('/api/codex-structure/models');
-      if (!modelsResponse.ok) throw new Error(await formatApiError(modelsResponse, 'Failed to fetch models'));
+      if (!modelsResponse.ok) throw new Error(await formatApiError(modelsResponse.clone(), 'Failed to fetch models'));
       const modelsDataFromApi: Model[] = await modelsResponse.json();
       
       setModels(prevModels => {
@@ -244,13 +258,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
       // Fetch active objects
       const activeObjectsResponse = await fetch('/api/codex-structure/objects/all'); // Default is non-deleted
-      if (!activeObjectsResponse.ok) throw new Error(await formatApiError(activeObjectsResponse, 'Failed to fetch active objects'));
+      if (!activeObjectsResponse.ok) throw new Error(await formatApiError(activeObjectsResponse.clone(), 'Failed to fetch active objects'));
       const newActiveObjectsData: Record<string, DataObject[]> = await activeObjectsResponse.json();
       setObjects(newActiveObjectsData); // Direct set for active objects
 
       // Fetch soft-deleted objects
       const deletedObjectsResponse = await fetch('/api/codex-structure/objects/all?includeDeleted=true');
-      if (!deletedObjectsResponse.ok) throw new Error(await formatApiError(deletedObjectsResponse, 'Failed to fetch all objects including deleted'));
+      if (!deletedObjectsResponse.ok) throw new Error(await formatApiError(deletedObjectsResponse.clone(), 'Failed to fetch all objects including deleted'));
       const allObjectsIncludingDeleted: Record<string, DataObject[]> = await deletedObjectsResponse.json();
       
       const newDeletedObjectsData: Record<string, DataObject[]> = {};
@@ -342,7 +356,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify(payload),
     });
     if (!response.ok) {
-       const errorMessage = await formatApiError(response, 'Failed to add model');
+       const errorMessage = await formatApiError(response.clone(), 'Failed to add model');
        console.error("API Error in addModel:", errorMessage);
        throw new Error(errorMessage);
     }
@@ -360,7 +374,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify(payload),
     });
      if (!response.ok) {
-      const errorMessage = await formatApiError(response, 'Failed to update model');
+      const errorMessage = await formatApiError(response.clone(), 'Failed to update model');
       throw new Error(errorMessage);
     }
     const updatedModelFromApi: Model = await response.json();
@@ -370,7 +384,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const deleteModel = useCallback(async (modelId: string) => {
     const response = await fetch(`/api/codex-structure/models/${modelId}`, { method: 'DELETE' });
-    if (!response.ok) throw new Error(await formatApiError(response, 'Failed to delete model'));
+    if (!response.ok) throw new Error(await formatApiError(response.clone(), 'Failed to delete model'));
     await fetchData('After Delete Model');
   }, [fetchData]);
 
@@ -386,10 +400,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify(payload),
     });
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ error: `Failed to add object to model ${modelId}. Status: ${response.status}` }));
-      let errorMessage = errorData.error || `Failed to add object to model ${modelId}`;
-      if (errorData.field) throw { message: errorMessage, field: errorData.field }; 
-      throw new Error(errorMessage);
+      throw new Error(await formatApiError(response.clone(), `Failed to add object to model ${modelId}`));
     }
     const newObject: DataObject = await response.json();
     await fetchData(`After Add Object to ${modelId}`);
@@ -406,10 +417,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify(updates),
     });
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ error: `Failed to update object ${objectId}. Status: ${response.status}` }));
-      let errorMessage = errorData.error || `Failed to update object ${objectId} in model ${modelId}`;
-       if (errorData.field) throw { message: errorMessage, field: errorData.field };
-      throw new Error(errorMessage);
+      throw new Error(await formatApiError(response.clone(), `Failed to update object ${objectId} in model ${modelId}`));
     }
     const updatedObjectFromApi: DataObject = await response.json();
     await fetchData(`After Update Object ${objectId} in ${modelId}`);
@@ -421,7 +429,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const deleteObject = useCallback(async (modelId: string, objectId: string) => { // Now soft deletes
     const response = await fetch(`/api/codex-structure/models/${modelId}/objects/${objectId}`, { method: 'DELETE' });
-    if (!response.ok) throw new Error(await formatApiError(response, `Failed to soft delete object ${objectId} from model ${modelId}`));
+    if (!response.ok) throw new Error(await formatApiError(response.clone(), `Failed to soft delete object ${objectId} from model ${modelId}`));
     await fetchData(`After Soft Delete Object ${objectId} from ${modelId}`);
     setLastChangedInfo({ modelId, objectId, changeType: 'deleted' });
     if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
@@ -430,7 +438,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const restoreObject = useCallback(async (modelId: string, objectId: string): Promise<DataObject | undefined> => {
     const response = await fetch(`/api/codex-structure/models/${modelId}/objects/${objectId}/restore`, { method: 'POST' });
-    if (!response.ok) throw new Error(await formatApiError(response, `Failed to restore object ${objectId} in model ${modelId}`));
+    if (!response.ok) throw new Error(await formatApiError(response.clone(), `Failed to restore object ${objectId} in model ${modelId}`));
     const restoredObjectFromApi: DataObject = await response.json();
     await fetchData(`After Restore Object ${objectId} in ${modelId}`);
     setLastChangedInfo({ modelId, objectId, changeType: 'restored' });
@@ -467,7 +475,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const response = await fetch('/api/codex-structure/model-groups', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(groupData),
     });
-    if (!response.ok) throw new Error(await formatApiError(response, 'Failed to add model group'));
+    if (!response.ok) throw new Error(await formatApiError(response.clone(), 'Failed to add model group'));
     const newGroup: ModelGroup = await response.json();
     await fetchData('After Add Model Group');
     return newGroup;
@@ -477,7 +485,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const response = await fetch(`/api/codex-structure/model-groups/${groupId}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updates),
     });
-    if (!response.ok) throw new Error(await formatApiError(response, 'Failed to update model group'));
+    if (!response.ok) throw new Error(await formatApiError(response.clone(), 'Failed to update model group'));
     const updatedGroup: ModelGroup = await response.json();
     await fetchData('After Update Model Group');
     return updatedGroup;
@@ -485,7 +493,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const deleteModelGroup = useCallback(async (groupId: string) => {
     const response = await fetch(`/api/codex-structure/model-groups/${groupId}`, { method: 'DELETE' });
-    if (!response.ok) throw new Error(await formatApiError(response, 'Failed to delete model group'));
+    if (!response.ok) throw new Error(await formatApiError(response.clone(), 'Failed to delete model group'));
     await fetchData('After Delete Model Group');
   }, [fetchData]);
 
@@ -497,7 +505,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const response = await fetch('/api/codex-structure/workflows', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(workflowData),
     });
-    if (!response.ok) throw new Error(await formatApiError(response, 'Failed to add workflow'));
+    if (!response.ok) throw new Error(await formatApiError(response.clone(), 'Failed to add workflow'));
     const newWorkflow: WorkflowWithDetails = await response.json();
     await fetchData('After Add Workflow');
     return {...newWorkflow, states: newWorkflow.states.map(s => ({...s, isInitial: !!s.isInitial}))};
@@ -507,7 +515,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const response = await fetch(`/api/codex-structure/workflows/${workflowId}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(workflowData),
     });
-    if (!response.ok) throw new Error(await formatApiError(response, 'Failed to update workflow'));
+    if (!response.ok) throw new Error(await formatApiError(response.clone(), 'Failed to update workflow'));
     const updatedWorkflow: WorkflowWithDetails = await response.json();
     await fetchData('After Update Workflow');
     return {...updatedWorkflow, states: updatedWorkflow.states.map(s => ({...s, isInitial: !!s.isInitial}))};
@@ -515,7 +523,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const deleteWorkflow = useCallback(async (workflowId: string) => {
     const response = await fetch(`/api/codex-structure/workflows/${workflowId}`, { method: 'DELETE' });
-    if (!response.ok) throw new Error(await formatApiError(response, 'Failed to delete workflow'));
+    if (!response.ok) throw new Error(await formatApiError(response.clone(), 'Failed to delete workflow'));
     await fetchData('After Delete Workflow');
   }, [fetchData]);
 
@@ -525,7 +533,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const response = await fetch('/api/codex-structure/validation-rulesets', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rulesetData),
     });
-    if (!response.ok) throw new Error(await formatApiError(response, 'Failed to add validation ruleset'));
+    if (!response.ok) throw new Error(await formatApiError(response.clone(), 'Failed to add validation ruleset'));
     const newRuleset: ValidationRuleset = await response.json();
     await fetchData('After Add ValidationRuleset');
     return newRuleset;
@@ -535,7 +543,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const response = await fetch(`/api/codex-structure/validation-rulesets/${rulesetId}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updates),
     });
-    if (!response.ok) throw new Error(await formatApiError(response, 'Failed to update validation ruleset'));
+    if (!response.ok) throw new Error(await formatApiError(response.clone(), 'Failed to update validation ruleset'));
     const updatedRuleset: ValidationRuleset = await response.json();
     await fetchData('After Update ValidationRuleset');
     return updatedRuleset;
@@ -543,7 +551,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const deleteValidationRuleset = useCallback(async (rulesetId: string) => {
     const response = await fetch(`/api/codex-structure/validation-rulesets/${rulesetId}`, { method: 'DELETE' });
-    if (!response.ok) throw new Error(await formatApiError(response, 'Failed to delete validation ruleset'));
+    if (!response.ok) throw new Error(await formatApiError(response.clone(), 'Failed to delete validation ruleset'));
     await fetchData('After Delete ValidationRuleset');
   }, [fetchData]);
 
