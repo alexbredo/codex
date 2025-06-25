@@ -8,7 +8,12 @@ import { getCurrentUserFromCookie } from '@/lib/auth';
 export async function GET(request: Request) {
   try {
     const db = await getDb();
-    const rows = await db.all('SELECT * FROM models ORDER BY namespace ASC, name ASC');
+    const rows = await db.all(`
+      SELECT m.*, mg.name as model_group_name 
+      FROM models m
+      LEFT JOIN model_groups mg ON m.model_group_id = mg.id
+      ORDER BY model_group_name ASC, m.name ASC
+    `);
     
     const modelsWithProperties: Model[] = [];
     for (const modelRow of rows) {
@@ -75,7 +80,7 @@ export async function GET(request: Request) {
           id: modelRow.id,
           name: modelRow.name,
           description: modelRow.description,
-          namespace: modelRow.namespace || 'Default',
+          modelGroupId: modelRow.model_group_id,
           displayPropertyNames: parsedDisplayPropertyNames,
           properties: mappedProperties,
           workflowId: modelRow.workflowId === undefined ? null : modelRow.workflowId,
@@ -110,18 +115,19 @@ export async function POST(request: Request) {
   await db.run('BEGIN TRANSACTION');
 
   try {
-    const { id: modelId, name, description, namespace, displayPropertyNames, properties: newPropertiesInput, workflowId }: Omit<Model, 'id'> & {id: string} = await request.json();
-    console.log("[API POST /models] Received payload for create:", JSON.stringify({ id: modelId, name, description, namespace, displayPropertyNames, properties: newPropertiesInput, workflowId }, null, 2));
+    const { id: modelId, name, description, modelGroupId, displayPropertyNames, properties: newPropertiesInput, workflowId }: Omit<Model, 'id'> & {id: string} = await request.json();
+    console.log("[API POST /models] Received payload for create:", JSON.stringify({ id: modelId, name, description, modelGroupId, displayPropertyNames, properties: newPropertiesInput, workflowId }, null, 2));
     
-    const finalNamespace = (namespace && namespace.trim() !== '') ? namespace.trim() : 'Default';
+    const defaultGroupId = "00000000-0000-0000-0000-000000000001";
+    const finalModelGroupId = modelGroupId || defaultGroupId;
     const currentTimestamp = new Date().toISOString();
 
     await db.run(
-      'INSERT INTO models (id, name, description, namespace, displayPropertyNames, workflowId) VALUES (?, ?, ?, ?, ?, ?)',
+      'INSERT INTO models (id, name, description, model_group_id, displayPropertyNames, workflowId) VALUES (?, ?, ?, ?, ?, ?)',
       modelId,
       name,
       description,
-      finalNamespace,
+      finalModelGroupId,
       JSON.stringify(displayPropertyNames || []),
       workflowId === undefined ? null : workflowId
     );
@@ -173,7 +179,7 @@ export async function POST(request: Request) {
       id: modelId,
       name,
       description,
-      namespace: finalNamespace,
+      modelGroupId: finalModelGroupId,
       displayPropertyNames: displayPropertyNames || [],
       workflowId: workflowId === undefined ? null : workflowId,
       properties: processedProperties.map(p => ({ // Log processed properties
@@ -203,7 +209,7 @@ export async function POST(request: Request) {
         id: modelId,
         name,
         description,
-        namespace: finalNamespace,
+        modelGroupId: finalModelGroupId,
         displayPropertyNames: displayPropertyNames || [],
         properties: processedProperties,
         workflowId: workflowId === undefined ? null : workflowId,

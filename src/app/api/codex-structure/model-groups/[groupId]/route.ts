@@ -33,8 +33,8 @@ export async function PUT(request: Request, { params }: Params) {
   }
 
   const db = await getDb();
+  await db.run('BEGIN TRANSACTION');
   try {
-    await db.run('BEGIN TRANSACTION');
     const { name, description }: Partial<Omit<ModelGroup, 'id'>> = await request.json();
     const currentTimestamp = new Date().toISOString();
 
@@ -128,8 +128,8 @@ export async function DELETE(request: Request, { params }: Params) {
   }
 
   const db = await getDb();
+  await db.run('BEGIN TRANSACTION');
   try {
-    await db.run('BEGIN TRANSACTION');
     const currentTimestamp = new Date().toISOString();
 
     const groupToDelete = await db.get('SELECT * FROM model_groups WHERE id = ?', params.groupId);
@@ -143,8 +143,8 @@ export async function DELETE(request: Request, { params }: Params) {
     }
 
 
-    // Check if any models are using this namespace
-    const modelsInGroup = await db.get('SELECT COUNT(*) as count FROM models WHERE namespace = ?', groupToDelete.name);
+    // Check if any models are using this group ID
+    const modelsInGroup = await db.get('SELECT COUNT(*) as count FROM models WHERE model_group_id = ?', params.groupId);
     if (modelsInGroup && modelsInGroup.count > 0) {
       await db.run('ROLLBACK');
       return NextResponse.json({ 
@@ -181,4 +181,3 @@ export async function DELETE(request: Request, { params }: Params) {
     return NextResponse.json({ error: 'Failed to delete model group', details: error.message }, { status: 500 });
   }
 }
-

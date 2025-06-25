@@ -11,7 +11,7 @@ const exportedModelBundleSchema = z.object({
     id: z.string().uuid("Model ID must be a valid UUID."),
     name: z.string().min(1, "Model name cannot be empty."),
     description: z.string().optional().nullable(),
-    namespace: z.string().min(1, "Model namespace cannot be empty."),
+    modelGroupId: z.string().uuid().optional().nullable(),
     displayPropertyNames: z.array(z.string()).optional().nullable(),
     workflowId: z.string().uuid().optional().nullable(),
     properties: z.array(z.object({ // Basic property structure
@@ -47,13 +47,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'File content is missing or not a string.' }, { status: 400 });
     }
 
-    let parsedJson: ExportedModelBundle;
+    let parsedJson: any;
     try {
       parsedJson = JSON.parse(fileContent);
     } catch (error) {
       console.error("API Import Error: Invalid JSON format.", error);
       return NextResponse.json({ error: 'Invalid JSON format in the uploaded file.' }, { status: 400 });
     }
+    
+    // BACKWARDS COMPATIBILITY: If old `namespace` field exists, map it to `modelGroupId`
+    if (parsedJson?.model?.namespace && !parsedJson?.model?.modelGroupId) {
+        const group = await db.get('SELECT id FROM model_groups WHERE name = ?', parsedJson.model.namespace);
+        if (group) {
+            parsedJson.model.modelGroupId = group.id;
+        }
+        delete parsedJson.model.namespace;
+    }
+
 
     // Validate the parsed JSON against the Zod schema
     const validationResult = exportedModelBundleSchema.safeParse(parsedJson);
@@ -90,19 +100,30 @@ export async function POST(request: Request) {
         finalWorkflowId = null;
       }
     }
+
+    // 3. Validate Model Group ID
+    const defaultGroupId = "00000000-0000-0000-0000-000000000001";
+    let finalModelGroupId = importedModelData.modelGroupId || defaultGroupId;
+    if (finalModelGroupId) {
+        const groupExists = await db.get('SELECT id FROM model_groups WHERE id = ?', finalModelGroupId);
+        if (!groupExists) {
+            warnings.push(`Model Group ID "${finalModelGroupId}" specified for model "${importedModelData.name}" was not found. The model has been assigned to the "Default" group.`);
+            finalModelGroupId = defaultGroupId;
+        }
+    }
     
-    // 3. Insert Model
+    // 4. Insert Model
     await db.run(
-      'INSERT INTO models (id, name, description, namespace, displayPropertyNames, workflowId) VALUES (?, ?, ?, ?, ?, ?)',
+      'INSERT INTO models (id, name, description, model_group_id, displayPropertyNames, workflowId) VALUES (?, ?, ?, ?, ?, ?)',
       importedModelData.id,
       importedModelData.name,
       importedModelData.description || null,
-      importedModelData.namespace || 'Default',
+      finalModelGroupId,
       JSON.stringify(importedModelData.displayPropertyNames || []),
       finalWorkflowId
     );
 
-    // 4. Process and Insert Properties
+    // 5. Process and Insert Properties
     const importedProperties: Property[] = [];
     for (const prop of importedModelData.properties) {
       const newPropertyId = crypto.randomUUID(); // Generate new ID for property
@@ -174,7 +195,7 @@ export async function POST(request: Request) {
       modelChangelogId, currentTimestamp, currentUser.id, 'Model', importedModelData.id, importedModelData.name, 'CREATE', JSON.stringify(createdModelSnapshot)
     );
 
-    // 5. Process and Insert Data Objects
+    // 6. Process and Insert Data Objects
     let importedObjectCount = 0;
     for (const obj of importedDataObjects) {
       const newObjectId = crypto.randomUUID(); // Generate new ID for data object
@@ -272,6 +293,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Failed to process model import due to an unexpected server error.', details: error.message }, { status: 500 });
   }
 }
-    
-
-    

@@ -42,7 +42,7 @@ export async function GET(request: Request, { params }: Params) {
       id: modelRow.id,
       name: modelRow.name,
       description: modelRow.description,
-      namespace: modelRow.namespace || 'Default',
+      modelGroupId: modelRow.model_group_id || null,
       displayPropertyNames: parsedDisplayPropertyNames,
       properties: propertiesFromDb.map(p_row => ({
         id: p_row.id,

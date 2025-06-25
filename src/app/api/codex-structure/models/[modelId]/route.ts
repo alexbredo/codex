@@ -8,51 +8,6 @@ interface Params {
   params: { modelId: string };
 }
 
-// Helper function to parse default values on the server
-function parseDefaultValueForStorage(value: string | undefined | null, type: Property['type'], relationshipType?: Property['relationshipType']): any {
-  if (value === undefined || value === null || String(value).trim() === '') {
-    return undefined;
-  }
-
-  switch (type) {
-    case 'string':
-    case 'markdown':
-    case 'image':
-      return String(value).trim();
-    case 'number':
-    case 'rating':
-      const num = parseFloat(value);
-      return isNaN(num) ? undefined : num;
-    case 'boolean':
-      return String(value).toLowerCase() === 'true';
-    case 'date':
-      try {
-        const date = new Date(value);
-        if (isNaN(date.getTime()) && String(value).trim() !== '') return String(value).trim(); 
-        return isNaN(date.getTime()) ? undefined : date.toISOString();
-      } catch {
-        return String(value).trim();
-      }
-    case 'relationship':
-      if (relationshipType === 'many') {
-        try {
-          const parsedArray = JSON.parse(value);
-          if (Array.isArray(parsedArray) && parsedArray.every(item => typeof item === 'string')) {
-            return parsedArray;
-          }
-        } catch (e) {
-          const ids = String(value).split(',').map(id => id.trim()).filter(id => id !== '');
-          if (ids.length > 0) return ids;
-        }
-        return [];
-      }
-      return String(value).trim();
-    default:
-      return String(value).trim();
-  }
-}
-
-
 // GET a single model by ID
 export async function GET(request: Request, { params }: Params) {
   try {
@@ -81,7 +36,7 @@ export async function GET(request: Request, { params }: Params) {
       id: modelRow.id,
       name: modelRow.name,
       description: modelRow.description,
-      namespace: modelRow.namespace || 'Default',
+      modelGroupId: modelRow.model_group_id,
       displayPropertyNames: parsedDisplayPropertyNames,
       properties: propertiesFromDb.map(p_row => {
         if (!p_row || typeof p_row.type === 'undefined') {
@@ -151,7 +106,7 @@ export async function PUT(request: Request, { params }: Params) {
     const body: Partial<Omit<Model, 'id'>> & { properties?: Property[], workflowId?: string | null } = await request.json();
     const currentTimestamp = new Date().toISOString();
     
-    const { name, description, namespace, displayPropertyNames, properties: updatedPropertiesInput } = body;
+    const { name, description, modelGroupId, displayPropertyNames, properties: updatedPropertiesInput } = body;
 
     // Fetch old model state for changelog
     const oldModelRow = await db.get('SELECT * FROM models WHERE id = ?', params.modelId);
@@ -197,10 +152,9 @@ export async function PUT(request: Request, { params }: Params) {
       updateModelValues.push(description);
     }
     
-    const finalNamespace = (namespace === undefined || namespace.trim() === '') ? 'Default' : namespace.trim();
-    if (finalNamespace !== oldModelRow.namespace) {
-        updateModelFields.push('namespace = ?');
-        updateModelValues.push(finalNamespace);
+    if (modelGroupId !== undefined && modelGroupId !== oldModelRow.model_group_id) {
+        updateModelFields.push('model_group_id = ?');
+        updateModelValues.push(modelGroupId);
     }
 
     if (displayPropertyNames !== undefined) {
@@ -273,7 +227,7 @@ export async function PUT(request: Request, { params }: Params) {
     
     if (newModelDataAfterUpdate.name !== oldModelRow.name) changesDetail.push({ field: 'name', oldValue: oldModelRow.name, newValue: newModelDataAfterUpdate.name });
     if (newModelDataAfterUpdate.description !== oldModelRow.description) changesDetail.push({ field: 'description', oldValue: oldModelRow.description, newValue: newModelDataAfterUpdate.description });
-    if (newModelDataAfterUpdate.namespace !== oldModelRow.namespace) changesDetail.push({ field: 'namespace', oldValue: oldModelRow.namespace, newValue: newModelDataAfterUpdate.namespace });
+    if (newModelDataAfterUpdate.model_group_id !== oldModelRow.model_group_id) changesDetail.push({ field: 'modelGroupId', oldValue: oldModelRow.model_group_id, newValue: newModelDataAfterUpdate.model_group_id });
     if (newModelDataAfterUpdate.displayPropertyNames !== oldModelRow.displayPropertyNames) changesDetail.push({ field: 'displayPropertyNames', oldValue: JSON.parse(oldModelRow.displayPropertyNames || '[]'), newValue: JSON.parse(newModelDataAfterUpdate.displayPropertyNames || '[]') });
     if (newModelDataAfterUpdate.workflowId !== oldModelRow.workflowId) changesDetail.push({ field: 'workflowId', oldValue: oldModelRow.workflowId, newValue: newModelDataAfterUpdate.workflowId });
 
@@ -321,7 +275,7 @@ export async function PUT(request: Request, { params }: Params) {
       id: refreshedModelRow.id,
       name: refreshedModelRow.name,
       description: refreshedModelRow.description,
-      namespace: refreshedModelRow.namespace || 'Default',
+      modelGroupId: refreshedModelRow.model_group_id,
       displayPropertyNames: refreshedParsedDpn,
       properties: refreshedPropertiesFromDb.map(p => ({
         ...(p as any), 
