@@ -148,7 +148,7 @@ export function KanbanCard({
         />
       )}
       {displayImage && imageUrlFromProp && (
-        <div className="aspect-video relative w-full bg-muted rounded-t-lg overflow-hidden ml-1.5"> {/* Added ml-1.5 if stateColor exists */}
+        <div className={cn("aspect-video relative w-full bg-muted rounded-t-lg overflow-hidden", stateColor && "ml-1.5")}>
           <Image
             src={imageUrlFromProp}
             alt={imageAltText}
