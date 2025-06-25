@@ -987,7 +987,6 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
   };
 
   const handleFormInvalid = (errors: FieldErrors<ModelFormValues>) => {
-    console.error("[ModelForm] Client-side form validation errors:", JSON.stringify(errors, null, 2));
     toast({
       title: "Validation Error",
       description: "Please correct the errors highlighted in the form. Errors might be in collapsed sections.",
