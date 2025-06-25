@@ -131,6 +131,7 @@ export async function DELETE(request: Request, { params }: Params) {
   await db.run('BEGIN TRANSACTION');
   try {
     const currentTimestamp = new Date().toISOString();
+    const defaultGroupId = "00000000-0000-0000-0000-000000000001";
 
     const groupToDelete = await db.get('SELECT * FROM model_groups WHERE id = ?', params.groupId);
     if (!groupToDelete) {
@@ -142,15 +143,9 @@ export async function DELETE(request: Request, { params }: Params) {
         return NextResponse.json({ error: 'The "Default" group cannot be deleted.' }, { status: 400 });
     }
 
+    // Reassign models in this group to the 'Default' group
+    await db.run('UPDATE models SET model_group_id = ? WHERE model_group_id = ?', defaultGroupId, params.groupId);
 
-    // Check if any models are using this group ID
-    const modelsInGroup = await db.get('SELECT COUNT(*) as count FROM models WHERE model_group_id = ?', params.groupId);
-    if (modelsInGroup && modelsInGroup.count > 0) {
-      await db.run('ROLLBACK');
-      return NextResponse.json({ 
-        error: `Cannot delete group "${groupToDelete.name}" as it is currently used by ${modelsInGroup.count} model(s). Please reassign models before deleting the group.` 
-      }, { status: 409 }); // 409 Conflict
-    }
 
     const result = await db.run('DELETE FROM model_groups WHERE id = ?', params.groupId);
     if (result.changes === 0) {

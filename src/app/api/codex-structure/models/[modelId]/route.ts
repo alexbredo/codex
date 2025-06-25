@@ -103,8 +103,6 @@ export async function PUT(request: Request, { params }: Params) {
   
   try {
     const body: Partial<Model> & { properties?: Property[] } = await request.json();
-    console.log(`[API PUT /models/${params.modelId}] Received request to update model. Body:`, JSON.stringify(body, null, 2));
-
 
     await db.run('BEGIN TRANSACTION');
 
@@ -117,9 +115,7 @@ export async function PUT(request: Request, { params }: Params) {
       return NextResponse.json({ error: 'Model not found' }, { status: 404 });
     }
     const oldPropertiesFromDb = await db.all('SELECT * FROM properties WHERE model_id = ? ORDER BY orderIndex ASC', params.modelId);
-    console.log(`[API PUT /models/${params.modelId}] Fetched existing model. Current group ID: ${oldModelRow.model_group_id}`);
-
-
+    
     // Step 2: Explicitly build the data for the 'models' table update
     if (body.name && body.name !== oldModelRow.name) {
         const nameCheck = await db.get('SELECT id FROM models WHERE name = ? AND id != ?', body.name, params.modelId);
@@ -137,9 +133,7 @@ export async function PUT(request: Request, { params }: Params) {
         displayPropertyNames: body.hasOwnProperty('displayPropertyNames') ? JSON.stringify(body.displayPropertyNames || []) : oldModelRow.displayPropertyNames,
         workflowId: body.hasOwnProperty('workflowId') ? body.workflowId : oldModelRow.workflowId,
     };
-    console.log(`[API PUT /models/${params.modelId}] Preparing to update database. New modelGroupId to save:`, finalUpdateData.modelGroupId);
-
-
+    
     // Step 3: Execute the update on the 'models' table
     await db.run(
       `UPDATE models 
@@ -152,13 +146,10 @@ export async function PUT(request: Request, { params }: Params) {
       finalUpdateData.workflowId,
       params.modelId
     );
-    console.log(`[API PUT /models/${params.modelId}] Successfully updated 'models' table.`);
-
 
     // Step 4: Handle properties update
     const newProcessedProperties: Property[] = [];
     if (body.properties) {
-      console.log(`[API PUT /models/${params.modelId}] Properties were included in request. Rebuilding properties.`);
       await db.run('DELETE FROM properties WHERE model_id = ?', params.modelId);
       for (const prop of body.properties) {
         const propertyId = prop.id || crypto.randomUUID();
@@ -182,7 +173,6 @@ export async function PUT(request: Request, { params }: Params) {
         } as Property);
       }
     } else {
-      console.log(`[API PUT /models/${params.modelId}] No properties in request. Keeping existing properties.`);
       newProcessedProperties.push(...oldPropertiesFromDb.map(p => ({
         ...p,
         required: !!p.required,
@@ -195,7 +185,6 @@ export async function PUT(request: Request, { params }: Params) {
     // Step 5: Handle workflow side-effects (if workflow changed)
     const oldEffectiveWorkflowId = oldModelRow.workflowId || null;
     if (finalUpdateData.workflowId !== oldEffectiveWorkflowId) {
-      console.log(`[API PUT /models/${params.modelId}] Workflow ID changed from ${oldEffectiveWorkflowId} to ${finalUpdateData.workflowId}. Updating related objects.`);
       if (finalUpdateData.workflowId) { 
         const workflowForUpdate: WorkflowWithDetails | undefined = await db.get('SELECT * FROM workflows WHERE id = ?', finalUpdateData.workflowId);
         if (workflowForUpdate) {
@@ -210,15 +199,13 @@ export async function PUT(request: Request, { params }: Params) {
       }
     }
     
-    // Step 6: Log the change (with robust parsing)
-    console.log(`[API PUT /models/${params.modelId}] Preparing changelog entry.`);
+    // Step 6: Log the change
     const changelogId = crypto.randomUUID();
     const changesDetail: StructuralChangeDetail[] = [];
     
     const safeJsonParse = (jsonString: string | null | undefined, defaultValue: any = []) => {
       if (jsonString === null || jsonString === undefined) return defaultValue;
       try {
-        // This will correctly handle the string "null" vs the value null
         return JSON.parse(jsonString);
       } catch (e) {
         console.warn(`Safe JSON Parse failed for string: "${jsonString}". Returning default value.`, e);
@@ -232,7 +219,6 @@ export async function PUT(request: Request, { params }: Params) {
     if (finalUpdateData.displayPropertyNames !== oldModelRow.displayPropertyNames) changesDetail.push({ field: 'displayPropertyNames', oldValue: safeJsonParse(oldModelRow.displayPropertyNames), newValue: safeJsonParse(finalUpdateData.displayPropertyNames) });
     if (finalUpdateData.workflowId !== oldModelRow.workflowId) changesDetail.push({ field: 'workflowId', oldValue: oldModelRow.workflowId, newValue: finalUpdateData.workflowId });
     
-    // FIX: Correctly compare old and new properties for changelog
     const oldPropsForLog = oldPropertiesFromDb.map(p => ({name: p.name, type: p.type, orderIndex: p.orderIndex, required: !!p.required}));
     const newPropsForLog = newProcessedProperties.map(p => ({name: p.name, type: p.type, orderIndex: p.orderIndex, required: !!p.required}));
     
@@ -256,14 +242,10 @@ export async function PUT(request: Request, { params }: Params) {
           'UPDATE',
           JSON.stringify(changesDetail)
         );
-         console.log(`[API PUT /models/${params.modelId}] Changelog created with ID: ${changelogId}`);
-    } else {
-         console.log(`[API PUT /models/${params.modelId}] No changes detected. Skipping changelog.`);
     }
-
+    
     // Step 7: Commit transaction
     await db.run('COMMIT');
-    console.log(`[API PUT /models/${params.modelId}] Transaction committed successfully.`);
 
     // Fetch and return the fully updated model for the client
     const refreshedModelRow = await db.get('SELECT * FROM models WHERE id = ?', params.modelId);
@@ -302,10 +284,8 @@ export async function PUT(request: Request, { params }: Params) {
     return NextResponse.json(returnedModel);
 
   } catch (error: any) {
-    console.error(`[API PUT /models/${params.modelId}] Error during update process, transaction will be rolled back. Error:`, error);
     try { 
       await db.run('ROLLBACK');
-      console.log(`[API PUT /models/${params.modelId}] Transaction successfully rolled back.`);
     } catch (rbError) { 
       console.error("[API PUT /models/[modelId]] CRITICAL: Rollback failed after an error:", rbError);
     }
@@ -377,5 +357,3 @@ export async function DELETE(request: Request, { params }: Params) {
     return NextResponse.json({ error: 'Failed to delete model', details: errorMessage }, { status: 500 });
   }
 }
-
-    
