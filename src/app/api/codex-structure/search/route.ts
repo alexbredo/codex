@@ -71,22 +71,22 @@ export async function GET(request: Request) {
     const modelFilter = filters.find(f => f.type === 'model');
     if (modelFilter) {
       joins.push(`JOIN models m ON d.model_id = m.id`);
-      whereClauses.push(`LOWER(m.name) = ?`);
-      queryParams.push(modelFilter.value.toLowerCase());
+      // Use LIKE for more flexible model name matching
+      whereClauses.push(`LOWER(m.name) LIKE ?`);
+      queryParams.push(`%${modelFilter.value.toLowerCase()}%`);
     }
 
     const propertyFilters = filters.filter(f => f.type === 'property');
     if (propertyFilters.length > 0) {
-      propertyFilters.forEach((filter, index) => {
-        // This is a simplification. A real implementation would need to check property types for correct comparison (e.g., numbers vs strings).
-        // Using LIKE for broader matching. For exact match, use '='.
+      propertyFilters.forEach((filter) => {
+        // Using LIKE for broader matching on string properties.
         whereClauses.push(`LOWER(json_extract(d.data, ?)) LIKE ?`);
         queryParams.push(`$.${filter.key}`);
         queryParams.push(`%${filter.value.toLowerCase()}%`);
       });
     }
     
-    sqlQuery += ` ${joins.join(' ')}`;
+    sqlQuery += ` ${[...new Set(joins)].join(' ')}`; // Use Set to avoid duplicate joins
     if (whereClauses.length > 0) {
       sqlQuery += ` WHERE ${whereClauses.join(' AND ')}`;
     }
@@ -99,25 +99,26 @@ export async function GET(request: Request) {
 
     if (fullTextTerms.length > 0) {
         for (const row of filteredObjectRows) {
-            const objectString = JSON.stringify(row).toLowerCase();
+            // Search within the object's data AND its model's name for better relevance
+            const objectDataString = row.data.toLowerCase();
+            const modelForObject = allModels.find(m => m.id === row.model_id);
+            const modelNameString = modelForObject?.name.toLowerCase() || '';
+
             let matchesAllTerms = true;
             for (const term of fullTextTerms) {
-                if (!objectString.includes(term)) {
+                if (!objectDataString.includes(term) && !modelNameString.includes(term)) {
                     matchesAllTerms = false;
                     break;
                 }
             }
-            if (matchesAllTerms) {
-                const modelForObject = allModels.find(m => m.id === row.model_id);
-                if (modelForObject) {
-                    const data: DataObject = { id: row.id, ...JSON.parse(row.data) };
-                    searchResults.push({
-                        object: data,
-                        model: modelForObject,
-                        displayValue: '', // Will be hydrated below
-                        score: 1 
-                    });
-                }
+            if (matchesAllTerms && modelForObject) {
+                const data: DataObject = { id: row.id, ...JSON.parse(row.data) };
+                searchResults.push({
+                    object: data,
+                    model: modelForObject,
+                    displayValue: '', // Will be hydrated below
+                    score: 1 
+                });
             }
         }
     } else {
