@@ -14,10 +14,12 @@ import {
 } from '@/components/ui/sidebar';
 import Navigation from './navigation';
 import { Button } from '@/components/ui/button';
-import { UserCircle, LogOut, LogIn, UserPlus, Loader2 } from 'lucide-react';
+import { UserCircle, LogOut, LogIn, UserPlus, Loader2, Search } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/auth-context';
 import { cn } from '@/lib/utils';
+import { GlobalSearch } from '@/components/dashboard/GlobalSearch';
+
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -25,19 +27,28 @@ interface AppLayoutProps {
 
 export default function AppLayout({ children }: AppLayoutProps) {
   const { user, logout, isLoading: authIsLoading } = useAuth();
-  // isClient is still useful if you need to gate very specific client-only effects or minor components,
-  // but not for major layout structures like the Sidebar itself if it's designed to be SSR-friendly.
   const [isClient, setIsClient] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   useEffect(() => {
     setIsClient(true);
   }, []);
 
-  // The Sidebar component itself handles its collapsed/expanded state and mobile view (Sheet).
-  // It relies on useIsMobile internally, which correctly defaults for SSR and updates on client.
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault()
+        setIsSearchOpen((open) => !open)
+      }
+    }
+    document.addEventListener('keydown', down)
+    return () => document.removeEventListener('keydown', down)
+  }, [])
+
   return (
-    <SidebarProvider defaultOpen> {/* defaultOpen true means sidebar is initially expanded on desktop */}
+    <SidebarProvider defaultOpen>
       <div className="flex min-h-screen">
+        <GlobalSearch open={isSearchOpen} setOpen={setIsSearchOpen} />
         <Sidebar collapsible="icon" className="border-r">
           <SidebarHeader>
             <Link href="/" className="flex items-center gap-2 p-2 hover:bg-sidebar-accent rounded-md transition-colors">
@@ -85,26 +96,38 @@ export default function AppLayout({ children }: AppLayoutProps) {
         </Sidebar>
         
         <SidebarInset>
-          <header className="sticky top-0 z-10 flex items-center h-14 px-4 border-b bg-background/80 backdrop-blur-sm justify-between">
-            <SidebarTrigger className="md:hidden" /> {/* Trigger for mobile */}
-            <div className="flex-1 text-center text-lg font-medium text-foreground">
-              {/* Current Page Title could go here */}
-            </div>
-            {user && (
-              <Button variant="ghost" size="sm" onClick={logout} className="text-destructive hover:text-destructive hover:bg-destructive/10 md:hidden">
-                <LogOut size={18} className="mr-1" /> Logout
+          <header className="sticky top-0 z-10 flex items-center h-14 px-4 border-b bg-background/80 backdrop-blur-sm justify-between gap-4">
+            <SidebarTrigger className="md:hidden" />
+            <div className="flex-1 flex justify-center">
+              <Button
+                variant="outline"
+                onClick={() => setIsSearchOpen(true)}
+                className="w-full max-w-xs justify-start text-muted-foreground"
+              >
+                <Search className="mr-2 h-4 w-4" />
+                Search...
+                <kbd className="pointer-events-none ml-auto pl-4 inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
+                    <span className="text-xs">⌘</span>K
+                </kbd>
               </Button>
-            )}
-            {!user && (
-              <div className="md:hidden h-9"></div> 
-            )}
+            </div>
+            <div className="flex items-center">
+              {user && (
+                <Button variant="ghost" size="sm" onClick={logout} className="text-destructive hover:text-destructive hover:bg-destructive/10 md:hidden">
+                  <LogOut size={18} className="mr-1" /> Logout
+                </Button>
+              )}
+              {!user && (
+                <div className="md:hidden h-9 w-9"></div> 
+              )}
+            </div>
           </header>
           <main className="flex-1 p-6 overflow-auto">
-            {authIsLoading && !user && isClient ? ( // Show loader if auth is genuinely loading AND client has mounted
+            {authIsLoading && !user && isClient ? (
                  <div className="flex justify-center items-center h-full">
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
                  </div>
-            ) : !isClient && !user ? ( // Placeholder for SSR/initial render if auth might show a loader
+            ) : !isClient && !user ? (
                  <div className="flex justify-center items-center h-full">
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
                  </div>

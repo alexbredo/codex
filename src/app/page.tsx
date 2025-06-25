@@ -1,4 +1,3 @@
-
  'use client';
 
 import * as React from 'react';
@@ -6,11 +5,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/auth-context';
 import type { Dashboard, WidgetInstance } from '@/lib/types';
 import DashboardDisplay from '@/components/dashboard/DashboardDisplay';
-import { Loader2, Search } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import AddWidgetDialog from '@/components/dashboard/AddWidgetDialog';
 import { v4 as uuidv4 } from 'uuid';
-import { GlobalSearch } from '@/components/dashboard/GlobalSearch';
 
 // Define a default dashboard structure if none is found for the user
 const getDefaultDashboardLayout = (): WidgetInstance[] => [
@@ -70,7 +68,6 @@ export default function HomePage() {
   const [dashboardConfig, setDashboardConfig] = React.useState<Dashboard | null>(null);
   const [isEditMode, setIsEditMode] = React.useState(false);
   const [localDashboardConfig, setLocalDashboardConfig] = React.useState<Dashboard | null>(null);
-  const [isSearchOpen, setIsSearchOpen] = React.useState(false);
 
   const queryClient = useQueryClient();
 
@@ -115,17 +112,6 @@ export default function HomePage() {
     // When dashboardConfig changes, update localDashboardConfig
     setLocalDashboardConfig(dashboardConfig ? { ...dashboardConfig } : null);
   }, [dashboardConfig]);
-
-  React.useEffect(() => {
-    const down = (e: KeyboardEvent) => {
-      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault()
-        setIsSearchOpen((open) => !open)
-      }
-    }
-    document.addEventListener('keydown', down)
-    return () => document.removeEventListener('keydown', down)
-  }, [])
 
   const handleEditDashboard = () => {
     setIsEditMode(true);
@@ -260,20 +246,12 @@ export default function HomePage() {
 
   return (
     <div className="container mx-auto py-8">
-      <GlobalSearch open={isSearchOpen} setOpen={setIsSearchOpen} />
       <header className="mb-8 text-center">
         <h1 className="text-4xl font-bold tracking-tight text-primary">{dashboardConfig.name}</h1>
         <p className="mt-2 text-lg text-muted-foreground">
           Your personalized overview of CodexStructure.
         </p>
         <div className="mt-4 flex justify-center items-center gap-4">
-          <Button variant="outline" onClick={() => setIsSearchOpen(true)} className="min-w-[200px]">
-            <Search className="mr-2 h-4 w-4" />
-            Search...
-            <kbd className="pointer-events-none ml-auto pl-4 inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
-                <span className="text-xs">⌘</span>K
-            </kbd>
-          </Button>
           {isEditMode ? (
             <div>
               <Button variant="secondary" onClick={handleSaveDashboard} disabled={saveDashboardMutation.isPending}>
