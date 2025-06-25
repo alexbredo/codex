@@ -65,7 +65,7 @@ const GalleryCard = React.memo(function GalleryCard({
 
 
   let imageProp = model.properties.find(p => p.type === 'image' && obj[p.name]);
-  let imageUrl = imageProp && obj[p.name] ? String(obj[p.name]) : null;
+  let imageUrl = imageProp && obj[imageProp.name] ? String(obj[imageProp.name]) : null;
   let imageAltText = imageProp ? `${displayName} ${imageProp.name}` : `${displayName} gallery image`;
   
   if (!imageUrl) {
@@ -250,4 +250,3 @@ const GalleryCard = React.memo(function GalleryCard({
 });
 
 export default GalleryCard;
-
