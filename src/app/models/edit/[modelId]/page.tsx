@@ -87,6 +87,8 @@ export default function EditModelPage() {
 
   const onSubmit = async (values: ModelFormValues) => {
     if (!currentModel) return;
+    console.log("[EditModelPage] onSubmit - received values from ModelForm:", JSON.stringify(values, null, 2));
+
 
     const existingByName = getModelByName(values.name);
     if (existingByName && existingByName.id !== currentModel.id) {
@@ -122,6 +124,8 @@ export default function EditModelPage() {
         return propertyForApi;
       }),
     };
+    
+    console.log("[EditModelPage] onSubmit - modelData to be sent to updateModel:", JSON.stringify(modelData, null, 2));
 
     try {
       await updateModel(currentModel.id, modelData);

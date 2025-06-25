@@ -8,7 +8,7 @@ import { getCurrentUserFromCookie } from '@/lib/auth'; // Auth helper
 export async function GET(request: Request) {
   try {
     const db = await getDb();
-    const rows = await db.all('SELECT * FROM models ORDER BY namespace ASC, name ASC');
+    const rows = await db.all('SELECT * FROM models ORDER BY model_group_id ASC, name ASC');
     
     const modelsWithProperties: Model[] = [];
     for (const modelRow of rows) {
@@ -69,7 +69,7 @@ export async function GET(request: Request) {
           id: modelRow.id,
           name: modelRow.name,
           description: modelRow.description,
-          namespace: modelRow.namespace || 'Default',
+          modelGroupId: modelRow.model_group_id || null,
           displayPropertyNames: parsedDisplayPropertyNames,
           properties: mappedProperties,
         });
@@ -101,19 +101,20 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { id: modelId, name, description, namespace, displayPropertyNames, properties: newProperties }: Omit<Model, 'id'> & {id: string} = await request.json();
+    const { id: modelId, name, description, modelGroupId, displayPropertyNames, properties: newProperties }: Omit<Model, 'id'> & {id: string} = await request.json();
     const db = await getDb();
-    const finalNamespace = (namespace && namespace.trim() !== '') ? namespace.trim() : 'Default';
-
+    
+    const defaultGroupId = "00000000-0000-0000-0000-000000000001";
+    const finalModelGroupId = (modelGroupId && modelGroupId.trim() !== '') ? modelGroupId.trim() : defaultGroupId;
 
     await db.run('BEGIN TRANSACTION');
 
     await db.run(
-      'INSERT INTO models (id, name, description, namespace, displayPropertyNames) VALUES (?, ?, ?, ?, ?)',
+      'INSERT INTO models (id, name, description, model_group_id, displayPropertyNames) VALUES (?, ?, ?, ?, ?)',
       modelId,
       name,
       description,
-      finalNamespace,
+      finalModelGroupId,
       JSON.stringify(displayPropertyNames || [])
     );
 
@@ -143,7 +144,7 @@ export async function POST(request: Request) {
         id: modelId,
         name,
         description,
-        namespace: finalNamespace,
+        modelGroupId: finalModelGroupId,
         displayPropertyNames: displayPropertyNames || [],
         properties: newProperties.map(p => ({
             ...p,

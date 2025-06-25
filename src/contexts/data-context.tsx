@@ -353,6 +353,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [fetchData]);
 
   const updateModel = useCallback(async (modelId: string, updates: ModelUpdatePayload): Promise<Model | undefined> => {
+    console.log("[DataContext] updateModel - received updates payload:", JSON.stringify(updates, null, 2));
+
     const propertiesForApi = (updates.properties || []).map((p, index) => ({
       ...p,
       id: p.id || crypto.randomUUID(),
@@ -375,6 +377,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       ...updates,
       properties: propertiesForApi,
     };
+    
+    console.log("[DataContext] updateModel - final payload for API:", JSON.stringify(payload, null, 2));
+
 
     const response = await fetch(`/api/codex-structure/models/${modelId}`, {
       method: 'PUT',

@@ -100,10 +100,13 @@ export async function PUT(request: Request, { params }: Params) {
   }
 
   const db = await getDb();
-  await db.run('BEGIN TRANSACTION');
-
+  
   try {
     const body: Partial<Omit<Model, 'id'>> & { properties?: Property[], workflowId?: string | null } = await request.json();
+    console.log(`[API PUT /models/${params.modelId}] Received body:`, JSON.stringify(body, null, 2));
+
+    await db.run('BEGIN TRANSACTION');
+
     const currentTimestamp = new Date().toISOString();
     
     const { name, description, modelGroupId, displayPropertyNames, properties: updatedPropertiesInput, workflowId } = body;
@@ -125,17 +128,25 @@ export async function PUT(request: Request, { params }: Params) {
         }
     }
 
-    // Direct update of model fields, assuming client sends the complete desired state.
-    // This is less fragile than conditionally building a query.
+    const updatePayload = {
+      name: name ?? oldModelRow.name,
+      description: description ?? oldModelRow.description,
+      modelGroupId: modelGroupId ?? oldModelRow.model_group_id,
+      displayPropertyNames: JSON.stringify(displayPropertyNames || []),
+      workflowId: workflowId === undefined ? oldModelRow.workflowId : workflowId,
+    };
+    console.log(`[API PUT /models/${params.modelId}] DB update payload:`, JSON.stringify(updatePayload, null, 2));
+
+
     await db.run(
       `UPDATE models 
        SET name = ?, description = ?, model_group_id = ?, displayPropertyNames = ?, workflowId = ?
        WHERE id = ?`,
-      name,
-      description,
-      modelGroupId, // This will be the ID string or null
-      JSON.stringify(displayPropertyNames || []),
-      workflowId,
+      updatePayload.name,
+      updatePayload.description,
+      updatePayload.modelGroupId,
+      updatePayload.displayPropertyNames,
+      updatePayload.workflowId,
       params.modelId
     );
 

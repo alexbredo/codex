@@ -36,7 +36,7 @@ export async function GET(request: Request, { params }: Params) {
       id: modelRow.id,
       name: modelRow.name,
       description: modelRow.description,
-      namespace: modelRow.namespace || 'Default',
+      modelGroupId: modelRow.model_group_id || null,
       displayPropertyNames: parsedDisplayPropertyNames,
       properties: properties.map(p_row => { 
         if (!p_row || typeof p_row.type === 'undefined') {
@@ -93,9 +93,11 @@ export async function PUT(request: Request, { params }: Params) {
   }
 
   try {
-    const { name, description, namespace, displayPropertyNames, properties: updatedProperties }: Partial<Omit<Model, 'id'>> & { properties?: Property[] } = await request.json();
+    const { name, description, modelGroupId, displayPropertyNames, properties: updatedProperties }: Partial<Omit<Model, 'id'>> & { properties?: Property[] } = await request.json();
     const db = await getDb();
-    const finalNamespace = (namespace && namespace.trim() !== '') ? namespace.trim() : 'Default';
+    
+    const defaultGroupId = "00000000-0000-0000-0000-000000000001";
+    const finalModelGroupId = (modelGroupId && modelGroupId.trim() !== '') ? modelGroupId.trim() : defaultGroupId;
 
     const existingModel = await db.get('SELECT * FROM models WHERE id = ?', params.modelId);
     if (!existingModel) {
@@ -112,10 +114,10 @@ export async function PUT(request: Request, { params }: Params) {
     await db.run('BEGIN TRANSACTION');
 
     await db.run(
-      'UPDATE models SET name = ?, description = ?, namespace = ?, displayPropertyNames = ? WHERE id = ?',
+      'UPDATE models SET name = ?, description = ?, model_group_id = ?, displayPropertyNames = ? WHERE id = ?',
       name ?? existingModel.name,
       description ?? existingModel.description,
-      finalNamespace,
+      finalModelGroupId,
       displayPropertyNames ? JSON.stringify(displayPropertyNames) : existingModel.displayPropertyNames,
       params.modelId
     );
@@ -164,7 +166,7 @@ export async function PUT(request: Request, { params }: Params) {
       id: refreshedModelRow.id,
       name: refreshedModelRow.name,
       description: refreshedModelRow.description,
-      namespace: refreshedModelRow.namespace || 'Default',
+      modelGroupId: refreshedModelRow.model_group_id || null,
       displayPropertyNames: refreshedParsedDpn,
       properties: refreshedProperties.map(p => ({
         ...p,
