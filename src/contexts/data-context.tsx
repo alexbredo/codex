@@ -350,10 +350,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [fetchData]);
 
   const updateModel = useCallback(async (modelId: string, updates: ModelUpdatePayload): Promise<Model | undefined> => {
+    const payload: ModelUpdatePayload = { ...updates };
     const response = await fetch(`/api/codex-structure/models/${modelId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates),
+      body: JSON.stringify(payload),
     });
      if (!response.ok) {
       const errorMessage = await formatApiError(response, 'Failed to update model');
@@ -469,7 +470,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return newGroup;
   }, [fetchData]);
 
-  const updateModelGroup = useCallback(async (groupId: string, updates: Partial<Omit<ModelGroup, 'id'>>): Promise<ModelGroup | undefined> => {
+  const updateModelGroup = useCallback(async (groupId: string, updates: Partial<Omit<ModelGroup, 'id'>>) => {
     const response = await fetch(`/api/codex-structure/model-groups/${groupId}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updates),
     });
@@ -527,7 +528,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return newRuleset;
   }, [fetchData]);
 
-  const updateValidationRuleset = useCallback(async (rulesetId: string, updates: Partial<Omit<ValidationRuleset, 'id'>>): Promise<ValidationRuleset | undefined> => {
+  const updateValidationRuleset = useCallback(async (rulesetId: string, updates: Partial<Omit<ValidationRuleset, 'id'>>) => {
     const response = await fetch(`/api/codex-structure/validation-rulesets/${rulesetId}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updates),
     });

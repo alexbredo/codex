@@ -103,7 +103,6 @@ export async function PUT(request: Request, { params }: Params) {
   
   try {
     const body: Partial<Model> & { properties?: Property[] } = await request.json();
-    console.log(`[API PUT /models/${params.modelId}] Received request body:`, JSON.stringify(body, null, 2));
 
     await db.run('BEGIN TRANSACTION');
 
@@ -127,22 +126,9 @@ export async function PUT(request: Request, { params }: Params) {
 
     const finalName = body.name ?? oldModelRow.name;
     const finalDescription = body.description ?? oldModelRow.description;
-    
-    let finalModelGroupId = oldModelRow.model_group_id;
-    if (Object.prototype.hasOwnProperty.call(body, 'modelGroupId')) {
-        finalModelGroupId = body.modelGroupId;
-    }
-    
-    const finalDisplayPropertyNames = JSON.stringify(body.displayPropertyNames || []);
-    const finalWorkflowId = body.workflowId !== undefined ? body.workflowId : oldModelRow.workflowId;
-
-    console.log(`[API PUT /models/${params.modelId}] Values to be saved:`, {
-        finalName,
-        finalDescription,
-        finalModelGroupId,
-        finalDisplayPropertyNames,
-        finalWorkflowId
-    });
+    const finalModelGroupId = body.hasOwnProperty('modelGroupId') ? body.modelGroupId : oldModelRow.model_group_id;
+    const finalDisplayPropertyNames = body.hasOwnProperty('displayPropertyNames') ? JSON.stringify(body.displayPropertyNames || []) : oldModelRow.displayPropertyNames;
+    const finalWorkflowId = body.hasOwnProperty('workflowId') ? body.workflowId : oldModelRow.workflowId;
 
     await db.run(
       `UPDATE models 
@@ -155,8 +141,6 @@ export async function PUT(request: Request, { params }: Params) {
       finalWorkflowId,
       params.modelId
     );
-
-    console.log(`[API PUT /models/${params.modelId}] Successfully executed UPDATE statement for model.`);
 
     const newProcessedProperties: Property[] = [];
     if (body.properties) {
@@ -231,7 +215,6 @@ export async function PUT(request: Request, { params }: Params) {
     }
 
     await db.run('COMMIT');
-    console.log(`[API PUT /models/${params.modelId}] Transaction committed successfully.`);
 
     const refreshedModelRow = await db.get('SELECT * FROM models WHERE id = ?', params.modelId);
     const refreshedPropertiesFromDb = await db.all('SELECT * FROM properties WHERE model_id = ? ORDER BY orderIndex ASC', params.modelId);
