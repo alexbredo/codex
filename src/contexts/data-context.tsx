@@ -211,7 +211,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       console.warn(`[DataContext] Fetch already in progress. New trigger: ${triggeredBy}. Skipping.`);
       return;
     }
-    // console.log(`[DataContext] Starting fetchData. Trigger: ${triggeredBy || 'Unknown'}`);
     isFetchingDataRef.current = true;
 
     if (initialLoadCompletedRef.current) {
@@ -295,7 +294,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       }
       setIsBackgroundFetching(false);
       isFetchingDataRef.current = false;
-      // console.log(`[DataContext] Finished fetchData. Trigger: ${triggeredBy || 'Unknown'}`);
     }
   }, [fetchWorkflowsInternal, fetchValidationRulesetsInternal, fetchAllUsersInternal]);
 
@@ -353,38 +351,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [fetchData]);
 
   const updateModel = useCallback(async (modelId: string, updates: ModelUpdatePayload): Promise<Model | undefined> => {
-    console.log("[DataContext] updateModel - received updates payload:", JSON.stringify(updates, null, 2));
-
-    const propertiesForApi = (updates.properties || []).map((p, index) => ({
-      ...p,
-      id: p.id || crypto.randomUUID(),
-      orderIndex: index,
-      required: !!p.required,
-      autoSetOnCreate: !!p.autoSetOnCreate,
-      autoSetOnUpdate: !!p.autoSetOnUpdate,
-      isUnique: !!p.isUnique,
-      defaultValue: p.defaultValue ?? null,
-      relatedModelId: p.type === 'relationship' ? p.relatedModelId : undefined,
-      relationshipType: p.type === 'relationship' ? (p.relationshipType || 'one') : undefined,
-      unit: p.type === 'number' ? p.unit : undefined,
-      precision: p.type === 'number' ? (p.precision === undefined || p.precision === null || isNaN(Number(p.precision)) ? 2 : Number(p.precision)) : undefined,
-      validationRulesetId: p.type === 'string' ? (p.validationRulesetId || null) : null,
-      minValue: p.type === 'number' ? (p.minValue === undefined || p.minValue === null || isNaN(Number(p.minValue)) ? null : Number(p.minValue)) : null,
-      maxValue: p.type === 'number' ? (p.maxValue === undefined || p.maxValue === null || isNaN(Number(p.maxValue)) ? null : Number(p.maxValue)) : null,
-    }));
-
-    const payload = {
-      ...updates,
-      properties: propertiesForApi,
-    };
-    
-    console.log("[DataContext] updateModel - final payload for API:", JSON.stringify(payload, null, 2));
-
-
     const response = await fetch(`/api/codex-structure/models/${modelId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(updates),
     });
      if (!response.ok) {
       const errorMessage = await formatApiError(response, 'Failed to update model');
@@ -597,3 +567,5 @@ export function useData(): DataContextType {
   if (context === undefined) throw new Error('useData must be used within a DataProvider');
   return context;
 }
+
+    

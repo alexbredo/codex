@@ -102,16 +102,13 @@ export async function PUT(request: Request, { params }: Params) {
   const db = await getDb();
   
   try {
-    const body: Partial<Omit<Model, 'id'>> & { properties?: Property[], workflowId?: string | null } = await request.json();
-    console.log(`[API PUT /models/${params.modelId}] Received body:`, JSON.stringify(body, null, 2));
+    const body: Partial<Model> & { properties?: Property[] } = await request.json();
 
     await db.run('BEGIN TRANSACTION');
 
     const currentTimestamp = new Date().toISOString();
     
-    const { name, description, modelGroupId, displayPropertyNames, properties: updatedPropertiesInput, workflowId } = body;
-
-    // Fetch old model state for changelog
+    // Fetch old model state for comparison and fallback
     const oldModelRow = await db.get('SELECT * FROM models WHERE id = ?', params.modelId);
     if (!oldModelRow) {
       await db.run('ROLLBACK');
@@ -120,40 +117,38 @@ export async function PUT(request: Request, { params }: Params) {
     const oldPropertiesFromDb = await db.all('SELECT * FROM properties WHERE model_id = ? ORDER BY orderIndex ASC', params.modelId);
     const oldModelSnapshot = { ...oldModelRow, properties: oldPropertiesFromDb.map(p => ({...p})) }; // Deep copy properties
 
-    if (name && name !== oldModelRow.name) {
-        const nameCheck = await db.get('SELECT id FROM models WHERE name = ? AND id != ?', name, params.modelId);
+    if (body.name && body.name !== oldModelRow.name) {
+        const nameCheck = await db.get('SELECT id FROM models WHERE name = ? AND id != ?', body.name, params.modelId);
         if (nameCheck) {
             await db.run('ROLLBACK');
             return NextResponse.json({ error: 'A model with this name already exists.' }, { status: 409 });
         }
     }
 
-    const updatePayload = {
-      name: name ?? oldModelRow.name,
-      description: description ?? oldModelRow.description,
-      modelGroupId: modelGroupId ?? oldModelRow.model_group_id,
-      displayPropertyNames: JSON.stringify(displayPropertyNames || []),
-      workflowId: workflowId === undefined ? oldModelRow.workflowId : workflowId,
-    };
-    console.log(`[API PUT /models/${params.modelId}] DB update payload:`, JSON.stringify(updatePayload, null, 2));
+    // Build the update payload explicitly
+    const finalName = body.name ?? oldModelRow.name;
+    const finalDescription = body.description ?? oldModelRow.description;
+    const finalModelGroupId = body.modelGroupId !== undefined ? body.modelGroupId : oldModelRow.model_group_id;
+    const finalDisplayPropertyNames = JSON.stringify(body.displayPropertyNames || []);
+    const finalWorkflowId = body.workflowId !== undefined ? body.workflowId : oldModelRow.workflowId;
 
 
     await db.run(
       `UPDATE models 
        SET name = ?, description = ?, model_group_id = ?, displayPropertyNames = ?, workflowId = ?
        WHERE id = ?`,
-      updatePayload.name,
-      updatePayload.description,
-      updatePayload.modelGroupId,
-      updatePayload.displayPropertyNames,
-      updatePayload.workflowId,
+      finalName,
+      finalDescription,
+      finalModelGroupId,
+      finalDisplayPropertyNames,
+      finalWorkflowId,
       params.modelId
     );
 
     const newProcessedProperties: Property[] = [];
-    if (updatedPropertiesInput) {
+    if (body.properties) {
       await db.run('DELETE FROM properties WHERE model_id = ?', params.modelId);
-      for (const prop of updatedPropertiesInput) {
+      for (const prop of body.properties) {
         const propertyId = prop.id || crypto.randomUUID();
         const propMinValueForDb = (prop.type === 'number' && typeof prop.minValue === 'number' && !isNaN(prop.minValue)) ? Number(prop.minValue) : null;
         const propMaxValueForDb = (prop.type === 'number' && typeof prop.maxValue === 'number' && !isNaN(prop.maxValue)) ? Number(prop.maxValue) : null;
@@ -180,11 +175,11 @@ export async function PUT(request: Request, { params }: Params) {
     
     // Check if workflow assignment changed to reset object states
     const oldEffectiveWorkflowId = oldModelRow.workflowId || null;
-    if (workflowId !== oldEffectiveWorkflowId) {
-      if (workflowId) { 
-        const workflowForUpdate: WorkflowWithDetails | undefined = await db.get('SELECT * FROM workflows WHERE id = ?', workflowId);
+    if (finalWorkflowId !== oldEffectiveWorkflowId) {
+      if (finalWorkflowId) { 
+        const workflowForUpdate: WorkflowWithDetails | undefined = await db.get('SELECT * FROM workflows WHERE id = ?', finalWorkflowId);
         if (workflowForUpdate) {
-          const statesForUpdate: WorkflowState[] = await db.all('SELECT id, isInitial FROM workflow_states WHERE workflowId = ?', workflowId);
+          const statesForUpdate: WorkflowState[] = await db.all('SELECT id, isInitial FROM workflow_states WHERE workflowId = ?', finalWorkflowId);
           const initialStateForUpdate = statesForUpdate.find(s => s.isInitial === 1 || s.isInitial === true);
           await db.run("UPDATE data_objects SET currentStateId = ? WHERE model_id = ?", initialStateForUpdate?.id || null, params.modelId);
         } else {
@@ -198,13 +193,12 @@ export async function PUT(request: Request, { params }: Params) {
     // Log structural change for model update
     const changelogId = crypto.randomUUID();
     const changesDetail: StructuralChangeDetail[] = [];
-    const newModelDataAfterUpdate = await db.get('SELECT * FROM models WHERE id = ?', params.modelId);
     
-    if (newModelDataAfterUpdate.name !== oldModelRow.name) changesDetail.push({ field: 'name', oldValue: oldModelRow.name, newValue: newModelDataAfterUpdate.name });
-    if (newModelDataAfterUpdate.description !== oldModelRow.description) changesDetail.push({ field: 'description', oldValue: oldModelRow.description, newValue: newModelDataAfterUpdate.description });
-    if (newModelDataAfterUpdate.model_group_id !== oldModelRow.model_group_id) changesDetail.push({ field: 'modelGroupId', oldValue: oldModelRow.model_group_id, newValue: newModelDataAfterUpdate.model_group_id });
-    if (newModelDataAfterUpdate.displayPropertyNames !== oldModelRow.displayPropertyNames) changesDetail.push({ field: 'displayPropertyNames', oldValue: JSON.parse(oldModelRow.displayPropertyNames || '[]'), newValue: JSON.parse(newModelDataAfterUpdate.displayPropertyNames || '[]') });
-    if (newModelDataAfterUpdate.workflowId !== oldModelRow.workflowId) changesDetail.push({ field: 'workflowId', oldValue: oldModelRow.workflowId, newValue: newModelDataAfterUpdate.workflowId });
+    if (finalName !== oldModelRow.name) changesDetail.push({ field: 'name', oldValue: oldModelRow.name, newValue: finalName });
+    if (finalDescription !== oldModelRow.description) changesDetail.push({ field: 'description', oldValue: oldModelRow.description, newValue: finalDescription });
+    if (finalModelGroupId !== oldModelRow.model_group_id) changesDetail.push({ field: 'modelGroupId', oldValue: oldModelRow.model_group_id, newValue: finalModelGroupId });
+    if (finalDisplayPropertyNames !== oldModelRow.displayPropertyNames) changesDetail.push({ field: 'displayPropertyNames', oldValue: JSON.parse(oldModelRow.displayPropertyNames || '[]'), newValue: JSON.parse(finalDisplayPropertyNames || '[]') });
+    if (finalWorkflowId !== oldModelRow.workflowId) changesDetail.push({ field: 'workflowId', oldValue: oldModelRow.workflowId, newValue: finalWorkflowId });
     changesDetail.push({ 
         field: 'properties', 
         oldValue: oldModelSnapshot.properties.map(p => ({name: p.name, type: p.type, orderIndex: p.orderIndex, required: !!p.required})),
@@ -219,7 +213,7 @@ export async function PUT(request: Request, { params }: Params) {
           currentUser.id,
           'Model',
           params.modelId,
-          newModelDataAfterUpdate.name, 
+          finalName, 
           'UPDATE',
           JSON.stringify(changesDetail)
         );
@@ -332,3 +326,5 @@ export async function DELETE(request: Request, { params }: Params) {
     return NextResponse.json({ error: 'Failed to delete model', details: errorMessage }, { status: 500 });
   }
 }
+
+    
