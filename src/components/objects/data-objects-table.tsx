@@ -14,7 +14,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { Eye, Edit, Trash2, ArrowUp, ArrowDown, ChevronsUpDown, ArchiveRestore } from 'lucide-react';
+import { Eye, Edit, Trash2, ArrowUp, ArrowDown, ChevronsUpDown, ArchiveRestore, Paperclip } from 'lucide-react';
 import Link from 'next/link';
 import { format as formatDateFns, isValid as isDateValidFn } from 'date-fns';
 import { cn, getObjectDisplayValue } from '@/lib/utils';
@@ -138,6 +138,7 @@ export default function DataObjectsTable({
       if (property.type === 'number' && property.unit) return <span className="text-muted-foreground">N/A ({property.unit})</span>;
       if (property.type === 'markdown') return <Badge variant="outline">Markdown</Badge>;
       if (property.type === 'image') return <Badge variant="outline">Image</Badge>;
+      if (property.type === 'fileAttachment') return <Badge variant="outline">File</Badge>;
       if (property.type === 'rating') return <StarDisplay rating={0} />;
       return <span className="text-muted-foreground">N/A</span>;
     }
@@ -183,6 +184,15 @@ export default function DataObjectsTable({
           <a href={imgUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center text-xs">
             <Link className="h-3 w-3 mr-1" href={imgUrl} /> {imgUrl.length > 30 ? imgUrl.substring(0, 27) + '...' : imgUrl} <Link className="h-3 w-3 ml-1 opacity-70" href={imgUrl} />
           </a>);
+      case 'fileAttachment':
+        if (typeof value === 'object' && value.url && value.name) {
+          return (
+            <a href={value.url} download={value.name} className="text-primary hover:underline inline-flex items-center text-xs">
+              <Paperclip className="h-3 w-3 mr-1" /> {value.name}
+            </a>
+          );
+        }
+        return <Badge variant="outline">File</Badge>;
       case 'rating': return <StarDisplay rating={value as number} />;
       case 'relationship':
         if (!property.relatedModelId) return <span className="text-destructive">Config Err</span>;

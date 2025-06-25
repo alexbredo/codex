@@ -19,7 +19,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Edit, Loader2, ExternalLink, ImageIcon, CheckCircle2, ShieldAlert, ShieldCheck, UserCircle, CalendarClock, History, FileText, Users as UsersIconLucide, RotateCcw, Trash2 } from 'lucide-react';
+import { ArrowLeft, Edit, Loader2, ExternalLink, ImageIcon, CheckCircle2, ShieldAlert, ShieldCheck, UserCircle, CalendarClock, History, FileText, Users as UsersIconLucide, RotateCcw, Trash2, Paperclip } from 'lucide-react';
 import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
 import Link from 'next/link';
 import { getObjectDisplayValue } from '@/lib/utils';
@@ -269,6 +269,16 @@ export default function ViewObjectPage() {
             )}
           </div>
         );
+      case 'fileAttachment':
+        if (typeof value === 'object' && value.url && value.name) {
+          return (
+            <a href={value.url} download={value.name} className="inline-flex items-center text-primary hover:underline">
+              <Paperclip className="mr-2 h-4 w-4" />
+              {value.name}
+            </a>
+          );
+        }
+        return <span className="text-muted-foreground italic">Invalid file data</span>;
       case 'rating':
         return <StarDisplay rating={value as number} size="md"/>;
       case 'relationship':
@@ -657,4 +667,3 @@ export default function ViewObjectPage() {
     </div>
   );
 }
-

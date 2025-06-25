@@ -59,7 +59,8 @@ export async function POST(request: Request) {
     if (DEBUG_MODE) {
       console.log(`DEBUG_MODE: Simulating file upload for ${file.name}.`);
       const placeholderUrl = `/uploads/debug/${encodeURIComponent(file.name)}`; 
-      return NextResponse.json({ success: true, url: placeholderUrl });
+      // Return both URL and original name, even in debug mode
+      return NextResponse.json({ success: true, url: placeholderUrl, name: file.name });
     }
 
     if (!modelId || !objectId || !propertyName) {
@@ -89,7 +90,8 @@ export async function POST(request: Request) {
 
     const publicUrl = `/uploads/${safeModelId}/${safeObjectId}/${safePropertyName}/${uniqueFileName}`;
 
-    return NextResponse.json({ success: true, url: publicUrl });
+    // Return URL and original filename
+    return NextResponse.json({ success: true, url: publicUrl, name: file.name });
 
   } catch (error: any) {
     console.error('File Upload Error:', error);

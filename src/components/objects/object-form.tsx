@@ -92,7 +92,7 @@ export default function ObjectForm({
     const fileUploadPromises: Promise<void>[] = [];
 
     const uploadFileWithProgress = (file: File, property: Property) => {
-      return new Promise((resolve, reject) => {
+      return new Promise<void>((resolve, reject) => {
         const endpoint = property.type === 'image' ? '/api/codex-structure/upload-image' : '/api/codex-structure/upload-file';
         const formData = new FormData();
         formData.append('file', file);
@@ -121,7 +121,11 @@ export default function ObjectForm({
           if (xhr.status >= 200 && xhr.status < 300) {
             setUploadProgress(prev => ({ ...prev, [property.name]: 100 }));
             const result = JSON.parse(xhr.responseText);
-            updatedValues[property.name] = result.url;
+            if (property.type === 'image') {
+              updatedValues[property.name] = result.url;
+            } else if (property.type === 'fileAttachment') {
+              updatedValues[property.name] = { url: result.url, name: result.name };
+            }
             resolve();
           } else {
             setUploadProgress(prev => ({ ...prev, [property.name]: -1 }));

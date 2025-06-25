@@ -183,8 +183,9 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
             {!controllerField.value && !currentImageFile && property.required && <FormMessage>This image is required.</FormMessage>}
           </div>
         );
-      case 'fileAttachment':
+      case 'fileAttachment': {
         const currentFileValue = controllerField.value;
+        const hasExistingFile = typeof currentFileValue === 'object' && currentFileValue !== null && currentFileValue.url && currentFileValue.name;
 
         return (
           <div className="space-y-2">
@@ -206,12 +207,13 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
             )}
             {currentFileAttachment && !isUploading ? (
               <FormDescription>Selected file: <Paperclip className="inline-block h-4 w-4 mr-1" /> {currentFileAttachment.name}</FormDescription>
-            ) : (formContext === 'edit' && typeof currentFileValue === 'string' && currentFileValue && (
-              <FormDescription>Current file: <Paperclip className="inline-block h-4 w-4 mr-1" /> <a href={currentFileValue} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline" download>{currentFileValue.split('/').pop()}</a></FormDescription>
+            ) : (formContext === 'edit' && hasExistingFile && (
+              <FormDescription>Current file: <Paperclip className="inline-block h-4 w-4 mr-1" /> <a href={currentFileValue.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline" download={currentFileValue.name}>{currentFileValue.name}</a></FormDescription>
             ))}
             {!controllerField.value && !currentFileAttachment && property.required && <FormMessage>This file is required.</FormMessage>}
           </div>
         );
+      }
       case 'number':
         return (
           <Input
