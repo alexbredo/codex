@@ -103,7 +103,7 @@ export async function PUT(request: Request, { params }: Params) {
   
   try {
     const body: Partial<Model> & { properties?: Property[] } = await request.json();
-    console.log(`[API PUT /models/${params.modelId}] STEP 1: Received raw request body:`, JSON.stringify(body, null, 2));
+    console.log(`[API PUT /models/${params.modelId}] Received request to update model. Body:`, JSON.stringify(body, null, 2));
 
 
     await db.run('BEGIN TRANSACTION');
@@ -117,7 +117,7 @@ export async function PUT(request: Request, { params }: Params) {
       return NextResponse.json({ error: 'Model not found' }, { status: 404 });
     }
     const oldPropertiesFromDb = await db.all('SELECT * FROM properties WHERE model_id = ? ORDER BY orderIndex ASC', params.modelId);
-    console.log(`[API PUT /models/${params.modelId}] STEP 2: Fetched old model row from DB. Current model_group_id:`, oldModelRow.model_group_id);
+    console.log(`[API PUT /models/${params.modelId}] Fetched existing model. Current group ID: ${oldModelRow.model_group_id}`);
 
 
     // Step 2: Explicitly build the data for the 'models' table update
@@ -129,6 +129,7 @@ export async function PUT(request: Request, { params }: Params) {
         }
     }
     
+    // Explicitly check for each property. If not in request, keep the old value.
     const finalUpdateData = {
         name: body.hasOwnProperty('name') ? body.name : oldModelRow.name,
         description: body.hasOwnProperty('description') ? body.description : oldModelRow.description,
@@ -136,11 +137,11 @@ export async function PUT(request: Request, { params }: Params) {
         displayPropertyNames: body.hasOwnProperty('displayPropertyNames') ? JSON.stringify(body.displayPropertyNames || []) : oldModelRow.displayPropertyNames,
         workflowId: body.hasOwnProperty('workflowId') ? body.workflowId : oldModelRow.workflowId,
     };
-    console.log(`[API PUT /models/${params.modelId}] STEP 3: Prepared data for update. New modelGroupId:`, finalUpdateData.modelGroupId);
+    console.log(`[API PUT /models/${params.modelId}] Preparing to update database. New modelGroupId to save:`, finalUpdateData.modelGroupId);
 
 
     // Step 3: Execute the update on the 'models' table
-    const result = await db.run(
+    await db.run(
       `UPDATE models 
        SET name = ?, description = ?, model_group_id = ?, displayPropertyNames = ?, workflowId = ?
        WHERE id = ?`,
@@ -151,13 +152,13 @@ export async function PUT(request: Request, { params }: Params) {
       finalUpdateData.workflowId,
       params.modelId
     );
-    console.log(`[API PUT /models/${params.modelId}] STEP 4: Database update executed. Changes: ${result.changes}`);
+    console.log(`[API PUT /models/${params.modelId}] Successfully updated 'models' table.`);
 
 
     // Step 4: Handle properties update
     const newProcessedProperties: Property[] = [];
     if (body.properties) {
-      console.log(`[API PUT /models/${params.modelId}] Properties were included in the request. Rebuilding properties.`);
+      console.log(`[API PUT /models/${params.modelId}] Properties were included in request. Rebuilding properties.`);
       await db.run('DELETE FROM properties WHERE model_id = ?', params.modelId);
       for (const prop of body.properties) {
         const propertyId = prop.id || crypto.randomUUID();
@@ -209,14 +210,25 @@ export async function PUT(request: Request, { params }: Params) {
       }
     }
     
-    // Step 6: Log the change
+    // Step 6: Log the change (with robust parsing)
+    console.log(`[API PUT /models/${params.modelId}] Preparing changelog entry.`);
     const changelogId = crypto.randomUUID();
     const changesDetail: StructuralChangeDetail[] = [];
     
+    const safeJsonParse = (jsonString: string | null | undefined, defaultValue: any = []) => {
+      if (jsonString === null || jsonString === undefined) return defaultValue;
+      try {
+        return JSON.parse(jsonString);
+      } catch (e) {
+        console.warn(`Safe JSON Parse failed for string: "${jsonString}". Returning default value.`, e);
+        return defaultValue;
+      }
+    };
+
     if (finalUpdateData.name !== oldModelRow.name) changesDetail.push({ field: 'name', oldValue: oldModelRow.name, newValue: finalUpdateData.name });
     if (finalUpdateData.description !== oldModelRow.description) changesDetail.push({ field: 'description', oldValue: oldModelRow.description, newValue: finalUpdateData.description });
     if (finalUpdateData.modelGroupId !== oldModelRow.model_group_id) changesDetail.push({ field: 'modelGroupId', oldValue: oldModelRow.model_group_id, newValue: finalUpdateData.modelGroupId });
-    if (finalUpdateData.displayPropertyNames !== oldModelRow.displayPropertyNames) changesDetail.push({ field: 'displayPropertyNames', oldValue: JSON.parse(oldModelRow.displayPropertyNames || '[]'), newValue: JSON.parse(finalUpdateData.displayPropertyNames || '[]') });
+    if (finalUpdateData.displayPropertyNames !== oldModelRow.displayPropertyNames) changesDetail.push({ field: 'displayPropertyNames', oldValue: safeJsonParse(oldModelRow.displayPropertyNames), newValue: safeJsonParse(finalUpdateData.displayPropertyNames) });
     if (finalUpdateData.workflowId !== oldModelRow.workflowId) changesDetail.push({ field: 'workflowId', oldValue: oldModelRow.workflowId, newValue: finalUpdateData.workflowId });
     changesDetail.push({ 
         field: 'properties', 
@@ -236,14 +248,14 @@ export async function PUT(request: Request, { params }: Params) {
           'UPDATE',
           JSON.stringify(changesDetail)
         );
-         console.log(`[API PUT /models/${params.modelId}] STEP 5: Changelog created with ID: ${changelogId}`);
+         console.log(`[API PUT /models/${params.modelId}] Changelog created with ID: ${changelogId}`);
     } else {
-         console.log(`[API PUT /models/${params.modelId}] STEP 5: No changes detected. Skipping changelog.`);
+         console.log(`[API PUT /models/${params.modelId}] No changes detected. Skipping changelog.`);
     }
 
     // Step 7: Commit transaction
     await db.run('COMMIT');
-    console.log(`[API PUT /models/${params.modelId}] STEP 6: Transaction committed successfully.`);
+    console.log(`[API PUT /models/${params.modelId}] Transaction committed successfully.`);
 
     // Fetch and return the fully updated model for the client
     const refreshedModelRow = await db.get('SELECT * FROM models WHERE id = ?', params.modelId);
@@ -282,15 +294,21 @@ export async function PUT(request: Request, { params }: Params) {
     return NextResponse.json(returnedModel);
 
   } catch (error: any) {
-    console.error(`[API PUT /models/${params.modelId}] Error during update process:`, error);
-    try { await db.run('ROLLBACK'); } catch (rbError) { console.error("Rollback failed in PUT /models/[modelId]:", rbError); }
-    
-    const errorMessage = error.message || `An unknown server error occurred while updating model ${params.modelId}.`;
-    const errorStack = error.stack || 'No stack trace available.';
-    if (error.message && error.message.includes('UNIQUE constraint failed: models.name')) {
-      return NextResponse.json({ error: 'A model with this name already exists.', details: errorMessage }, { status: 409 });
+    console.error(`[API PUT /models/${params.modelId}] Error during update process, transaction will be rolled back. Error:`, error);
+    try { 
+      await db.run('ROLLBACK');
+      console.log(`[API PUT /models/${params.modelId}] Transaction successfully rolled back.`);
+    } catch (rbError) { 
+      console.error("[API PUT /models/[modelId]] CRITICAL: Rollback failed after an error:", rbError);
     }
-    return NextResponse.json({ error: 'Failed to update model', details: errorMessage, stack: error.stack }, { status: 500 });
+    
+    let errorMessage = `Failed to update model. The operation was rolled back due to an internal error.`;
+    let errorDetails = (error instanceof Error) ? error.message : 'An unknown error occurred.';
+    if (error.message && error.message.includes('UNIQUE constraint failed: models.name')) {
+      errorMessage = 'A model with this name already exists.';
+    }
+
+    return NextResponse.json({ error: errorMessage, details: errorDetails, stack: error.stack }, { status: 500 });
   }
 }
 
@@ -351,3 +369,4 @@ export async function DELETE(request: Request, { params }: Params) {
     return NextResponse.json({ error: 'Failed to delete model', details: errorMessage }, { status: 500 });
   }
 }
+
