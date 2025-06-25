@@ -273,7 +273,7 @@ function StructuralChangelogPageInternal() {
                     <Badge variant="secondary" className="text-xs flex items-center gap-1">
                        <Layers className="h-3 w-3" /> {entry.entityType}
                     </Badge>
-                  </TableCell>
+                  }</TableCell>
                   <TableCell className="text-xs max-w-[200px] truncate" title={entry.entityName || entry.entityId}>
                     {entry.entityName || <span className="italic text-muted-foreground">ID: {entry.entityId.substring(0,8)}...</span>}
                   </TableCell>
@@ -325,12 +325,11 @@ function StructuralChangelogPageInternal() {
             <ScrollArea className="max-h-[60vh] mt-4 bg-muted/50 p-4 rounded-md border">
               <ReactJson
                 src={selectedEntryDetails.changes}
-                name={false}
                 collapsed={1}
                 displayObjectSize={false}
                 displayDataTypes={false}
                 enableClipboard={false}
-                theme="rjv-default" 
+                theme="default" 
                 style={{ fontSize: '0.8rem', backgroundColor: 'transparent' }}
               />
             </ScrollArea>

@@ -80,7 +80,7 @@ interface ModelFormProps {
 }
 
 const INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE = "__DEFAULT_DISPLAY_PROPERTY__";
-const INTERNAL_DEFAULT_NAMESPACE_VALUE = "__DEFAULT_NAMESPACE_VALUE__";
+const INTERNAL_DEFAULT_GROUP_ID = "00000000-0000-0000-0000-000000000001";
 const INTERNAL_BOOLEAN_NOT_SET_VALUE = "__BOOLEAN_NOT_SET__";
 const INTERNAL_RELATIONSHIP_DEFAULT_NOT_SET_VALUE = "__RELATIONSHIP_DEFAULT_NOT_SET__";
 const INTERNAL_NO_WORKFLOW_VALUE = "__NO_WORKFLOW_SELECTED__";
@@ -325,10 +325,10 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, vali
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {Object.entries(modelsForRelationsGrouped).map(([namespace, modelsInNamespace]) => (
-                          <SelectGroup key={namespace}>
-                            <UiSelectLabel>{namespace}</UiSelectLabel>
-                            {modelsInNamespace.map((model: Model) => (
+                        {Object.entries(modelsForRelationsGrouped).map(([groupName, modelsInGroup]) => (
+                          <SelectGroup key={groupName}>
+                            <UiSelectLabel>{groupName}</UiSelectLabel>
+                            {modelsInGroup.map((model: Model) => (
                               <SelectItem key={model.id} value={model.id}>
                                 {model.name}
                               </SelectItem>
@@ -873,7 +873,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
   });
 
   const [isCreateGroupDialogOpen, setIsCreateGroupDialogOpen] = React.useState(false);
-  const [newlyCreatedGroupName, setNewlyCreatedGroupName] = React.useState<string | null>(null);
+  const [newlyCreatedGroupId, setNewlyCreatedGroupId] = React.useState<string | null>(null);
 
   const newGroupForm = useForm<ModelGroupFormValues>({
     resolver: zodResolver(modelGroupFormSchema),
@@ -884,7 +884,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     try {
       const newGroup = await addModelGroup(values);
       toast({ title: "Group Created", description: `Group "${newGroup.name}" created successfully.` });
-      setNewlyCreatedGroupName(newGroup.name); // Trigger effect to select
+      setNewlyCreatedGroupId(newGroup.id); // Trigger effect to select by ID
       setIsCreateGroupDialogOpen(false);
       newGroupForm.reset();
     } catch (error: any) {
@@ -893,11 +893,11 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
   };
 
   React.useEffect(() => {
-    if (newlyCreatedGroupName && modelGroups.some(mg => mg.name === newlyCreatedGroupName)) {
-      form.setValue('namespace', newlyCreatedGroupName, { shouldValidate: true });
-      setNewlyCreatedGroupName(null);
+    if (newlyCreatedGroupId && modelGroups.some(mg => mg.id === newlyCreatedGroupId)) {
+      form.setValue('modelGroupId', newlyCreatedGroupId, { shouldValidate: true });
+      setNewlyCreatedGroupId(null);
     }
-  }, [newlyCreatedGroupName, modelGroups, form]);
+  }, [newlyCreatedGroupId, modelGroups, form]);
 
 
   const modelsForRelations = useMemo(() => {
@@ -906,14 +906,15 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
 
   const modelsForRelationsGrouped = useMemo(() => {
     return modelsForRelations.reduce((acc, model) => {
-      const namespace = model.namespace || 'Default';
-      if (!acc[namespace]) {
-        acc[namespace] = [];
+      const group = modelGroups.find(g => g.id === model.modelGroupId)
+      const groupName = group ? group.name : 'Default';
+      if (!acc[groupName]) {
+        acc[groupName] = [];
       }
-      acc[namespace].push(model);
+      acc[groupName].push(model);
       return acc;
     }, {} as Record<string, Model[]>);
-  }, [modelsForRelations]);
+  }, [modelsForRelations, modelGroups]);
 
 
   const watchedProperties = useWatch({ control: form.control, name: "properties" });
@@ -958,11 +959,8 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     } else if (processedValues.displayPropertyNames && processedValues.displayPropertyNames.length === 0) {
         processedValues.displayPropertyNames = undefined;
     }
-
-    if (!processedValues.namespace || processedValues.namespace.trim() === '' || processedValues.namespace === INTERNAL_DEFAULT_NAMESPACE_VALUE) {
-      processedValues.namespace = 'Default';
-    }
     
+    processedValues.modelGroupId = values.modelGroupId;
     processedValues.workflowId = values.workflowId;
 
     processedValues.properties = (values.properties || []).map((formProperty, index) => {
@@ -1033,24 +1031,23 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                 />
                 <FormField
                     control={form.control}
-                    name="namespace"
+                    name="modelGroupId"
                     render={({ field }) => (
                         <FormItem>
-                        <FormLabel>Namespace</FormLabel>
+                        <FormLabel>Model Group (Namespace)</FormLabel>
                         <div className="flex items-center gap-2">
                             <Select
-                                onValueChange={(value) => field.onChange(value === INTERNAL_DEFAULT_NAMESPACE_VALUE ? 'Default' : value)}
-                                value={field.value === 'Default' || !field.value ? INTERNAL_DEFAULT_NAMESPACE_VALUE : field.value}
+                                onValueChange={(value) => field.onChange(value === INTERNAL_DEFAULT_GROUP_ID ? null : value)}
+                                value={field.value || INTERNAL_DEFAULT_GROUP_ID}
                             >
                                 <FormControl>
                                 <SelectTrigger className="flex-grow">
-                                    <SelectValue placeholder="Select a namespace" />
+                                    <SelectValue placeholder="Select a group" />
                                 </SelectTrigger>
                                 </FormControl>
                                 <SelectContent>
-                                    <SelectItem value={INTERNAL_DEFAULT_NAMESPACE_VALUE}>-- Default --</SelectItem>
                                     {dataReady && modelGroups.sort((a,b) => a.name.localeCompare(b.name)).map((group) => (
-                                        <SelectItem key={group.id} value={group.name}>
+                                        <SelectItem key={group.id} value={group.id}>
                                             {group.name}
                                         </SelectItem>
                                     ))}
@@ -1058,7 +1055,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                             </Select>
                             <Dialog open={isCreateGroupDialogOpen} onOpenChange={setIsCreateGroupDialogOpen}>
                                 <DialogTrigger asChild>
-                                    <Button type="button" variant="outline" size="icon" aria-label="Create new namespace">
+                                    <Button type="button" variant="outline" size="icon" aria-label="Create new group">
                                         <PlusCircle className="h-4 w-4" />
                                     </Button>
                                 </DialogTrigger>
@@ -1097,7 +1094,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                                             />
                                             <DialogFooter>
                                                 <DialogClose asChild>
-                                                    <Button type="button" variant="outline" onClick={() => newGroupForm.reset()}>Cancel</Button>
+                                                    <Button type="button" variant="outline" onClick={() => newGroupForm.reset()} disabled={newGroupForm.formState.isSubmitting}>Cancel</Button>
                                                 </DialogClose>
                                                 <Button
                                                   type="button"
@@ -1112,7 +1109,7 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
                                 </DialogContent>
                             </Dialog>
                         </div>
-                        <FormDescription>Organize models into groups. Select an existing group or use 'Default'.</FormDescription>
+                        <FormDescription>Organize models into groups. The 'Default' group is used if none is selected.</FormDescription>
                         <FormMessage />
                         </FormItem>
                     )}

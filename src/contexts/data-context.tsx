@@ -24,8 +24,8 @@ export interface DataContextType {
   allUsers: User[];
   lastChangedInfo: { modelId: string, objectId: string, changeType: 'added' | 'updated' | 'restored' | 'deleted' } | null;
 
-  addModel: (modelData: Omit<Model, 'id' | 'namespace' | 'workflowId'> & { namespace?: string, workflowId?: string | null }) => Promise<Model>;
-  updateModel: (modelId: string, updates: Partial<Omit<Model, 'id' | 'properties' | 'displayPropertyNames' | 'namespace' | 'workflowId'>> & { properties?: Property[], displayPropertyNames?: string[], namespace?: string, workflowId?: string | null }) => Promise<Model | undefined>;
+  addModel: (modelData: Omit<Model, 'id' | 'modelGroupId' | 'workflowId'> & { modelGroupId?: string | null, workflowId?: string | null }) => Promise<Model>;
+  updateModel: (modelId: string, updates: Partial<Omit<Model, 'id' | 'properties' | 'displayPropertyNames' | 'modelGroupId' | 'workflowId'>> & { properties?: Property[], displayPropertyNames?: string[], modelGroupId?: string | null, workflowId?: string | null }) => Promise<Model | undefined>;
   deleteModel: (modelId: string) => Promise<void>;
   getModelById: (modelId: string) => Model | undefined;
   getModelByName: (name: string) => Model | undefined;
@@ -82,7 +82,7 @@ const mapDbModelToClientModel = (dbModel: any): Model => {
     id: dbModel.id,
     name: dbModel.name,
     description: dbModel.description,
-    namespace: dbModel.namespace || 'Default',
+    modelGroupId: dbModel.model_group_id ?? null,
     displayPropertyNames: parsedDisplayPropertyNames,
     workflowId: dbModel.workflowId === undefined ? null : dbModel.workflowId,
     properties: (dbModel.properties || []).map((p: any) => ({
@@ -305,7 +305,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [fetchData]);
 
 
-  const addModel = useCallback(async (modelData: Omit<Model, 'id' | 'namespace' | 'workflowId'> & { namespace?: string, workflowId?: string | null }): Promise<Model> => {
+  const addModel = useCallback(async (modelData: Omit<Model, 'id' | 'modelGroupId' | 'workflowId'> & { modelGroupId?: string | null, workflowId?: string | null }): Promise<Model> => {
     const modelId = crypto.randomUUID();
     
     const propertiesForApi = (modelData.properties || []).map((p, index) => ({
@@ -325,13 +325,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
       minValue: p.type === 'number' ? (p.minValue === undefined || p.minValue === null || isNaN(Number(p.minValue)) ? null : Number(p.minValue)) : null,
       maxValue: p.type === 'number' ? (p.maxValue === undefined || p.maxValue === null || isNaN(Number(p.maxValue)) ? null : Number(p.maxValue)) : null,
     }));
-
-    const finalNamespace = (modelData.namespace && modelData.namespace.trim() !== '') ? modelData.namespace.trim() : 'Default';
     
     const payload = { 
         ...modelData, 
         id: modelId, 
-        namespace: finalNamespace, 
+        modelGroupId: modelData.modelGroupId, 
         workflowId: modelData.workflowId,
         properties: propertiesForApi 
     };
@@ -351,7 +349,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return mapDbModelToClientModel(newModel);
   }, [fetchData]);
 
-  const updateModel = useCallback(async (modelId: string, updates: Partial<Omit<Model, 'id' | 'properties' | 'displayPropertyNames' | 'namespace' | 'workflowId'>> & { properties?: Property[], displayPropertyNames?: string[], namespace?: string, workflowId?: string | null }): Promise<Model | undefined> => {
+  const updateModel = useCallback(async (modelId: string, updates: Partial<Omit<Model, 'id' | 'properties' | 'displayPropertyNames' | 'modelGroupId' | 'workflowId'>> & { properties?: Property[], displayPropertyNames?: string[], modelGroupId?: string | null, workflowId?: string | null }): Promise<Model | undefined> => {
     const existingModel = models.find(m => m.id === modelId);
     if (!existingModel) throw new Error(`Model with ID ${modelId} not found for update.`);
 
@@ -373,12 +371,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       maxValue: p.type === 'number' ? (p.maxValue === undefined || p.maxValue === null || isNaN(Number(p.maxValue)) ? null : Number(p.maxValue)) : null,
     }));
     
-    const finalNamespace = (updates.namespace && updates.namespace.trim() !== '') ? updates.namespace.trim() : (existingModel.namespace || 'Default');
-
     const payload = {
       name: updates.name ?? existingModel.name,
       description: updates.description ?? existingModel.description,
-      namespace: finalNamespace, 
+      modelGroupId: updates.modelGroupId, 
       displayPropertyNames: updates.displayPropertyNames ?? existingModel.displayPropertyNames,
       workflowId: Object.prototype.hasOwnProperty.call(updates, 'workflowId') ? updates.workflowId : existingModel.workflowId,
       properties: propertiesForApi,

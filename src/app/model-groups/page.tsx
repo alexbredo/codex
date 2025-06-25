@@ -78,9 +78,9 @@ function ModelGroupsPageInternal() {
     ).sort((a,b) => a.name.localeCompare(b.name));
   }, [modelGroups, searchTerm]);
 
-  const getModelCountForGroup = (groupName: string): number => {
+  const getModelCountForGroup = (groupId: string): number => {
     if (!models) return 0;
-    return models.filter(model => model.namespace === groupName).length;
+    return models.filter(model => model.modelGroupId === groupId).length;
   };
 
   const handleCreateNew = () => {
@@ -210,9 +210,9 @@ function ModelGroupsPageInternal() {
                   <TableCell className="font-medium">{group.name}</TableCell>
                   <TableCell className="text-muted-foreground truncate max-w-xs">{group.description || 'N/A'}</TableCell>
                   <TableCell className="text-center">
-                    <Badge variant={getModelCountForGroup(group.name) === 0 ? "outline" : "secondary"} className="flex items-center justify-center gap-1.5 w-20 mx-auto">
+                    <Badge variant={getModelCountForGroup(group.id) === 0 ? "outline" : "secondary"} className="flex items-center justify-center gap-1.5 w-20 mx-auto">
                       <DatabaseZap className="h-3.5 w-3.5" />
-                      {getModelCountForGroup(group.name)}
+                      {getModelCountForGroup(group.id)}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
@@ -231,7 +231,7 @@ function ModelGroupsPageInternal() {
                             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
                             <AlertDialogDescription>
                                 This action cannot be undone. This will permanently delete the group "{group.name}".
-                                Models in this group will need to be reassigned if this group is in use.
+                                Models in this group will be unassigned (moved to Default).
                             </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
@@ -255,4 +255,3 @@ function ModelGroupsPageInternal() {
 }
 
 export default withAuth(ModelGroupsPageInternal, ['administrator']);
-    

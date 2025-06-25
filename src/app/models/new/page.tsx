@@ -17,6 +17,7 @@ import type { Property } from '@/lib/types';
 
 const INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE = "__DEFAULT_DISPLAY_PROPERTY__";
 const INTERNAL_NO_WORKFLOW_VALUE = "__NO_WORKFLOW_SELECTED__";
+const INTERNAL_DEFAULT_GROUP_ID = "00000000-0000-0000-0000-000000000001";
 
 export default function CreateModelPage() {
   const router = useRouter();
@@ -28,7 +29,7 @@ export default function CreateModelPage() {
     defaultValues: {
       name: '',
       description: '',
-      namespace: 'Default',
+      modelGroupId: INTERNAL_DEFAULT_GROUP_ID,
       displayPropertyNames: [],
       workflowId: null,
       properties: [{
@@ -61,7 +62,7 @@ export default function CreateModelPage() {
     const modelData = {
       name: values.name,
       description: values.description,
-      namespace: (values.namespace && values.namespace.trim() !== '' && values.namespace !== '__DEFAULT_NAMESPACE_VALUE__') ? values.namespace.trim() : 'Default',
+      modelGroupId: values.modelGroupId,
       displayPropertyNames: values.displayPropertyNames?.filter(name => name !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE),
       workflowId: values.workflowId === INTERNAL_NO_WORKFLOW_VALUE ? null : values.workflowId,
       properties: values.properties.map((p_form_value, index) => {

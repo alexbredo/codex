@@ -1,3 +1,4 @@
+
 export type PropertyType = 'string' | 'number' | 'boolean' | 'date' | 'relationship' | 'markdown' | 'rating' | 'image' | 'fileAttachment';
 
 export interface Property {
@@ -23,7 +24,7 @@ export interface Model {
   id:string;
   name: string;
   description?: string;
-  namespace: string; // Will always have a value, defaulting to 'Default'
+  modelGroupId: string | null;
   properties: Property[];
   displayPropertyNames?: string[]; // Property names to use for display purposes
   workflowId?: string | null; // ID of the assigned workflow
@@ -149,9 +150,9 @@ export interface StructuralChangelogEntry {
 
 
 // For forms
-export type ModelFormData = Omit<Model, 'id' | 'namespace' | 'workflowId'> & {
-  namespace?: string; // Optional in form, will be defaulted
-  workflowId?: string | null; // Optional in form
+export type ModelFormData = Omit<Model, 'id' | 'modelGroupId' | 'workflowId'> & {
+  modelGroupId?: string | null;
+  workflowId?: string | null;
 };
 export type PropertyFormData = Omit<Property, 'id' | 'orderIndex'> & {
   id?: string; // Make ID optional for new properties in form

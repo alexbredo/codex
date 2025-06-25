@@ -42,7 +42,7 @@ import {
 import { Label } from '@/components/ui/label';
 
 function ModelsPageInternal() {
-  const { models, deleteModel, validationRulesets, isReady: dataContextIsReady, fetchData, formatApiError } = useData();
+  const { models, modelGroups, deleteModel, validationRulesets, isReady: dataContextIsReady, fetchData, formatApiError } = useData();
   const { toast } = useToast();
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState('');
@@ -63,23 +63,25 @@ function ModelsPageInternal() {
 
   const filteredModels = useMemo(() => {
     if (!searchTerm) return models;
-    return models.filter(model =>
-        model.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (model.description && model.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        model.namespace.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-  }, [models, searchTerm]);
+    const lowercasedTerm = searchTerm.toLowerCase();
+    return models.filter(model => {
+      const group = modelGroups.find(g => g.id === model.modelGroupId);
+      return model.name.toLowerCase().includes(lowercasedTerm) ||
+        (model.description && model.description.toLowerCase().includes(lowercasedTerm)) ||
+        (group && group.name.toLowerCase().includes(lowercasedTerm));
+    });
+  }, [models, searchTerm, modelGroups]);
 
   const groupedModels = useMemo(() => {
     return filteredModels.reduce((acc, model) => {
-      const namespace = model.namespace || 'Default';
-      if (!acc[namespace]) {
-        acc[namespace] = [];
+      const group = modelGroups.find(g => g.id === model.modelGroupId) || { name: 'Default', id: 'default' };
+      if (!acc[group.name]) {
+        acc[group.name] = [];
       }
-      acc[namespace].push(model);
+      acc[group.name].push(model);
       return acc;
     }, {} as Record<string, Model[]>);
-  }, [filteredModels]);
+  }, [filteredModels, modelGroups]);
 
   const sortedNamespaces = useMemo(() => {
     return Object.keys(groupedModels).sort((a, b) => {
@@ -315,18 +317,18 @@ function ModelsPageInternal() {
             onValueChange={setOpenAccordionItems}
             className="w-full space-y-4"
           >
-            {sortedNamespaces.map((namespace) => (
-              <AccordionItem key={namespace} value={namespace} className="border rounded-lg">
+            {sortedNamespaces.map((groupName) => (
+              <AccordionItem key={groupName} value={groupName} className="border rounded-lg">
                 <AccordionTrigger className="p-4 hover:no-underline data-[state=open]:border-b">
                   <div className="flex items-center text-xl">
                     <FolderOpen className="h-6 w-6 mr-3 text-primary" />
-                    <span className="font-semibold">{namespace}</span>
-                    <Badge variant="secondary" className="ml-3">{groupedModels[namespace].length} model(s)</Badge>
+                    <span className="font-semibold">{groupName}</span>
+                    <Badge variant="secondary" className="ml-3">{groupedModels[groupName].length} model(s)</Badge>
                   </div>
                 </AccordionTrigger>
                 <AccordionContent className="p-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {groupedModels[namespace].sort((a,b) => a.name.localeCompare(b.name)).map((model) => (
+                    {groupedModels[groupName].sort((a,b) => a.name.localeCompare(b.name)).map((model) => (
                       <Card key={model.id} className="flex flex-col shadow-lg hover:shadow-xl transition-shadow duration-300">
                         <CardHeader>
                           <div className="flex justify-between items-start">

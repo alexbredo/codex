@@ -51,6 +51,15 @@ async function initializeDb(): Promise<Database> {
       description TEXT
     );
   `);
+  // Ensure the 'Default' group always exists with a predictable ID.
+  const defaultGroupId = '00000000-0000-0000-0000-000000000001';
+  await db.run(
+    'INSERT OR IGNORE INTO model_groups (id, name, description) VALUES (?, ?, ?)',
+    defaultGroupId,
+    'Default',
+    'Default model group for uncategorized models'
+  );
+
 
   // Validation Rulesets Table
   await db.exec(`
@@ -102,34 +111,71 @@ async function initializeDb(): Promise<Database> {
     }
   }
 
-  // Models Table
+  // Models Table (Final Schema)
   await db.exec(`
     CREATE TABLE IF NOT EXISTS models (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL UNIQUE,
       description TEXT,
       displayPropertyNames TEXT,
-      namespace TEXT NOT NULL DEFAULT 'Default',
+      model_group_id TEXT,
       workflowId TEXT,
+      FOREIGN KEY (model_group_id) REFERENCES model_groups(id) ON DELETE SET NULL,
       FOREIGN KEY (workflowId) REFERENCES workflows(id) ON DELETE SET NULL
     );
   `);
+  
+  // MIGRATION: Check if the old `namespace` column exists and migrate data if it does.
+  const modelsTableInfo = await db.all("PRAGMA table_info(models);").catch(() => []);
+  if (modelsTableInfo.some(col => col.name === 'namespace')) {
+      console.log("Migration needed: models.namespace column found. Migrating to model_group_id.");
+      await db.run('BEGIN TRANSACTION;');
+      try {
+          // Rename the old table
+          await db.run('ALTER TABLE models RENAME TO models_old_for_migration;');
+          
+          // Create the new table with the correct final schema
+          await db.run(`
+            CREATE TABLE models (
+              id TEXT PRIMARY KEY,
+              name TEXT NOT NULL UNIQUE,
+              description TEXT,
+              displayPropertyNames TEXT,
+              model_group_id TEXT,
+              workflowId TEXT,
+              FOREIGN KEY (model_group_id) REFERENCES model_groups(id) ON DELETE SET NULL,
+              FOREIGN KEY (workflowId) REFERENCES workflows(id) ON DELETE SET NULL
+            );
+          `);
 
-  try {
-    await db.run("ALTER TABLE models ADD COLUMN namespace TEXT NOT NULL DEFAULT 'Default'");
-  } catch (e: any) {
-    const msg = e.message?.toLowerCase() || "";
-    if (!(msg.includes('duplicate column name') || msg.includes('already has a column named namespace'))) {
-      console.error("Migration Error (models.namespace):", e.message); throw e;
-    }
-  }
-  try {
-    await db.run("ALTER TABLE models ADD COLUMN workflowId TEXT REFERENCES workflows(id) ON DELETE SET NULL");
-  } catch (e: any) {
-    const msg = e.message?.toLowerCase() || "";
-    if (!(msg.includes('duplicate column name') || msg.includes('already has a column named workflowid'))) {
-      console.error("Migration Error (models.workflowId FK):", e.message); throw e;
-    }
+          // Copy data from the old table to the new one, looking up the group ID
+          await db.run(`
+            INSERT INTO models (id, name, description, displayPropertyNames, workflowId, model_group_id)
+            SELECT 
+              id, 
+              name, 
+              description, 
+              displayPropertyNames, 
+              workflowId,
+              (SELECT id FROM model_groups WHERE name = o.namespace)
+            FROM models_old_for_migration o;
+          `);
+          
+          // Drop the old table
+          await db.run('DROP TABLE models_old_for_migration;');
+          
+          await db.run('COMMIT;');
+          console.log("Migration successful: models table updated to use model_group_id.");
+      } catch (e: any) {
+          await db.run('ROLLBACK;');
+          console.error("Migration to model_group_id failed. Database has been rolled back.", e);
+          // Try to restore the old table name if it exists
+          const oldTableCheck = await db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='models_old_for_migration';");
+          if (oldTableCheck) {
+            await db.run('ALTER TABLE models_old_for_migration RENAME TO models;').catch(err => console.error("CRITICAL: Failed to restore original table name after migration failure.", err));
+          }
+          throw e; // Re-throw the original error
+      }
   }
 
 

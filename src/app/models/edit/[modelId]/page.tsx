@@ -65,7 +65,7 @@ export default function EditModelPage() {
       form.reset({
         name: foundModel.name,
         description: foundModel.description || '',
-        namespace: foundModel.namespace || 'Default',
+        modelGroupId: foundModel.modelGroupId,
         displayPropertyNames: foundModel.displayPropertyNames || [],
         workflowId: foundModel.workflowId || null,
         properties: sortedProperties.map(p => ({
@@ -113,7 +113,7 @@ export default function EditModelPage() {
     const modelData = {
       name: values.name,
       description: values.description,
-      namespace: (values.namespace && values.namespace.trim() !== '' && values.namespace !== '__DEFAULT_NAMESPACE_VALUE__') ? values.namespace.trim() : 'Default',
+      modelGroupId: values.modelGroupId,
       displayPropertyNames: values.displayPropertyNames?.filter(name => name !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE),
       workflowId: values.workflowId === INTERNAL_NO_WORKFLOW_VALUE ? null : values.workflowId,
       properties: values.properties.map((p_form_value, index) => {
@@ -177,7 +177,7 @@ export default function EditModelPage() {
         <Card className="max-w-3xl mx-auto">
           <CardHeader>
             <CardTitle className="text-2xl">Edit Model: {currentModel.name}</CardTitle>
-            <CardDescription>Update the details for the "{currentModel.name}" model in namespace "{currentModel.namespace}".</CardDescription>
+            <CardDescription>Update the details for the "{currentModel.name}" model.</CardDescription>
           </CardHeader>
           <CardContent>
             <ModelForm
