@@ -3,7 +3,7 @@ import { cookies } from 'next/headers';
 import { getDb } from '@/lib/db';
 
 // DEBUG MODE FLAG - Should match the one in auth-context.tsx for consistency during dev
-export const DEBUG_MODE = false; // <<< SET TO true TO BYPASS LOGIN FOR DEVELOPMENT
+export const DEBUG_MODE = true; // <<< SET TO true TO BYPASS LOGIN FOR DEVELOPMENT
 
 interface UserSession {
   id: string;

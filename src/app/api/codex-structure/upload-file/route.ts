@@ -1,6 +1,6 @@
 
 import { NextResponse } from 'next/server';
-import { getCurrentUserFromCookie, DEBUG_MODE } from '@/lib/auth';
+import { getCurrentUserFromCookie } from '@/lib/auth';
 import fs from 'fs/promises';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
@@ -55,13 +55,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `File is too large. Maximum size is ${MAX_FILE_SIZE_MB}MB.` }, { status: 400 });
     }
     // --- End validation ---
-
-    if (DEBUG_MODE) {
-      console.log(`DEBUG_MODE: Simulating file upload for ${file.name}.`);
-      const placeholderUrl = `/uploads/debug/${encodeURIComponent(file.name)}`; 
-      // Return both URL and original name, even in debug mode
-      return NextResponse.json({ success: true, url: placeholderUrl, name: file.name });
-    }
 
     if (!modelId || !objectId || !propertyName) {
       return NextResponse.json({ error: 'Missing modelId, objectId, or propertyName for file storage path.' }, { status: 400 });
