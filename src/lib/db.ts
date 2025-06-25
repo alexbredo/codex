@@ -87,7 +87,7 @@ async function initializeDb(): Promise<Database> {
     );
   `);
   
-  // Models Table
+  // Models Table - Define with the final, correct schema
   await db.exec(`
     CREATE TABLE IF NOT EXISTS models (
       id TEXT PRIMARY KEY,
@@ -101,6 +101,14 @@ async function initializeDb(): Promise<Database> {
     );
   `);
   
+  // Fast, one-time check to add model_group_id if it's missing from an old schema
+  const modelsTableInfo = await db.all("PRAGMA table_info('models')");
+  const hasModelGroupId = modelsTableInfo.some(col => col.name === 'model_group_id');
+  if (!hasModelGroupId) {
+    // This is safe to run. It's fast and will only execute on databases with the old schema.
+    await db.exec('ALTER TABLE models ADD COLUMN model_group_id TEXT');
+  }
+
   // Properties Table
   await db.exec(`
     CREATE TABLE IF NOT EXISTS properties (
