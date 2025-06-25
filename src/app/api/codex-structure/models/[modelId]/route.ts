@@ -126,7 +126,12 @@ export async function PUT(request: Request, { params }: Params) {
 
     const finalName = body.name ?? oldModelRow.name;
     const finalDescription = body.description ?? oldModelRow.description;
-    const finalModelGroupId = body.hasOwnProperty('modelGroupId') ? body.modelGroupId : oldModelRow.model_group_id;
+    
+    // Explicitly handle modelGroupId: if the key exists in the body, use its value (even if null). Otherwise, keep the old one.
+    const finalModelGroupId = body.hasOwnProperty('modelGroupId') 
+      ? body.modelGroupId 
+      : oldModelRow.model_group_id;
+
     const finalDisplayPropertyNames = body.hasOwnProperty('displayPropertyNames') ? JSON.stringify(body.displayPropertyNames || []) : oldModelRow.displayPropertyNames;
     const finalWorkflowId = body.hasOwnProperty('workflowId') ? body.workflowId : oldModelRow.workflowId;
 
