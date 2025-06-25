@@ -29,7 +29,7 @@ export default function CreateModelPage() {
     defaultValues: {
       name: '',
       description: '',
-      modelGroupId: INTERNAL_DEFAULT_GROUP_ID,
+      modelGroupId: null, // Let the form component default this visually
       displayPropertyNames: [],
       workflowId: null,
       properties: [{
@@ -61,13 +61,14 @@ export default function CreateModelPage() {
     const modelData = {
       name: values.name,
       description: values.description,
-      modelGroupId: values.modelGroupId,
+      modelGroupId: values.modelGroupId || null, // Ensure null is passed if undefined
       displayPropertyNames: values.displayPropertyNames?.filter(name => name !== INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE),
       workflowId: values.workflowId === INTERNAL_NO_WORKFLOW_VALUE ? null : values.workflowId,
       properties: values.properties.map((p_form_value, index) => {
         const propertyForApi: Property = {
           ...p_form_value, // Spread all fields from form
           id: p_form_value.id || crypto.randomUUID(),
+          model_id: '', // Will be set on the backend, not needed here
           orderIndex: index,
           required: !!p_form_value.required,
           autoSetOnCreate: !!p_form_value.autoSetOnCreate,
@@ -79,6 +80,8 @@ export default function CreateModelPage() {
           unit: p_form_value.type === 'number' ? p_form_value.unit : undefined,
           precision: p_form_value.type === 'number' ? (p_form_value.precision === undefined || p_form_value.precision === null ? 2 : Number(p_form_value.precision)) : undefined,
           validationRulesetId: p_form_value.type === 'string' ? (p_form_value.validationRulesetId) : null,
+          minValue: p_form_value.type === 'number' ? (p_form_value.minValue === undefined || p_form_value.minValue === null || isNaN(Number(p_form_value.minValue)) ? null : Number(p_form_value.minValue)) : null,
+          maxValue: p_form_value.type === 'number' ? (p_form_value.maxValue === undefined || p_form_value.maxValue === null || isNaN(Number(p_form_value.maxValue)) ? null : Number(p_form_value.maxValue)) : null,
         };
         return propertyForApi;
       }),
@@ -120,3 +123,5 @@ export default function CreateModelPage() {
     </div>
   );
 }
+
+    

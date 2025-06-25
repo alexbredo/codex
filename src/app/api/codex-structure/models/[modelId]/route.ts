@@ -218,6 +218,7 @@ export async function PUT(request: Request, { params }: Params) {
     const safeJsonParse = (jsonString: string | null | undefined, defaultValue: any = []) => {
       if (jsonString === null || jsonString === undefined) return defaultValue;
       try {
+        // This will correctly handle the string "null" vs the value null
         return JSON.parse(jsonString);
       } catch (e) {
         console.warn(`Safe JSON Parse failed for string: "${jsonString}". Returning default value.`, e);
@@ -230,11 +231,18 @@ export async function PUT(request: Request, { params }: Params) {
     if (finalUpdateData.modelGroupId !== oldModelRow.model_group_id) changesDetail.push({ field: 'modelGroupId', oldValue: oldModelRow.model_group_id, newValue: finalUpdateData.modelGroupId });
     if (finalUpdateData.displayPropertyNames !== oldModelRow.displayPropertyNames) changesDetail.push({ field: 'displayPropertyNames', oldValue: safeJsonParse(oldModelRow.displayPropertyNames), newValue: safeJsonParse(finalUpdateData.displayPropertyNames) });
     if (finalUpdateData.workflowId !== oldModelRow.workflowId) changesDetail.push({ field: 'workflowId', oldValue: oldModelRow.workflowId, newValue: finalUpdateData.workflowId });
-    changesDetail.push({ 
-        field: 'properties', 
-        oldValue: oldPropertiesFromDb.map(p => ({name: p.name, type: p.type, orderIndex: p.orderIndex, required: !!p.required})),
-        newValue: newProcessedProperties.map(p => ({name: p.name, type: p.type, orderIndex: p.orderIndex, required: !!p.required}))
-    });
+    
+    // FIX: Correctly compare old and new properties for changelog
+    const oldPropsForLog = oldPropertiesFromDb.map(p => ({name: p.name, type: p.type, orderIndex: p.orderIndex, required: !!p.required}));
+    const newPropsForLog = newProcessedProperties.map(p => ({name: p.name, type: p.type, orderIndex: p.orderIndex, required: !!p.required}));
+    
+    if(JSON.stringify(oldPropsForLog) !== JSON.stringify(newPropsForLog)){
+        changesDetail.push({ 
+            field: 'properties', 
+            oldValue: oldPropsForLog,
+            newValue: newPropsForLog
+        });
+    }
 
     if (changesDetail.length > 0) {
         await db.run(
@@ -370,3 +378,4 @@ export async function DELETE(request: Request, { params }: Params) {
   }
 }
 
+    
