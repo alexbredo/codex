@@ -104,9 +104,6 @@ export async function PUT(request: Request, { params }: Params) {
   try {
     const body: Partial<Model> & { properties?: Property[] } = await request.json();
 
-    // LOGGING STEP 1 & 2
-    console.log(`[API PUT /models/${params.modelId}] Received update request. Parsed body:`, JSON.stringify(body, null, 2));
-
     await db.run('BEGIN TRANSACTION');
 
     const currentTimestamp = new Date().toISOString();
@@ -116,9 +113,8 @@ export async function PUT(request: Request, { params }: Params) {
       await db.run('ROLLBACK');
       return NextResponse.json({ error: 'Model not found' }, { status: 404 });
     }
-    // LOGGING STEP 5
-    console.log(`[API PUT /models/${params.modelId}] Old model_group_id from DB: ${oldModelRow.model_group_id}`);
-
+    
+    const oldPropertiesFromDb = await db.all('SELECT * FROM properties WHERE model_id = ? ORDER BY orderIndex ASC', params.modelId);
 
     if (body.name && body.name !== oldModelRow.name) {
         const nameCheck = await db.get('SELECT id FROM models WHERE name = ? AND id != ?', body.name, params.modelId);
@@ -131,25 +127,16 @@ export async function PUT(request: Request, { params }: Params) {
     const finalName = body.name ?? oldModelRow.name;
     const finalDescription = body.description ?? oldModelRow.description;
     
-    // LOGGING STEP 3 & 4 and determining final value
     let finalModelGroupId;
-    console.log(`[API PUT /models/${params.modelId}] Checking for modelGroupId in request body. body.hasOwnProperty('modelGroupId'): ${body.hasOwnProperty('modelGroupId')}`);
     if (body.hasOwnProperty('modelGroupId')) {
         finalModelGroupId = body.modelGroupId;
-        console.log(`[API PUT /models/${params.modelId}] 'modelGroupId' found in request. Using value: ${JSON.stringify(finalModelGroupId)}`);
     } else {
         finalModelGroupId = oldModelRow.model_group_id;
-        console.log(`[API PUT /models/${params.modelId}] 'modelGroupId' NOT found in request. Reverting to old value from DB: ${JSON.stringify(finalModelGroupId)}`);
     }
-    // LOGGING STEP 6
-    console.log(`[API PUT /models/${params.modelId}] Final modelGroupId to be saved to DB: ${JSON.stringify(finalModelGroupId)}`);
-
+    
     const finalDisplayPropertyNames = body.hasOwnProperty('displayPropertyNames') ? JSON.stringify(body.displayPropertyNames || []) : oldModelRow.displayPropertyNames;
     const finalWorkflowId = body.hasOwnProperty('workflowId') ? body.workflowId : oldModelRow.workflowId;
 
-    // LOGGING STEP 7
-    console.log(`[API PUT /models/${params.modelId}] Executing SQL UPDATE with these values:`, { finalName, finalDescription, finalModelGroupId, finalDisplayPropertyNames, finalWorkflowId, modelId: params.modelId });
-    
     const result = await db.run(
       `UPDATE models 
        SET name = ?, description = ?, model_group_id = ?, displayPropertyNames = ?, workflowId = ?
@@ -161,9 +148,6 @@ export async function PUT(request: Request, { params }: Params) {
       finalWorkflowId,
       params.modelId
     );
-
-    // LOGGING STEP 8
-    console.log(`[API PUT /models/${params.modelId}] Database update result:`, JSON.stringify(result, null, 2));
 
     const newProcessedProperties: Property[] = [];
     if (body.properties) {
@@ -219,7 +203,7 @@ export async function PUT(request: Request, { params }: Params) {
     if (finalWorkflowId !== oldModelRow.workflowId) changesDetail.push({ field: 'workflowId', oldValue: oldModelRow.workflowId, newValue: finalWorkflowId });
     changesDetail.push({ 
         field: 'properties', 
-        oldValue: oldModelRow.properties.map(p => ({name: p.name, type: p.type, orderIndex: p.orderIndex, required: !!p.required})),
+        oldValue: oldPropertiesFromDb.map(p => ({name: p.name, type: p.type, orderIndex: p.orderIndex, required: !!p.required})),
         newValue: newProcessedProperties.map(p => ({name: p.name, type: p.type, orderIndex: p.orderIndex, required: !!p.required}))
     });
 
@@ -240,7 +224,6 @@ export async function PUT(request: Request, { params }: Params) {
     await db.run('COMMIT');
 
     const refreshedModelRow = await db.get('SELECT * FROM models WHERE id = ?', params.modelId);
-    console.log(`[API PUT /models/${params.modelId}] Refreshed model data from DB after commit:`, JSON.stringify(refreshedModelRow, null, 2));
     const refreshedPropertiesFromDb = await db.all('SELECT * FROM properties WHERE model_id = ? ORDER BY orderIndex ASC', params.modelId);
 
     let refreshedParsedDpn: string[] = [];
@@ -345,3 +328,5 @@ export async function DELETE(request: Request, { params }: Params) {
     return NextResponse.json({ error: 'Failed to delete model', details: errorMessage }, { status: 500 });
   }
 }
+
+    
