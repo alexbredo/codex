@@ -825,7 +825,7 @@ function PropertyFieldsWithDnd({
                             form={form}
                             index={index}
                             modelsForRelationsGrouped={modelsForRelationsGrouped}
-                            validationRulesetsForSelect={validationRulesets}
+                            validationRulesetsForSelect={validationRulesetsForSelect}
                         />
                     </AccordionItem>
                  )}
