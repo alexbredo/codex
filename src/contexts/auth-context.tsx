@@ -44,26 +44,40 @@ async function fetchCurrentUserActual(): Promise<User | null> {
 }
 
 const formatApiError = async (response: Response, defaultMessage: string): Promise<string> => {
-    let errorMessage = defaultMessage;
-    try {
-      const errorData = await response.json();
-      if (errorData && errorData.error) {
-        errorMessage = errorData.error;
-        if (errorData.details && typeof errorData.details === 'string') {
-          errorMessage += ` Details: ${errorData.details}`;
-        } else if (errorData.details && typeof errorData.details === 'object') {
-           errorMessage += ` Details: ${JSON.stringify(errorData.details)}`;
-        }
-      } else if(response.statusText && response.statusText.trim() !== '') {
-        errorMessage = `${defaultMessage}. Status: ${response.status} - Server: ${response.statusText}`;
-      } else {
-         errorMessage = `${defaultMessage}. Status: ${response.status} - Server did not provide detailed error.`;
-      }
-    } catch (e) {
-      errorMessage = `${defaultMessage}. Status: ${response.status} - ${response.statusText || 'Server did not provide detailed error or a non-JSON response.'}`;
+  const status = response.status;
+  const statusText = response.statusText;
+  let responseBodyText = '';
+
+  try {
+    responseBodyText = await response.text();
+  } catch (e) {
+    return `${defaultMessage}. Status: ${status} - ${statusText || 'Could not read response body.'}`;
+  }
+
+  let errorData;
+  try {
+    errorData = JSON.parse(responseBodyText);
+  } catch (e) {
+    // Response was not valid JSON
+    return `${defaultMessage}. Status: ${status} - ${statusText || 'Server returned a non-JSON response.'} Body: ${responseBodyText.substring(0, 200)}...`;
+  }
+
+  if (errorData && errorData.error) {
+    let errorMessage = String(errorData.error);
+    if (errorData.details) {
+      errorMessage += ` (Details: ${ (typeof errorData.details === 'string') ? errorData.details : JSON.stringify(errorData.details) })`;
+    }
+    // This is a special case for form field errors. The component logic will handle this.
+    // Here, we re-throw an object that the calling function can catch.
+    if (errorData.field && typeof errorData.field === 'string') {
+      throw { message: errorMessage, field: errorData.field };
     }
     return errorMessage;
-  };
+  }
+  
+  // Fallback if JSON is valid but doesn't have the expected error structure
+  return `${defaultMessage}. Status: ${status} - ${statusText || 'Server did not provide a detailed error message.'}`;
+};
 
 
 export function AuthProvider({ children }: { children: ReactNode }) {

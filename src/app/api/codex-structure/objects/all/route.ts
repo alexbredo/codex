@@ -37,9 +37,8 @@ export async function GET(request: Request) { // Add request to access URL
     }
     
     return NextResponse.json(allObjects);
-  } catch (error) {
-    console.error('Failed to fetch all objects:', error);
-    return NextResponse.json({ error: 'Failed to fetch all objects' }, { status: 500 });
+  } catch (error: any) {
+    console.error('API Error (GET /api/codex-structure/objects/all):', error);
+    return NextResponse.json({ error: 'Failed to fetch all objects', details: error.message }, { status: 500 });
   }
 }
-

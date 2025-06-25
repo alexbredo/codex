@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     return NextResponse.json(userWithoutPassword);
 
   } catch (error: any) {
-    console.error('Login Error:', error);
+    console.error('API Error (POST /api/auth/login):', error);
     return NextResponse.json({ error: 'Failed to login', details: error.message }, { status: 500 });
   }
 }

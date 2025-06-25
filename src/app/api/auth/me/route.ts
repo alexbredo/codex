@@ -23,7 +23,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json(user);
   } catch (error: any) {
-    console.error('Fetch Current User Error:', error);
+    console.error('API Error (GET /api/auth/me):', error);
     return NextResponse.json({ error: 'Failed to fetch current user', details: error.message }, { status: 500 });
   }
 }
