@@ -103,8 +103,6 @@ export async function PUT(request: Request, { params }: Params) {
   
   try {
     const body: Partial<Model> & { properties?: Property[] } = await request.json();
-    console.log(`[API PUT /models] Received update request for model ${params.modelId}. Body:`, JSON.stringify(body, null, 2));
-
     const currentTimestamp = new Date().toISOString();
     
     const oldModelRow = await db.get('SELECT * FROM models WHERE id = ?', params.modelId);
@@ -137,7 +135,6 @@ export async function PUT(request: Request, { params }: Params) {
     }
     
     if ('modelGroupId' in body && body.modelGroupId !== oldModelRow.model_group_id) {
-      console.log(`[API PUT /models] 'modelGroupId' change detected. Old: "${oldModelRow.model_group_id}", New: "${body.modelGroupId}"`);
       updates.push('model_group_id = ?');
       values.push(body.modelGroupId);
       changelogDetails.push({ field: 'modelGroupId', oldValue: oldModelRow.model_group_id, newValue: body.modelGroupId });
@@ -166,11 +163,7 @@ export async function PUT(request: Request, { params }: Params) {
     if (updates.length > 0) {
       const sqlQuery = `UPDATE models SET ${updates.join(', ')} WHERE id = ?`;
       values.push(params.modelId);
-      console.log(`[API PUT /models] Executing Metadata SQL: ${sqlQuery} with values: ${JSON.stringify(values)}`);
       await db.run(sqlQuery, ...values);
-      console.log(`[API PUT /models] Model metadata updated successfully.`);
-    } else {
-      console.log("[API PUT /models] No model metadata fields needed updating.");
     }
     
     // ================================================================
@@ -182,7 +175,6 @@ export async function PUT(request: Request, { params }: Params) {
     if (body.properties) {
       try {
         await db.run('BEGIN TRANSACTION');
-        console.log("[API PUT /models] Starting properties transaction.");
         
         await db.run('DELETE FROM properties WHERE model_id = ?', params.modelId);
         
@@ -204,17 +196,14 @@ export async function PUT(request: Request, { params }: Params) {
           );
           newProcessedProperties.push({
               ...prop, id: propertyId, model_id: params.modelId, 
-              required: !!prop.required, autoSetOnCreate: !!prop.autoSetOnCreate, autoSetOnUpdate: !!prop.autoSetOnUpdate, isUnique: !!p.isUnique,
+              required: !!prop.required, autoSetOnCreate: !!prop.autoSetOnCreate, autoSetOnUpdate: !!prop.autoSetOnUpdate, isUnique: !!prop.isUnique,
               defaultValue: prop.defaultValue, validationRulesetId: prop.validationRulesetId ?? null, minValue: propMinValueForDb, maxValue: propMaxValueForDb
           } as Property);
         }
         await db.run('COMMIT');
-        console.log("[API PUT /models] Properties transaction committed successfully.");
 
       } catch (propError: any) {
         await db.run('ROLLBACK');
-        console.error("[API PUT /models] Error occurred during properties update, transaction rolled back. Error:", propError);
-        // Throw an error that the client can display, but the metadata update is already saved.
         throw new Error(`Model metadata was updated, but properties failed to save: ${propError.message}`);
       }
     }
@@ -273,8 +262,6 @@ export async function PUT(request: Request, { params }: Params) {
     // Step 5: Fetch and return the fully updated model for the client
     // ================================================================
     const refreshedModelRow = await db.get('SELECT * FROM models WHERE id = ?', params.modelId);
-    console.log("[API PUT /models] Refetched model group ID after commit:", refreshedModelRow.model_group_id);
-
     const refreshedPropertiesFromDb = await db.all('SELECT * FROM properties WHERE model_id = ? ORDER BY orderIndex ASC', params.modelId);
 
     let refreshedParsedDpn: string[] = [];
@@ -312,7 +299,6 @@ export async function PUT(request: Request, { params }: Params) {
   } catch (error: any) {
     let errorMessage = `Failed to update model. The operation was rolled back due to an internal error.`;
     let errorDetails = (error instanceof Error) ? error.message : 'An unknown error occurred.';
-    console.error("[API PUT /models] Unhandled Error during model update:", error);
     
     return NextResponse.json({ error: errorMessage, details: errorDetails, stack: error.stack }, { status: 500 });
   }
