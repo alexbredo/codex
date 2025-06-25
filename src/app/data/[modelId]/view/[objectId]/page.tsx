@@ -3,11 +3,19 @@
 
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import { useData } from '@/contexts/data-context';
-import { useAuth } from '@/contexts/auth-context'; // Import useAuth
-import type { Model, DataObject, Property, WorkflowWithDetails, ValidationRuleset, ChangelogEntry, PropertyChangeDetail } from '@/lib/types';
+import { useAuth } from '@/contexts/auth-context';
+import type { Model, DataObject, Property, WorkflowWithDetails, ValidationRuleset, StructuralChangelogEntry, PaginatedStructuralChangelogResponse } from '@/lib/types';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,31 +27,34 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Edit, Loader2, ExternalLink, ImageIcon, CheckCircle2, ShieldAlert, ShieldCheck, UserCircle, CalendarClock, History, FileText, Users as UsersIconLucide, RotateCcw, Trash2, Paperclip } from 'lucide-react';
-import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
-import Link from 'next/link';
-import { getObjectDisplayValue } from '@/lib/utils';
-import { Badge } from '@/components/ui/badge';
-import ReactMarkdown from 'react-markdown';
-import { StarDisplay } from '@/components/ui/star-display';
-import Image from 'next/image';
-import { useToast } from '@/hooks/use-toast';
-import { Progress } from '@/components/ui/progress';
+import {
+  Dialog as DetailsDialog,
+  DialogContent as DetailsDialogContent,
+  DialogHeader as DetailsDialogHeader,
+  DialogTitle as DetailsDialogTitle,
+  DialogDescription as DetailsDialogDescription,
+} from "@/components/ui/dialog";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Badge } from '@/components/ui/badge';
+import { ArrowLeft, Edit, Trash2, DownloadCloud, PlusCircle, Loader2, DatabaseZap, FileText, ListFilter, CheckCircle, ShieldCheck, AlertTriangle, Settings2, Workflow as WorkflowIconLucide, History as HistoryIcon, User as UserIcon, Layers, Edit2 as Edit2Icon, ZoomIn } from 'lucide-react';
+import Link from 'next/link';
+import { useToast } from '@/hooks/use-toast';
+import { withAuth } from '@/contexts/auth-context';
+import { format } from 'date-fns';
+import ReactJson from 'react18-json-view';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import Image from 'next/image';
+import { getObjectDisplayValue } from '@/lib/utils';
+import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
+import ReactMarkdown from 'react-markdown';
+import { StarDisplay } from '@/components/ui/star-display';
+import { Progress } from '@/components/ui/progress';
+import { Paperclip } from 'lucide-react';
 
 
 export default function ViewObjectPage() {
@@ -68,6 +79,7 @@ export default function ViewObjectPage() {
   const [isRevertConfirmOpen, setIsRevertConfirmOpen] = useState(false);
   const [revertingEntryId, setRevertingEntryId] = useState<string | null>(null);
   const [isReverting, setIsReverting] = useState(false);
+  const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null);
 
 
   const allDbObjects = useMemo(() => getAllObjects(true), [getAllObjects, dataContextIsReady]); // Include deleted for relationship lookups
@@ -253,7 +265,11 @@ export default function ViewObjectPage() {
         const finalImageUrl = (isExternalUrl || imageUrl.startsWith('/uploads')) ? imageUrl : placeholderImage;
 
         return (
-          <div className="relative w-full max-w-md aspect-video rounded-md overflow-hidden border">
+          <button
+            onClick={() => setLightboxImageUrl(finalImageUrl)}
+            className="relative w-full max-w-md aspect-video rounded-md overflow-hidden border group focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+            aria-label={`View larger image for ${property.name}`}
+          >
             <Image
               src={finalImageUrl}
               alt={`${property.name} for ${getObjectDisplayValue(viewingObject, currentModel, allModels, allDbObjects)}`}
@@ -263,11 +279,11 @@ export default function ViewObjectPage() {
               onError={(e) => { (e.target as HTMLImageElement).src = placeholderImage; (e.target as HTMLImageElement).dataset.aiHint = 'placeholder image'; }}
             />
             {finalImageUrl !== placeholderImage && (
-                 <a href={finalImageUrl} target="_blank" rel="noopener noreferrer" className="absolute bottom-2 right-2 bg-background/70 p-1 rounded-sm hover:bg-background">
-                    <ExternalLink className="h-4 w-4 text-muted-foreground" />
-                </a>
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center">
+                    <ZoomIn className="h-8 w-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
             )}
-          </div>
+          </button>
         );
       case 'fileAttachment':
         if (typeof value === 'object' && value.url && value.name) {
@@ -527,7 +543,7 @@ export default function ViewObjectPage() {
       <Card className="max-w-4xl mx-auto shadow-lg">
         <CardHeader>
             <CardTitle className="text-2xl text-primary flex items-center">
-                <History className="mr-2 h-6 w-6" /> Object Changelog
+                <HistoryIcon className="mr-2 h-6 w-6" /> Object Changelog
             </CardTitle>
             <CardDescription>History of changes made to this object.</CardDescription>
         </CardHeader>
@@ -664,6 +680,29 @@ export default function ViewObjectPage() {
             </AlertDialogContent>
         </AlertDialog>
       )}
+
+      <DetailsDialog open={!!lightboxImageUrl} onOpenChange={(open) => !open && setLightboxImageUrl(null)}>
+        <DetailsDialogContent className="max-w-5xl w-auto p-0 bg-transparent border-0 shadow-none">
+          <DetailsDialogHeader className="sr-only">
+            <DetailsDialogTitle>Image Lightbox</DetailsDialogTitle>
+            <DetailsDialogDescription>A larger view of the selected image. Click outside the image or press escape to close.</DetailsDialogDescription>
+          </DetailsDialogHeader>
+          {lightboxImageUrl && (
+            <Image
+              src={lightboxImageUrl}
+              alt="Lightbox view"
+              width={1920}
+              height={1080}
+              className="w-full h-auto object-contain max-h-[90vh] rounded-lg"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = `https://placehold.co/800x600.png`;
+                (e.target as HTMLImageElement).alt = 'Image failed to load';
+              }}
+            />
+          )}
+        </DetailsDialogContent>
+      </DetailsDialog>
     </div>
   );
 }
+export default withAuth(ViewObjectPageInternal, ['user', 'administrator']);
