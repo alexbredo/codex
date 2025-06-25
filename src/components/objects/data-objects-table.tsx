@@ -33,7 +33,13 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader as LightboxDialogHeader,
+  DialogTitle as LightboxDialogTitle,
+  DialogDescription as LightboxDialogDescription,
+} from "@/components/ui/dialog";
 import Image from 'next/image';
 
 // Column keys for metadata and actions, should match those in page.tsx
@@ -428,6 +434,10 @@ export default function DataObjectsTable({
       </Table>
       <Dialog open={!!lightboxImageUrl} onOpenChange={(open) => !open && setLightboxImageUrl(null)}>
         <DialogContent className="max-w-5xl w-auto p-0 bg-transparent border-0 shadow-none">
+          <LightboxDialogHeader className="sr-only">
+            <LightboxDialogTitle>Image Lightbox</LightboxDialogTitle>
+            <LightboxDialogDescription>A larger view of the selected image. Click outside the image or press escape to close.</LightboxDialogDescription>
+          </LightboxDialogHeader>
           {lightboxImageUrl && (
             <Image
               src={lightboxImageUrl}
