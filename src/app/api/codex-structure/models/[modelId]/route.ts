@@ -106,7 +106,7 @@ export async function PUT(request: Request, { params }: Params) {
     const body: Partial<Omit<Model, 'id'>> & { properties?: Property[], workflowId?: string | null } = await request.json();
     const currentTimestamp = new Date().toISOString();
     
-    const { name, description, modelGroupId, displayPropertyNames, properties: updatedPropertiesInput } = body;
+    const { name, description, modelGroupId, displayPropertyNames, properties: updatedPropertiesInput, workflowId } = body;
 
     // Fetch old model state for changelog
     const oldModelRow = await db.get('SELECT * FROM models WHERE id = ?', params.modelId);
@@ -117,7 +117,6 @@ export async function PUT(request: Request, { params }: Params) {
     const oldPropertiesFromDb = await db.all('SELECT * FROM properties WHERE model_id = ? ORDER BY orderIndex ASC', params.modelId);
     const oldModelSnapshot = { ...oldModelRow, properties: oldPropertiesFromDb.map(p => ({...p})) }; // Deep copy properties
 
-
     if (name && name !== oldModelRow.name) {
         const nameCheck = await db.get('SELECT id FROM models WHERE name = ? AND id != ?', name, params.modelId);
         if (nameCheck) {
@@ -126,55 +125,19 @@ export async function PUT(request: Request, { params }: Params) {
         }
     }
 
-    const oldEffectiveWorkflowId = oldModelRow.workflowId || null; 
-    let newEffectiveWorkflowId: string | null; 
-    let workflowAssignmentActuallyChanged = false;
-
-    if (Object.prototype.hasOwnProperty.call(body, 'workflowId')) {
-      const normalizedRequestedWfId = (body.workflowId === undefined || body.workflowId === '') ? null : body.workflowId;
-      newEffectiveWorkflowId = normalizedRequestedWfId;
-      if (newEffectiveWorkflowId !== oldEffectiveWorkflowId) {
-        workflowAssignmentActuallyChanged = true;
-      }
-    } else {
-      newEffectiveWorkflowId = oldEffectiveWorkflowId;
-    }
-
-    const updateModelFields: string[] = [];
-    const updateModelValues: any[] = [];
-
-    if (name !== undefined && name !== oldModelRow.name) {
-      updateModelFields.push('name = ?');
-      updateModelValues.push(name);
-    }
-    if (description !== undefined && description !== oldModelRow.description) {
-      updateModelFields.push('description = ?');
-      updateModelValues.push(description);
-    }
-    
-    if (modelGroupId !== undefined && modelGroupId !== oldModelRow.model_group_id) {
-        updateModelFields.push('model_group_id = ?');
-        updateModelValues.push(modelGroupId);
-    }
-
-    if (displayPropertyNames !== undefined) {
-        const newDpnJson = JSON.stringify(displayPropertyNames || []);
-        if (newDpnJson !== oldModelRow.displayPropertyNames) {
-            updateModelFields.push('displayPropertyNames = ?');
-            updateModelValues.push(newDpnJson);
-        }
-    }
-    
-    if (Object.prototype.hasOwnProperty.call(body, 'workflowId') && newEffectiveWorkflowId !== oldModelRow.workflowId) {
-      updateModelFields.push('workflowId = ?');
-      updateModelValues.push(newEffectiveWorkflowId);
-    }
-
-    if (updateModelFields.length > 0) {
-      const updateModelSql = `UPDATE models SET ${updateModelFields.join(', ')} WHERE id = ?`;
-      updateModelValues.push(params.modelId);
-      await db.run(updateModelSql, ...updateModelValues);
-    }
+    // Direct update of model fields, assuming client sends the complete desired state.
+    // This is less fragile than conditionally building a query.
+    await db.run(
+      `UPDATE models 
+       SET name = ?, description = ?, model_group_id = ?, displayPropertyNames = ?, workflowId = ?
+       WHERE id = ?`,
+      name,
+      description,
+      modelGroupId, // This will be the ID string or null
+      JSON.stringify(displayPropertyNames || []),
+      workflowId,
+      params.modelId
+    );
 
     const newProcessedProperties: Property[] = [];
     if (updatedPropertiesInput) {
@@ -201,15 +164,16 @@ export async function PUT(request: Request, { params }: Params) {
         } as Property);
       }
     } else {
-      // If updatedPropertiesInput is not provided, newProcessedProperties should be the old ones
       newProcessedProperties.push(...oldPropertiesFromDb);
     }
-
-    if (workflowAssignmentActuallyChanged) {
-      if (newEffectiveWorkflowId) { 
-        const workflowForUpdate: WorkflowWithDetails | undefined = await db.get('SELECT * FROM workflows WHERE id = ?', newEffectiveWorkflowId);
+    
+    // Check if workflow assignment changed to reset object states
+    const oldEffectiveWorkflowId = oldModelRow.workflowId || null;
+    if (workflowId !== oldEffectiveWorkflowId) {
+      if (workflowId) { 
+        const workflowForUpdate: WorkflowWithDetails | undefined = await db.get('SELECT * FROM workflows WHERE id = ?', workflowId);
         if (workflowForUpdate) {
-          const statesForUpdate: WorkflowState[] = await db.all('SELECT id, isInitial FROM workflow_states WHERE workflowId = ?', newEffectiveWorkflowId);
+          const statesForUpdate: WorkflowState[] = await db.all('SELECT id, isInitial FROM workflow_states WHERE workflowId = ?', workflowId);
           const initialStateForUpdate = statesForUpdate.find(s => s.isInitial === 1 || s.isInitial === true);
           await db.run("UPDATE data_objects SET currentStateId = ? WHERE model_id = ?", initialStateForUpdate?.id || null, params.modelId);
         } else {
@@ -230,15 +194,11 @@ export async function PUT(request: Request, { params }: Params) {
     if (newModelDataAfterUpdate.model_group_id !== oldModelRow.model_group_id) changesDetail.push({ field: 'modelGroupId', oldValue: oldModelRow.model_group_id, newValue: newModelDataAfterUpdate.model_group_id });
     if (newModelDataAfterUpdate.displayPropertyNames !== oldModelRow.displayPropertyNames) changesDetail.push({ field: 'displayPropertyNames', oldValue: JSON.parse(oldModelRow.displayPropertyNames || '[]'), newValue: JSON.parse(newModelDataAfterUpdate.displayPropertyNames || '[]') });
     if (newModelDataAfterUpdate.workflowId !== oldModelRow.workflowId) changesDetail.push({ field: 'workflowId', oldValue: oldModelRow.workflowId, newValue: newModelDataAfterUpdate.workflowId });
-
-    // For properties, log the before and after arrays due to delete/re-insert strategy
-    // A more granular diff is complex here but this provides a snapshot of change.
     changesDetail.push({ 
         field: 'properties', 
-        oldValue: oldModelSnapshot.properties.map(p => ({name: p.name, type: p.type, orderIndex: p.orderIndex, required: !!p.required})), // Simplified snapshot
-        newValue: newProcessedProperties.map(p => ({name: p.name, type: p.type, orderIndex: p.orderIndex, required: !!p.required}))  // Simplified snapshot
+        oldValue: oldModelSnapshot.properties.map(p => ({name: p.name, type: p.type, orderIndex: p.orderIndex, required: !!p.required})),
+        newValue: newProcessedProperties.map(p => ({name: p.name, type: p.type, orderIndex: p.orderIndex, required: !!p.required}))
     });
-
 
     if (changesDetail.length > 0) {
         await db.run(

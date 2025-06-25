@@ -19,7 +19,7 @@ async function initializeDb(): Promise<Database> {
   // Ensure the data directory exists
   try {
     await fs.mkdir(dataDir, { recursive: true });
-    console.log(`Data directory ensured at ${dataDir}`);
+    // console.log(`Data directory ensured at ${dataDir}`); // This can be noisy
   } catch (error: any) {
     console.error(`Failed to create data directory at ${dataDir}:`, error);
     throw error; // Rethrow if directory creation fails, as DB init will fail
@@ -32,11 +32,11 @@ async function initializeDb(): Promise<Database> {
 
   // Enable WAL (Write-Ahead Logging) mode for better concurrency
   await db.exec('PRAGMA journal_mode = WAL;');
-  console.log("SQLite WAL mode enabled.");
+  // console.log("SQLite WAL mode enabled."); // Noisy log
 
   // Set a busy timeout (e.g., 5 seconds)
   await db.run('PRAGMA busy_timeout = 5000;');
-  console.log("SQLite busy_timeout set to 5000ms.");
+  // console.log("SQLite busy_timeout set to 5000ms."); // Noisy log
 
 
   // Enable foreign key support
@@ -57,7 +57,6 @@ async function initializeDb(): Promise<Database> {
     'Default',
     'Default model group for uncategorized models'
   );
-
 
   // Validation Rulesets Table
   await db.exec(`
@@ -107,6 +106,7 @@ async function initializeDb(): Promise<Database> {
   `);
 
   // Simple, safe migration check: if model_group_id does not exist, add it.
+  // This is idempotent and safe to run on every startup.
   const modelsTableInfo = await db.all("PRAGMA table_info(models)").catch(() => []);
   if (!modelsTableInfo.some(c => c.name === 'model_group_id')) {
     console.log("Migration: `model_group_id` column not found on `models` table. Adding it now.");
@@ -245,7 +245,7 @@ async function initializeDb(): Promise<Database> {
   }
 
 
-  console.log(`Database initialized at ${dbPath}`);
+  // console.log(`Database initialized at ${dbPath}`); // This can be noisy
   return db;
 }
 

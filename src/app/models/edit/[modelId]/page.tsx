@@ -32,22 +32,21 @@ export default function EditModelPage() {
   const form = useForm<ModelFormValues>({
     resolver: zodResolver(modelFormSchema),
   });
-
+  
   useEffect(() => {
     if (!modelId) return;
 
-    // Only start loading if the model ID changes
+    // Only start a full load/reset if the model ID has changed
     if (pageInitializedForCurrentModelIdRef.current !== modelId) {
-      setIsLoadingModel(true);
-      setCurrentModel(null); // Clear old model data
-      fetchData(`Navigated to Edit Model: ${modelId}`); // Fetch fresh data for this model
+        setIsLoadingModel(true);
+        setCurrentModel(null); // Clear old model data immediately
+        fetchData(`Navigated to Edit Model: ${modelId}`); // Fetch fresh data for this model
     }
   }, [modelId, fetchData]);
-  
+
   useEffect(() => {
     if (isReady && modelId && isLoadingModel) {
       const foundModel = getModelById(modelId);
-
       if (foundModel) {
         setCurrentModel(foundModel);
         const sortedProperties = [...foundModel.properties].sort((a, b) => a.orderIndex - b.orderIndex);
@@ -78,11 +77,11 @@ export default function EditModelPage() {
         });
         setIsLoadingModel(false);
         pageInitializedForCurrentModelIdRef.current = modelId;
-      } else if (!isLoadingModel && pageInitializedForCurrentModelIdRef.current === modelId) {
-        // If we were not loading but model is gone, then it's an error.
-        toast({ variant: "destructive", title: "Error", description: `Model with ID ${modelId} could not be found.` });
-        router.push('/models');
       }
+    } else if (isReady && modelId && !isLoadingModel && !getModelById(modelId)) {
+      // If data is ready, we're not loading, and the model is gone, then it's an error.
+      toast({ variant: "destructive", title: "Error", description: `Model with ID ${modelId} could not be found.` });
+      router.push('/models');
     }
   }, [modelId, isReady, isLoadingModel, getModelById, form, router, toast]);
 
