@@ -10,6 +10,7 @@ interface Params {
 
 // GET a single object
 export async function GET(request: Request, { params }: Params) {
+  const { modelId, objectId } = params;
   const currentUser = await getCurrentUserFromCookie();
   if (!currentUser || !['user', 'administrator'].includes(currentUser.role)) {
     return NextResponse.json({ error: 'Unauthorized to view object' }, { status: 403 });
@@ -17,7 +18,7 @@ export async function GET(request: Request, { params }: Params) {
   try {
     const db = await getDb();
     // Also fetch isDeleted and deletedAt
-    const row = await db.get('SELECT id, data, currentStateId, ownerId, isDeleted, deletedAt FROM data_objects WHERE id = ? AND model_id = ?', params.objectId, params.modelId);
+    const row = await db.get('SELECT id, data, currentStateId, ownerId, isDeleted, deletedAt FROM data_objects WHERE id = ? AND model_id = ?', objectId, modelId);
 
     if (!row) {
       return NextResponse.json({ error: 'Object not found' }, { status: 404 });
@@ -32,13 +33,14 @@ export async function GET(request: Request, { params }: Params) {
     };
     return NextResponse.json(object);
   } catch (error) {
-    console.error(`Failed to fetch object ${params.objectId}:`, error);
+    console.error(`Failed to fetch object ${objectId}:`, error);
     return NextResponse.json({ error: 'Failed to fetch object' }, { status: 500 });
   }
 }
 
 // PUT (update) an object
 export async function PUT(request: Request, { params }: Params) {
+  const { modelId, objectId } = params;
   const currentUser = await getCurrentUserFromCookie();
   if (!currentUser || !['user', 'administrator'].includes(currentUser.role)) {
     return NextResponse.json({ error: 'Unauthorized to update object' }, { status: 403 });
@@ -62,7 +64,7 @@ export async function PUT(request: Request, { params }: Params) {
     }: Partial<DataObject> & {id?: string, model_id?:string, currentStateId?: string | null, ownerId?: string | null, createdAt?:string, updatedAt?:string, isDeleted?: boolean, deletedAt?: string | null} = requestBody;
 
 
-    const existingObjectRecord = await db.get('SELECT data, currentStateId, ownerId, model_id, isDeleted FROM data_objects WHERE id = ? AND model_id = ?', params.objectId, params.modelId);
+    const existingObjectRecord = await db.get('SELECT data, currentStateId, ownerId, model_id, isDeleted FROM data_objects WHERE id = ? AND model_id = ?', objectId, modelId);
     if (!existingObjectRecord) {
       await db.run('ROLLBACK');
       return NextResponse.json({ error: 'Object not found' }, { status: 404 });
@@ -77,7 +79,7 @@ export async function PUT(request: Request, { params }: Params) {
     const oldCurrentStateId = existingObjectRecord.currentStateId;
     const oldOwnerId = existingObjectRecord.ownerId;
 
-    const properties: Property[] = await db.all('SELECT * FROM properties WHERE model_id = ?', params.modelId);
+    const properties: Property[] = await db.all('SELECT * FROM properties WHERE model_id = ?', modelId);
     const validationRulesets: ValidationRuleset[] = await db.all('SELECT * FROM validation_rulesets');
 
 
@@ -110,8 +112,8 @@ export async function PUT(request: Request, { params }: Params) {
           if (newValue !== null && typeof newValue !== 'undefined' && String(newValue).trim() !== '') {
             const conflictingObject = await db.get(
               `SELECT id FROM data_objects WHERE model_id = ? AND id != ? AND json_extract(data, '$.${prop.name}') = ? AND (isDeleted = 0 OR isDeleted IS NULL)`, // Check only non-deleted
-              params.modelId,
-              params.objectId,
+              modelId,
+              objectId,
               newValue
             );
             if (conflictingObject) {
@@ -161,7 +163,7 @@ export async function PUT(request: Request, { params }: Params) {
 
 
     if (Object.prototype.hasOwnProperty.call(requestBody, 'currentStateId')) {
-        modelDetails = await db.get('SELECT workflowId FROM models WHERE id = ?', params.modelId);
+        modelDetails = await db.get('SELECT workflowId FROM models WHERE id = ?', modelId);
         if (modelDetails && modelDetails.workflowId) {
             workflow = await db.get('SELECT * FROM workflows WHERE id = ?', modelDetails.workflowId);
              if (workflow) {
@@ -192,7 +194,7 @@ export async function PUT(request: Request, { params }: Params) {
                     finalCurrentStateIdToSave = null;
                 }
             } else {
-                console.warn(`Workflow ${modelDetails.workflowId} for model ${params.modelId} not found during object update. State not changed.`);
+                console.warn(`Workflow ${modelDetails.workflowId} for model ${modelId} not found during object update. State not changed.`);
             }
         } else {
             finalCurrentStateIdToSave = null;
@@ -212,7 +214,7 @@ export async function PUT(request: Request, { params }: Params) {
         finalOwnerIdToSave = newOwnerIdFromRequest;
       }
     } else if (Object.prototype.hasOwnProperty.call(requestBody, 'ownerId')) {
-      console.warn(`User ${currentUser.username} (not admin) attempted to change ownerId for object ${params.objectId}. Change ignored.`);
+      console.warn(`User ${currentUser.username} (not admin) attempted to change ownerId for object ${objectId}. Change ignored.`);
     }
 
     const currentTimestamp = new Date().toISOString();
@@ -283,8 +285,8 @@ export async function PUT(request: Request, { params }: Params) {
       await db.run(
         'INSERT INTO data_object_changelog (id, dataObjectId, modelId, changedAt, changedByUserId, changeType, changes) VALUES (?, ?, ?, ?, ?, ?, ?)',
         changelogId,
-        params.objectId,
-        params.modelId,
+        objectId,
+        modelId,
         currentTimestamp,
         currentUser?.id || null,
         'UPDATE',
@@ -299,14 +301,14 @@ export async function PUT(request: Request, { params }: Params) {
       JSON.stringify(newData),
       finalCurrentStateIdToSave,
       finalOwnerIdToSave,
-      params.objectId,
-      params.modelId
+      objectId,
+      modelId
     );
 
     await db.run('COMMIT');
 
     const updatedObject: DataObject = {
-      id: params.objectId,
+      id: objectId,
       currentStateId: finalCurrentStateIdToSave,
       ownerId: finalOwnerIdToSave,
       isDeleted: false, // Since this is an update, it must be active
@@ -316,7 +318,7 @@ export async function PUT(request: Request, { params }: Params) {
     return NextResponse.json(updatedObject);
   } catch (error: any) {
     await db.run('ROLLBACK');
-    console.error(`API Error (PUT /models/${params.modelId}/objects/${params.objectId}) - Error updating object. Message: ${error.message}, Stack: ${error.stack}`, error);
+    console.error(`API Error (PUT /models/${modelId}/objects/${objectId}) - Error updating object. Message: ${error.message}, Stack: ${error.stack}`, error);
     let apiErrorMessage = 'Failed to update object during server processing.';
     let errorDetails = error.message || 'No specific error message available from caught error.';
     if (error.stack) {
@@ -328,6 +330,7 @@ export async function PUT(request: Request, { params }: Params) {
 
 // DELETE an object (now soft delete)
 export async function DELETE(request: Request, { params }: Params) {
+  const { modelId, objectId } = params;
   const currentUser = await getCurrentUserFromCookie();
   if (!currentUser || !['user', 'administrator'].includes(currentUser.role)) {
     return NextResponse.json({ error: 'Unauthorized to delete object' }, { status: 403 });
@@ -337,7 +340,7 @@ export async function DELETE(request: Request, { params }: Params) {
   await db.run('BEGIN TRANSACTION');
   try {
     const currentTimestamp = new Date().toISOString();
-    const objectToSoftDelete = await db.get('SELECT data FROM data_objects WHERE id = ? AND model_id = ? AND (isDeleted = 0 OR isDeleted IS NULL)', params.objectId, params.modelId);
+    const objectToSoftDelete = await db.get('SELECT data FROM data_objects WHERE id = ? AND model_id = ? AND (isDeleted = 0 OR isDeleted IS NULL)', objectId, modelId);
 
     if (!objectToSoftDelete) {
       await db.run('ROLLBACK');
@@ -347,8 +350,8 @@ export async function DELETE(request: Request, { params }: Params) {
     const result = await db.run(
       'UPDATE data_objects SET isDeleted = 1, deletedAt = ? WHERE id = ? AND model_id = ?',
       currentTimestamp,
-      params.objectId,
-      params.modelId
+      objectId,
+      modelId
     );
 
     if (result.changes === 0) {
@@ -367,8 +370,8 @@ export async function DELETE(request: Request, { params }: Params) {
     await db.run(
       'INSERT INTO data_object_changelog (id, dataObjectId, modelId, changedAt, changedByUserId, changeType, changes) VALUES (?, ?, ?, ?, ?, ?, ?)',
       changelogId,
-      params.objectId,
-      params.modelId,
+      objectId,
+      modelId,
       currentTimestamp,
       currentUser?.id || null,
       'DELETE',
@@ -379,8 +382,7 @@ export async function DELETE(request: Request, { params }: Params) {
     return NextResponse.json({ message: 'Object soft deleted successfully' });
   } catch (error: any) {
     await db.run('ROLLBACK');
-    console.error(`Failed to soft delete object ${params.objectId}:`, error);
+    console.error(`Failed to soft delete object ${objectId}:`, error);
     return NextResponse.json({ error: 'Failed to soft delete object', details: error.message }, { status: 500 });
   }
 }
-

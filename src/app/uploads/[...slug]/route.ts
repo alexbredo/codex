@@ -9,13 +9,14 @@ const UPLOADS_DIR = path.join(process.cwd(), 'data', 'uploads');
 
 export async function GET(request: Request, { params }: { params: { slug: string[] } }) {
   try {
-    if (!params.slug || params.slug.length === 0) {
+    const { slug } = params;
+    if (!slug || slug.length === 0) {
       return NextResponse.json({ error: 'File path is required.' }, { status: 400 });
     }
 
     // Construct the file path from the slug parts
     // Basic sanitization: ensure no '..' to prevent path traversal
-    const slugParts = params.slug.map(part => part.replace(/\.\./g, '')); 
+    const slugParts = slug.map(part => part.replace(/\.\./g, '')); 
     const relativeFilePath = path.join(...slugParts);
     const absoluteFilePath = path.normalize(path.join(UPLOADS_DIR, relativeFilePath));
 
