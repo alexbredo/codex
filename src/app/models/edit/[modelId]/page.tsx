@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useEffect, useState, useRef } from 'react'; // Added useRef
+import { useEffect, useState, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter, useParams } from 'next/navigation';
@@ -27,36 +27,25 @@ export default function EditModelPage() {
   const { toast } = useToast();
   const [currentModel, setCurrentModel] = useState<Model | null>(null);
   const [isLoadingModel, setIsLoadingModel] = useState(true);
-  const pageInitializedForCurrentModelIdRef = useRef(false); // Ref to track initialization
+  const pageInitializedForCurrentModelIdRef = useRef(false);
 
   const form = useForm<ModelFormValues>({
     resolver: zodResolver(modelFormSchema),
-    // Default values will be set by the useEffect when model data is loaded
   });
 
-  // Effect to fetch data when modelId changes or on initial mount for this modelId
+  // This effect is now specifically for initializing the page and form when the model is first available.
   useEffect(() => {
-    if (modelId) {
-      pageInitializedForCurrentModelIdRef.current = false; // Reset init flag when modelId changes
-      fetchData(`Navigated to Edit Model: ${modelId}`);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelId]); // Only re-run if modelId itself changes
-
-
-  useEffect(() => {
+    // Don't do anything until the data context is ready and we have a modelId.
     if (!isReady || !modelId) {
-      setIsLoadingModel(true);
       return;
     }
 
-    // If page is already initialized for this modelId AND currentModel matches, avoid re-processing
-    if (pageInitializedForCurrentModelIdRef.current && currentModel && currentModel.id === modelId) {
-      setIsLoadingModel(false);
-      return;
+    // Only run the initialization logic once per modelId.
+    if (pageInitializedForCurrentModelIdRef.current) {
+        setIsLoadingModel(false); // Ensure loader is off if we're already initialized
+        return;
     }
 
-    setIsLoadingModel(true);
     const foundModel = getModelById(modelId);
 
     if (foundModel) {
@@ -87,18 +76,25 @@ export default function EditModelPage() {
             maxValue: p.type === 'number' ? (p.maxValue === undefined || p.maxValue === null ? null : Number(p.maxValue)) : null,
           } as PropertyFormValues)),
       });
-      pageInitializedForCurrentModelIdRef.current = true; // Mark as initialized for this modelId
+      // Mark this modelId as initialized to prevent re-running form.reset() on subsequent re-renders.
+      pageInitializedForCurrentModelIdRef.current = true;
+      setIsLoadingModel(false);
     } else {
-      // Only navigate away if data is ready and we've attempted to load (pageInitializedRef is true means we expect a model)
-      // OR if this is the first attempt (pageInitializedRef is false) and model is not found after context is ready
-      if (isReady) { // Implicitly, pageInitializedRef would be false on first attempt, or true on subsequent if model disappears
-        toast({ variant: "destructive", title: "Error", description: `Model with ID ${modelId} not found.` });
-        router.push('/models');
-      }
+      // If the model isn't found when the data context is ready, then it's a real error.
+      toast({ variant: "destructive", title: "Error", description: `Model with ID ${modelId} not found.` });
+      router.push('/models');
     }
-    setIsLoadingModel(false);
-  }, [modelId, getModelById, isReady, form, router, toast]);
-
+  }, [modelId, isReady, getModelById, form, router, toast]);
+  
+   // This effect specifically fetches data when the component mounts or modelId changes.
+  useEffect(() => {
+    if (modelId) {
+      pageInitializedForCurrentModelIdRef.current = false; // Reset init flag when modelId changes
+      setIsLoadingModel(true); // Set loading true when we start fetching for a new model
+      fetchData(`Navigated to Edit Model: ${modelId}`);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelId]);
 
   const onSubmit = async (values: ModelFormValues) => {
     console.log("[EditModelPage] onSubmit - received values from ModelForm:", JSON.stringify(values, null, 2));
@@ -120,7 +116,7 @@ export default function EditModelPage() {
         const propertyForApi: Property = {
           ...p_form_value,
           id: p_form_value.id || crypto.randomUUID(),
-          model_id: currentModel.id, // ensure model_id is passed for properties
+          model_id: currentModel.id,
           orderIndex: index,
           required: !!p_form_value.required,
           autoSetOnCreate: !!p_form_value.autoSetOnCreate,
