@@ -41,7 +41,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Edit, Trash2, DownloadCloud, PlusCircle, Loader2, DatabaseZap, FileText, ListFilter, CheckCircle, ShieldCheck, AlertTriangle, Settings2, Workflow as WorkflowIconLucide, History as HistoryIcon, User as UserIcon, Layers, Edit2 as Edit2Icon, ZoomIn } from 'lucide-react';
+import { ArrowLeft, Edit, Trash2, DownloadCloud, PlusCircle, Loader2, DatabaseZap, FileText, ListFilter, CheckCircle, ShieldCheck, AlertTriangle, Settings2, Workflow as WorkflowIconLucide, History as HistoryIcon, User as UserIcon, Layers, Edit2 as Edit2Icon, ZoomIn, ExternalLink, RotateCcw, UserCircle as UserCircleIcon, CalendarClock } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
 import { withAuth } from '@/contexts/auth-context';
@@ -57,7 +57,7 @@ import { Progress } from '@/components/ui/progress';
 import { Paperclip } from 'lucide-react';
 
 
-export default function ViewObjectPage() {
+function ViewObjectPageInternal() {
   const router = useRouter();
   const params = useParams();
   const modelId = params.modelId as string;
@@ -272,7 +272,7 @@ export default function ViewObjectPage() {
           >
             <Image
               src={finalImageUrl}
-              alt={`${property.name} for ${getObjectDisplayValue(viewingObject, currentModel, allModels, allDbObjects)}`}
+              alt={`${getObjectDisplayValue(viewingObject, currentModel, allModels, allDbObjects)} ${property.name}`}
               layout="fill"
               objectFit="contain"
               data-ai-hint={currentModel?.name.toLowerCase() || "object image"}
@@ -472,14 +472,14 @@ export default function ViewObjectPage() {
             {currentWorkflow && (
               <div>
                   <Badge variant={viewingObject.currentStateId ? "default" : "secondary"} className="text-sm">
-                      <CheckCircle2 className="mr-2 h-4 w-4" />
+                      <CheckCircle className="mr-2 h-4 w-4" />
                       State: {objectStateName}
                   </Badge>
               </div>
             )}
             <div>
               <Badge variant="outline" className="text-sm">
-                <UserCircle className="mr-2 h-4 w-4 text-muted-foreground" />
+                <UserCircleIcon className="mr-2 h-4 w-4 text-muted-foreground" />
                 Owned By: {ownerUsername}
               </Badge>
             </div>
@@ -583,7 +583,7 @@ export default function ViewObjectPage() {
                                     </TableCell>
                                     <TableCell>
                                         <Badge variant="outline" className="text-xs">
-                                            <UsersIconLucide className="mr-1.5 h-3 w-3" />
+                                            <UserIcon className="mr-1.5 h-3 w-3" />
                                             {entry.changedByUsername || 'System'}
                                         </Badge>
                                     </TableCell>
@@ -705,4 +705,7 @@ export default function ViewObjectPage() {
     </div>
   );
 }
+
 export default withAuth(ViewObjectPageInternal, ['user', 'administrator']);
+
+    
