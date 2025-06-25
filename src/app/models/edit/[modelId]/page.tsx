@@ -36,11 +36,10 @@ export default function EditModelPage() {
   useEffect(() => {
     if (!modelId) return;
 
-    // Only start a full load/reset if the model ID has changed
     if (pageInitializedForCurrentModelIdRef.current !== modelId) {
         setIsLoadingModel(true);
-        setCurrentModel(null); // Clear old model data immediately
-        fetchData(`Navigated to Edit Model: ${modelId}`); // Fetch fresh data for this model
+        setCurrentModel(null);
+        fetchData(`Navigated to Edit Model: ${modelId}`);
     }
   }, [modelId, fetchData]);
 
@@ -79,7 +78,6 @@ export default function EditModelPage() {
         pageInitializedForCurrentModelIdRef.current = modelId;
       }
     } else if (isReady && modelId && !isLoadingModel && !getModelById(modelId)) {
-      // If data is ready, we're not loading, and the model is gone, then it's an error.
       toast({ variant: "destructive", title: "Error", description: `Model with ID ${modelId} could not be found.` });
       router.push('/models');
     }
@@ -176,5 +174,3 @@ export default function EditModelPage() {
     </div>
   );
 }
-
-    

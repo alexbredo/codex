@@ -208,7 +208,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const fetchData = useCallback(async (triggeredBy?: string) => {
     if (isFetchingDataRef.current) {
-      console.warn(`[DataContext] Fetch already in progress. New trigger: ${triggeredBy}. Skipping.`);
       return;
     }
     isFetchingDataRef.current = true;
@@ -567,5 +566,3 @@ export function useData(): DataContextType {
   if (context === undefined) throw new Error('useData must be used within a DataProvider');
   return context;
 }
-
-    
