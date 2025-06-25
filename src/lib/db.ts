@@ -42,26 +42,6 @@ async function initializeDb(): Promise<Database> {
   // Enable foreign key support
   await db.exec('PRAGMA foreign_keys = ON;');
 
-  // ********** RECOVERY LOGIC **********
-  // This attempts to fix a state from a previously failed migration.
-  const oldMigrationTable = await db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='models_old_for_migration'").catch(() => null);
-  if (oldMigrationTable) {
-    console.warn("Detected a failed previous migration state. Attempting to recover by renaming 'models_old_for_migration' back to 'models'.");
-    const newModelsTableExists = await db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='models'").catch(() => null);
-    if (!newModelsTableExists) {
-      try {
-        await db.exec("ALTER TABLE models_old_for_migration RENAME TO models");
-        console.log("Recovery successful. 'models_old_for_migration' has been renamed to 'models'.");
-      } catch (recoveryError) {
-        console.error("Recovery failed during rename. Manual database intervention is required.", recoveryError);
-        throw new Error("Database is in a broken state due to a failed migration. Could not auto-recover.");
-      }
-    } else {
-      console.error("Recovery failed: Both 'models' and 'models_old_for_migration' tables exist. Manual database intervention is required.");
-      throw new Error("Database is in a broken state due to a failed migration. Cannot auto-recover as both old and new tables exist.");
-    }
-  }
-
   // Model Groups Table
   await db.exec(`
     CREATE TABLE IF NOT EXISTS model_groups (
@@ -121,40 +101,20 @@ async function initializeDb(): Promise<Database> {
       displayPropertyNames TEXT,
       model_group_id TEXT,
       workflowId TEXT,
-      namespace TEXT, -- Temporarily keep for migration check, will be ignored by app
       FOREIGN KEY (model_group_id) REFERENCES model_groups(id) ON DELETE SET NULL,
       FOREIGN KEY (workflowId) REFERENCES workflows(id) ON DELETE SET NULL
     );
   `);
-  
-  // ********** SAFE MIGRATION LOGIC **********
+
+  // Simple, safe migration check: if model_group_id does not exist, add it.
   const modelsTableInfo = await db.all("PRAGMA table_info(models)").catch(() => []);
-  const hasNamespace = modelsTableInfo.some(c => c.name === 'namespace');
-  let hasModelGroupId = modelsTableInfo.some(c => c.name === 'model_group_id');
-  
-  if (!hasModelGroupId) {
-    console.log("Migration: `model_group_id` column not found. Adding it now.");
+  if (!modelsTableInfo.some(c => c.name === 'model_group_id')) {
+    console.log("Migration: `model_group_id` column not found on `models` table. Adding it now.");
     await db.exec('ALTER TABLE models ADD COLUMN model_group_id TEXT REFERENCES model_groups(id) ON DELETE SET NULL');
-    hasModelGroupId = true;
+    // Set a default for existing rows that might not have it
+    await db.run('UPDATE models SET model_group_id = ? WHERE model_group_id IS NULL', defaultGroupId);
   }
   
-  if (hasNamespace) {
-    console.log("Migration: `namespace` column found. Migrating data to `model_group_id` if needed.");
-    await db.exec(`
-      UPDATE models 
-      SET model_group_id = (SELECT id FROM model_groups WHERE name = models.namespace) 
-      WHERE namespace IS NOT NULL AND model_group_id IS NULL
-    `);
-    console.log("Migration: Populated `model_group_id` from `namespace` where possible.");
-  }
-  
-  // Ensure any remaining models without a group get assigned to Default
-  await db.run('UPDATE models SET model_group_id = ? WHERE model_group_id IS NULL', defaultGroupId);
-  console.log("Migration: Ensured all models have a `model_group_id`.");
-  
-  // Note: We are NOT dropping the `namespace` column to be safe. The application should just not use it.
-
-
   // Properties Table
   await db.exec(`
     CREATE TABLE IF NOT EXISTS properties (
