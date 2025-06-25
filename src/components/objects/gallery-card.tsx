@@ -5,7 +5,7 @@ import * as React from 'react'; // Import React
 import type { DataObject, Model, Property, WorkflowWithDetails } from '@/lib/types';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Eye, Edit, Trash2, CheckCircle2, ArchiveRestore } from 'lucide-react'; // Added ArchiveRestore
+import { Eye, Edit, Trash2, CheckCircle2, ArchiveRestore, Paperclip } from 'lucide-react'; // Added Paperclip
 import { getObjectDisplayValue, cn } from '@/lib/utils'; // Added cn
 import Image from 'next/image';
 import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
@@ -149,6 +149,18 @@ const GalleryCard = React.memo(function GalleryCard({
         return <Badge variant="outline" className="text-xs">Markdown Content</Badge>;
       case 'image':
         return <Badge variant="outline" className="text-xs">Image</Badge>;
+      case 'fileAttachment':
+        if (typeof value === 'object' && value.url && value.name) {
+          return (
+            <a href={value.url} download={value.name} className="text-primary hover:underline inline-flex items-center text-xs" onClick={(e) => e.stopPropagation()}>
+              <Paperclip className="h-3 w-3 mr-1" />
+              <span className="truncate" title={value.name}>
+                {value.name.length > 20 ? value.name.substring(0, 17) + '...' : value.name}
+              </span>
+            </a>
+          );
+        }
+        return <Badge variant="outline" className="text-xs">File</Badge>;
       case 'rating':
         return <StarDisplay rating={value as number} size="sm"/>;
       case 'relationship':
