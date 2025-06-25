@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
@@ -26,27 +27,25 @@ export default function EditModelPage() {
   const { toast } = useToast();
   const [currentModel, setCurrentModel] = useState<Model | null>(null);
   const [isLoadingModel, setIsLoadingModel] = useState(true);
-  const previousModelIdRef = useRef<string | null>(null); // To track if the actual model ID has changed
+  const pageInitializedForCurrentModelIdRef = useRef<string | null>(null);
 
   const form = useForm<ModelFormValues>({
     resolver: zodResolver(modelFormSchema),
   });
 
-  // This single, robust useEffect handles data fetching for the page and form initialization.
   useEffect(() => {
-    // If the modelId from the URL changes, it's a new page navigation. Reset everything.
-    if (modelId !== previousModelIdRef.current) {
-      setIsLoadingModel(true);
-      setCurrentModel(null);
-      form.reset(); // Reset form to clear old data
-      fetchData(`Navigated to Edit Model: ${modelId}`);
-      previousModelIdRef.current = modelId; // Track the new modelId
-      return; // Exit early to wait for data fetch to complete and trigger a re-render
-    }
+    if (!modelId) return;
 
-    // This part runs on subsequent re-renders, including when `isReady` becomes true.
-    // We only proceed if data is ready and we haven't successfully loaded this model yet.
-    if (isReady && !currentModel && modelId === previousModelIdRef.current) {
+    // Only start loading if the model ID changes
+    if (pageInitializedForCurrentModelIdRef.current !== modelId) {
+      setIsLoadingModel(true);
+      setCurrentModel(null); // Clear old model data
+      fetchData(`Navigated to Edit Model: ${modelId}`); // Fetch fresh data for this model
+    }
+  }, [modelId, fetchData]);
+  
+  useEffect(() => {
+    if (isReady && modelId && isLoadingModel) {
       const foundModel = getModelById(modelId);
 
       if (foundModel) {
@@ -77,16 +76,15 @@ export default function EditModelPage() {
             maxValue: p.type === 'number' ? (p.maxValue === undefined || p.maxValue === null ? null : Number(p.maxValue)) : null,
           } as PropertyFormValues)),
         });
-        setIsLoadingModel(false); // Successfully loaded, stop the loader.
-      } else {
-        // Data is ready, but the model ID is invalid. This is an error condition.
-        toast({ variant: "destructive", title: "Error", description: `Model with ID ${modelId} not found.` });
+        setIsLoadingModel(false);
+        pageInitializedForCurrentModelIdRef.current = modelId;
+      } else if (!isLoadingModel && pageInitializedForCurrentModelIdRef.current === modelId) {
+        // If we were not loading but model is gone, then it's an error.
+        toast({ variant: "destructive", title: "Error", description: `Model with ID ${modelId} could not be found.` });
         router.push('/models');
-        // No need to set loading to false here as we are navigating away.
       }
     }
-  }, [modelId, isReady, currentModel, getModelById, fetchData, form, router, toast]);
-  
+  }, [modelId, isReady, isLoadingModel, getModelById, form, router, toast]);
 
   const onSubmit = async (values: ModelFormValues) => {
     if (!currentModel) return;

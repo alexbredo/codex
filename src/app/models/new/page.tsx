@@ -52,7 +52,6 @@ export default function CreateModelPage() {
 
 
   const onSubmit = async (values: ModelFormValues) => {
-    console.log("[CreateModelPage] onSubmit - received values from ModelForm:", JSON.stringify(values, null, 2));
     const existingByName = getModelByName(values.name);
     if (existingByName) {
         form.setError("name", { type: "manual", message: "A model with this name already exists." });
@@ -84,7 +83,6 @@ export default function CreateModelPage() {
         return propertyForApi;
       }),
     };
-    console.log("[CreateModelPage] onSubmit - modelData to be sent to addModel:", JSON.stringify(modelData, null, 2));
 
     try {
       await addModel(modelData);

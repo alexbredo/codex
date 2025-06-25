@@ -374,7 +374,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const payload = {
       name: updates.name ?? existingModel.name,
       description: updates.description ?? existingModel.description,
-      modelGroupId: updates.modelGroupId, 
+      modelGroupId: Object.prototype.hasOwnProperty.call(updates, 'modelGroupId') ? updates.modelGroupId : existingModel.modelGroupId,
       displayPropertyNames: updates.displayPropertyNames ?? existingModel.displayPropertyNames,
       workflowId: Object.prototype.hasOwnProperty.call(updates, 'workflowId') ? updates.workflowId : existingModel.workflowId,
       properties: propertiesForApi,
