@@ -16,11 +16,11 @@ export async function GET(request: Request) {
   
   const permissions = currentUser?.permissionIds || [];
   const canView =
+    permissions.includes('*') ||
     permissions.includes('users:view') ||
     permissions.includes('users:create') ||
     permissions.includes('users:edit') ||
-    permissions.includes('users:delete') ||
-    permissions.includes('*');
+    permissions.includes('users:delete');
 
   if (!currentUser || !canView) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });

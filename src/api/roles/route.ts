@@ -13,12 +13,15 @@ const roleSchema = z.object({
 // GET all roles
 export async function GET(request: Request) {
   const currentUser = await getCurrentUserFromCookie();
-  // A user can view roles if they can manage roles, or create/edit users.
+  // A user can view roles if they can manage roles, or do anything with users.
   const canViewRoles = 
     currentUser?.permissionIds.includes('*') ||
     currentUser?.permissionIds.includes('roles:manage') ||
     currentUser?.permissionIds.includes('users:create') ||
-    currentUser?.permissionIds.includes('users:edit');
+    currentUser?.permissionIds.includes('users:edit') ||
+    currentUser?.permissionIds.includes('users:view') ||
+    currentUser?.permissionIds.includes('users:delete');
+
 
   if (!currentUser || !canViewRoles) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
