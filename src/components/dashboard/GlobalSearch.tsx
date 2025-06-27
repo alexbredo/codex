@@ -11,7 +11,7 @@ import type { Model, DataObject } from '@/lib/types';
 import { useData } from '@/contexts/data-context';
 import { useDebounce } from '@/hooks/use-debounce';
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import {
   Command,
   CommandEmpty,
@@ -46,7 +46,7 @@ export function GlobalSearch({ open, setOpen }: { open: boolean; setOpen: (open:
   const { data: results, isLoading } = useQuery<SearchResult[]>({
     queryKey: ['globalSearch', debouncedQuery],
     queryFn: () => fetchSearchResults(debouncedQuery),
-    enabled: !!debouncedQuery.trim(),
+    enabled: !!debouncedQuery.trim() && debouncedQuery.trim().toLowerCase() !== 'model:',
   });
 
   const { models, isReady: dataIsReady } = useData();
@@ -92,6 +92,7 @@ export function GlobalSearch({ open, setOpen }: { open: boolean; setOpen: (open:
     setQuery(prev => `${prev.trim()} ${suggestion}`);
   };
 
+  const showModelSuggestions = debouncedQuery.trim().toLowerCase() === 'model:';
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -100,20 +101,17 @@ export function GlobalSearch({ open, setOpen }: { open: boolean; setOpen: (open:
           shouldFilter={false}
           className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-group]]:px-2 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5"
         >
-          <DialogHeader className="sr-only">
-             <DialogTitle>Global Search</DialogTitle>
-          </DialogHeader>
           <CommandInput
             placeholder="Search... (e.g., 'Task' or 'model:Project status:done')"
             value={query}
             onValueChange={setQuery}
           />
           <CommandList>
-            <CommandEmpty>
-              {isLoading ? 'Searching...' : (debouncedQuery.trim() ? `No results found for "${debouncedQuery}".` : "Start typing to search.")}
-            </CommandEmpty>
+            {/* Loading State */}
+            {isLoading && <CommandEmpty>Searching...</CommandEmpty>}
 
-            {!isLoading && debouncedQuery.trim() && results && results.length > 0 && (
+            {/* Display Results */}
+            {!isLoading && results && results.length > 0 && (
               Object.entries(groupedResults).map(([modelName, items]) => (
                 <CommandGroup key={modelName} heading={modelName}>
                   {items.map((result) => (
@@ -132,15 +130,34 @@ export function GlobalSearch({ open, setOpen }: { open: boolean; setOpen: (open:
               ))
             )}
 
-            {!debouncedQuery.trim() && (
+            {/* Display Model Suggestions when 'model:' is typed */}
+            {!isLoading && showModelSuggestions && (
+                <CommandGroup heading="Select a model to filter by">
+                    {models.map(model => (
+                        <CommandItem
+                            key={model.id}
+                            value={model.name}
+                            onSelect={() => {
+                                setQuery(`model:${model.name} `);
+                            }}
+                        >
+                            <DatabaseZap className="mr-2 h-4 w-4" />
+                            <span>{model.name}</span>
+                        </CommandItem>
+                    ))}
+                </CommandGroup>
+            )}
+
+            {/* Initial State (no query) */}
+            {!isLoading && !debouncedQuery.trim() && (
               <>
                 <CommandGroup heading="Suggestions">
-                  <CommandItem onSelect={() => handleSuggestionSelect('model:')}>
+                  <CommandItem onSelect={() => setQuery('model:')}>
                     <DatabaseZap className="mr-2 h-4 w-4" />
                     <span>Filter by model...</span>
                   </CommandItem>
                   {allSearchableProperties.slice(0, 3).map(propName => (
-                    <CommandItem key={propName} onSelect={() => handleSuggestionSelect(`${propName}:`)}>
+                    <CommandItem key={propName} onSelect={() => setQuery(`${propName}:`)}>
                       <ListFilter className="mr-2 h-4 w-4" />
                       <span>Filter by property: {propName}</span>
                     </CommandItem>
@@ -165,6 +182,12 @@ export function GlobalSearch({ open, setOpen }: { open: boolean; setOpen: (open:
                 )}
               </>
             )}
+
+            {/* No Results Fallback */}
+            {!isLoading && (!results || results.length === 0) && debouncedQuery.trim() && !showModelSuggestions && (
+                <CommandEmpty>No results found for "{debouncedQuery}".</CommandEmpty>
+            )}
+            
           </CommandList>
         </Command>
       </DialogContent>
