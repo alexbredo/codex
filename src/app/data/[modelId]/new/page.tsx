@@ -14,6 +14,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import type { Model, Property } from '@/lib/types';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { z } from 'zod';
+import { useAuth } from '@/contexts/auth-context';
 
 function parseDefaultValue(value: string | undefined, type: Property['type'], relationshipType?: Property['relationshipType']): any {
   if (value === undefined || value === null || value.trim() === '') {
@@ -64,9 +65,18 @@ export default function CreateObjectPage() {
   const modelId = params.modelId as string;
   const { getModelById, addObject, validationRulesets, isReady } = useData(); 
   const { toast } = useToast();
+  const { hasPermission, isLoading: isAuthLoading } = useAuth();
   const [currentModel, setCurrentModel] = useState<Model | null>(null);
   const [isLoadingModel, setIsLoadingModel] = useState(true);
   const [formObjectId, setFormObjectId] = useState<string | null>(null); 
+
+  useEffect(() => {
+    if (!isAuthLoading && !hasPermission('objects:create')) {
+        toast({ variant: "destructive", title: "Unauthorized", description: "You don't have permission to create new objects." });
+        router.replace(`/data/${modelId}`);
+    }
+  }, [isAuthLoading, hasPermission, router, modelId, toast]);
+
 
   const dynamicSchema = useMemo(() => {
     if (currentModel && isReady) { // Ensure validationRulesets are ready from context
@@ -180,7 +190,7 @@ export default function CreateObjectPage() {
     }
   };
 
-  if (!isReady || isLoadingModel) {
+  if (!isReady || isLoadingModel || isAuthLoading) {
     return (
       <div className="flex flex-col justify-center items-center h-screen">
         <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />

@@ -14,12 +14,13 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import type { Model, Property } from '@/lib/types';
 import { ArrowLeft, Loader2 } from 'lucide-react';
+import { withAuth } from '@/contexts/auth-context';
 
 const INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE = "__DEFAULT_DISPLAY_PROPERTY__";
 const INTERNAL_NO_WORKFLOW_VALUE = "__NO_WORKFLOW_SELECTED__";
 
 
-export default function EditModelPage() {
+function EditModelPageInternal() {
   const router = useRouter();
   const params = useParams();
   const modelId = params.modelId as string;
@@ -178,3 +179,5 @@ export default function EditModelPage() {
     </div>
   );
 }
+
+export default withAuth(EditModelPageInternal, 'models:manage');

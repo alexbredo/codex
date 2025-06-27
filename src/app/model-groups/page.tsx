@@ -254,4 +254,4 @@ function ModelGroupsPageInternal() {
   );
 }
 
-export default withAuth(ModelGroupsPageInternal, ['administrator']);
+export default withAuth(ModelGroupsPageInternal, 'admin:manage_model_groups');

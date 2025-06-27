@@ -1,5 +1,4 @@
 
-
 export type PropertyType = 'string' | 'number' | 'boolean' | 'date' | 'relationship' | 'markdown' | 'rating' | 'image' | 'fileAttachment';
 
 export interface Property {
@@ -266,4 +265,11 @@ export interface Role {
   description?: string;
   isSystemRole?: boolean;
   permissionIds?: string[]; // Populated when fetching a single role
+}
+export interface UserSession {
+  id: string;
+  username: string;
+  role: 'user' | 'administrator';
+  roleId: string;
+  permissionIds: string[];
 }

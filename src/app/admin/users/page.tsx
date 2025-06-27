@@ -4,7 +4,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { withAuth } from '@/contexts/auth-context';
+import { useAuth } from '@/contexts/auth-context';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -35,6 +35,7 @@ function UserAdminPageInternal() {
   const [editingUser, setEditingUser] = useState<User | null>(null);
 
   const { toast } = useToast();
+  const { hasPermission } = useAuth();
   const { isReady: dataContextIsReady, formatApiError } = useData();
 
   const dataFetchedOnMountRef = useRef(false);
@@ -195,9 +196,11 @@ function UserAdminPageInternal() {
                 <p className="text-muted-foreground">Manage user accounts and their roles.</p>
             </div>
         </div>
-        <Button onClick={handleCreateNew} className="bg-accent text-accent-foreground hover:bg-accent/90">
-          <PlusCircle className="mr-2 h-4 w-4" /> Create User
-        </Button>
+        {hasPermission('users:create') && (
+            <Button onClick={handleCreateNew} className="bg-accent text-accent-foreground hover:bg-accent/90">
+                <PlusCircle className="mr-2 h-4 w-4" /> Create User
+            </Button>
+        )}
       </header>
 
       <Dialog open={isFormOpen} onOpenChange={(open) => {
@@ -247,28 +250,32 @@ function UserAdminPageInternal() {
                       </span>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="icon" onClick={() => handleEditUser(user.id)} className="mr-2 hover:text-primary">
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon" className="hover:text-destructive">
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This action cannot be undone. This will permanently delete the user "{user.username}".
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleDeleteUser(user.id, user.username)}>Delete</AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                      {hasPermission('users:edit') && (
+                        <Button variant="ghost" size="icon" onClick={() => handleEditUser(user.id)} className="mr-2 hover:text-primary">
+                            <Edit className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {hasPermission('users:delete') && (
+                        <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon" className="hover:text-destructive">
+                                <Trash2 className="h-4 w-4" />
+                            </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                            <AlertDialogHeader>
+                                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                This action cannot be undone. This will permanently delete the user "{user.username}".
+                                </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleDeleteUser(user.id, user.username)}>Delete</AlertDialogAction>
+                            </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -281,4 +288,4 @@ function UserAdminPageInternal() {
   );
 }
 
-export default withAuth(UserAdminPageInternal, ['administrator']);
+export default withAuth(UserAdminPageInternal, 'users:view');

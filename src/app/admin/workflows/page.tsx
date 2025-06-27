@@ -160,4 +160,4 @@ function WorkflowsAdminPageInternal() {
   );
 }
 
-export default withAuth(WorkflowsAdminPageInternal, ['administrator']);
+export default withAuth(WorkflowsAdminPageInternal, 'admin:manage_workflows');

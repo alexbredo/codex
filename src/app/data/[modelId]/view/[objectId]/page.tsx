@@ -52,7 +52,6 @@ import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, Edit, Trash2, DownloadCloud, PlusCircle, Loader2, DatabaseZap, FileText, ListFilter, CheckCircle, ShieldCheck, AlertTriangle, Settings2, Workflow as WorkflowIconLucide, History as HistoryIcon, User as UserIcon, Layers, Edit2 as Edit2Icon, ZoomIn, ExternalLink, RotateCcw, UserCircle as UserCircleIcon, CalendarClock } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
-import { withAuth } from '@/contexts/auth-context';
 import { format } from 'date-fns';
 import ReactJson from 'react18-json-view';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -71,7 +70,7 @@ function ViewObjectPageInternal() {
   const modelId = params.modelId as string;
   const objectId = params.objectId as string;
   const { toast } = useToast();
-  const { user: currentUser, isLoading: authIsLoading } = useAuth(); // Get current user
+  const { user: currentUser, hasPermission, isLoading: authIsLoading } = useAuth(); // Get current user
 
   const { getModelById, models: allModels, getAllObjects, getWorkflowById, validationRulesets, getUserById, isReady: dataContextIsReady, formatApiError, fetchData: refreshDataContext } = useData();
 
@@ -88,6 +87,19 @@ function ViewObjectPageInternal() {
   const [revertingEntryId, setRevertingEntryId] = useState<string | null>(null);
   const [isReverting, setIsReverting] = useState(false);
   const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!authIsLoading && modelId) {
+      if (!hasPermission(`model:view:${modelId}`)) {
+        toast({
+          variant: 'destructive',
+          title: 'Unauthorized',
+          description: "You don't have permission to view objects of this model.",
+        });
+        router.replace('/');
+      }
+    }
+  }, [authIsLoading, hasPermission, modelId, router, toast]);
 
 
   const allDbObjects = useMemo(() => getAllObjects(true), [getAllObjects, dataContextIsReady]); // Include deleted for relationship lookups
@@ -443,8 +455,11 @@ function ViewObjectPageInternal() {
 
   const isAdmin = currentUser?.role === 'administrator';
   const canRevert = (changeType: ChangelogEntry['changeType']) => {
-    return ['UPDATE', 'DELETE', 'RESTORE'].includes(changeType);
+    return hasPermission('objects:revert') && ['UPDATE', 'DELETE', 'RESTORE'].includes(changeType);
   };
+
+  const canEditObject = hasPermission(`model:edit:${modelId}`) || (hasPermission('objects:edit_own') && viewingObject.ownerId === currentUser?.id);
+
 
   return (
     <div className="container mx-auto py-8">
@@ -452,7 +467,7 @@ function ViewObjectPageInternal() {
         <Button variant="outline" onClick={() => router.push(`/data/${modelId}`)}>
           <ArrowLeft className="mr-2 h-4 w-4" /> Back to {currentModel.name} Data
         </Button>
-        {!viewingObject.isDeleted && (
+        {!viewingObject.isDeleted && canEditObject && (
           <Button onClick={() => router.push(`/data/${modelId}/edit/${objectId}`)}>
             <Edit className="mr-2 h-4 w-4" /> Edit This {currentModel.name}
           </Button>
@@ -580,7 +595,7 @@ function ViewObjectPageInternal() {
                                 <TableHead className="w-[150px]">User</TableHead>
                                 <TableHead className="w-[100px]">Action</TableHead>
                                 <TableHead>Details</TableHead>
-                                {isAdmin && <TableHead className="w-[100px] text-right">Revert</TableHead>}
+                                {hasPermission('objects:revert') && <TableHead className="w-[100px] text-right">Revert</TableHead>}
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -639,7 +654,7 @@ function ViewObjectPageInternal() {
                                             </p>
                                         )}
                                     </TableCell>
-                                     {isAdmin && (
+                                     {hasPermission('objects:revert') && (
                                       <TableCell className="text-right">
                                         {canRevert(entry.changeType) && (
                                           <Button
@@ -668,7 +683,7 @@ function ViewObjectPageInternal() {
         </CardContent>
       </Card>
 
-      {isAdmin && (
+      {hasPermission('objects:revert') && (
         <AlertDialog open={isRevertConfirmOpen} onOpenChange={setIsRevertConfirmOpen}>
             <AlertDialogContent>
             <AlertDialogHeader>
@@ -714,4 +729,6 @@ function ViewObjectPageInternal() {
   );
 }
 
-export default withAuth(ViewObjectPageInternal, ['user', 'administrator']);
+// withAuth doesn't support dynamic checks like this, so we do it inside the component.
+// The wrapper is still useful for the initial user/loading check.
+export default ViewObjectPageInternal;

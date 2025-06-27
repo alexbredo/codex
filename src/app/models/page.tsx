@@ -24,7 +24,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { useData } from '@/contexts/data-context';
-import { withAuth } from '@/contexts/auth-context';
+import { useAuth } from '@/contexts/auth-context';
 import type { Model, ValidationRuleset } from '@/lib/types';
 import { PlusCircle, Eye, DatabaseZap, ListChecks, Search, Info, Code2, StickyNote, FolderOpen, Loader2, RefreshCw, ShieldCheck, DownloadCloud, UploadCloud, Settings2 } from 'lucide-react';
 import Link from 'next/link';
@@ -43,6 +43,7 @@ import { Label } from '@/components/ui/label';
 
 function ModelsPageInternal() {
   const { models, modelGroups, deleteModel, validationRulesets, isReady: dataContextIsReady, fetchData, formatApiError } = useData();
+  const { hasPermission } = useAuth();
   const { toast } = useToast();
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState('');
@@ -199,66 +200,68 @@ function ModelsPageInternal() {
               {isRefreshing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
               {isRefreshing ? "Refreshing..." : "Refresh"}
             </Button>
-            <Dialog open={isImportDialogOpen} onOpenChange={(open) => {
-                setIsImportDialogOpen(open);
-                if (!open) {
-                    setSelectedFile(null);
-                    setFileStringContent(null);
-                    if (fileInputRef.current) fileInputRef.current.value = "";
-                }
-            }}>
-                <DialogTrigger asChild>
-                    <Button variant="outline">
-                        <UploadCloud className="mr-2 h-4 w-4" /> Import Model
-                    </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-xl">
-                    <DialogHeader>
-                        <DialogTitle>Import Model from JSON</DialogTitle>
-                        <DialogDescription>
-                            Select a JSON file previously exported from CodexStructure. This will attempt to import the model structure and its data.
-                            Ensure the file format is correct. The file preview below should look like valid JSON.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="grid gap-4 py-4">
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="model-json-file" className="text-right col-span-1">
-                                JSON File
-                            </Label>
-                            <Input
-                                id="model-json-file"
-                                type="file"
-                                accept=".json"
-                                onChange={handleFileSelect}
-                                ref={fileInputRef}
-                                className="col-span-3"
-                            />
-                        </div>
-                        {selectedFile && (
-                            <p className="text-xs text-muted-foreground col-span-4 text-center">Selected: {selectedFile.name}</p>
-                        )}
-                        {fileStringContent && (
-                            <div className="mt-4 col-span-4">
-                                <Label className="text-sm font-medium">File Preview:</Label>
-                                <ScrollArea className="h-48 mt-1 rounded-md border p-2 bg-muted/50">
-                                    <pre className="text-xs whitespace-pre-wrap break-all">
-                                        {fileStringContent}
-                                    </pre>
-                                </ScrollArea>
-                            </div>
-                        )}
-                    </div>
-                    <DialogFooter>
-                        <DialogClose asChild>
-                            <Button type="button" variant="outline" disabled={isImporting}>Cancel</Button>
-                        </DialogClose>
-                        <Button type="button" onClick={handleImportSubmit} disabled={!selectedFile || isImporting}>
-                            {isImporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UploadCloud className="mr-2 h-4 w-4" />}
-                            {isImporting ? "Importing..." : "Import"}
+            {hasPermission('models:import_export') && (
+                <Dialog open={isImportDialogOpen} onOpenChange={(open) => {
+                    setIsImportDialogOpen(open);
+                    if (!open) {
+                        setSelectedFile(null);
+                        setFileStringContent(null);
+                        if (fileInputRef.current) fileInputRef.current.value = "";
+                    }
+                }}>
+                    <DialogTrigger asChild>
+                        <Button variant="outline">
+                            <UploadCloud className="mr-2 h-4 w-4" /> Import Model
                         </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-xl">
+                        <DialogHeader>
+                            <DialogTitle>Import Model from JSON</DialogTitle>
+                            <DialogDescription>
+                                Select a JSON file previously exported from CodexStructure. This will attempt to import the model structure and its data.
+                                Ensure the file format is correct. The file preview below should look like valid JSON.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="grid gap-4 py-4">
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="model-json-file" className="text-right col-span-1">
+                                    JSON File
+                                </Label>
+                                <Input
+                                    id="model-json-file"
+                                    type="file"
+                                    accept=".json"
+                                    onChange={handleFileSelect}
+                                    ref={fileInputRef}
+                                    className="col-span-3"
+                                />
+                            </div>
+                            {selectedFile && (
+                                <p className="text-xs text-muted-foreground col-span-4 text-center">Selected: {selectedFile.name}</p>
+                            )}
+                            {fileStringContent && (
+                                <div className="mt-4 col-span-4">
+                                    <Label className="text-sm font-medium">File Preview:</Label>
+                                    <ScrollArea className="h-48 mt-1 rounded-md border p-2 bg-muted/50">
+                                        <pre className="text-xs whitespace-pre-wrap break-all">
+                                            {fileStringContent}
+                                        </pre>
+                                    </ScrollArea>
+                                </div>
+                            )}
+                        </div>
+                        <DialogFooter>
+                            <DialogClose asChild>
+                                <Button type="button" variant="outline" disabled={isImporting}>Cancel</Button>
+                            </DialogClose>
+                            <Button type="button" onClick={handleImportSubmit} disabled={!selectedFile || isImporting}>
+                                {isImporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UploadCloud className="mr-2 h-4 w-4" />}
+                                {isImporting ? "Importing..." : "Import"}
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+            )}
             <Button onClick={handleCreateNew} className="bg-accent text-accent-foreground hover:bg-accent/90">
                 <PlusCircle className="mr-2 h-4 w-4" /> Create Model
             </Button>
@@ -407,4 +410,4 @@ function ModelsPageInternal() {
   );
 }
 
-export default withAuth(ModelsPageInternal, ['administrator']);
+export default withAuth(ModelsPageInternal, 'models:manage');

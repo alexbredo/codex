@@ -23,7 +23,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { format as formatDateFns, isValid as isDateValidFn, startOfDay, isEqual as isEqualDate } from 'date-fns';
-import { getObjectDisplayValue, cn, getObjectGroupValue } from '@/lib/utils';
+import { getObjectDisplayValue, cn } from '@/lib/utils';
 import { StarRatingInput } from '@/components/ui/star-rating-input';
 import GalleryCard from '@/components/objects/gallery-card';
 import ColumnFilterPopover, { type ColumnFilterValue } from '@/components/objects/column-filter-popover';
@@ -34,6 +34,7 @@ import KanbanBoard from '@/components/objects/kanban-board';
 import DataObjectsPageHeader, { type GroupablePropertyOption, type ColumnToggleOption } from '@/components/objects/data-objects-page-header';
 import DataObjectsTable, { type SortConfig, type IncomingRelationColumn } from '@/components/objects/data-objects-table';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel as UiSelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useAuth } from '@/contexts/auth-context';
 
 
 export type ViewMode = 'table' | 'gallery' | 'kanban';
@@ -80,6 +81,7 @@ export default function DataObjectsPage() {
     lastChangedInfo,
   }: DataContextType = dataContext;
   const { toast } = useToast();
+  const { user, hasPermission, isLoading: isAuthLoading } = useAuth();
 
   const [currentModel, setCurrentModel] = useState<Model | null>(null);
   const [localObjects, setLocalObjects] = useState<DataObject[]>([]);
@@ -106,6 +108,17 @@ export default function DataObjectsPage() {
 
 
   const previousModelIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!isAuthLoading && modelIdFromUrl && !hasPermission(`model:view:${modelIdFromUrl}`)) {
+      toast({
+        variant: 'destructive',
+        title: 'Unauthorized',
+        description: "You don't have permission to view objects of this model.",
+      });
+      router.replace('/');
+    }
+  }, [isAuthLoading, modelIdFromUrl, hasPermission, router, toast]);
 
   useEffect(() => {
     if (dataContextIsReady && modelIdFromUrl) {
@@ -1104,13 +1117,13 @@ export default function DataObjectsPage() {
       return;
     }
     let isValidTransition = false;
-    if (!currentObjectStateDef) {
+    if (!currentObjectStateDef) { 
       if (targetStateDef.isInitial) {
         isValidTransition = true;
       } else {
         toast({ variant: "destructive", title: "Invalid Transition", description: `Cannot move object to non-initial state "${targetStateDef.name}" as it has no current state.` });
       }
-    } else {
+    } else { 
       const validSuccessorIds = currentObjectStateDef.successorStateIds || [];
       if (validSuccessorIds.includes(newPotentialStateId)) {
         isValidTransition = true;
@@ -1212,166 +1225,168 @@ export default function DataObjectsPage() {
       {selectedObjectIds.size > 0 && viewMode === 'table' && !viewingRecycleBin && (
         <div className="mb-4 flex items-center gap-2 p-3 bg-secondary rounded-md shadow">
             <span className="text-sm font-medium text-secondary-foreground">{selectedObjectIds.size} item(s) selected</span>
-            <Dialog open={isBatchUpdateDialogOpen} onOpenChange={(open) => {
-                setIsBatchUpdateDialogOpen(open);
-                if (!open) {
-                    setBatchUpdateProperty('');
-                }
-            }}>
-                <DialogTrigger asChild>
-                    <Button variant="default" size="sm" className="bg-primary hover:bg-primary/90">
-                        <Edit3 className="mr-2 h-4 w-4" /> Batch Update
-                    </Button>
-                </DialogTrigger>
-                <DialogContent onInteractOutside={handleBatchUpdateDialogInteractOutside}>
-                    <DialogHeader>
-                        <DialogTitle>Batch Update {selectedObjectIds.size} Items</DialogTitle>
-                        <DialogDescription>Select a property and a new value to apply to all selected items.</DialogDescription>
-                    </DialogHeader>
-                    <div className="grid gap-4 py-4">
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="batch-property" className="text-right">Property</Label>
-                            <Select value={batchUpdateProperty} onValueChange={(value) => {
-                                setBatchUpdateProperty(value);
-                              }}
-                            >
-                                <SelectTrigger id="batch-property" className="col-span-3">
-                                    <SelectValue placeholder="Select property..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {batchUpdatableProperties.map(prop => (
-                                        <SelectItem key={prop.id} value={prop.name}>
-                                            {prop.label}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        {selectedBatchPropertyDetails && (
-                            <div className="grid grid-cols-4 items-center gap-4">
-                                <Label htmlFor="batch-value" className="text-right">New Value</Label>
-                                {selectedBatchPropertyDetails.type === 'boolean' && (
-                                    <Switch
-                                        id="batch-value"
-                                        checked={Boolean(batchUpdateValue)}
-                                        onCheckedChange={(checked) => setBatchUpdateValue(checked)}
-                                        className="col-span-3"
-                                    />
-                                )}
-                                {selectedBatchPropertyDetails.type === 'string' && (
-                                    <Input
-                                        id="batch-value"
-                                        value={String(batchUpdateValue)}
-                                        onChange={(e) => setBatchUpdateValue(e.target.value)}
-                                        className="col-span-3"
-                                    />
-                                )}
-                                {selectedBatchPropertyDetails.type === 'number' && (
-                                    <Input
-                                        id="batch-value"
-                                        type="number"
-                                        value={String(batchUpdateValue)}
-                                        onChange={(e) => setBatchUpdateValue(e.target.value)}
-                                        className="col-span-3"
-                                    />
-                                )}
-                                {selectedBatchPropertyDetails.type === 'rating' && (
-                                    <div className="col-span-3">
-                                        <StarRatingInput
-                                            value={Number(batchUpdateValue) || 0}
-                                            onChange={(newRating) => {
-                                                setBatchUpdateValue(newRating);
-                                            }}
-                                        />
-                                    </div>
-                                )}
-                                {selectedBatchPropertyDetails.type === 'date' && (
-                                   <Popover>
-                                        <PopoverTrigger asChild>
-                                        <Button
-                                            variant={"outline"}
-                                            className={cn(
-                                            "col-span-3 justify-start text-left font-normal",
-                                            !batchUpdateDate && "text-muted-foreground"
-                                            )}
-                                        >
-                                            <CalendarIconLucide className="mr-2 h-4 w-4" />
-                                            {batchUpdateDate ? formatDateFns(batchUpdateDate, "PPP") : <span>Pick a date</span>}
-                                        </Button>
-                                        </PopoverTrigger>
-                                        <PopoverContent className="w-auto p-0">
-                                        <Calendar
-                                            mode="single"
-                                            selected={batchUpdateDate}
-                                            onSelect={(date) => {
-                                                setBatchUpdateDate(date);
-                                                setBatchUpdateValue(date ? date.toISOString() : '');
-                                            }}
-                                            initialFocus
-                                        />
-                                        </PopoverContent>
-                                    </Popover>
-                                )}
-                                {selectedBatchPropertyDetails.type === 'workflow_state' && currentWorkflow && (
-                                     <Select value={batchUpdateValue} onValueChange={setBatchUpdateValue}>
-                                        <SelectTrigger id="batch-workflow-state-value" className="col-span-3">
-                                            <SelectValue placeholder="Select target state..." />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {currentWorkflow.states.map(state => (
-                                                <SelectItem key={state.id} value={state.id}>
-                                                    {state.name}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                )}
-                                {selectedBatchPropertyDetails.type === 'relationship' && relatedModelForBatchUpdate && (
-                                  <div className="col-span-3">
-                                    {selectedBatchPropertyDetails.relationshipType === 'many' ? (
-                                      <MultiSelectAutocomplete
-                                        options={relatedObjectsForBatchUpdateOptions}
-                                        selected={Array.isArray(batchUpdateValue) ? batchUpdateValue : []}
-                                        onChange={setBatchUpdateValue}
-                                        placeholder={`Select ${relatedModelForBatchUpdate.name}(s)...`}
-                                        emptyIndicator={`No ${relatedModelForBatchUpdate.name.toLowerCase()}s found.`}
-                                      />
-                                    ) : (
-                                      <Select
-                                        value={String(batchUpdateValue) || INTERNAL_CLEAR_RELATIONSHIP_VALUE}
-                                        onValueChange={(val) => setBatchUpdateValue(val === INTERNAL_CLEAR_RELATIONSHIP_VALUE ? '' : val)}
-                                      >
-                                        <SelectTrigger>
-                                          <SelectValue placeholder={`Select ${relatedModelForBatchUpdate.name}...`} />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          <SelectItem value={INTERNAL_CLEAR_RELATIONSHIP_VALUE}>-- Clear Relationship --</SelectItem>
-                                          {Object.entries(relatedObjectsForBatchUpdateGrouped).map(([namespace, optionsInNamespace]) => (
-                                            <SelectGroup key={namespace}>
-                                              <UiSelectLabel>{namespace}</UiSelectLabel>
-                                              {optionsInNamespace.map((option) => (
-                                                <SelectItem key={option.value} value={option.value}>
-                                                  {option.label}
-                                                </SelectItem>
-                                              ))}
-                                            </SelectGroup>
-                                          ))}
-                                        </SelectContent>
-                                      </Select>
-                                    )}
-                                  </div>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                    <BatchUpdateDialogFooter>
-                        <Button variant="outline" onClick={() => setIsBatchUpdateDialogOpen(false)} disabled={isBatchUpdating}>Cancel</Button>
-                        <Button onClick={handleBatchUpdate} disabled={!selectedBatchPropertyDetails || isBatchUpdating} className="bg-primary hover:bg-primary/90">
-                            {isBatchUpdating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Update Items"}
+            {hasPermission(`model:edit:${modelId}`) && (
+                <Dialog open={isBatchUpdateDialogOpen} onOpenChange={(open) => {
+                    setIsBatchUpdateDialogOpen(open);
+                    if (!open) {
+                        setBatchUpdateProperty('');
+                    }
+                }}>
+                    <DialogTrigger asChild>
+                        <Button variant="default" size="sm" className="bg-primary hover:bg-primary/90">
+                            <Edit3 className="mr-2 h-4 w-4" /> Batch Update
                         </Button>
-                    </BatchUpdateDialogFooter>
-                </DialogContent>
-            </Dialog>
+                    </DialogTrigger>
+                    <DialogContent onInteractOutside={handleBatchUpdateDialogInteractOutside}>
+                        <DialogHeader>
+                            <DialogTitle>Batch Update {selectedObjectIds.size} Items</DialogTitle>
+                            <DialogDescription>Select a property and a new value to apply to all selected items.</DialogDescription>
+                        </DialogHeader>
+                        <div className="grid gap-4 py-4">
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="batch-property" className="text-right">Property</Label>
+                                <Select value={batchUpdateProperty} onValueChange={(value) => {
+                                    setBatchUpdateProperty(value);
+                                }}
+                                >
+                                    <SelectTrigger id="batch-property" className="col-span-3">
+                                        <SelectValue placeholder="Select property..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {batchUpdatableProperties.map(prop => (
+                                            <SelectItem key={prop.id} value={prop.name}>
+                                                {prop.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            {selectedBatchPropertyDetails && (
+                                <div className="grid grid-cols-4 items-center gap-4">
+                                    <Label htmlFor="batch-value" className="text-right">New Value</Label>
+                                    {selectedBatchPropertyDetails.type === 'boolean' && (
+                                        <Switch
+                                            id="batch-value"
+                                            checked={Boolean(batchUpdateValue)}
+                                            onCheckedChange={(checked) => setBatchUpdateValue(checked)}
+                                            className="col-span-3"
+                                        />
+                                    )}
+                                    {selectedBatchPropertyDetails.type === 'string' && (
+                                        <Input
+                                            id="batch-value"
+                                            value={String(batchUpdateValue)}
+                                            onChange={(e) => setBatchUpdateValue(e.target.value)}
+                                            className="col-span-3"
+                                        />
+                                    )}
+                                    {selectedBatchPropertyDetails.type === 'number' && (
+                                        <Input
+                                            id="batch-value"
+                                            type="number"
+                                            value={String(batchUpdateValue)}
+                                            onChange={(e) => setBatchUpdateValue(e.target.value)}
+                                            className="col-span-3"
+                                        />
+                                    )}
+                                    {selectedBatchPropertyDetails.type === 'rating' && (
+                                        <div className="col-span-3">
+                                            <StarRatingInput
+                                                value={Number(batchUpdateValue) || 0}
+                                                onChange={(newRating) => {
+                                                    setBatchUpdateValue(newRating);
+                                                }}
+                                            />
+                                        </div>
+                                    )}
+                                    {selectedBatchPropertyDetails.type === 'date' && (
+                                    <Popover>
+                                            <PopoverTrigger asChild>
+                                            <Button
+                                                variant={"outline"}
+                                                className={cn(
+                                                "col-span-3 justify-start text-left font-normal",
+                                                !batchUpdateDate && "text-muted-foreground"
+                                                )}
+                                            >
+                                                <CalendarIconLucide className="mr-2 h-4 w-4" />
+                                                {batchUpdateDate ? formatDateFns(batchUpdateDate, "PPP") : <span>Pick a date</span>}
+                                            </Button>
+                                            </PopoverTrigger>
+                                            <PopoverContent className="w-auto p-0">
+                                            <Calendar
+                                                mode="single"
+                                                selected={batchUpdateDate}
+                                                onSelect={(date) => {
+                                                    setBatchUpdateDate(date);
+                                                    setBatchUpdateValue(date ? date.toISOString() : '');
+                                                }}
+                                                initialFocus
+                                            />
+                                            </PopoverContent>
+                                        </Popover>
+                                    )}
+                                    {selectedBatchPropertyDetails.type === 'workflow_state' && currentWorkflow && (
+                                        <Select value={batchUpdateValue} onValueChange={setBatchUpdateValue}>
+                                            <SelectTrigger id="batch-workflow-state-value" className="col-span-3">
+                                                <SelectValue placeholder="Select target state..." />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {currentWorkflow.states.map(state => (
+                                                    <SelectItem key={state.id} value={state.id}>
+                                                        {state.name}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    )}
+                                    {selectedBatchPropertyDetails.type === 'relationship' && relatedModelForBatchUpdate && (
+                                    <div className="col-span-3">
+                                        {selectedBatchPropertyDetails.relationshipType === 'many' ? (
+                                        <MultiSelectAutocomplete
+                                            options={relatedObjectsForBatchUpdateOptions}
+                                            selected={Array.isArray(batchUpdateValue) ? batchUpdateValue : []}
+                                            onChange={setBatchUpdateValue}
+                                            placeholder={`Select ${relatedModelForBatchUpdate.name}(s)...`}
+                                            emptyIndicator={`No ${relatedModelForBatchUpdate.name.toLowerCase()}s found.`}
+                                        />
+                                        ) : (
+                                        <Select
+                                            value={String(batchUpdateValue) || INTERNAL_CLEAR_RELATIONSHIP_VALUE}
+                                            onValueChange={(val) => setBatchUpdateValue(val === INTERNAL_CLEAR_RELATIONSHIP_VALUE ? '' : val)}
+                                        >
+                                            <SelectTrigger>
+                                            <SelectValue placeholder={`Select ${relatedModelForBatchUpdate.name}...`} />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                            <SelectItem value={INTERNAL_CLEAR_RELATIONSHIP_VALUE}>-- Clear Relationship --</SelectItem>
+                                            {Object.entries(relatedObjectsForBatchUpdateGrouped).map(([namespace, optionsInNamespace]) => (
+                                                <SelectGroup key={namespace}>
+                                                <UiSelectLabel>{namespace}</UiSelectLabel>
+                                                {optionsInNamespace.map((option) => (
+                                                    <SelectItem key={option.value} value={option.value}>
+                                                    {option.label}
+                                                    </SelectItem>
+                                                ))}
+                                                </SelectGroup>
+                                            ))}
+                                            </SelectContent>
+                                        </Select>
+                                        )}
+                                    </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                        <BatchUpdateDialogFooter>
+                            <Button variant="outline" onClick={() => setIsBatchUpdateDialogOpen(false)} disabled={isBatchUpdating}>Cancel</Button>
+                            <Button onClick={handleBatchUpdate} disabled={!selectedBatchPropertyDetails || isBatchUpdating} className="bg-primary hover:bg-primary/90">
+                                {isBatchUpdating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Update Items"}
+                            </Button>
+                        </BatchUpdateDialogFooter>
+                    </DialogContent>
+                </Dialog>
+            )}
             <Button variant="outline" size="sm" onClick={() => setSelectedObjectIds(new Set())} className="ml-auto">Clear Selection</Button>
         </div>
       )}
@@ -1396,7 +1411,7 @@ export default function DataObjectsPage() {
         </div>
       )}
       {filteredObjects.length === 0 && !searchTerm && !hasActiveColumnFilters ? (
-        <Card className="text-center py-12"> <CardContent> <ListChecks size={48} className="mx-auto text-muted-foreground mb-4" /> <h3 className="text-xl font-semibold">No {viewingRecycleBin ? 'Deleted' : 'Active'} Objects Found</h3> <p className="text-muted-foreground mb-4"> There are no {viewingRecycleBin ? 'deleted' : 'active'} data objects for the model "{currentModel.name}" yet. </p> {!viewingRecycleBin && <Button onClick={handleCreateNew} variant="default"> <PlusCircle className="mr-2 h-4 w-4" /> Create First Object </Button>} </CardContent> </Card>
+        <Card className="text-center py-12"> <CardContent> <ListChecks size={48} className="mx-auto text-muted-foreground mb-4" /> <h3 className="text-xl font-semibold">No {viewingRecycleBin ? 'Deleted' : 'Active'} Objects Found</h3> <p className="text-muted-foreground mb-4"> There are no {viewingRecycleBin ? 'deleted' : 'active'} data objects for the model "{currentModel.name}" yet. </p> {!viewingRecycleBin && hasPermission('objects:create') && <Button onClick={handleCreateNew} variant="default"> <PlusCircle className="mr-2 h-4 w-4" /> Create First Object </Button>} </CardContent> </Card>
       ) : sortedObjects.length === 0 && (searchTerm || hasActiveColumnFilters) ? (
          <Card className="text-center py-12"> <CardContent> <SearchIconLucide size={48} className="mx-auto text-muted-foreground mb-4" /> <h3 className="text-xl font-semibold">No Results Found</h3> <p className="text-muted-foreground mb-4"> Your {searchTerm && hasActiveColumnFilters ? "search and column filters" : searchTerm ? "search" : "column filters"} did not match any {viewingRecycleBin ? 'deleted' : 'active'} {currentModel.name.toLowerCase()}s. </p> </CardContent> </Card>
       ) : viewMode === 'table' ? (
@@ -1507,4 +1522,3 @@ export default function DataObjectsPage() {
     </div>
   );
 }
-

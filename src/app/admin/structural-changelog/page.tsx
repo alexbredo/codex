@@ -284,4 +284,4 @@ function ActivityLogPageInternal() {
   );
 }
 
-export default withAuth(ActivityLogPageInternal, ['administrator']);
+export default withAuth(ActivityLogPageInternal, 'admin:view_activity_log');

@@ -10,6 +10,7 @@ interface UserSession {
   username: string;
   role: 'user' | 'administrator';
   roleId: string;
+  permissionIds: string[];
 }
 
 const adminRoleId = '00000000-role-0000-0000-administrator';
@@ -18,6 +19,7 @@ export const MOCK_API_ADMIN_USER: UserSession = {
   username: 'DebugApiAdmin',
   role: 'administrator',
   roleId: adminRoleId,
+  permissionIds: ['*'], // Mock admin has all permissions
 };
 
 export async function getCurrentUserFromCookie(): Promise<UserSession | null> {
@@ -47,6 +49,13 @@ export async function getCurrentUserFromCookie(): Promise<UserSession | null> {
       return null;
     }
 
+    // Fetch all permission IDs for the user's role
+    const permissions = await db.all(
+        'SELECT permissionId FROM role_permissions WHERE roleId = ?',
+        userRow.roleId
+    );
+    const permissionIds = permissions.map(p => p.permissionId);
+
     // Normalize role name to fit the expected enum type
     const roleName = userRow.role?.toLowerCase() === 'administrator' ? 'administrator' : 'user';
 
@@ -54,7 +63,8 @@ export async function getCurrentUserFromCookie(): Promise<UserSession | null> {
         id: userRow.id,
         username: userRow.username,
         roleId: userRow.roleId,
-        role: roleName
+        role: roleName,
+        permissionIds: permissionIds,
     };
   } catch (error) {
     console.error("Error fetching user from session cookie:", error);

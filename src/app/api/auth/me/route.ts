@@ -15,7 +15,7 @@ export async function GET(request: Request) {
     }
     
     // The user object from getCurrentUserFromCookie already has the desired shape
-    // { id, username, role, roleId } but we only need to send back id, username, role.
+    // { id, username, role, roleId, permissionIds } but we only need to send back id, username, role, and permissions.
     const { roleId, ...userForClient } = user;
 
     return NextResponse.json(userForClient);

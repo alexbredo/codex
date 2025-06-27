@@ -247,4 +247,4 @@ function ValidationRulesAdminPageInternal() {
   );
 }
 
-export default withAuth(ValidationRulesAdminPageInternal, ['administrator']);
+export default withAuth(ValidationRulesAdminPageInternal, 'admin:manage_validation_rules');

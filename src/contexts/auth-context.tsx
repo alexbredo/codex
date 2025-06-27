@@ -12,12 +12,14 @@ const MOCK_ADMIN_USER: User = {
   id: 'debug-admin-user',
   username: 'DebugAdmin',
   role: 'administrator',
+  permissionIds: ['*'], // Mock admin has all permissions
 };
 
 interface User {
   id: string;
   username: string;
   role: 'user' | 'administrator';
+  permissionIds: string[];
 }
 
 interface AuthContextType {
@@ -27,6 +29,7 @@ interface AuthContextType {
   logout: () => Promise<void>;
   register: (credentials: Record<string, string>) => Promise<User | null>;
   refetchUser: () => void;
+  hasPermission: (permission: string) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -166,6 +169,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     realRefetch();
   }, [realRefetch]);
 
+  const hasPermission = useCallback((permission: string) => {
+    const user = DEBUG_MODE ? MOCK_ADMIN_USER : realUser;
+    if (!user) return false;
+    if (user.permissionIds.includes('*')) return true; // Wildcard for admin
+    return user.permissionIds.includes(permission);
+  }, [realUser]);
+
+
   let contextValue: AuthContextType;
 
   if (DEBUG_MODE) {
@@ -176,6 +187,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logout,
       register,
       refetchUser,
+      hasPermission,
     };
   } else {
     contextValue = {
@@ -185,6 +197,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logout,
       register,
       refetchUser,
+      hasPermission,
     };
   }
 
@@ -205,29 +218,47 @@ export function useAuth(): AuthContextType {
 
 export function withAuth<P extends object>(
   WrappedComponent: React.ComponentType<P>,
-  allowedRoles?: Array<User['role']>
+  permission?: string | string[]
 ) {
   const ComponentWithAuth = (props: P) => {
-    const { user, isLoading } = useAuth();
+    const { user, hasPermission, isLoading } = useAuth();
     const router = useRouter();
 
     useEffect(() => {
       if (DEBUG_MODE) {
         return; // Bypass all auth checks in debug mode
       }
-      if (!isLoading && !user) {
-        router.replace('/login');
-      } else if (!isLoading && user && allowedRoles && !allowedRoles.includes(user.role)) {
-        router.replace('/'); // Redirect to home if role not allowed
+      if (isLoading) {
+        return; // Wait for user data to load
       }
-    }, [user, isLoading, router, allowedRoles]);
+      if (!user) {
+        router.replace('/login');
+        return;
+      }
+      if (permission) {
+        const hasRequiredPermission = Array.isArray(permission)
+          ? permission.some(p => hasPermission(p))
+          : hasPermission(permission);
+          
+        if (!hasRequiredPermission) {
+          router.replace('/'); // Redirect to home if permission not met
+        }
+      }
+    }, [user, isLoading, router, permission, hasPermission]);
 
     if (DEBUG_MODE) {
-      return <WrappedComponent {...props} />;
+        return <WrappedComponent {...props} />;
     }
+    
+    // Determine if the user has permission to view the component
+    const hasRequiredPermission = permission
+        ? Array.isArray(permission)
+            ? permission.some(p => hasPermission(p))
+            : hasPermission(permission)
+        : true; // If no permission prop, assume it's allowed for any logged-in user
 
-    // If loading, or if no user and page requires auth, or user role not allowed
-    if (isLoading || (!user && allowedRoles && allowedRoles.length > 0) || (user && allowedRoles && !allowedRoles.includes(user.role))) {
+    // While loading, or if user is not yet available, or user lacks permission, show loading/unauthorized state
+    if (isLoading || !user || !hasRequiredPermission) {
       return (
         <div className="flex justify-center items-center h-screen">
           <p>Loading or checking authorization...</p>

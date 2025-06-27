@@ -14,12 +14,13 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArrowLeft } from 'lucide-react';
 import type { Property } from '@/lib/types';
+import { withAuth } from '@/contexts/auth-context';
 
 const INTERNAL_DEFAULT_DISPLAY_PROPERTY_VALUE = "__DEFAULT_DISPLAY_PROPERTY__";
 const INTERNAL_NO_WORKFLOW_VALUE = "__NO_WORKFLOW_SELECTED__";
 const INTERNAL_DEFAULT_GROUP_ID = "00000000-0000-0000-0000-000000000001";
 
-export default function CreateModelPage() {
+function CreateModelPageInternal() {
   const router = useRouter();
   const { addModel, getModelByName, isReady } = useData();
   const { toast } = useToast();
@@ -127,3 +128,5 @@ export default function CreateModelPage() {
     </div>
   );
 }
+
+export default withAuth(CreateModelPageInternal, 'models:manage');

@@ -70,7 +70,7 @@ function ViewModelPageInternal() {
     isReady: dataContextIsReady,
     formatApiError,
   } = useData();
-  const { user, isLoading: authIsLoading } = useAuth();
+  const { user, hasPermission, isLoading: authIsLoading } = useAuth();
   const { toast } = useToast();
 
   const [currentModel, setCurrentModel] = useState<Model | null>(null);
@@ -195,11 +195,13 @@ function ViewModelPageInternal() {
         <Button variant="outline" onClick={() => router.push('/models')}>
           <ArrowLeft className="mr-2 h-4 w-4" /> Back to Model Admin
         </Button>
-        <Link href={`/data/${currentModel.id}/new`} passHref legacyBehavior>
-            <Button variant="default" className="bg-accent text-accent-foreground hover:bg-accent/90">
-                <PlusCircle className="mr-2 h-4 w-4" /> New {currentModel.name} Object
-            </Button>
-        </Link>
+        {hasPermission(`objects:create`) && (
+            <Link href={`/data/${currentModel.id}/new`} passHref legacyBehavior>
+                <Button variant="default" className="bg-accent text-accent-foreground hover:bg-accent/90">
+                    <PlusCircle className="mr-2 h-4 w-4" /> New {currentModel.name} Object
+                </Button>
+            </Link>
+        )}
       </div>
 
       <Card className="shadow-lg">
@@ -216,11 +218,13 @@ function ViewModelPageInternal() {
               <Button variant="outline" size="sm" onClick={() => router.push(`/models/edit/${currentModel.id}`)}>
                 <Edit className="mr-2 h-4 w-4" /> Edit Structure
               </Button>
-              <Link href={`/api/codex-structure/export/model/${currentModel.id}`} download passHref legacyBehavior>
-                <Button variant="secondary" size="sm">
-                  <DownloadCloud className="mr-2 h-4 w-4" /> Export
-                </Button>
-              </Link>
+              {hasPermission('models:import_export') && (
+                <Link href={`/api/codex-structure/export/model/${currentModel.id}`} download passHref legacyBehavior>
+                    <Button variant="secondary" size="sm">
+                    <DownloadCloud className="mr-2 h-4 w-4" /> Export
+                    </Button>
+                </Link>
+              )}
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <Button variant="destructive" size="sm">
@@ -467,5 +471,4 @@ function ViewModelPageInternal() {
     </div>
   );
 }
-export default withAuth(ViewModelPageInternal, ['administrator']);
-
+export default withAuth(ViewModelPageInternal, 'models:manage');

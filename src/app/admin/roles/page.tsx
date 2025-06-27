@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { withAuth } from '@/contexts/auth-context';
+import { useAuth } from '@/contexts/auth-context';
 import { useToast } from '@/hooks/use-toast';
 import { useData } from '@/contexts/data-context';
 import { Button } from '@/components/ui/button';
@@ -43,6 +43,7 @@ function RoleAdminPageInternal() {
   const router = useRouter();
   const { toast } = useToast();
   const { formatApiError } = useData();
+  const { hasPermission } = useAuth();
 
   const { data: roles, isLoading, error, refetch } = useQuery<RoleWithCounts[]>({
     queryKey: ['rolesWithCounts'],
@@ -85,9 +86,11 @@ function RoleAdminPageInternal() {
           </h1>
           <p className="text-muted-foreground">Manage user roles and their associated permissions.</p>
         </div>
-        <Button onClick={() => router.push('/admin/roles/new')} className="bg-accent text-accent-foreground hover:bg-accent/90">
-          <PlusCircle className="mr-2 h-4 w-4" /> Create Role
-        </Button>
+        {hasPermission('roles:manage') && (
+            <Button onClick={() => router.push('/admin/roles/new')} className="bg-accent text-accent-foreground hover:bg-accent/90">
+                <PlusCircle className="mr-2 h-4 w-4" /> Create Role
+            </Button>
+        )}
       </header>
 
       <Card>
@@ -121,32 +124,36 @@ function RoleAdminPageInternal() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
-                    <Link href={`/admin/roles/edit/${role.id}`}>
-                      <Button variant="ghost" size="icon" className="mr-2 hover:text-primary">
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                    </Link>
-                    {!role.isSystemRole && (
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon" className="hover:text-destructive">
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This will permanently delete the "{role.name}" role. This action cannot be undone.
-                              You cannot delete a role if users are still assigned to it.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleDeleteRole(role.id, role.name)}>Delete</AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                    {hasPermission('roles:manage') && (
+                        <>
+                        <Link href={`/admin/roles/edit/${role.id}`}>
+                            <Button variant="ghost" size="icon" className="mr-2 hover:text-primary">
+                                <Edit className="h-4 w-4" />
+                            </Button>
+                        </Link>
+                        {!role.isSystemRole && (
+                            <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                <Button variant="ghost" size="icon" className="hover:text-destructive">
+                                    <Trash2 className="h-4 w-4" />
+                                </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                    This will permanently delete the "{role.name}" role. This action cannot be undone.
+                                    You cannot delete a role if users are still assigned to it.
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction onClick={() => handleDeleteRole(role.id, role.name)}>Delete</AlertDialogAction>
+                                </AlertDialogFooter>
+                                </AlertDialogContent>
+                            </AlertDialog>
+                        )}
+                        </>
                     )}
                   </TableCell>
                 </TableRow>
@@ -159,4 +166,4 @@ function RoleAdminPageInternal() {
   );
 }
 
-export default withAuth(RoleAdminPageInternal, ['administrator']);
+export default withAuth(RoleAdminPageInternal, 'roles:manage');

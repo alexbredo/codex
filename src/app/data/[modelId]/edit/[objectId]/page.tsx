@@ -23,7 +23,7 @@ export default function EditObjectPage() {
   const objectId = params.objectId as string;
 
   const { getModelById, updateObject, getWorkflowById, validationRulesets, allUsers, isReady: dataContextIsReady, formatApiError } = useData(); // Get allUsers
-  const { user: currentUser, isLoading: authIsLoading } = useAuth(); // Get current authenticated user
+  const { user: currentUser, isLoading: authIsLoading, hasPermission } = useAuth(); // Get current authenticated user
   const { toast } = useToast();
 
   const [currentModel, setCurrentModel] = useState<Model | null>(null);
@@ -51,6 +51,16 @@ export default function EditObjectPage() {
       if (!dataContextIsReady || !modelId || !objectId || authIsLoading) { // Wait for auth too
         return;
       }
+
+      // Permission check
+      const isOwner = editingObject?.ownerId === currentUser?.id;
+      if (!hasPermission(`model:edit:${modelId}`) && !(hasPermission('objects:edit_own') && isOwner)) {
+        toast({ variant: 'destructive', title: 'Unauthorized', description: "You don't have permission to edit this object." });
+        router.replace(`/data/${modelId}`);
+        return;
+      }
+
+
       setIsLoadingPageData(true);
       setPageError(null);
 
@@ -105,7 +115,7 @@ export default function EditObjectPage() {
     
     loadObjectForEditing();
 
-  }, [modelId, objectId, getModelById, getWorkflowById, dataContextIsReady, authIsLoading, form, router, toast, formatApiError]);
+  }, [modelId, objectId, getModelById, getWorkflowById, dataContextIsReady, authIsLoading, form, router, toast, formatApiError, hasPermission, editingObject, currentUser]);
   
   useEffect(() => { 
     form.resolver = zodResolver(dynamicSchema) as any;
