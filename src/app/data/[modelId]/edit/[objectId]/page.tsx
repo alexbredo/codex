@@ -48,18 +48,9 @@ export default function EditObjectPage() {
 
   useEffect(() => {
     const loadObjectForEditing = async () => {
-      if (!dataContextIsReady || !modelId || !objectId || authIsLoading) { // Wait for auth too
+      if (!dataContextIsReady || !modelId || !objectId || authIsLoading || !currentUser) {
         return;
       }
-
-      // Permission check
-      const isOwner = editingObject?.ownerId === currentUser?.id;
-      if (!hasPermission(`model:edit:${modelId}`) && !(hasPermission('objects:edit_own') && isOwner)) {
-        toast({ variant: 'destructive', title: 'Unauthorized', description: "You don't have permission to edit this object." });
-        router.replace(`/data/${modelId}`);
-        return;
-      }
-
 
       setIsLoadingPageData(true);
       setPageError(null);
@@ -73,14 +64,7 @@ export default function EditObjectPage() {
         router.push('/models'); 
         return;
       }
-      setCurrentModel(foundModel);
 
-      if (foundModel.workflowId) {
-        setCurrentWorkflow(getWorkflowById(foundModel.workflowId) || null);
-      } else {
-        setCurrentWorkflow(null);
-      }
-      
       try {
         const response = await fetch(`/api/codex-structure/models/${modelId}/objects/${objectId}`);
         if (!response.ok) {
@@ -88,11 +72,28 @@ export default function EditObjectPage() {
           throw new Error(errorMsg);
         }
         const objectToEdit: DataObject = await response.json();
+
+        // Perform permission check *after* fetching the object
+        const isOwner = objectToEdit.ownerId === currentUser.id;
+        if (!hasPermission(`model:edit:${modelId}`) && !(hasPermission('objects:edit_own') && isOwner)) {
+            toast({ variant: 'destructive', title: 'Unauthorized', description: "You don't have permission to edit this object." });
+            router.replace(`/data/${modelId}`);
+            // Don't continue processing
+            return;
+        }
+
+        // If authorized, proceed to set state
+        setCurrentModel(foundModel);
+        if (foundModel.workflowId) {
+            setCurrentWorkflow(getWorkflowById(foundModel.workflowId) || null);
+        } else {
+            setCurrentWorkflow(null);
+        }
         setEditingObject(objectToEdit);
 
         const formValues: Record<string, any> = {
           currentStateId: objectToEdit.currentStateId || null,
-          ownerId: objectToEdit.ownerId || null, // Initialize ownerId in form
+          ownerId: objectToEdit.ownerId || null,
         };
         foundModel.properties.forEach(prop => {
           formValues[prop.name] = objectToEdit[prop.name] ??
@@ -115,7 +116,20 @@ export default function EditObjectPage() {
     
     loadObjectForEditing();
 
-  }, [modelId, objectId, getModelById, getWorkflowById, dataContextIsReady, authIsLoading, form, router, toast, formatApiError, hasPermission, editingObject, currentUser]);
+  }, [
+    modelId, 
+    objectId, 
+    dataContextIsReady, 
+    authIsLoading, 
+    currentUser, 
+    hasPermission, 
+    getModelById, 
+    getWorkflowById, 
+    form, 
+    router, 
+    toast, 
+    formatApiError
+  ]);
   
   useEffect(() => { 
     form.resolver = zodResolver(dynamicSchema) as any;
