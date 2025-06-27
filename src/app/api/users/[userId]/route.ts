@@ -8,13 +8,41 @@ interface Params {
   params: { userId: string };
 }
 
-// Schema for updating user (username, password, roleId)
 const updateUserSchema = z.object({
   username: z.string().min(3, 'Username must be at least 3 characters').max(50).optional(),
-  password: z.string().min(6, 'Password must be at least 6 characters').max(100).optional().or(z.literal('')), // Allow empty string to indicate no change
+  password: z.string().min(6, 'Password must be at least 6 characters').max(100).optional().or(z.literal('')),
   roleId: z.string().uuid("A valid role ID must be provided.").optional(),
 });
 
+
+export async function GET(request: Request, { params }: Params) {
+  const currentUser = await getCurrentUserFromCookie();
+  if (!currentUser || currentUser.role !== 'administrator') {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+  }
+
+  try {
+    const db = await getDb();
+    const user = await db.get(`
+      SELECT u.id, u.username, u.roleId, r.name as role
+      FROM users u
+      LEFT JOIN roles r ON u.roleId = r.id
+      WHERE u.id = ?
+    `, params.userId);
+
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+    
+    // Normalize role name for consistency if needed, though sending roleId is primary
+    user.role = user.role?.toLowerCase() === 'administrator' ? 'administrator' : user.role;
+
+    return NextResponse.json(user);
+  } catch (error: any) {
+    console.error(`API Error (GET /api/users/${params.userId}):`, error);
+    return NextResponse.json({ error: 'Failed to fetch user', details: error.message }, { status: 500 });
+  }
+}
 
 export async function PUT(request: Request, { params }: Params) {
   const currentUser = await getCurrentUserFromCookie();
@@ -53,9 +81,9 @@ export async function PUT(request: Request, { params }: Params) {
       updatedFieldsForLog.push('username');
     }
 
-    if (newPassword && newPassword.trim() !== '') { // Only update password if a new one is provided and not empty
+    if (newPassword && newPassword.trim() !== '') {
       updates.push('password = ?');
-      values.push(newPassword); // Plaintext password
+      values.push(newPassword);
       updatedFieldsForLog.push('password');
     }
 
@@ -67,7 +95,6 @@ export async function PUT(request: Request, { params }: Params) {
       
       const oldRole = await db.get('SELECT id, name, isSystemRole FROM roles WHERE id = ?', targetUser.roleId);
       
-      // Safety check: Prevent demoting the last admin
       if (oldRole?.name === 'Administrator' && newRole.name !== 'Administrator') {
         const adminCountResult = await db.get("SELECT COUNT(*) as count FROM users u JOIN roles r ON u.roleId = r.id WHERE r.name = 'Administrator'");
         if (adminCountResult && adminCountResult.count === 1) {
@@ -83,7 +110,6 @@ export async function PUT(request: Request, { params }: Params) {
       values.push(userId);
       await db.run(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, ...values);
 
-      // Log security event
       const logId = crypto.randomUUID();
       await db.run(
           'INSERT INTO security_log (id, timestamp, userId, username, action, targetEntityType, targetEntityId, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
@@ -98,11 +124,8 @@ export async function PUT(request: Request, { params }: Params) {
       );
     }
 
-
-    const updatedUserResult = await db.get('SELECT u.id, u.username, r.name as role FROM users u JOIN roles r ON u.roleId = r.id WHERE u.id = ?', userId);
-    if (updatedUserResult) {
-      updatedUserResult.role = updatedUserResult.role?.toLowerCase() === 'administrator' ? 'administrator' : 'user';
-    }
+    const updatedUserResult = await db.get('SELECT u.id, u.username, r.id as roleId, r.name as role FROM users u JOIN roles r ON u.roleId = r.id WHERE u.id = ?', userId);
+    
     return NextResponse.json(updatedUserResult);
 
   } catch (error: any) {
@@ -142,7 +165,6 @@ export async function DELETE(request: Request, { params }: Params) {
       return NextResponse.json({ error: 'User not found or already deleted' }, { status: 404 });
     }
     
-    // Log security event
     const logId = crypto.randomUUID();
     await db.run(
         'INSERT INTO security_log (id, timestamp, userId, username, action, targetEntityType, targetEntityId, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',

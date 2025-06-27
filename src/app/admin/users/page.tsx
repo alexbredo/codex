@@ -7,7 +7,6 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { withAuth } from '@/contexts/auth-context';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -17,25 +16,28 @@ import { useData } from '@/contexts/data-context';
 import UserForm from '@/components/admin/users/user-form';
 import type { UserFormValues } from '@/components/admin/users/user-form-schema';
 import { userFormSchema, updateUserFormSchema } from '@/components/admin/users/user-form-schema';
+import type { Role } from '@/lib/types';
+
 
 interface User {
   id: string;
   username: string;
-  role: 'user' | 'administrator';
+  role: string;
+  roleId?: string;
 }
 
 function UserAdminPageInternal() {
   const [users, setUsers] = useState<User[]>([]);
-  const [isLoading, setIsLoading] = useState(true); // For user list specific loading
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
 
   const { toast } = useToast();
-  const { fetchData, isReady: dataContextIsReady, formatApiError } = useData();
+  const { isReady: dataContextIsReady, formatApiError } = useData();
 
-  const generalDataFetchedOnMountRef = useRef(false);
-  const usersApiFetchedOnMountRef = useRef(false);
+  const dataFetchedOnMountRef = useRef(false);
 
   const form = useForm<UserFormValues>({
     resolver: zodResolver(editingUser ? updateUserFormSchema : userFormSchema),
@@ -43,66 +45,80 @@ function UserAdminPageInternal() {
       username: '',
       password: '',
       confirmPassword: '',
-      role: 'user',
+      roleId: '',
     },
   });
 
-  // Effect for fetching general DataContext data (models, groups etc.)
-  useEffect(() => {
-    if (!generalDataFetchedOnMountRef.current) {
-      fetchData('UserAdminPage Mounted');
-      generalDataFetchedOnMountRef.current = true;
-    }
-  }, [fetchData]);
-
-
-  const fetchUsersApi = useCallback(async () => {
+  const fetchUsersAndRoles = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch('/api/users');
-      if (!response.ok) {
-        const errorMsg = await formatApiError(response, 'Failed to fetch users');
-        throw new Error(errorMsg);
+      const [usersResponse, rolesResponse] = await Promise.all([
+        fetch('/api/users'),
+        fetch('/api/roles')
+      ]);
+
+      if (!usersResponse.ok) {
+        throw new Error(await formatApiError(usersResponse, 'Failed to fetch users'));
       }
-      const data: User[] = await response.json();
-      setUsers(data);
+      if (!rolesResponse.ok) {
+        throw new Error(await formatApiError(rolesResponse, 'Failed to fetch roles'));
+      }
+
+      const usersData: User[] = await usersResponse.json();
+      const rolesData: Role[] = await rolesResponse.json();
+      
+      const enrichedUsers = usersData.map(user => {
+        const userRole = rolesData.find(r => r.id === user.roleId);
+        return { ...user, role: userRole?.name || 'Unknown Role' };
+      });
+      
+      setUsers(enrichedUsers);
+      setRoles(rolesData);
+
     } catch (err: any) {
       setError(err.message);
-      toast({ variant: 'destructive', title: 'Error fetching users', description: err.message });
+      toast({ variant: 'destructive', title: 'Error fetching data', description: err.message });
     } finally {
       setIsLoading(false);
     }
   }, [toast, formatApiError]);
 
-  // Effect for fetching the user list. Runs once per mount.
   useEffect(() => {
-    if (!usersApiFetchedOnMountRef.current) {
-      fetchUsersApi();
-      usersApiFetchedOnMountRef.current = true;
+    if (!dataFetchedOnMountRef.current) {
+      fetchUsersAndRoles();
+      dataFetchedOnMountRef.current = true;
     }
-  }, [fetchUsersApi]);
+  }, [fetchUsersAndRoles]);
   
   useEffect(() => {
     form.reset({
       username: editingUser?.username || '',
-      password: '', // Always clear password fields
+      password: '',
       confirmPassword: '',
-      role: editingUser?.role || 'user',
+      roleId: editingUser?.roleId || '',
     });
-    // Update resolver when editingUser changes
     form.resolver = zodResolver(editingUser ? updateUserFormSchema : userFormSchema) as any;
   }, [editingUser, form, isFormOpen]);
-
 
   const handleCreateNew = () => {
     setEditingUser(null);
     setIsFormOpen(true);
   };
 
-  const handleEditUser = (user: User) => {
-    setEditingUser(user);
-    setIsFormOpen(true);
+  const handleEditUser = async (userId: string) => {
+     try {
+      const response = await fetch(`/api/users/${userId}`); // Assume this endpoint returns full user details including roleId
+      if (!response.ok) {
+        const errorMsg = await formatApiError(response, 'Failed to fetch user details');
+        throw new Error(errorMsg);
+      }
+      const userToEdit: User = await response.json();
+      setEditingUser(userToEdit);
+      setIsFormOpen(true);
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Error fetching user', description: err.message });
+    }
   };
 
   const handleDeleteUser = async (userId: string, username: string) => {
@@ -113,8 +129,7 @@ function UserAdminPageInternal() {
         throw new Error(errorMsg);
       }
       toast({ title: 'User Deleted', description: `User "${username}" has been deleted.` });
-      usersApiFetchedOnMountRef.current = false; // Allow refetch on next render cycle if needed, or just call fetchUsersApi()
-      fetchUsersApi(); // Refresh list
+      fetchUsersAndRoles();
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Error Deleting User', description: err.message });
     }
@@ -123,24 +138,19 @@ function UserAdminPageInternal() {
   const onSubmitUserForm = async (values: UserFormValues) => {
     try {
       let response;
-      const payload: Partial<UserFormValues> = { username: values.username, role: values.role };
+      const payload: Partial<UserFormValues> = { username: values.username, roleId: values.roleId };
       if (values.password && values.password.trim() !== '') {
         payload.password = values.password;
       }
 
-      if (editingUser) {
-        response = await fetch(`/api/users/${editingUser.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-      } else {
-        response = await fetch('/api/users', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-      }
+      const url = editingUser ? `/api/users/${editingUser.id}` : '/api/users';
+      const method = editingUser ? 'PUT' : 'POST';
+
+      response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
 
       if (!response.ok) {
         const errorMsg = await formatApiError(response, `Failed to ${editingUser ? 'update' : 'create'} user`);
@@ -149,15 +159,13 @@ function UserAdminPageInternal() {
       
       toast({ title: `User ${editingUser ? 'Updated' : 'Created'}`, description: `User "${values.username}" has been successfully ${editingUser ? 'updated' : 'created'}.` });
       setIsFormOpen(false);
-      usersApiFetchedOnMountRef.current = false; // Allow refetch
-      fetchUsersApi(); // Refresh list
+      fetchUsersAndRoles();
     } catch (err: any) {
       toast({ variant: 'destructive', title: `Error ${editingUser ? 'Updating' : 'Creating'} User`, description: err.message });
     }
   };
 
-  // Combined loading guard: waits for general context data AND local user list
-  if (!dataContextIsReady || isLoading) { 
+  if (isLoading) { 
     return (
       <div className="flex flex-col justify-center items-center h-screen">
         <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
@@ -172,7 +180,7 @@ function UserAdminPageInternal() {
          <ShieldAlert className="h-12 w-12 text-destructive mx-auto mb-4" />
         <h2 className="text-2xl font-semibold text-destructive mb-2">Error Loading Users</h2>
         <p className="text-muted-foreground mb-4">{error}</p>
-        <Button onClick={() => { usersApiFetchedOnMountRef.current = false; fetchUsersApi(); }}>Try Again</Button>
+        <Button onClick={fetchUsersAndRoles}>Try Again</Button>
       </div>
     );
   }
@@ -209,6 +217,7 @@ function UserAdminPageInternal() {
             onCancel={() => { setIsFormOpen(false); setEditingUser(null); }}
             isEditing={!!editingUser}
             isLoading={form.formState.isSubmitting}
+            roles={roles}
           />
         </DialogContent>
       </Dialog>
@@ -232,13 +241,13 @@ function UserAdminPageInternal() {
                     <TableCell className="font-medium">{user.username}</TableCell>
                     <TableCell>
                       <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                        user.role === 'administrator' ? 'bg-primary/20 text-primary' : 'bg-secondary text-secondary-foreground'
+                        user.role.toLowerCase() === 'administrator' ? 'bg-primary/20 text-primary' : 'bg-secondary text-secondary-foreground'
                       }`}>
-                        {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
+                        {user.role}
                       </span>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="icon" onClick={() => handleEditUser(user)} className="mr-2 hover:text-primary">
+                      <Button variant="ghost" size="icon" onClick={() => handleEditUser(user.id)} className="mr-2 hover:text-primary">
                         <Edit className="h-4 w-4" />
                       </Button>
                       <AlertDialog>

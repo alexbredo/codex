@@ -4,7 +4,6 @@ import { getDb } from '@/lib/db';
 import { getCurrentUserFromCookie } from '@/lib/auth';
 import { z } from 'zod';
 
-// Schema for creating a new user by an admin
 const createUserSchema = z.object({
   username: z.string().min(3, 'Username must be at least 3 characters').max(50),
   password: z.string().min(6, 'Password must be at least 6 characters').max(100),
@@ -14,25 +13,24 @@ const createUserSchema = z.object({
 // GET all users
 export async function GET(request: Request) {
   const currentUser = await getCurrentUserFromCookie();
-  // Allow any authenticated user to fetch the list (for owner display etc.)
-  // Admins can see more, or this endpoint can be further restricted if needed later.
   if (!currentUser) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
     const db = await getDb();
-    // Join with roles table to get role name for display
     const users = await db.all(`
-        SELECT u.id, u.username, r.name as role
+        SELECT u.id, u.username, u.roleId, r.name as role
         FROM users u
         LEFT JOIN roles r ON u.roleId = r.id
         ORDER BY u.username ASC
     `);
     
     const formattedUsers = users.map(u => ({
-        ...u,
-        role: u.role?.toLowerCase() === 'administrator' ? 'administrator' : 'user'
+        id: u.id,
+        username: u.username,
+        roleId: u.roleId,
+        role: u.role || 'N/A' // Handle case where role might be null
     }));
 
     return NextResponse.json(formattedUsers);
@@ -71,34 +69,33 @@ export async function POST(request: Request) {
     }
 
     const userId = crypto.randomUUID();
-    // WARNING: Storing plaintext password. Highly insecure. For demo only.
     await db.run(
       'INSERT INTO users (id, username, password, roleId, role) VALUES (?, ?, ?, ?, ?)',
       userId,
       username,
-      password, // Plaintext password
+      password,
       roleId,
-      roleExists.name // Store text role for compatibility if needed
+      roleExists.name
     );
     
-    // Log security event
     const logId = crypto.randomUUID();
     await db.run(
       'INSERT INTO security_log (id, timestamp, userId, username, action, targetEntityType, targetEntityId, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       logId,
       new Date().toISOString(),
-      adminUser.id, // The admin performing the action
+      adminUser.id,
       adminUser.username,
       'USER_CREATE',
       'User',
-      userId, // The user that was created
+      userId,
       JSON.stringify({ createdUsername: username, roleAssigned: roleExists.name })
     );
 
     const createdUser = {
       id: userId,
       username,
-      role: roleExists.name?.toLowerCase() === 'administrator' ? 'administrator' : 'user',
+      role: roleExists.name,
+      roleId: roleExists.id,
     };
     return NextResponse.json(createdUser, { status: 201 });
 

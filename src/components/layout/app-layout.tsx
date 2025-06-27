@@ -113,12 +113,18 @@ export default function AppLayout({ children }: AppLayoutProps) {
             </div>
             <div className="flex items-center">
               {user && (
-                <Button variant="ghost" size="sm" onClick={logout} className="text-destructive hover:text-destructive hover:bg-destructive/10 md:hidden">
-                  <LogOut size={18} className="mr-1" /> Logout
-                </Button>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground hidden md:inline">{user.username}</span>
+                  <Button variant="ghost" size="sm" onClick={logout} className="text-destructive hover:text-destructive hover:bg-destructive/10">
+                    <LogOut size={18} className="md:mr-1" /> <span className="hidden md:inline">Logout</span>
+                  </Button>
+                </div>
               )}
               {!user && (
-                <div className="md:hidden h-9 w-9"></div> 
+                <div className="hidden md:flex items-center gap-2">
+                  <Link href="/login" passHref legacyBehavior><Button variant="outline" size="sm">Login</Button></Link>
+                  <Link href="/register" passHref legacyBehavior><Button variant="default" size="sm">Register</Button></Link>
+                </div>
               )}
             </div>
           </header>
@@ -141,4 +147,3 @@ export default function AppLayout({ children }: AppLayoutProps) {
     </SidebarProvider>
   );
 }
-    

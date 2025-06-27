@@ -16,6 +16,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import type { UserFormValues } from './user-form-schema';
+import type { Role } from '@/lib/types';
 
 interface UserFormProps {
   form: UseFormReturn<UserFormValues>;
@@ -23,6 +24,7 @@ interface UserFormProps {
   onCancel: () => void;
   isEditing?: boolean;
   isLoading?: boolean;
+  roles: Role[];
 }
 
 export default function UserForm({
@@ -31,6 +33,7 @@ export default function UserForm({
   onCancel,
   isEditing = false,
   isLoading = false,
+  roles = [],
 }: UserFormProps) {
   return (
     <Form {...form}>
@@ -77,19 +80,20 @@ export default function UserForm({
         />
         <FormField
           control={form.control}
-          name="role"
+          name="roleId"
           render={({ field }) => (
             <FormItem>
               <FormLabel>Role</FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value}>
+              <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value || undefined}>
                 <FormControl>
                   <SelectTrigger>
                     <SelectValue placeholder="Select user role" />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  <SelectItem value="user">User</SelectItem>
-                  <SelectItem value="administrator">Administrator</SelectItem>
+                  {roles.map((role) => (
+                    <SelectItem key={role.id} value={role.id}>{role.name}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               <FormMessage />
