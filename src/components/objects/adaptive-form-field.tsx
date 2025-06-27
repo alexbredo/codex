@@ -17,7 +17,7 @@ import type { Property, ValidationRuleset, Model } from '@/lib/types';
 import { useData } from '@/contexts/data-context';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
-import { CalendarIcon, ShieldCheck, ChevronsUpDown, Check, Search as SearchIcon, Paperclip, UploadCloud } from 'lucide-react';
+import { CalendarIcon, ShieldCheck, ChevronsUpDown, Check, Search as SearchIcon, Paperclip, UploadCloud, Loader2 } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { cn, getObjectDisplayValue } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -136,6 +136,65 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
     }
 
     switch (property.type) {
+      case 'url': {
+        const [isFetchingTitle, setIsFetchingTitle] = useState(false);
+        const currentValue = controllerField.value || { url: '', title: '' };
+
+        const handleFetchTitle = async (url: string) => {
+            if (!url || (!url.startsWith('http://') && !url.startsWith('https://'))) return;
+            const currentTitle = currentValue.title;
+            if (currentTitle) return; // Don't fetch if title is already set by user
+            setIsFetchingTitle(true);
+            try {
+                const response = await fetch('/api/utils/fetch-url-title', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url }),
+                });
+                const data = await response.json();
+                if (data.title) {
+                    controllerField.onChange({ ...currentValue, title: data.title });
+                }
+            } catch (error) {
+                console.error("Failed to fetch title", error);
+            } finally {
+                setIsFetchingTitle(false);
+            }
+        };
+
+        return (
+            <div className="space-y-2">
+                <FormItem>
+                    <FormLabel>URL</FormLabel>
+                    <FormControl>
+                        <Input
+                            placeholder="https://example.com"
+                            value={currentValue.url || ''}
+                            onChange={(e) => controllerField.onChange({ ...currentValue, url: e.target.value })}
+                            onBlur={(e) => handleFetchTitle(e.target.value)}
+                            disabled={fieldIsDisabled}
+                        />
+                    </FormControl>
+                    <FormMessage />
+                </FormItem>
+                <FormItem>
+                    <FormLabel>Display Title</FormLabel>
+                    <div className="relative">
+                        <FormControl>
+                            <Input
+                                placeholder="e.g., Example Website"
+                                value={currentValue.title || ''}
+                                onChange={(e) => controllerField.onChange({ ...currentValue, title: e.target.value })}
+                                disabled={fieldIsDisabled}
+                            />
+                        </FormControl>
+                        {isFetchingTitle && <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin" />}
+                    </div>
+                    <FormDescription className="text-xs">Optional. If left blank, will try to fetch automatically from the URL.</FormDescription>
+                </FormItem>
+            </div>
+        );
+      }
       case 'string':
         if (property.name.toLowerCase().includes('description') || property.name.toLowerCase().includes('notes')) {
             return <Textarea placeholder={`Enter ${property.name}`} {...controllerField} value={controllerField.value ?? ''} disabled={fieldIsDisabled} />;
@@ -389,6 +448,9 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
       break;
     case 'number':
       defaultValueForController = null; 
+      break;
+    case 'url':
+      defaultValueForController = { url: '', title: '' };
       break;
     default:
       defaultValueForController = undefined;

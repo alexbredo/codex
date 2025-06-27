@@ -202,6 +202,7 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, vali
       case 'string':
       case 'markdown':
       case 'image':
+      case 'url':
         return "Enter default text or URL";
       case 'number':
         return "Enter default number (e.g., 0)";
@@ -512,7 +513,7 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, vali
                 )}
               />
           )}
-          { !['rating', 'markdown', 'image'].includes(currentPropertyType) && (
+          { !['rating', 'markdown', 'image', 'url'].includes(currentPropertyType) && (
             <FormField
               control={form.control}
               name={`properties.${index}.required`}
@@ -534,7 +535,7 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, vali
               )}
             />
           )}
-          { ['rating', 'markdown', 'image'].includes(currentPropertyType) && (
+          { ['rating', 'markdown', 'image', 'url'].includes(currentPropertyType) && (
              <FormField
                 control={form.control}
                 name={`properties.${index}.required`}

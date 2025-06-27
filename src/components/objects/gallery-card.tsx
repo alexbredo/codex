@@ -5,7 +5,7 @@ import * as React from 'react'; // Import React
 import type { DataObject, Model, Property, WorkflowWithDetails } from '@/lib/types';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Eye, Edit, Trash2, CheckCircle2, ArchiveRestore, Paperclip } from 'lucide-react'; // Added Paperclip
+import { Eye, Edit, Trash2, CheckCircle2, ArchiveRestore, Paperclip, ExternalLink } from 'lucide-react'; // Added ExternalLink
 import { getObjectDisplayValue, cn } from '@/lib/utils'; // Added cn
 import Image from 'next/image';
 import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
@@ -161,6 +161,18 @@ const GalleryCard = React.memo(function GalleryCard({
           );
         }
         return <Badge variant="outline" className="text-xs">File</Badge>;
+      case 'url':
+        if (typeof value === 'object' && value !== null && value.url) {
+          return (
+            <a href={value.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-1 text-xs" onClick={(e) => e.stopPropagation()}>
+              <ExternalLink className="h-3 w-3 shrink-0" />
+              <span className="truncate" title={value.url}>
+                {value.title || value.url}
+              </span>
+            </a>
+          );
+        }
+        return <span className="text-muted-foreground italic text-xs">Invalid URL data</span>;
       case 'rating':
         return <StarDisplay rating={value as number} size="sm"/>;
       case 'relationship':
@@ -214,6 +226,9 @@ const GalleryCard = React.memo(function GalleryCard({
             {displayPropertyValue(prop, obj[prop.name])}
           </div>
         ))}
+        {propertiesToDisplay.length === 0 && (!displayImage || !imageUrl) && (
+            <p className="text-xs text-muted-foreground italic">No additional details to display.</p>
+        )}
         {obj.deletedAt && viewingRecycleBin && (
           <p className="text-xs text-destructive mt-2">
             Deleted on: {formatDateFns(new Date(obj.deletedAt), 'PP p')}
@@ -243,7 +258,7 @@ const GalleryCard = React.memo(function GalleryCard({
                 <AlertDialogHeader>
                   <AlertDialogTitle>Are you sure?</AlertDialogTitle>
                   <AlertDialogDescription>
-                    This action cannot be undone. This will {viewingRecycleBin ? 'permanently delete' : 'move to recycle bin'} the object "{displayName}".
+                    This action will {viewingRecycleBin ? 'permanently delete' : 'move to recycle bin'} the object "{displayName}".
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>

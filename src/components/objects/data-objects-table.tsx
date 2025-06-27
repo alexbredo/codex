@@ -148,6 +148,7 @@ export default function DataObjectsTable({
       if (property.type === 'markdown') return <Badge variant="outline">Markdown</Badge>;
       if (property.type === 'image') return <Badge variant="outline">Image</Badge>;
       if (property.type === 'fileAttachment') return <Badge variant="outline">File</Badge>;
+      if (property.type === 'url') return <Badge variant="outline">URL</Badge>;
       if (property.type === 'rating') return <StarDisplay rating={0} />;
       return <span className="text-muted-foreground">N/A</span>;
     }
@@ -217,6 +218,16 @@ export default function DataObjectsTable({
           );
         }
         return <Badge variant="outline">File</Badge>;
+      case 'url':
+        if (typeof value === 'object' && value !== null && value.url) {
+          return (
+            <a href={value.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-1 text-xs" title={value.url}>
+                <ExternalLink className="h-3 w-3 shrink-0" />
+                <span className="truncate">{value.title || value.url}</span>
+            </a>
+          );
+        }
+        return <span className="text-muted-foreground italic">N/A</span>;
       case 'rating': return <StarDisplay rating={value as number} />;
       case 'relationship':
         if (!property.relatedModelId) return <span className="text-destructive">Config Err</span>;

@@ -314,6 +314,16 @@ function ViewObjectPageInternal() {
           );
         }
         return <span className="text-muted-foreground italic">Invalid file data</span>;
+      case 'url':
+        if (typeof value === 'object' && value !== null && value.url) {
+            return (
+              <a href={value.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center text-primary hover:underline">
+                <ExternalLink className="mr-2 h-4 w-4" />
+                {value.title || value.url}
+              </a>
+            );
+        }
+        return <span className="text-muted-foreground italic">Invalid URL data</span>;
       case 'rating':
         return <StarDisplay rating={value as number} size="md"/>;
       case 'relationship':
