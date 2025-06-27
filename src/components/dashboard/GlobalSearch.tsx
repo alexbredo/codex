@@ -46,7 +46,7 @@ export function GlobalSearch({ open, setOpen }: { open: boolean; setOpen: (open:
   const { data: results, isLoading } = useQuery<SearchResult[]>({
     queryKey: ['globalSearch', debouncedQuery],
     queryFn: () => fetchSearchResults(debouncedQuery),
-    enabled: !!debouncedQuery,
+    enabled: !!debouncedQuery.trim(),
   });
 
   const { models, isReady: dataIsReady } = useData();
@@ -110,10 +110,10 @@ export function GlobalSearch({ open, setOpen }: { open: boolean; setOpen: (open:
           />
           <CommandList>
             <CommandEmpty>
-              {isLoading ? 'Searching...' : (debouncedQuery ? `No results found for "${debouncedQuery}".` : "Start typing to search.")}
+              {isLoading ? 'Searching...' : (debouncedQuery.trim() ? `No results found for "${debouncedQuery}".` : "Start typing to search.")}
             </CommandEmpty>
 
-            {!isLoading && results && results.length > 0 && (
+            {!isLoading && debouncedQuery.trim() && results && results.length > 0 && (
               Object.entries(groupedResults).map(([modelName, items]) => (
                 <CommandGroup key={modelName} heading={modelName}>
                   {items.map((result) => (
@@ -132,19 +132,38 @@ export function GlobalSearch({ open, setOpen }: { open: boolean; setOpen: (open:
               ))
             )}
 
-            {!isLoading && !debouncedQuery && (
-              <CommandGroup heading="Suggestions">
-                <CommandItem onSelect={() => handleSuggestionSelect('model:')}>
-                  <DatabaseZap className="mr-2 h-4 w-4" />
-                  <span>Filter by model...</span>
-                </CommandItem>
-                {allSearchableProperties.slice(0, 5).map(propName => (
-                  <CommandItem key={propName} onSelect={() => handleSuggestionSelect(`${propName}:`)}>
-                    <ListFilter className="mr-2 h-4 w-4" />
-                    <span>Filter by property: {propName}</span>
+            {!debouncedQuery.trim() && (
+              <>
+                <CommandGroup heading="Suggestions">
+                  <CommandItem onSelect={() => handleSuggestionSelect('model:')}>
+                    <DatabaseZap className="mr-2 h-4 w-4" />
+                    <span>Filter by model...</span>
                   </CommandItem>
-                ))}
-              </CommandGroup>
+                  {allSearchableProperties.slice(0, 3).map(propName => (
+                    <CommandItem key={propName} onSelect={() => handleSuggestionSelect(`${propName}:`)}>
+                      <ListFilter className="mr-2 h-4 w-4" />
+                      <span>Filter by property: {propName}</span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+                
+                {dataIsReady && models.length > 0 && (
+                  <CommandGroup heading="Models">
+                    {models.slice(0, 5).map(model => (
+                      <CommandItem 
+                          key={model.id}
+                          value={model.name}
+                          onSelect={() => {
+                              runCommand(() => router.push(`/data/${model.id}`));
+                          }}
+                      >
+                          <DatabaseZap className="mr-2 h-4 w-4" />
+                          <span>{model.name}</span>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                )}
+              </>
             )}
           </CommandList>
         </Command>
