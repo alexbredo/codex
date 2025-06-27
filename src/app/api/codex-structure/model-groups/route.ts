@@ -23,7 +23,7 @@ export async function GET(request: Request) {
 // POST a new model group
 export async function POST(request: Request) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || currentUser.role !== 'administrator') {
+  if (!currentUser || !currentUser.permissionIds.includes('admin:manage_model_groups')) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
@@ -82,4 +82,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Failed to create model group', details: error.message }, { status: 500 });
   }
 }
-

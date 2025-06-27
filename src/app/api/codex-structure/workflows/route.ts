@@ -7,7 +7,7 @@ import { getCurrentUserFromCookie } from '@/lib/auth';
 // GET all workflows with their states and transitions
 export async function GET(request: Request) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || currentUser.role !== 'administrator') {
+  if (!currentUser || !currentUser.permissionIds.includes('admin:manage_workflows')) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
@@ -53,7 +53,7 @@ export async function GET(request: Request) {
 // POST a new workflow with its states and transitions
 export async function POST(request: Request) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || currentUser.role !== 'administrator') {
+  if (!currentUser || !currentUser.permissionIds.includes('admin:manage_workflows')) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
@@ -192,5 +192,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Failed to create workflow', details: error.message }, { status: 500 });
   }
 }
-
-    

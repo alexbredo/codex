@@ -33,7 +33,7 @@ const exportedModelBundleSchema = z.object({
 
 export async function POST(request: Request) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || currentUser.role !== 'administrator') {
+  if (!currentUser || !currentUser.permissionIds.includes('models:import_export')) {
     return NextResponse.json({ error: 'Unauthorized. Administrator role required for import.' }, { status: 403 });
   }
 
