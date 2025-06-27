@@ -173,6 +173,22 @@ export async function POST(request: Request) {
       } as Property);
     }
 
+    // --- Create model-specific permissions ---
+    const modelPermActions = ['view', 'edit', 'delete'];
+    for (const action of modelPermActions) {
+      const permId = `model:${action}:${modelId}`;
+      const permName = `${action.charAt(0).toUpperCase() + action.slice(1)} ${name} Objects`;
+      const permCategory = `Model: ${name}`;
+      await db.run(
+        'INSERT INTO permissions (id, name, category) VALUES (?, ?, ?)',
+        permId, permName, permCategory
+      );
+      // Also grant this new permission to the admin role by default
+      const adminRoleId = '00000000-role-0000-0000-administrator';
+      await db.run('INSERT OR IGNORE INTO role_permissions (roleId, permissionId) VALUES (?, ?)', adminRoleId, permId);
+    }
+    // --- End permission creation ---
+
     // Log structural change for model creation
     const changelogId = crypto.randomUUID();
     const createdModelSnapshot = {

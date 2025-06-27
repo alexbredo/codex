@@ -137,6 +137,21 @@ export async function PUT(request: Request, { params }: Params) {
         params.modelId
     );
 
+    // --- Update model-specific permissions if name changed ---
+    if (body.name && body.name !== oldModelRow.name) {
+      const modelPermActions = ['view', 'edit', 'delete'];
+      for (const action of modelPermActions) {
+        const permId = `model:${action}:${params.modelId}`;
+        const newPermName = `${action.charAt(0).toUpperCase() + action.slice(1)} ${body.name} Objects`;
+        const newPermCategory = `Model: ${body.name}`;
+        await db.run(
+          'UPDATE permissions SET name = ?, category = ? WHERE id = ?',
+          newPermName, newPermCategory, permId
+        );
+      }
+    }
+    // --- End permission update ---
+
     // ================================================================
     // Step 2: Handle properties update
     // ================================================================
@@ -294,6 +309,11 @@ export async function DELETE(request: Request, { params }: Params) {
         minValue: p.minValue, maxValue: p.maxValue
       }))
     };
+
+    // --- Delete model-specific permissions ---
+    // The CASCADE DELETE on the permissions foreign key in role_permissions will handle cleanup there.
+    await db.run("DELETE FROM permissions WHERE id LIKE ?", `model:%:${params.modelId}`);
+    // --- End permission deletion ---
 
     await db.run('DELETE FROM models WHERE id = ?', params.modelId); // Properties and data_objects are deleted via CASCADE
     

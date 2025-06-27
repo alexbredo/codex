@@ -25,27 +25,19 @@ const ALL_PERMISSIONS: Omit<Permission, 'id'>[] = [
   { name: 'Delete Users', category: 'Users', id: 'users:delete' },
   { name: 'Manage Roles', category: 'Users', id: 'roles:manage' },
   
-  // Model Structure
-  { name: 'View Models', category: 'Models', id: 'models:view' },
-  { name: 'Create Models', category: 'Models', id: 'models:create' },
-  { name: 'Edit Models', category: 'Models', id: 'models:edit' },
-  { name: 'Delete Models', category: 'Models', id: 'models:delete' },
-  { name: 'Import/Export Models', category: 'Models', id: 'models:import_export' },
-
-  // Data Objects
-  { name: 'View Any Object', category: 'Objects', id: 'objects:view_any' },
-  { name: 'Create Objects', category: 'Objects', id: 'objects:create' },
-  { name: 'Edit Any Object', category: 'Objects', id: 'objects:edit_any' },
+  // Object Permissions (Global)
+  { name: 'Create Objects (Any Model)', category: 'Objects', id: 'objects:create' },
   { name: 'Edit Own Objects', category: 'Objects', id: 'objects:edit_own' },
-  { name: 'Delete Any Object', category: 'Objects', id: 'objects:delete_any' },
   { name: 'Delete Own Objects', category: 'Objects', id: 'objects:delete_own' },
-  { name: 'Revert Object History', category: 'Objects', id: 'objects:revert' },
+  { name: 'Revert Object History (Admin)', category: 'Objects', id: 'objects:revert' },
 
   // Administration
   { name: 'View Activity Log', category: 'Admin', id: 'admin:view_activity_log' },
   { name: 'Manage Workflows', category: 'Admin', id: 'admin:manage_workflows' },
   { name: 'Manage Validation Rules', category: 'Admin', id: 'admin:manage_validation_rules' },
   { name: 'Manage Model Groups', category: 'Admin', id: 'admin:manage_model_groups' },
+  { name: 'Manage All Models & Structure', category: 'Admin', id: 'models:manage' },
+  { name: 'Import/Export Models', category: 'Admin', id: 'models:import_export' },
 ];
 
 
@@ -218,19 +210,38 @@ async function initializeDb(): Promise<Database> {
   await db.run('INSERT OR IGNORE INTO roles (id, name, description, isSystemRole) VALUES (?, ?, ?, ?)', adminRoleId, 'Administrator', 'Has all permissions.', 1);
   await db.run('INSERT OR IGNORE INTO roles (id, name, description, isSystemRole) VALUES (?, ?, ?, ?)', userRoleId, 'User', 'Standard user with basic data interaction permissions.', 1);
   
-  // Seed Permissions
+  // Seed Static Permissions
   for (const perm of ALL_PERMISSIONS) {
     await db.run('INSERT OR IGNORE INTO permissions (id, name, category) VALUES (?, ?, ?)', perm.id, perm.name, perm.category);
   }
 
   // Seed Role-Permissions links
-  // Admin gets all permissions
+  // Admin gets all static permissions
   for (const perm of ALL_PERMISSIONS) {
     await db.run('INSERT OR IGNORE INTO role_permissions (roleId, permissionId) VALUES (?, ?)', adminRoleId, perm.id);
   }
+  
+  // Now, grant admin all *dynamic* model permissions that might exist
+  const existingModels = await db.all('SELECT id, name FROM models');
+  for (const model of existingModels) {
+    const actions = ['view', 'edit', 'delete'];
+    for (const action of actions) {
+        const permId = `model:${action}:${model.id}`;
+        // Ensure perm exists before trying to link it
+        await db.run(
+            'INSERT OR IGNORE INTO permissions (id, name, category) VALUES (?, ?, ?)',
+            permId,
+            `${action.charAt(0).toUpperCase() + action.slice(1)} ${model.name} Objects`,
+            `Model: ${model.name}`
+        );
+        await db.run('INSERT OR IGNORE INTO role_permissions (roleId, permissionId) VALUES (?, ?)', adminRoleId, permId);
+    }
+  }
+
+
   // User gets a subset
   const userPermissions = [
-    'models:view', 'objects:view_any', 'objects:create', 'objects:edit_own', 'objects:delete_own'
+    'objects:create', 'objects:edit_own', 'objects:delete_own'
   ];
   for (const permId of userPermissions) {
      await db.run('INSERT OR IGNORE INTO role_permissions (roleId, permissionId) VALUES (?, ?)', userRoleId, permId);
