@@ -6,7 +6,7 @@ import type { StructuralChangelogEntry, PaginatedStructuralChangelogResponse, Se
 
 export async function GET(request: Request) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || !currentUser.permissionIds.includes('admin:view_activity_log')) {
+  if (!currentUser || (!currentUser.permissionIds.includes('admin:view_activity_log') && !currentUser.permissionIds.includes('*'))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
