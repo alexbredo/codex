@@ -640,9 +640,12 @@ const SidebarMenuSkeleton = React.forwardRef<
     showIcon?: boolean
   }
 >(({ className, showIcon = false, ...props }, ref) => {
-  const width = React.useMemo(() => {
-    return `${Math.floor(Math.random() * 40) + 50}%`
-  }, [])
+  const [width, setWidth] = React.useState("75%") // Default for SSR.
+
+  React.useEffect(() => {
+    // This effect runs only on the client, after hydration.
+    setWidth(`${Math.floor(Math.random() * 40) + 50}%`)
+  }, []) // Empty dependency array ensures this runs once on mount.
 
   return (
     <div
