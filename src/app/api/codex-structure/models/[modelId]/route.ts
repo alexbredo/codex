@@ -11,6 +11,11 @@ interface Params {
 
 // GET a single model by ID
 export async function GET(request: Request, { params }: Params) {
+  const currentUser = await getCurrentUserFromCookie();
+  if (!currentUser || (!currentUser.permissionIds.includes(`model:view:${params.modelId}`) && !currentUser.permissionIds.includes('models:manage') && !currentUser.permissionIds.includes('*'))) {
+    return NextResponse.json({ error: 'Unauthorized to view this model' }, { status: 403 });
+  }
+
   try {
     const db = await getDb();
     const modelRow = await db.get('SELECT * FROM models WHERE id = ?', params.modelId);
@@ -100,8 +105,8 @@ export async function GET(request: Request, { params }: Params) {
 // PUT (update) a model
 export async function PUT(request: Request, { params }: Params) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || currentUser.role !== 'administrator') {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+  if (!currentUser || (!currentUser.permissionIds.includes('models:manage') && !currentUser.permissionIds.includes(`model:manage:${params.modelId}`) && !currentUser.permissionIds.includes('*'))) {
+    return NextResponse.json({ error: 'Unauthorized to update model structure' }, { status: 403 });
   }
 
   const db = await getDb();
@@ -139,14 +144,19 @@ export async function PUT(request: Request, { params }: Params) {
 
     // --- Update model-specific permissions if name changed ---
     if (body.name && body.name !== oldModelRow.name) {
-      const modelPermActions = ['view', 'edit', 'delete'];
-      for (const action of modelPermActions) {
+      const actions = ['view', 'edit', 'delete', 'edit_own', 'delete_own', 'manage'];
+      for (const action of actions) {
         const permId = `model:${action}:${params.modelId}`;
-        const newPermName = `${action.charAt(0).toUpperCase() + action.slice(1)} ${body.name} Objects`;
+        let permName = '';
+        if (action === 'edit_own') permName = `Edit Own ${body.name} Objects`;
+        else if (action === 'delete_own') permName = `Delete Own ${body.name} Objects`;
+        else if (action === 'manage') permName = `Manage ${body.name} Structure`;
+        else permName = `${action.charAt(0).toUpperCase() + action.slice(1)} ${body.name} Objects`;
+        
         const newPermCategory = `Model: ${body.name}`;
         await db.run(
           'UPDATE permissions SET name = ?, category = ? WHERE id = ?',
-          newPermName, newPermCategory, permId
+          permName, newPermCategory, permId
         );
       }
     }
@@ -284,8 +294,8 @@ export async function PUT(request: Request, { params }: Params) {
 // DELETE a model
 export async function DELETE(request: Request, { params }: Params) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || currentUser.role !== 'administrator') {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+  if (!currentUser || (!currentUser.permissionIds.includes('models:manage') && !currentUser.permissionIds.includes(`model:manage:${params.modelId}`) && !currentUser.permissionIds.includes('*'))) {
+    return NextResponse.json({ error: 'Unauthorized to delete model' }, { status: 403 });
   }
   const db = await getDb();
   await db.run('BEGIN TRANSACTION');

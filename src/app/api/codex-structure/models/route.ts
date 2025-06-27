@@ -102,7 +102,8 @@ export async function GET(request: Request) {
     const permittedModels = modelsWithProperties.filter(model => {
         if (!currentUser) return false;
         if (currentUser.permissionIds.includes('*')) return true;
-        return currentUser.permissionIds.includes(`model:view:${model.id}`);
+        if (currentUser.permissionIds.includes('models:manage')) return true; // Global manage can see all
+        return currentUser.permissionIds.includes(`model:view:${model.id}`) || currentUser.permissionIds.includes(`model:manage:${model.id}`);
     });
 
     return NextResponse.json(permittedModels);
@@ -119,7 +120,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const currentUser = await getCurrentUserFromCookie();
   if (!currentUser || !currentUser.permissionIds.includes('models:manage')) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    return NextResponse.json({ error: 'Unauthorized to create models' }, { status: 403 });
   }
 
   const db = await getDb();
@@ -185,18 +186,22 @@ export async function POST(request: Request) {
     }
 
     // --- Create model-specific permissions ---
-    const modelPermActions = ['view', 'edit', 'delete'];
-    for (const action of modelPermActions) {
-      const permId = `model:${action}:${modelId}`;
-      const permName = `${action.charAt(0).toUpperCase() + action.slice(1)} ${name} Objects`;
-      const permCategory = `Model: ${name}`;
-      await db.run(
-        'INSERT INTO permissions (id, name, category) VALUES (?, ?, ?)',
-        permId, permName, permCategory
-      );
-      // Also grant this new permission to the admin role by default
-      const adminRoleId = '00000000-role-0000-0000-administrator';
-      await db.run('INSERT OR IGNORE INTO role_permissions (roleId, permissionId) VALUES (?, ?)', adminRoleId, permId);
+    const actions = ['view', 'edit', 'delete', 'edit_own', 'delete_own', 'manage'];
+    for (const action of actions) {
+        const permId = `model:${action}:${modelId}`;
+        let permName = '';
+        if (action === 'edit_own') permName = `Edit Own ${name} Objects`;
+        else if (action === 'delete_own') permName = `Delete Own ${name} Objects`;
+        else if (action === 'manage') permName = `Manage ${name} Structure`;
+        else permName = `${action.charAt(0).toUpperCase() + action.slice(1)} ${name} Objects`;
+
+        await db.run(
+            'INSERT INTO permissions (id, name, category) VALUES (?, ?, ?)',
+            permId, permName, `Model: ${name}`
+        );
+        // Also grant this new permission to the admin role by default
+        const adminRoleId = '00000000-role-0000-0000-administrator';
+        await db.run('INSERT OR IGNORE INTO role_permissions (roleId, permissionId) VALUES (?, ?)', adminRoleId, permId);
     }
     // --- End permission creation ---
 

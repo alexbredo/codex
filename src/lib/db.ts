@@ -25,11 +25,11 @@ const ALL_PERMISSIONS: Omit<Permission, 'id'>[] = [
   { name: 'Delete Users', category: 'Users', id: 'users:delete' },
   { name: 'Manage Roles', category: 'Users', id: 'roles:manage' },
   
-  // Object Permissions (Global)
-  { name: 'Create Objects (Any Model)', category: 'Objects', id: 'objects:create' },
-  { name: 'Edit Own Objects', category: 'Objects', id: 'objects:edit_own' },
-  { name: 'Delete Own Objects', category: 'Objects', id: 'objects:delete_own' },
-  { name: 'Revert Object History (Admin)', category: 'Objects', id: 'objects:revert' },
+  // Object Permissions (Global) - Now clearly marked as global
+  { name: 'Create Objects (Any Model)', category: 'Objects - Global', id: 'objects:create' },
+  { name: 'Edit Own Objects (Any Model)', category: 'Objects - Global', id: 'objects:edit_own' },
+  { name: 'Delete Own Objects (Any Model)', category: 'Objects - Global', id: 'objects:delete_own' },
+  { name: 'Revert Object History (Admin)', category: 'Objects - Global', id: 'objects:revert' },
 
   // Administration
   { name: 'View Activity Log', category: 'Admin', id: 'admin:view_activity_log' },
@@ -166,9 +166,9 @@ async function initializeDb(): Promise<Database> {
 
   await db.exec(`
     CREATE TABLE IF NOT EXISTS permissions (
-      id TEXT PRIMARY KEY, -- e.g., 'users:create'
-      name TEXT NOT NULL UNIQUE, -- e.g., 'Create Users'
-      category TEXT NOT NULL -- e.g., 'User Management'
+      id TEXT PRIMARY KEY, -- e.g., 'users:create' or 'model:edit:uuid'
+      name TEXT NOT NULL, -- e.g., 'Create Users' or 'Edit MyProject Objects'
+      category TEXT NOT NULL -- e.g., 'User Management' or 'Model: MyProject'
     );
   `);
   
@@ -224,14 +224,20 @@ async function initializeDb(): Promise<Database> {
   // Now, grant admin all *dynamic* model permissions that might exist
   const existingModels = await db.all('SELECT id, name FROM models');
   for (const model of existingModels) {
-    const actions = ['view', 'edit', 'delete'];
+    const actions = ['view', 'edit', 'delete', 'edit_own', 'delete_own', 'manage'];
     for (const action of actions) {
         const permId = `model:${action}:${model.id}`;
+        let permName = '';
+        if (action === 'edit_own') permName = `Edit Own ${model.name} Objects`;
+        else if (action === 'delete_own') permName = `Delete Own ${model.name} Objects`;
+        else if (action === 'manage') permName = `Manage ${model.name} Structure`;
+        else permName = `${action.charAt(0).toUpperCase() + action.slice(1)} ${model.name} Objects`;
+        
         // Ensure perm exists before trying to link it
         await db.run(
             'INSERT OR IGNORE INTO permissions (id, name, category) VALUES (?, ?, ?)',
             permId,
-            `${action.charAt(0).toUpperCase() + action.slice(1)} ${model.name} Objects`,
+            permName,
             `Model: ${model.name}`
         );
         await db.run('INSERT OR IGNORE INTO role_permissions (roleId, permissionId) VALUES (?, ?)', adminRoleId, permId);
@@ -239,7 +245,7 @@ async function initializeDb(): Promise<Database> {
   }
 
 
-  // User gets a subset
+  // User gets a subset of global permissions
   const userPermissions = [
     'objects:create', 'objects:edit_own', 'objects:delete_own'
   ];
