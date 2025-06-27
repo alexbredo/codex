@@ -196,6 +196,21 @@ async function initializeDb(): Promise<Database> {
       FOREIGN KEY (userId) REFERENCES users(id) ON DELETE SET NULL
     );
   `);
+  
+  // NEW Security Log Table
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS security_log (
+      id TEXT PRIMARY KEY,
+      timestamp TEXT NOT NULL,
+      userId TEXT,
+      username TEXT,
+      action TEXT NOT NULL,
+      targetEntityType TEXT,
+      targetEntityId TEXT,
+      details TEXT,
+      FOREIGN KEY (userId) REFERENCES users(id) ON DELETE SET NULL
+    );
+  `);
 
   // Dashboards Table
   await db.exec(`

@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getCurrentUserFromCookie } from '@/lib/auth';
-import type { StructuralChangelogEntry, PaginatedStructuralChangelogResponse } from '@/lib/types';
+import type { StructuralChangelogEntry, PaginatedStructuralChangelogResponse, SecurityLogEntry, ActivityLogEntry, PaginatedActivityLogResponse } from '@/lib/types';
 
 export async function GET(request: Request) {
   const currentUser = await getCurrentUserFromCookie();
@@ -15,77 +15,84 @@ export async function GET(request: Request) {
   const limit = parseInt(searchParams.get('limit') || '20', 10);
   const offset = (page - 1) * limit;
 
-  // Basic filtering options (can be expanded)
-  const entityType = searchParams.get('entityType');
-  const entityId = searchParams.get('entityId');
-  const userIdParam = searchParams.get('userId');
-  const action = searchParams.get('action');
+  // Filters
+  const categoryFilter = searchParams.get('category');
+  const userIdFilter = searchParams.get('userId');
+  const actionFilter = searchParams.get('action');
   const dateStart = searchParams.get('dateStart');
   const dateEnd = searchParams.get('dateEnd');
 
-  let whereClauses: string[] = [];
-  let queryParams: any[] = [];
-
-  if (entityType) {
-    whereClauses.push('scl.entityType = ?');
-    queryParams.push(entityType);
-  }
-  if (entityId) {
-    whereClauses.push('scl.entityId = ?');
-    queryParams.push(entityId);
-  }
-  if (userIdParam) {
-    whereClauses.push('scl.userId = ?');
-    queryParams.push(userIdParam);
-  }
-  if (action) {
-    whereClauses.push('scl.action = ?');
-    queryParams.push(action);
-  }
-  if (dateStart) {
-    whereClauses.push('scl.timestamp >= ?');
-    queryParams.push(dateStart);
-  }
-  if (dateEnd) {
-    // Add 1 day to dateEnd to make it inclusive of the end date up to 23:59:59
-    const endDate = new Date(dateEnd);
-    endDate.setDate(endDate.getDate() + 1);
-    whereClauses.push('scl.timestamp < ?');
-    queryParams.push(endDate.toISOString().split('T')[0]);
-  }
-
-  const whereString = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
-
   try {
     const db = await getDb();
+    let allEntries: ActivityLogEntry[] = [];
 
-    const countResult = await db.get<{ count: number }>(
-      `SELECT COUNT(*) as count FROM structural_changelog scl ${whereString}`,
-      ...queryParams
-    );
-    const totalEntries = countResult?.count || 0;
+    // Fetch Structural Changes
+    if (!categoryFilter || categoryFilter === 'Structural') {
+      const structuralRows: StructuralChangelogEntry[] = await db.all(
+        `SELECT scl.*, u.username FROM structural_changelog scl LEFT JOIN users u ON scl.userId = u.id ORDER BY scl.timestamp DESC`
+      );
+      allEntries.push(...structuralRows.map(row => ({
+        id: row.id,
+        timestamp: row.timestamp,
+        category: 'Structural' as const,
+        user: { id: row.userId, name: row.username || (row.userId ? 'Unknown User' : 'System') },
+        action: row.action,
+        entity: { type: row.entityType, id: row.entityId, name: row.entityName || null },
+        summary: `${row.action} ${row.entityType} ${row.entityName || `(${row.entityId.substring(0,8)}...)`}`,
+        details: JSON.parse(row.changes as any),
+      })));
+    }
+    
+    // Fetch Security Changes
+    if (!categoryFilter || categoryFilter === 'Security') {
+      const securityRows: SecurityLogEntry[] = await db.all(
+        `SELECT * FROM security_log ORDER BY timestamp DESC`
+      );
+      allEntries.push(...securityRows.map(row => {
+        const details = row.details ? JSON.parse(row.details as any) : {};
+        let summary = `${row.action.replace(/_/g, ' ')}`;
+        if(row.targetEntityType && details.createdUsername) summary += `: ${details.createdUsername}`;
+        if(row.targetEntityType && details.deletedUsername) summary += `: ${details.deletedUsername}`;
+
+        return {
+          id: row.id,
+          timestamp: row.timestamp,
+          category: 'Security' as const,
+          user: { id: row.userId, name: row.username || 'System' },
+          action: row.action,
+          entity: { type: row.targetEntityType || 'System', id: row.targetEntityId || null, name: details.createdUsername || details.deletedUsername || null },
+          summary: summary,
+          details: details,
+        }
+      }));
+    }
+    
+    // Manual Filtering
+    let filteredEntries = allEntries;
+    if (userIdFilter) {
+      filteredEntries = filteredEntries.filter(entry => entry.user.id === userIdFilter);
+    }
+    if (actionFilter) {
+      filteredEntries = filteredEntries.filter(entry => entry.action === actionFilter);
+    }
+    if (dateStart) {
+      filteredEntries = filteredEntries.filter(entry => new Date(entry.timestamp) >= new Date(dateStart));
+    }
+    if (dateEnd) {
+      const endDate = new Date(dateEnd);
+      endDate.setDate(endDate.getDate() + 1);
+      filteredEntries = filteredEntries.filter(entry => new Date(entry.timestamp) < endDate);
+    }
+
+
+    // Manual Sorting and Pagination
+    filteredEntries.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    const totalEntries = filteredEntries.length;
     const totalPages = Math.ceil(totalEntries / limit);
+    const paginatedEntries = filteredEntries.slice(offset, offset + limit);
 
-    const rows = await db.all(
-      `SELECT scl.*, u.username 
-       FROM structural_changelog scl
-       LEFT JOIN users u ON scl.userId = u.id
-       ${whereString}
-       ORDER BY scl.timestamp DESC
-       LIMIT ? OFFSET ?`,
-      ...queryParams,
-      limit,
-      offset
-    );
-
-    const entries: StructuralChangelogEntry[] = rows.map(row => ({
-      ...row,
-      changes: JSON.parse(row.changes), // Parse the JSON string into an object
-      username: row.username || (row.userId ? 'Unknown User' : 'System'),
-    }));
-
-    const responsePayload: PaginatedStructuralChangelogResponse = {
-      entries,
+    const responsePayload: PaginatedActivityLogResponse = {
+      entries: paginatedEntries,
       totalEntries,
       totalPages,
       currentPage: page,
@@ -93,7 +100,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json(responsePayload);
   } catch (error: any) {
-    console.error('API Error (GET /structural-changelog):', error);
-    return NextResponse.json({ error: 'Failed to fetch structural changelog', details: error.message }, { status: 500 });
+    console.error('API Error (GET /structural-changelog -> Activity Log):', error);
+    return NextResponse.json({ error: 'Failed to fetch activity log', details: error.message }, { status: 500 });
   }
 }

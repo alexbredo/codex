@@ -64,6 +64,20 @@ export async function POST(request: Request) {
       password, // Plaintext password
       role
     );
+    
+    // Log security event
+    const logId = crypto.randomUUID();
+    await db.run(
+      'INSERT INTO security_log (id, timestamp, userId, username, action, targetEntityType, targetEntityId, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      logId,
+      new Date().toISOString(),
+      adminUser.id, // The admin performing the action
+      adminUser.username,
+      'USER_CREATE',
+      'User',
+      userId, // The user that was created
+      JSON.stringify({ createdUsername: username, roleAssigned: role })
+    );
 
     const createdUser = await db.get('SELECT id, username, role FROM users WHERE id = ?', userId);
     return NextResponse.json(createdUser, { status: 201 });

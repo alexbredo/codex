@@ -27,7 +27,7 @@ const adminNavItems = [
   { href: '/admin/workflows', label: 'Workflow Admin', icon: WorkflowIcon, roles: ['administrator'] },
   { href: '/admin/validation-rules', label: 'Validation Rules', icon: ShieldCheck, roles: ['administrator'] },
   { href: '/admin/users', label: 'User Admin', icon: Users, roles: ['administrator'] },
-  { href: '/admin/structural-changelog', label: 'Struct. Changelog', icon: History, roles: ['administrator'] }, // Added new item
+  { href: '/admin/structural-changelog', label: 'Activity Log', icon: History, roles: ['administrator'] }, // Updated label
 ];
 
 export default function Navigation() {

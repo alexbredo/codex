@@ -149,10 +149,37 @@ export interface StructuralChangelogEntry {
   changes: StructuralChangeDetail[] | Record<string, any>; // Parsed JSON object from DB
 }
 
+// Security Log Types
+export interface SecurityLogEntry {
+  id: string;
+  timestamp: string;
+  userId: string | null;
+  username?: string;
+  action: string;
+  targetEntityType?: string;
+  targetEntityId?: string;
+  details?: Record<string, any> | string; // Stored as JSON string, parsed on fetch
+}
 
-// For forms
-export type ModelGroupFormValues = Omit<ModelGroup, 'id'>;
-export type ValidationRulesetFormData = Omit<ValidationRuleset, 'id'>;
+// Unified Activity Log Types
+export interface ActivityLogEntry {
+  id: string;
+  timestamp: string;
+  category: 'Structural' | 'Data' | 'Security';
+  user: {
+    id: string | null;
+    name: string;
+  };
+  action: string;
+  entity: {
+    type: string;
+    id: string | null;
+    name: string | null;
+  };
+  summary: string;
+  details: any;
+}
+
 
 // Response type for paginated structural changelog
 export interface PaginatedStructuralChangelogResponse {
@@ -161,6 +188,13 @@ export interface PaginatedStructuralChangelogResponse {
   totalPages: number;
   currentPage: number;
 }
+export interface PaginatedActivityLogResponse {
+  entries: ActivityLogEntry[];
+  totalEntries: number;
+  totalPages: number;
+  currentPage: number;
+}
+
 
 // Type for Model Export
 export interface ExportedModelBundle {

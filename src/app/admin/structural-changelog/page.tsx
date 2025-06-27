@@ -15,8 +15,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, History, ShieldAlert, Info, Search, FilterX, Calendar as CalendarIcon, User as UserIcon, Layers, Edit2 } from 'lucide-react';
-import type { StructuralChangelogEntry, PaginatedStructuralChangelogResponse } from '@/lib/types';
+import { Loader2, History, ShieldAlert, Info, Search, FilterX, Calendar as CalendarIcon, User as UserIcon, Layers, Edit2, ShieldQuestion } from 'lucide-react';
+import type { ActivityLogEntry, PaginatedActivityLogResponse } from '@/lib/types';
 import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -25,37 +25,30 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { ScrollArea } from '@/components/ui/scroll-area';
-import ReactJson from 'react18-json-view'; // Using a library for better JSON display
+import ReactJson from 'react18-json-view';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-
-const ENTITY_TYPES = ['ModelGroup', 'Model', 'Workflow', 'ValidationRuleset'];
-const ACTION_TYPES = ['CREATE', 'UPDATE', 'DELETE'];
-
-const ALL_ENTITY_TYPES_VALUE = "__ALL_ENTITY_TYPES__";
-const ALL_ACTIONS_VALUE = "__ALL_ACTIONS__";
+const CATEGORY_TYPES = ['Structural', 'Security']; // Add more like 'Data' in the future
+const ALL_CATEGORIES_VALUE = "__ALL_CATEGORIES__";
 const ALL_USERS_VALUE = "__ALL_USERS__";
 
 
-function StructuralChangelogPageInternal() {
+function ActivityLogPageInternal() {
   const { formatApiError, allUsers, isReady: dataContextReady } = useData();
-  const [selectedEntryDetails, setSelectedEntryDetails] = useState<StructuralChangelogEntry | null>(null);
+  const [selectedEntryDetails, setSelectedEntryDetails] = useState<ActivityLogEntry | null>(null);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
 
   // Filters
   const [page, setPage] = useState(1);
   const [limit] = useState(20); // Items per page
   const [filters, setFilters] = useState({
-    entityType: '',
-    entityId: '',
+    category: '',
     userId: '',
-    action: '',
     dateStart: '',
     dateEnd: '',
   });
@@ -64,29 +57,28 @@ function StructuralChangelogPageInternal() {
     const params = new URLSearchParams();
     params.append('page', String(page));
     params.append('limit', String(limit));
-    if (filters.entityType) params.append('entityType', filters.entityType);
-    if (filters.entityId) params.append('entityId', filters.entityId);
+    if (filters.category) params.append('category', filters.category);
     if (filters.userId) params.append('userId', filters.userId);
-    if (filters.action) params.append('action', filters.action);
     if (filters.dateStart) params.append('dateStart', filters.dateStart);
     if (filters.dateEnd) params.append('dateEnd', filters.dateEnd);
     return params.toString();
   };
 
-  const fetchChangelog = async (): Promise<PaginatedStructuralChangelogResponse> => {
+  const fetchChangelog = async (): Promise<PaginatedActivityLogResponse> => {
     const queryString = buildQueryString();
+    // This API endpoint now fetches unified logs
     const response = await fetch(`/api/structural-changelog?${queryString}`);
     if (!response.ok) {
-      const errorMsg = await formatApiError(response, 'Failed to fetch structural changelog');
+      const errorMsg = await formatApiError(response, 'Failed to fetch activity log');
       throw new Error(errorMsg);
     }
     return response.json();
   };
 
-  const { data, isLoading, error, refetch } = useQuery<PaginatedStructuralChangelogResponse, Error>({
-    queryKey: ['structuralChangelog', page, filters],
+  const { data, isLoading, error, refetch } = useQuery<PaginatedActivityLogResponse, Error>({
+    queryKey: ['activityLog', page, filters],
     queryFn: fetchChangelog,
-    enabled: dataContextReady, // Only fetch when DataContext is ready (e.g., allUsers loaded)
+    enabled: dataContextReady,
   });
 
   const handleFilterChange = (filterName: keyof typeof filters, value: string) => {
@@ -99,40 +91,12 @@ function StructuralChangelogPageInternal() {
   };
 
   const clearFilters = () => {
-    setFilters({ entityType: '', entityId: '', userId: '', action: '', dateStart: '', dateEnd: '' });
+    setFilters({ category: '', userId: '', dateStart: '', dateEnd: '' });
     setPage(1);
   };
 
   const entries = data?.entries || [];
   const totalPages = data?.totalPages || 1;
-
-  const renderChangeDetails = (details: StructuralChangelogEntry['changes']) => {
-    if (!details) return <span className="text-muted-foreground italic">No specific changes logged.</span>;
-    if (Array.isArray(details)) { // Usually for UPDATE
-      return (
-        <ul className="list-disc pl-5 space-y-1 text-xs">
-          {details.map((change, index) => {
-            if (change.field === 'properties') {
-              return <li key={index}><strong>Properties:</strong> Modified. Click View for details.</li>;
-            }
-            return (
-              <li key={index}>
-                <strong>{change.field}:</strong>
-                {change.oldValue !== undefined && (
-                  <span className="text-destructive line-through mx-1" title={JSON.stringify(change.oldValue, null, 2)}>{String(change.oldValue).substring(0,30)}{String(change.oldValue).length > 30 ? '...' : ''}</span>
-                )}
-                {' -> '}
-                <span className="text-green-600" title={JSON.stringify(change.newValue, null, 2)}>{String(change.newValue).substring(0,30)}{String(change.newValue).length > 30 ? '...' : ''}</span>
-              </li>
-            );
-          })}
-        </ul>
-      );
-    } else if (typeof details === 'object') { // Usually for CREATE or DELETE (snapshot)
-      return <span className="text-xs italic">Snapshot taken. Click view for details.</span>;
-    }
-    return <span className="text-xs italic">{String(details)}</span>;
-  };
 
 
   if (!dataContextReady) {
@@ -150,9 +114,9 @@ function StructuralChangelogPageInternal() {
       <header className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
         <div className="text-center md:text-left">
           <h1 className="text-3xl font-bold text-primary flex items-center">
-            <History className="mr-3 h-8 w-8" /> Structural Change Log
+            <History className="mr-3 h-8 w-8" /> Activity Log
           </h1>
-          <p className="text-muted-foreground">Audit trail for changes to models, groups, workflows, and rules.</p>
+          <p className="text-muted-foreground">A unified audit trail for structural changes and security events.</p>
         </div>
       </header>
 
@@ -160,28 +124,15 @@ function StructuralChangelogPageInternal() {
         <CardHeader>
           <CardTitle className="text-xl">Filters</CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <Input placeholder="Entity ID" value={filters.entityId} onChange={e => handleFilterChange('entityId', e.target.value)} />
-          
+        <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
           <Select 
-            value={filters.entityType === '' ? ALL_ENTITY_TYPES_VALUE : filters.entityType} 
-            onValueChange={val => handleFilterChange('entityType', val === ALL_ENTITY_TYPES_VALUE ? "" : val)}
+            value={filters.category === '' ? ALL_CATEGORIES_VALUE : filters.category} 
+            onValueChange={val => handleFilterChange('category', val === ALL_CATEGORIES_VALUE ? "" : val)}
           >
-            <SelectTrigger><SelectValue placeholder="Entity Type..." /></SelectTrigger>
+            <SelectTrigger><SelectValue placeholder="Category..." /></SelectTrigger>
             <SelectContent>
-              <SelectItem value={ALL_ENTITY_TYPES_VALUE}>Any Entity Type</SelectItem>
-              {ENTITY_TYPES.map(et => <SelectItem key={et} value={et}>{et}</SelectItem>)}
-            </SelectContent>
-          </Select>
-
-          <Select 
-            value={filters.action === '' ? ALL_ACTIONS_VALUE : filters.action} 
-            onValueChange={val => handleFilterChange('action', val === ALL_ACTIONS_VALUE ? "" : val)}
-          >
-            <SelectTrigger><SelectValue placeholder="Action Type..." /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL_ACTIONS_VALUE}>Any Action</SelectItem>
-              {ACTION_TYPES.map(at => <SelectItem key={at} value={at}>{at}</SelectItem>)}
+              <SelectItem value={ALL_CATEGORIES_VALUE}>Any Category</SelectItem>
+              {CATEGORY_TYPES.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
             </SelectContent>
           </Select>
 
@@ -214,7 +165,7 @@ function StructuralChangelogPageInternal() {
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={filters.dateEnd ? new Date(filters.dateEnd) : undefined} onSelect={(date) => handleDateChange('dateEnd', date)} initialFocus /></PopoverContent>
           </Popover>
-          <div className="lg:col-span-3 flex justify-end items-center gap-2">
+          <div className="lg:col-span-2 flex justify-end items-center gap-2">
             <Button variant="outline" onClick={clearFilters} size="sm"><FilterX className="mr-2 h-4 w-4" /> Clear Filters</Button>
             <Button onClick={() => refetch()} disabled={isLoading} size="sm"><Search className="mr-2 h-4 w-4" /> Apply Filters</Button>
           </div>
@@ -224,14 +175,14 @@ function StructuralChangelogPageInternal() {
       {isLoading && !data && (
         <div className="flex flex-col justify-center items-center h-64">
           <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-          <p className="text-lg text-muted-foreground">Loading changelog entries...</p>
+          <p className="text-lg text-muted-foreground">Loading activity log...</p>
         </div>
       )}
       {error && (
         <Card className="text-center py-12 bg-destructive/10 border-destructive">
           <CardContent>
             <ShieldAlert size={48} className="mx-auto text-destructive mb-4" />
-            <h3 className="text-xl font-semibold text-destructive">Error Loading Changelog</h3>
+            <h3 className="text-xl font-semibold text-destructive">Error Loading Log</h3>
             <p className="text-destructive/80 mb-4">{error.message}</p>
             <Button onClick={() => refetch()} variant="destructive">Try Again</Button>
           </CardContent>
@@ -241,8 +192,8 @@ function StructuralChangelogPageInternal() {
         <Card className="text-center py-12">
           <CardContent>
             <Info size={48} className="mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-xl font-semibold">No Changelog Entries Found</h3>
-            <p className="text-muted-foreground">No structural changes match your current filters, or no changes have been made yet.</p>
+            <h3 className="text-xl font-semibold">No Log Entries Found</h3>
+            <p className="text-muted-foreground">No activities match your current filters, or no activities have been logged yet.</p>
           </CardContent>
         </Card>
       )}
@@ -252,11 +203,9 @@ function StructuralChangelogPageInternal() {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[180px]">Timestamp</TableHead>
+                <TableHead className="w-[100px]">Category</TableHead>
                 <TableHead className="w-[130px]">User</TableHead>
-                <TableHead className="w-[140px]">Entity Type</TableHead>
-                <TableHead>Entity Name/ID</TableHead>
-                <TableHead className="w-[100px]">Action</TableHead>
-                <TableHead>Changes Summary</TableHead>
+                <TableHead>Summary</TableHead>
                 <TableHead className="w-[80px] text-right">Details</TableHead>
               </TableRow>
             </TableHeader>
@@ -264,25 +213,20 @@ function StructuralChangelogPageInternal() {
               {entries.map((entry) => (
                 <TableRow key={entry.id}>
                   <TableCell className="text-xs">{format(new Date(entry.timestamp), 'PPpp')}</TableCell>
+                   <TableCell>
+                    <Badge variant={entry.category === 'Security' ? 'destructive' : 'secondary'} className="text-xs flex items-center gap-1">
+                       {entry.category === 'Security' ? <ShieldQuestion className="h-3 w-3" /> : <Layers className="h-3 w-3" />}
+                       {entry.category}
+                    </Badge>
+                  </TableCell>
                   <TableCell>
                     <Badge variant="outline" className="text-xs flex items-center gap-1">
-                      <UserIcon className="h-3 w-3" /> {entry.username}
+                      <UserIcon className="h-3 w-3" /> {entry.user.name}
                     </Badge>
                   </TableCell>
-                  <TableCell>
-                    <Badge variant="secondary" className="text-xs flex items-center gap-1">
-                       <Layers className="h-3 w-3" /> {entry.entityType}
-                    </Badge>
-                  }</TableCell>
-                  <TableCell className="text-xs max-w-[200px] truncate" title={entry.entityName || entry.entityId}>
-                    {entry.entityName || <span className="italic text-muted-foreground">ID: {entry.entityId.substring(0,8)}...</span>}
+                  <TableCell className="text-sm">
+                    {entry.summary}
                   </TableCell>
-                  <TableCell>
-                    <Badge variant={entry.action === 'DELETE' ? 'destructive' : entry.action === 'CREATE' ? 'default' : 'outline'} className="capitalize">
-                      <Edit2 className="mr-1 h-3 w-3" /> {entry.action.toLowerCase()}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-xs max-w-xs truncate">{renderChangeDetails(entry.changes)}</TableCell>
                   <TableCell className="text-right">
                     <Button
                       variant="ghost"
@@ -302,7 +246,7 @@ function StructuralChangelogPageInternal() {
            {totalPages > 1 && (
             <CardContent className="py-4">
                 <div className="flex justify-center items-center space-x-2">
-                <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1 || isLoading}>Previous</Button>
+                <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={isLoading}>Previous</Button>
                 <span className="text-sm text-muted-foreground">Page {page} of {totalPages} (Total: {data?.totalEntries || 0})</span>
                 <Button variant="outline" size="sm" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages || isLoading}>Next</Button>
                 </div>
@@ -314,17 +258,17 @@ function StructuralChangelogPageInternal() {
       <Dialog open={isDetailsModalOpen} onOpenChange={setIsDetailsModalOpen}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Change Details</DialogTitle>
+            <DialogTitle>Log Entry Details</DialogTitle>
             {selectedEntryDetails && (
                  <DialogDescription>
-                    Details for {selectedEntryDetails.action} action on {selectedEntryDetails.entityType} <span className="font-mono text-xs">{selectedEntryDetails.entityName || selectedEntryDetails.entityId}</span> by {selectedEntryDetails.username} at {format(new Date(selectedEntryDetails.timestamp), 'PPpp')}.
+                    Details for {selectedEntryDetails.action} event triggered by {selectedEntryDetails.user.name} at {format(new Date(selectedEntryDetails.timestamp), 'PPpp')}.
                 </DialogDescription>
             )}
           </DialogHeader>
           {selectedEntryDetails && (
             <ScrollArea className="max-h-[60vh] mt-4 bg-muted/50 p-4 rounded-md border">
               <ReactJson
-                src={selectedEntryDetails.changes}
+                src={selectedEntryDetails.details}
                 collapsed={1}
                 displayObjectSize={false}
                 displayDataTypes={false}
@@ -340,4 +284,4 @@ function StructuralChangelogPageInternal() {
   );
 }
 
-export default withAuth(StructuralChangelogPageInternal, ['administrator']);
+export default withAuth(ActivityLogPageInternal, ['administrator']);

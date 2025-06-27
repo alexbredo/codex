@@ -41,6 +41,20 @@ export async function POST(request: Request) {
       role
     );
 
+    // Log security event
+    const logId = crypto.randomUUID();
+    await db.run(
+      'INSERT INTO security_log (id, timestamp, userId, username, action, targetEntityType, targetEntityId, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      logId,
+      new Date().toISOString(),
+      userId, // The user who was just created
+      username,
+      'USER_REGISTER',
+      'User',
+      userId,
+      JSON.stringify({ ip: request.headers.get('x-forwarded-for') ?? 'unknown', roleAssigned: role })
+    );
+
     return NextResponse.json({ id: userId, username, role }, { status: 201 });
   } catch (error: any) {
     console.error('API Error (POST /api/auth/register):', error);

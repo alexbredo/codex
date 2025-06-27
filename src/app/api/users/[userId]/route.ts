@@ -75,12 +75,25 @@ export async function PUT(request: Request, { params }: Params) {
       values.push(newRole);
     }
 
-    if (updates.length === 0) {
-      return NextResponse.json(targetUser); // No changes
+    if (updates.length > 0) {
+      values.push(userId);
+      await db.run(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, ...values);
+
+      // Log security event
+      const logId = crypto.randomUUID();
+      await db.run(
+          'INSERT INTO security_log (id, timestamp, userId, username, action, targetEntityType, targetEntityId, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          logId,
+          new Date().toISOString(),
+          currentUser.id,
+          currentUser.username,
+          'USER_UPDATE',
+          'User',
+          userId,
+          JSON.stringify({ updatedFields: updates.map(u => u.split(' ')[0]), targetUsername: newUsername || targetUser.username })
+      );
     }
 
-    values.push(userId);
-    await db.run(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, ...values);
 
     const updatedUser = await db.get('SELECT id, username, role FROM users WHERE id = ?', userId);
     return NextResponse.json(updatedUser);
@@ -101,7 +114,7 @@ export async function DELETE(request: Request, { params }: Params) {
   const db = await getDb();
 
   try {
-    const targetUser = await db.get('SELECT id, role FROM users WHERE id = ?', userId);
+    const targetUser = await db.get('SELECT id, role, username FROM users WHERE id = ?', userId);
     if (!targetUser) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
@@ -121,6 +134,20 @@ export async function DELETE(request: Request, { params }: Params) {
     if (result.changes === 0) {
       return NextResponse.json({ error: 'User not found or already deleted' }, { status: 404 });
     }
+    
+    // Log security event
+    const logId = crypto.randomUUID();
+    await db.run(
+        'INSERT INTO security_log (id, timestamp, userId, username, action, targetEntityType, targetEntityId, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        logId,
+        new Date().toISOString(),
+        currentUser.id,
+        currentUser.username,
+        'USER_DELETE',
+        'User',
+        userId,
+        JSON.stringify({ deletedUsername: targetUser.username })
+    );
 
     return NextResponse.json({ message: 'User deleted successfully' });
 

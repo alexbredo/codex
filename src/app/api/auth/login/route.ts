@@ -25,6 +25,18 @@ export async function POST(request: Request) {
     const user = await db.get('SELECT id, username, role, password FROM users WHERE username = ?', username);
 
     if (!user || user.password !== password) {
+       if (user) { // User exists, but password was wrong
+            const logId = crypto.randomUUID();
+            await db.run(
+                'INSERT INTO security_log (id, timestamp, userId, username, action, details) VALUES (?, ?, ?, ?, ?, ?)',
+                logId,
+                new Date().toISOString(),
+                user.id,
+                user.username,
+                'USER_LOGIN_FAILURE',
+                JSON.stringify({ ip: request.headers.get('x-forwarded-for') ?? 'unknown', reason: 'Invalid password' })
+            );
+        }
       return NextResponse.json({ error: 'Invalid username or password' }, { status: 401 });
     }
     
@@ -37,6 +49,18 @@ export async function POST(request: Request) {
       path: '/',
       sameSite: 'lax',
     });
+
+    // Log security event
+    const logId = crypto.randomUUID();
+    await db.run(
+        'INSERT INTO security_log (id, timestamp, userId, username, action, details) VALUES (?, ?, ?, ?, ?, ?)',
+        logId,
+        new Date().toISOString(),
+        user.id,
+        user.username,
+        'USER_LOGIN',
+        JSON.stringify({ ip: request.headers.get('x-forwarded-for') ?? 'unknown' })
+    );
 
     // Don't send password back
     const { password: _, ...userWithoutPassword } = user;
