@@ -13,7 +13,14 @@ const createUserSchema = z.object({
 // GET all users with their roles
 export async function GET(request: Request) {
   const currentUser = await getCurrentUserFromCookie();
-  const canView = currentUser?.permissionIds.includes('users:view') || currentUser?.permissionIds.includes('*');
+  
+  const permissions = currentUser?.permissionIds || [];
+  const canView =
+    permissions.includes('users:view') ||
+    permissions.includes('users:create') ||
+    permissions.includes('users:edit') ||
+    permissions.includes('users:delete') ||
+    permissions.includes('*');
 
   if (!currentUser || !canView) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
