@@ -13,7 +13,17 @@ const roleSchema = z.object({
 // GET all roles
 export async function GET(request: Request) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || currentUser.role !== 'administrator') {
+  // A user can view roles if they can manage roles, or do anything with users.
+  const canViewRoles = 
+    currentUser?.permissionIds.includes('*') ||
+    currentUser?.permissionIds.includes('roles:manage') ||
+    currentUser?.permissionIds.includes('users:create') ||
+    currentUser?.permissionIds.includes('users:edit') ||
+    currentUser?.permissionIds.includes('users:view') ||
+    currentUser?.permissionIds.includes('users:delete');
+
+
+  if (!currentUser || !canViewRoles) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
   
@@ -25,10 +35,10 @@ export async function GET(request: Request) {
         r.name, 
         r.description, 
         r.isSystemRole, 
-        COUNT(DISTINCT u.id) as userCount, 
+        COUNT(DISTINCT ur.userId) as userCount, 
         COUNT(DISTINCT rp.permissionId) as permissionCount
       FROM roles r
-      LEFT JOIN users u ON r.id = u.roleId
+      LEFT JOIN user_roles ur ON r.id = ur.roleId
       LEFT JOIN role_permissions rp ON r.id = rp.roleId
       GROUP BY r.id, r.name, r.description, r.isSystemRole
       ORDER BY r.name ASC
@@ -44,7 +54,7 @@ export async function GET(request: Request) {
 // POST a new role
 export async function POST(request: Request) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || currentUser.role !== 'administrator') {
+  if (!currentUser || !currentUser.permissionIds.includes('roles:manage')) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
@@ -88,6 +98,9 @@ export async function POST(request: Request) {
   } catch (error: any) {
     await db.run('ROLLBACK');
     console.error('API Error (POST /api/roles):', error);
+    if (error.message && error.message.includes('UNIQUE constraint failed: roles.name')) {
+      return NextResponse.json({ error: 'A role with this name already exists.', details: error.message }, { status: 409 });
+    }
     return NextResponse.json({ error: 'Failed to create role', details: error.message }, { status: 500 });
   }
 }
