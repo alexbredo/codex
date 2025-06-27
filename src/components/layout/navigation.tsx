@@ -11,6 +11,7 @@ import {
   SidebarSeparator,
   SidebarGroup,
   SidebarGroupLabel,
+  SidebarMenuSkeleton,
 } from '@/components/ui/sidebar';
 import { LayoutDashboard, DatabaseZap, ListChecks, FolderOpen, FolderKanban, Users, Workflow as WorkflowIcon, ShieldCheck, History, KeyRound } from 'lucide-react';
 import { useData } from '@/contexts/data-context';
@@ -18,36 +19,49 @@ import { useAuth } from '@/contexts/auth-context';
 import type { Model } from '@/lib/types';
 
 const staticNavItemsBase = [
-  { href: '/', label: 'Dashboard', icon: LayoutDashboard, roles: ['user', 'administrator'] },
+  { href: '/', label: 'Dashboard', icon: LayoutDashboard, permission: 'any' },
 ];
 
 const adminNavItems = [
-  { href: '/models', label: 'Model Admin', icon: DatabaseZap, roles: ['administrator'] },
-  { href: '/model-groups', label: 'Group Admin', icon: FolderKanban, roles: ['administrator'] },
-  { href: '/admin/workflows', label: 'Workflow Admin', icon: WorkflowIcon, roles: ['administrator'] },
-  { href: '/admin/validation-rules', label: 'Validation Rules', icon: ShieldCheck, roles: ['administrator'] },
-  { href: '/admin/users', label: 'User Admin', icon: Users, roles: ['administrator'] },
-  { href: '/admin/roles', label: 'Role Admin', icon: KeyRound, roles: ['administrator'] },
-  { href: '/admin/structural-changelog', label: 'Activity Log', icon: History, roles: ['administrator'] },
+  { href: '/models', label: 'Model Admin', icon: DatabaseZap, permission: 'models:manage' },
+  { href: '/model-groups', label: 'Group Admin', icon: FolderKanban, permission: 'admin:manage_model_groups' },
+  { href: '/admin/workflows', label: 'Workflow Admin', icon: WorkflowIcon, permission: 'admin:manage_workflows' },
+  { href: '/admin/validation-rules', label: 'Validation Rules', icon: ShieldCheck, permission: 'admin:manage_validation_rules' },
+  { href: '/admin/users', label: 'User Admin', icon: Users, permission: 'users:view' },
+  { href: '/admin/roles', label: 'Role Admin', icon: KeyRound, permission: 'roles:manage' },
+  { href: '/admin/structural-changelog', label: 'Activity Log', icon: History, permission: 'admin:view_activity_log' },
 ];
 
 export default function Navigation() {
   const pathname = usePathname();
   const { models, modelGroups, isReady: dataIsReady } = useData();
-  const { user, isLoading: authIsLoading } = useAuth();
+  const { user, isLoading: authIsLoading, hasPermission } = useAuth();
+  const [isMounted, setIsMounted] = React.useState(false);
+
+  React.useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   const visibleStaticNavItems = React.useMemo(() => {
-    if (authIsLoading || !user) return staticNavItemsBase.filter(item => !item.roles || item.roles.length === 0);
-    // Combine and sort admin items alphabetically for consistent order
-    const combinedAdminItems = [...adminNavItems].sort((a,b) => a.label.localeCompare(b.label));
-    return [...staticNavItemsBase, ...combinedAdminItems].filter(item => item.roles.includes(user.role));
-  }, [user, authIsLoading]);
+    if (!user) return staticNavItemsBase.filter(item => item.permission === 'any');
+    
+    const combinedAdminItems = [...adminNavItems].sort((a, b) => a.label.localeCompare(b.label));
+    const allItems = [...staticNavItemsBase, ...combinedAdminItems];
+    
+    return allItems.filter(item => {
+      if (item.permission === 'any') return true;
+      return hasPermission(item.permission);
+    });
+  }, [user, hasPermission]);
 
 
   const groupedModels = React.useMemo(() => {
-    if (!dataIsReady) return {};
+    if (!dataIsReady || !user) return {};
+
+    const permittedModels = models.filter(model => hasPermission(`model:view:${model.id}`));
+
     const groups: Record<string, Model[]> = {};
-    models.forEach(model => {
+    permittedModels.forEach(model => {
       const group = modelGroups.find(g => g.id === model.modelGroupId);
       const groupName = group ? group.name : 'Default';
       if (!groups[groupName]) {
@@ -60,7 +74,7 @@ export default function Navigation() {
       groups[groupName].sort((a, b) => a.name.localeCompare(b.name));
     }
     return groups;
-  }, [models, modelGroups, dataIsReady]);
+  }, [models, modelGroups, dataIsReady, user, hasPermission]);
 
   const sortedGroupNames = React.useMemo(() => {
     return Object.keys(groupedModels).sort((a, b) => {
@@ -70,8 +84,15 @@ export default function Navigation() {
     });
   }, [groupedModels]);
 
-  if (authIsLoading) {
-    return <div className="p-4 text-sm text-sidebar-foreground/70">Loading navigation...</div>;
+  if (!isMounted || authIsLoading) {
+    return (
+      <div className="p-2 space-y-2">
+        <SidebarMenuSkeleton showIcon />
+        <SidebarMenuSkeleton showIcon />
+        <SidebarMenuSkeleton showIcon />
+        <SidebarMenuSkeleton showIcon />
+      </div>
+    );
   }
 
   return (
