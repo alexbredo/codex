@@ -17,7 +17,9 @@ const updateUserSchema = z.object({
 
 export async function GET(request: Request, { params }: Params) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || !currentUser.permissionIds.includes('users:view')) {
+  const canView = currentUser?.permissionIds.includes('users:view') || currentUser?.permissionIds.includes('*');
+
+  if (!currentUser || !canView) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
@@ -31,7 +33,7 @@ export async function GET(request: Request, { params }: Params) {
 
     const roles = await db.all('SELECT r.id, r.name FROM user_roles ur JOIN roles r ON ur.roleId = r.id WHERE ur.userId = ?', params.userId);
     user.roles = roles;
-    
+
     return NextResponse.json(user);
   } catch (error: any) {
     console.error(`API Error (GET /api/users/${params.userId}):`, error);
@@ -41,7 +43,9 @@ export async function GET(request: Request, { params }: Params) {
 
 export async function PUT(request: Request, { params }: Params) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || !currentUser.permissionIds.includes('users:edit')) {
+  const canEdit = currentUser?.permissionIds.includes('users:edit') || currentUser?.permissionIds.includes('*');
+
+  if (!currentUser || !canEdit) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
@@ -113,7 +117,7 @@ export async function PUT(request: Request, { params }: Params) {
       await roleStmt.finalize();
       updatedFieldsForLog.push('roles');
     }
-    
+
     if (updatedFieldsForLog.length > 0) {
         const logId = crypto.randomUUID();
         await db.run(
@@ -128,7 +132,7 @@ export async function PUT(request: Request, { params }: Params) {
             JSON.stringify({ updatedFields: updatedFieldsForLog, targetUsername: newUsername || targetUser.username })
         );
     }
-    
+
     await db.run('COMMIT');
 
     const updatedUserResult = await db.get('SELECT id, username FROM users WHERE id = ?', userId);
@@ -146,7 +150,9 @@ export async function PUT(request: Request, { params }: Params) {
 
 export async function DELETE(request: Request, { params }: Params) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || !currentUser.permissionIds.includes('users:delete')) {
+  const canDelete = currentUser?.permissionIds.includes('users:delete') || currentUser?.permissionIds.includes('*');
+
+  if (!currentUser || !canDelete) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
@@ -181,7 +187,7 @@ export async function DELETE(request: Request, { params }: Params) {
       await db.run('ROLLBACK');
       return NextResponse.json({ error: 'User not found or already deleted' }, { status: 404 });
     }
-    
+
     const logId = crypto.randomUUID();
     await db.run(
         'INSERT INTO security_log (id, timestamp, userId, username, action, targetEntityType, targetEntityId, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
