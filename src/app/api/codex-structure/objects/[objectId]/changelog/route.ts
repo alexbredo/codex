@@ -10,22 +10,25 @@ interface Params {
 
 export async function GET(request: Request, { params }: Params) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || !['user', 'administrator'].includes(currentUser.role)) {
-    return NextResponse.json({ error: 'Unauthorized to view changelog' }, { status: 403 });
-  }
-
   const { objectId } = params;
 
   try {
     const db = await getDb();
 
-    // Check if the object itself exists and belongs to a model the user might have some context for (optional stricter check)
-    // For now, just ensure the objectId is valid.
-    const objectExists = await db.get('SELECT id FROM data_objects WHERE id = ?', objectId);
-    if (!objectExists) {
-        return NextResponse.json({ error: 'Parent data object not found' }, { status: 404 });
+    // First, find the modelId for the object to check permissions against it.
+    const objectWithModelId = await db.get('SELECT model_id FROM data_objects WHERE id = ?', objectId);
+    if (!objectWithModelId) {
+        return NextResponse.json({ error: 'Data object not found' }, { status: 404 });
+    }
+    const { model_id: modelId } = objectWithModelId;
+
+    // Now, perform the permission check.
+    const canView = currentUser?.permissionIds.includes('*') || currentUser?.permissionIds.includes(`model:view:${modelId}`);
+    if (!currentUser || !canView) {
+        return NextResponse.json({ error: 'Unauthorized to view changelog for this object' }, { status: 403 });
     }
 
+    // Proceed to fetch the changelog since the user is authorized.
     const changelogRows = await db.all(`
       SELECT
         cl.id,
@@ -49,7 +52,7 @@ export async function GET(request: Request, { params }: Params) {
       changedAt: row.changedAt,
       changedByUserId: row.changedByUserId,
       changedByUsername: row.changedByUsername || (row.changedByUserId ? 'Unknown User' : 'System'),
-      changeType: row.changeType as 'CREATE' | 'UPDATE',
+      changeType: row.changeType as ChangelogEntry['changeType'],
       changes: JSON.parse(row.changes), // Parse the JSON string into an object
     }));
 
