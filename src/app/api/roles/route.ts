@@ -20,11 +20,17 @@ export async function GET(request: Request) {
   try {
     const db = await getDb();
     const roles = await db.all(`
-      SELECT r.id, r.name, r.description, r.isSystemRole, COUNT(u.id) as userCount, COUNT(rp.permissionId) as permissionCount
+      SELECT 
+        r.id, 
+        r.name, 
+        r.description, 
+        r.isSystemRole, 
+        COUNT(DISTINCT u.id) as userCount, 
+        COUNT(DISTINCT rp.permissionId) as permissionCount
       FROM roles r
       LEFT JOIN users u ON r.id = u.roleId
       LEFT JOIN role_permissions rp ON r.id = rp.roleId
-      GROUP BY r.id, r.name, r.description
+      GROUP BY r.id, r.name, r.description, r.isSystemRole
       ORDER BY r.name ASC
     `);
 
