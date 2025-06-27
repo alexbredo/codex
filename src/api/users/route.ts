@@ -13,8 +13,8 @@ const createUserSchema = z.object({
 // GET all users with their roles
 export async function GET(request: Request) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!currentUser || (!currentUser.permissionIds.includes('users:view') && !currentUser.permissionIds.includes('*'))) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
   try {
