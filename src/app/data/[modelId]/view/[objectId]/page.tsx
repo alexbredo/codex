@@ -49,7 +49,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Edit, Trash2, DownloadCloud, PlusCircle, Loader2, DatabaseZap, FileText, ListFilter, CheckCircle, ShieldCheck, AlertTriangle, Settings2, Workflow as WorkflowIconLucide, History as HistoryIcon, User as UserIcon, Layers, Edit2 as Edit2Icon, ZoomIn, ExternalLink, RotateCcw, UserCircle as UserCircleIcon, CalendarClock } from 'lucide-react';
+import { ArrowLeft, Edit, Trash2, DownloadCloud, PlusCircle, Loader2, DatabaseZap, FileText, ListFilter, CheckCircle, ShieldCheck, AlertTriangle, Settings2, Workflow as WorkflowIconLucide, History as HistoryIcon, User as UserIcon, Layers, Edit2 as Edit2Icon, ZoomIn, ExternalLink, RotateCcw, UserCircle as UserCircleIcon, CalendarClock, ShieldAlert, Paperclip } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
@@ -61,7 +61,6 @@ import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
 import ReactMarkdown from 'react-markdown';
 import { StarDisplay } from '@/components/ui/star-display';
 import { Progress } from '@/components/ui/progress';
-import { Paperclip } from 'lucide-react';
 
 
 function ViewObjectPageInternal() {
@@ -732,3 +731,5 @@ function ViewObjectPageInternal() {
 // withAuth doesn't support dynamic checks like this, so we do it inside the component.
 // The wrapper is still useful for the initial user/loading check.
 export default ViewObjectPageInternal;
+
+    
