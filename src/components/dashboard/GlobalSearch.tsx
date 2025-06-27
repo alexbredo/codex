@@ -43,13 +43,30 @@ export function GlobalSearch({ open, setOpen }: { open: boolean; setOpen: (open:
   const [query, setQuery] = React.useState('');
   const debouncedQuery = useDebounce(query, 300);
 
+  const { models, isReady: dataIsReady } = useData();
+  
+  const allSearchableProperties = React.useMemo(() => {
+    if (!dataIsReady) return [];
+    const propertySet = new Set<string>();
+    models.forEach(model => {
+      model.properties.forEach(prop => {
+        if (prop.type === 'string' || prop.type === 'number') {
+          propertySet.add(prop.name);
+        }
+      });
+    });
+    return Array.from(propertySet).sort();
+  }, [models, dataIsReady]);
+
+  const showModelSuggestions = debouncedQuery.trim().toLowerCase() === 'model:';
+  const propertyFilterMatch = debouncedQuery.trim().match(/^(\w+):$/);
+  const showPropertyValueHint = propertyFilterMatch && allSearchableProperties.includes(propertyFilterMatch[1]);
+  
   const { data: results, isLoading } = useQuery<SearchResult[]>({
     queryKey: ['globalSearch', debouncedQuery],
     queryFn: () => fetchSearchResults(debouncedQuery),
-    enabled: !!debouncedQuery.trim() && debouncedQuery.trim().toLowerCase() !== 'model:',
+    enabled: !!debouncedQuery.trim() && !showModelSuggestions && !showPropertyValueHint,
   });
-
-  const { models, isReady: dataIsReady } = useData();
 
   React.useEffect(() => {
     if (!open) {
@@ -73,26 +90,6 @@ export function GlobalSearch({ open, setOpen }: { open: boolean; setOpen: (open:
       return acc;
     }, {} as Record<string, SearchResult[]>);
   }, [results]);
-
-  const allSearchableProperties = React.useMemo(() => {
-    if (!dataIsReady) return [];
-    const propertySet = new Set<string>();
-    models.forEach(model => {
-      model.properties.forEach(prop => {
-        if (prop.type === 'string' || prop.type === 'number') {
-          propertySet.add(prop.name);
-        }
-      });
-    });
-    return Array.from(propertySet).sort();
-  }, [models, dataIsReady]);
-
-
-  const handleSuggestionSelect = (suggestion: string) => {
-    setQuery(prev => `${prev.trim()} ${suggestion}`);
-  };
-
-  const showModelSuggestions = debouncedQuery.trim().toLowerCase() === 'model:';
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -150,6 +147,16 @@ export function GlobalSearch({ open, setOpen }: { open: boolean; setOpen: (open:
                     ))}
                 </CommandGroup>
             )}
+            
+            {/* NEW: Display Property Value Hint */}
+            {!isLoading && showPropertyValueHint && propertyFilterMatch && (
+              <CommandGroup heading={`Filtering by '${propertyFilterMatch[1]}'`}>
+                <div className="p-2 text-sm text-muted-foreground">
+                  Continue typing to filter by the value of "{propertyFilterMatch[1]}".
+                </div>
+              </CommandGroup>
+            )}
+
 
             {/* Initial State (no query) */}
             {!isLoading && !debouncedQuery.trim() && (
@@ -187,7 +194,7 @@ export function GlobalSearch({ open, setOpen }: { open: boolean; setOpen: (open:
             )}
 
             {/* No Results Fallback */}
-            {!isLoading && (!results || results.length === 0) && debouncedQuery.trim() && !showModelSuggestions && (
+            {!isLoading && (!results || results.length === 0) && debouncedQuery.trim() && !showModelSuggestions && !showPropertyValueHint && (
                 <CommandEmpty>No results found for "{debouncedQuery}".</CommandEmpty>
             )}
             
