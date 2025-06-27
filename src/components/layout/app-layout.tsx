@@ -45,6 +45,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
     return () => document.removeEventListener('keydown', down)
   }, [])
 
+  const userRoleDisplay = user?.roles.map(r => r.name).join(', ') || 'No Role';
+
   return (
     <SidebarProvider defaultOpen>
       <div className="flex min-h-screen">
@@ -72,7 +74,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
               <>
                 <div className="px-2 py-1 text-sm text-sidebar-foreground/80">
                   <UserCircle size={16} className="inline mr-2" />
-                  {user.username} ({user.role})
+                  {user.username} ({userRoleDisplay})
                 </div>
                 <Button variant="ghost" className="justify-start gap-2 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={logout}>
                   <LogOut size={20} /> Logout

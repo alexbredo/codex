@@ -17,22 +17,22 @@ import UserForm from '@/components/admin/users/user-form';
 import type { UserFormValues } from '@/components/admin/users/user-form-schema';
 import { userFormSchema, updateUserFormSchema } from '@/components/admin/users/user-form-schema';
 import type { Role } from '@/lib/types';
+import { Badge } from '@/components/ui/badge';
 
 
-interface User {
+interface UserWithRoles {
   id: string;
   username: string;
-  role: string;
-  roleId?: string;
+  roles: { id: string; name: string }[];
 }
 
 function UserAdminPageInternal() {
-  const [users, setUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<UserWithRoles[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editingUser, setEditingUser] = useState<UserWithRoles | null>(null);
 
   const { toast } = useToast();
   const { hasPermission } = useAuth();
@@ -46,7 +46,7 @@ function UserAdminPageInternal() {
       username: '',
       password: '',
       confirmPassword: '',
-      roleId: '',
+      roleIds: [],
     },
   });
 
@@ -66,15 +66,10 @@ function UserAdminPageInternal() {
         throw new Error(await formatApiError(rolesResponse, 'Failed to fetch roles'));
       }
 
-      const usersData: User[] = await usersResponse.json();
+      const usersData: UserWithRoles[] = await usersResponse.json();
       const rolesData: Role[] = await rolesResponse.json();
       
-      const enrichedUsers = usersData.map(user => {
-        const userRole = rolesData.find(r => r.id === user.roleId);
-        return { ...user, role: userRole?.name || 'Unknown Role' };
-      });
-      
-      setUsers(enrichedUsers);
+      setUsers(usersData);
       setRoles(rolesData);
 
     } catch (err: any) {
@@ -97,7 +92,7 @@ function UserAdminPageInternal() {
       username: editingUser?.username || '',
       password: '',
       confirmPassword: '',
-      roleId: editingUser?.roleId || '',
+      roleIds: editingUser?.roles.map(r => r.id) || [],
     });
     form.resolver = zodResolver(editingUser ? updateUserFormSchema : userFormSchema) as any;
   }, [editingUser, form, isFormOpen]);
@@ -109,12 +104,12 @@ function UserAdminPageInternal() {
 
   const handleEditUser = async (userId: string) => {
      try {
-      const response = await fetch(`/api/users/${userId}`); // Assume this endpoint returns full user details including roleId
+      const response = await fetch(`/api/users/${userId}`);
       if (!response.ok) {
         const errorMsg = await formatApiError(response, 'Failed to fetch user details');
         throw new Error(errorMsg);
       }
-      const userToEdit: User = await response.json();
+      const userToEdit: UserWithRoles = await response.json();
       setEditingUser(userToEdit);
       setIsFormOpen(true);
     } catch (err: any) {
@@ -138,8 +133,7 @@ function UserAdminPageInternal() {
 
   const onSubmitUserForm = async (values: UserFormValues) => {
     try {
-      let response;
-      const payload: Partial<UserFormValues> = { username: values.username, roleId: values.roleId };
+      const payload: Partial<UserFormValues> = { username: values.username, roleIds: values.roleIds };
       if (values.password && values.password.trim() !== '') {
         payload.password = values.password;
       }
@@ -147,7 +141,7 @@ function UserAdminPageInternal() {
       const url = editingUser ? `/api/users/${editingUser.id}` : '/api/users';
       const method = editingUser ? 'PUT' : 'POST';
 
-      response = await fetch(url, {
+      const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -193,7 +187,7 @@ function UserAdminPageInternal() {
             <UsersIcon className="mr-3 h-8 w-8 text-primary" />
             <div>
                 <h1 className="text-3xl font-bold text-primary">User Administration</h1>
-                <p className="text-muted-foreground">Manage user accounts and their roles.</p>
+                <p className="text-muted-foreground">Manage user accounts and their assigned roles.</p>
             </div>
         </div>
         {hasPermission('users:create') && (
@@ -234,7 +228,7 @@ function UserAdminPageInternal() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Username</TableHead>
-                  <TableHead>Role</TableHead>
+                  <TableHead>Roles</TableHead>
                   <TableHead className="text-right w-[150px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -243,11 +237,14 @@ function UserAdminPageInternal() {
                   <TableRow key={user.id}>
                     <TableCell className="font-medium">{user.username}</TableCell>
                     <TableCell>
-                      <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                        user.role.toLowerCase() === 'administrator' ? 'bg-primary/20 text-primary' : 'bg-secondary text-secondary-foreground'
-                      }`}>
-                        {user.role}
-                      </span>
+                      <div className="flex flex-wrap gap-1">
+                        {user.roles.map(role => (
+                          <Badge key={role.id} variant={role.name.toLowerCase() === 'administrator' ? 'default' : 'secondary'}>
+                            {role.name}
+                          </Badge>
+                        ))}
+                         {user.roles.length === 0 && <span className="text-xs text-muted-foreground italic">No roles assigned</span>}
+                      </div>
                     </TableCell>
                     <TableCell className="text-right">
                       {hasPermission('users:edit') && (

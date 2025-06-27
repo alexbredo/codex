@@ -4,8 +4,6 @@
 import type { UseFormReturn } from 'react-hook-form';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Form,
   FormControl,
@@ -17,6 +15,8 @@ import {
 } from '@/components/ui/form';
 import type { UserFormValues } from './user-form-schema';
 import type { Role } from '@/lib/types';
+import { MultiSelectAutocomplete, type MultiSelectOption } from '@/components/ui/multi-select-autocomplete';
+import { useMemo } from 'react';
 
 interface UserFormProps {
   form: UseFormReturn<UserFormValues>;
@@ -35,6 +35,14 @@ export default function UserForm({
   isLoading = false,
   roles = [],
 }: UserFormProps) {
+
+  const roleOptions: MultiSelectOption[] = useMemo(() => {
+    return roles.map(role => ({
+      value: role.id,
+      label: role.name,
+    })).sort((a,b) => a.label.localeCompare(b.label));
+  }, [roles]);
+
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
@@ -80,22 +88,18 @@ export default function UserForm({
         />
         <FormField
           control={form.control}
-          name="roleId"
+          name="roleIds"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Role</FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value || undefined}>
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select user role" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  {roles.map((role) => (
-                    <SelectItem key={role.id} value={role.id}>{role.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <FormLabel>Roles</FormLabel>
+              <MultiSelectAutocomplete
+                options={roleOptions}
+                selected={field.value || []}
+                onChange={field.onChange}
+                placeholder="Select user roles..."
+                emptyIndicator="No roles found."
+              />
+               <FormDescription className="text-xs">Assign one or more roles to this user.</FormDescription>
               <FormMessage />
             </FormItem>
           )}

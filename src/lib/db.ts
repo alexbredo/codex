@@ -25,7 +25,7 @@ const ALL_PERMISSIONS: Omit<Permission, 'id'>[] = [
   { name: 'Delete Users', category: 'Users', id: 'users:delete' },
   { name: 'Manage Roles', category: 'Users', id: 'roles:manage' },
   
-  // Object Permissions (Global) - Now clearly marked as global
+  // Object Permissions (Global)
   { name: 'Create Objects (Any Model)', category: 'Objects - Global', id: 'objects:create' },
   { name: 'Edit Own Objects (Any Model)', category: 'Objects - Global', id: 'objects:edit_own' },
   { name: 'Delete Own Objects (Any Model)', category: 'Objects - Global', id: 'objects:delete_own' },
@@ -114,7 +114,7 @@ async function initializeDb(): Promise<Database> {
     );
   `);
   
-  // Models Table - Define with the final, correct schema
+  // Models Table
   await db.exec(`
     CREATE TABLE IF NOT EXISTS models (
       id TEXT PRIMARY KEY,
@@ -181,27 +181,27 @@ async function initializeDb(): Promise<Database> {
       FOREIGN KEY (permissionId) REFERENCES permissions(id) ON DELETE CASCADE
     );
   `);
-
-  // Users Table (for placeholder authentication)
+  
+  // Users Table
   await db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       username TEXT NOT NULL UNIQUE,
-      password TEXT NOT NULL,
-      role TEXT, -- Old field, will be deprecated
-      roleId TEXT REFERENCES roles(id) ON DELETE SET NULL
+      password TEXT NOT NULL
     );
   `);
-  // Migration: Add roleId to users table if it doesn't exist (older schemas)
-  const usersTableInfo = await db.all("PRAGMA table_info(users);");
-  if (!usersTableInfo.some(col => col.name === 'roleId')) {
-    await db.exec('ALTER TABLE users ADD COLUMN roleId TEXT REFERENCES roles(id) ON DELETE SET NULL;');
-  }
-  if (!usersTableInfo.some(col => col.name === 'role')) { // Handle even older schemas
-    await db.exec("ALTER TABLE users ADD COLUMN role TEXT;");
-  }
-
-
+  
+  // NEW: User-Roles Join Table
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS user_roles (
+      userId TEXT NOT NULL,
+      roleId TEXT NOT NULL,
+      PRIMARY KEY (userId, roleId),
+      FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (roleId) REFERENCES roles(id) ON DELETE CASCADE
+    );
+  `);
+  
   // --- Seed Data for RBAC ---
   const adminRoleId = '00000000-role-0000-0000-administrator';
   const userRoleId = '00000000-role-0000-0000-000user000000';
@@ -224,7 +224,7 @@ async function initializeDb(): Promise<Database> {
   // Now, grant admin all *dynamic* model permissions that might exist
   const existingModels = await db.all('SELECT id, name FROM models');
   for (const model of existingModels) {
-    const actions = ['view', 'create', 'edit', 'delete', 'edit_own', 'delete_own', 'manage'];
+    const actions = ['create', 'view', 'edit', 'delete', 'edit_own', 'delete_own', 'manage'];
     for (const action of actions) {
         const permId = `model:${action}:${model.id}`;
         let permName = '';
@@ -234,33 +234,28 @@ async function initializeDb(): Promise<Database> {
         else if (action === 'manage') permName = `Manage ${model.name} Structure`;
         else permName = `${action.charAt(0).toUpperCase() + action.slice(1)} ${model.name} Objects`;
         
-        // Ensure perm exists before trying to link it
-        await db.run(
-            'INSERT OR IGNORE INTO permissions (id, name, category) VALUES (?, ?, ?)',
-            permId,
-            permName,
-            `Model: ${model.name}`
-        );
+        await db.run('INSERT OR IGNORE INTO permissions (id, name, category) VALUES (?, ?, ?)', permId, permName, `Model: ${model.name}`);
         await db.run('INSERT OR IGNORE INTO role_permissions (roleId, permissionId) VALUES (?, ?)', adminRoleId, permId);
     }
   }
 
-
   // User gets a subset of global permissions
-  const userPermissions = [
-    'objects:create', 'objects:edit_own', 'objects:delete_own'
-  ];
+  const userPermissions = ['objects:create', 'objects:edit_own', 'objects:delete_own'];
   for (const permId of userPermissions) {
      await db.run('INSERT OR IGNORE INTO role_permissions (roleId, permissionId) VALUES (?, ?)', userRoleId, permId);
   }
-  // End RBAC Seed ---
 
-
-  // Update users to have the new roleId based on old role string where roleId is not set
-  await db.run('UPDATE users SET roleId = ? WHERE role = ? AND roleId IS NULL', adminRoleId, 'administrator');
-  await db.run('UPDATE users SET roleId = ? WHERE role = ? AND roleId IS NULL', userRoleId, 'user');
-  // Ensure any user without a role gets the default user role
-  await db.run('UPDATE users SET roleId = ? WHERE roleId IS NULL', userRoleId);
+  // Ensure mock admin user exists if in DEBUG_MODE and assign them the Administrator role
+  if (DEBUG_MODE) {
+    const mockAdmin = MOCK_API_ADMIN_USER;
+    const placeholderPassword = 'debugpassword';
+    try {
+      await db.run(`INSERT OR IGNORE INTO users (id, username, password) VALUES (?, ?, ?)`, mockAdmin.id, mockAdmin.username, placeholderPassword);
+      await db.run('INSERT OR IGNORE INTO user_roles (userId, roleId) VALUES (?, ?)', mockAdmin.id, adminRoleId);
+    } catch (error: any) {
+      console.error(`DEBUG_MODE: Failed to ensure mock admin user '${mockAdmin.username}' in database:`, error.message);
+    }
+  }
 
 
   // Data Objects Table
@@ -323,7 +318,7 @@ async function initializeDb(): Promise<Database> {
     );
   `);
   
-  // NEW Security Log Table
+  // Security Log Table
   await db.exec(`
     CREATE TABLE IF NOT EXISTS security_log (
       id TEXT PRIMARY KEY,
@@ -352,25 +347,6 @@ async function initializeDb(): Promise<Database> {
     );
   `);
   await db.exec('CREATE INDEX IF NOT EXISTS idx_dashboards_userId_isDefault ON dashboards (userId, isDefault);');
-
-
-  // Ensure mock admin user exists if in DEBUG_MODE
-  if (DEBUG_MODE) {
-    const mockAdmin = MOCK_API_ADMIN_USER;
-    const placeholderPassword = 'debugpassword';
-    try {
-      await db.run(
-        `INSERT OR IGNORE INTO users (id, username, password, role, roleId) VALUES (?, ?, ?, ?, ?)`,
-        mockAdmin.id,
-        mockAdmin.username,
-        placeholderPassword,
-        mockAdmin.role,
-        adminRoleId
-      );
-    } catch (error: any) {
-      console.error(`DEBUG_MODE: Failed to ensure mock admin user '${mockAdmin.username}' in database:`, error.message);
-    }
-  }
 
   return db;
 }

@@ -266,10 +266,13 @@ export interface Role {
   isSystemRole?: boolean;
   permissionIds?: string[]; // Populated when fetching a single role
 }
+export interface UserRoleInfo {
+  id: string;
+  name: string;
+}
 export interface UserSession {
   id: string;
   username: string;
-  role: 'user' | 'administrator';
-  roleId: string;
+  roles: UserRoleInfo[];
   permissionIds: string[];
 }

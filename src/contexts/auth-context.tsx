@@ -5,22 +5,24 @@ import type { ReactNode} from 'react';
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
+import type { UserRoleInfo } from '@/lib/types';
 
 // DEBUG MODE FLAG
 const DEBUG_MODE = true; // <<< SET TO true TO BYPASS LOGIN FOR DEVELOPMENT
-const MOCK_ADMIN_USER: User = {
-  id: 'debug-admin-user',
-  username: 'DebugAdmin',
-  role: 'administrator',
-  permissionIds: ['*'], // Mock admin has all permissions
-};
 
 interface User {
   id: string;
   username: string;
-  role: 'user' | 'administrator';
+  roles: UserRoleInfo[];
   permissionIds: string[];
 }
+
+const MOCK_ADMIN_USER: User = {
+  id: 'debug-admin-user',
+  username: 'DebugAdmin',
+  roles: [{id: '00000000-role-0000-0000-administrator', name: 'Administrator' }],
+  permissionIds: ['*'], // Mock admin has all permissions
+};
 
 interface AuthContextType {
   user: User | null;
@@ -39,7 +41,6 @@ async function fetchCurrentUserActual(): Promise<User | null> {
   const response = await fetch('/api/auth/me');
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) return null;
-    // Consider using formatApiError here if more detail is needed from this specific fetch
     throw new Error('Failed to fetch current user');
   }
   const data = await response.json();
@@ -70,15 +71,12 @@ const formatApiError = async (response: Response, defaultMessage: string): Promi
     if (errorData.details) {
       errorMessage += ` (Details: ${ (typeof errorData.details === 'string') ? errorData.details : JSON.stringify(errorData.details) })`;
     }
-    // This is a special case for form field errors. The component logic will handle this.
-    // Here, we re-throw an object that the calling function can catch.
     if (errorData.field && typeof errorData.field === 'string') {
       throw { message: errorMessage, field: errorData.field };
     }
     return errorMessage;
   }
   
-  // Fallback if JSON is valid but doesn't have the expected error structure
   return `${defaultMessage}. Status: ${status} - ${statusText || 'Server did not provide a detailed error message.'}`;
 };
 
@@ -90,9 +88,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const { data: realUser, isLoading: realIsLoading, refetch: realRefetch } = useQuery<User | null>({
     queryKey: ['currentUser'],
     queryFn: fetchCurrentUserActual,
-    staleTime: 5 * 60 * 1000, // Standard stale time for non-debug mode
+    staleTime: 5 * 60 * 1000,
     retry: 3,
-    enabled: !DEBUG_MODE, // Query is disabled if in DEBUG_MODE
+    enabled: !DEBUG_MODE,
   });
 
   const login = useCallback(async (credentials: Record<string, string>) => {
@@ -111,14 +109,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error(errorMessage);
       }
       const loggedInUser = await response.json();
-      queryClient.invalidateQueries({ queryKey: ['currentUser'] });
-      await realRefetch(); // This will now run as DEBUG_MODE is false and query is enabled
+      await queryClient.invalidateQueries({ queryKey: ['currentUser'] });
       return loggedInUser as User;
     } catch (error) {
       console.error("Login error in context:", error);
       throw error;
     }
-  }, [queryClient, realRefetch]);
+  }, [queryClient]);
 
   const logout = useCallback(async () => {
     if (DEBUG_MODE) {
@@ -131,8 +128,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.error("Logout error in context:", error);
     } finally {
         await queryClient.setQueryData(['currentUser'], null);
-        // Await refetch to ensure the hook updates if it's still listening.
-        // It will fetch /me which should return null after successful server logout.
         await realRefetch();
         router.push('/login');
     }
@@ -163,7 +158,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refetchUser = useCallback(() => {
     if (DEBUG_MODE) {
-      console.warn("DEBUG_MODE: refetchUser called, no actual fetch needed as user is mocked.");
       return;
     }
     realRefetch();
@@ -172,7 +166,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const hasPermission = useCallback((permission: string) => {
     const user = DEBUG_MODE ? MOCK_ADMIN_USER : realUser;
     if (!user) return false;
-    if (user.permissionIds.includes('*')) return true; // Wildcard for admin
+    if (user.permissionIds.includes('*')) return true;
     return user.permissionIds.includes(permission);
   }, [realUser]);
 
@@ -226,10 +220,10 @@ export function withAuth<P extends object>(
 
     useEffect(() => {
       if (DEBUG_MODE) {
-        return; // Bypass all auth checks in debug mode
+        return;
       }
       if (isLoading) {
-        return; // Wait for user data to load
+        return;
       }
       if (!user) {
         router.replace('/login');
@@ -241,7 +235,7 @@ export function withAuth<P extends object>(
           : hasPermission(permission);
           
         if (!hasRequiredPermission) {
-          router.replace('/'); // Redirect to home if permission not met
+          router.replace('/');
         }
       }
     }, [user, isLoading, router, permission, hasPermission]);
@@ -250,14 +244,12 @@ export function withAuth<P extends object>(
         return <WrappedComponent {...props} />;
     }
     
-    // Determine if the user has permission to view the component
     const hasRequiredPermission = permission
         ? Array.isArray(permission)
             ? permission.some(p => hasPermission(p))
             : hasPermission(permission)
-        : true; // If no permission prop, assume it's allowed for any logged-in user
+        : true;
 
-    // While loading, or if user is not yet available, or user lacks permission, show loading/unauthorized state
     if (isLoading || !user || !hasRequiredPermission) {
       return (
         <div className="flex justify-center items-center h-screen">
