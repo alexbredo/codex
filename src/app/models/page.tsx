@@ -24,7 +24,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { useData } from '@/contexts/data-context';
-import { useAuth } from '@/contexts/auth-context';
+import { useAuth, withAuth } from '@/contexts/auth-context';
 import type { Model, ValidationRuleset } from '@/lib/types';
 import { PlusCircle, Eye, DatabaseZap, ListChecks, Search, Info, Code2, StickyNote, FolderOpen, Loader2, RefreshCw, ShieldCheck, DownloadCloud, UploadCloud, Settings2 } from 'lucide-react';
 import Link from 'next/link';
@@ -411,3 +411,5 @@ function ModelsPageInternal() {
 }
 
 export default withAuth(ModelsPageInternal, 'models:manage');
+
+    
