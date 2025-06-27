@@ -4,16 +4,10 @@
 
 import type { ReactNode } from 'react';
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import type { Model, DataObject, Property, ModelGroup, WorkflowWithDetails, ValidationRuleset } from '@/lib/types';
+import type { Model, DataObject, Property, ModelGroup, WorkflowWithDetails, ValidationRuleset, UserSession as User } from '@/lib/types';
+import { useAuth } from './auth-context';
 
 const HIGHLIGHT_DURATION_MS = 3000;
-
-// User type, assuming it's similar to what AuthContext might use
-interface User {
-  id: string;
-  username: string;
-  role: 'user' | 'administrator';
-}
 
 // This defines the shape of the data passed to updateModel, ensuring modelGroupId is allowed.
 type ModelUpdatePayload = Partial<Omit<Model, 'id' | 'properties'>> & { properties?: Property[] };
@@ -150,6 +144,7 @@ const formatApiError = async (response: Response, defaultMessage: string): Promi
 
 
 export function DataProvider({ children }: { children: ReactNode }) {
+  const { hasPermission, isLoading: authIsLoading } = useAuth();
   const [models, setModels] = useState<Model[]>([]);
   const [objects, setObjects] = useState<Record<string, DataObject[]>>({}); // Active objects
   const [deletedObjects, setDeletedObjects] = useState<Record<string, DataObject[]>>({}); // Soft-deleted objects
@@ -221,7 +216,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
 
   const fetchData = useCallback(async (triggeredBy?: string) => {
-    if (isFetchingDataRef.current) {
+    if (isFetchingDataRef.current || authIsLoading) {
       return;
     }
     isFetchingDataRef.current = true;
@@ -271,31 +266,44 @@ export function DataProvider({ children }: { children: ReactNode }) {
       }
       setDeletedObjects(newDeletedObjectsData); // Direct set for deleted objects
 
-      const newWorkflowsData = await fetchWorkflowsInternal();
-      if (newWorkflowsData) {
-        setWorkflows(prevWorkflows => {
-          const newSortedJson = JSON.stringify([...newWorkflowsData].sort((a, b) => a.id.localeCompare(b.id)));
-          const prevSortedJson = JSON.stringify([...prevWorkflows].sort((a, b) => a.id.localeCompare(b.id)));
-          return newSortedJson !== prevSortedJson ? newWorkflowsData : prevWorkflows;
-        });
+      // Conditionally fetch admin-level data
+      if (hasPermission('admin:manage_workflows')) {
+        const newWorkflowsData = await fetchWorkflowsInternal();
+        if (newWorkflowsData) {
+          setWorkflows(prevWorkflows => {
+            const newSortedJson = JSON.stringify([...newWorkflowsData].sort((a, b) => a.id.localeCompare(b.id)));
+            const prevSortedJson = JSON.stringify([...prevWorkflows].sort((a, b) => a.id.localeCompare(b.id)));
+            return newSortedJson !== prevSortedJson ? newWorkflowsData : prevWorkflows;
+          });
+        }
+      } else {
+        setWorkflows([]); // Clear data if no permission
       }
 
-      const newRulesetsData = await fetchValidationRulesetsInternal();
-      if (newRulesetsData) {
-        setValidationRulesets(prevRulesets => {
-          const newSortedJson = JSON.stringify([...newRulesetsData].sort((a,b) => a.id.localeCompare(b.id)));
-          const prevSortedJson = JSON.stringify([...prevRulesets].sort((a,b) => a.id.localeCompare(b.id)));
-          return newSortedJson !== prevSortedJson ? newRulesetsData : prevRulesets;
-        });
+      if (hasPermission('admin:manage_validation_rules')) {
+        const newRulesetsData = await fetchValidationRulesetsInternal();
+        if (newRulesetsData) {
+          setValidationRulesets(prevRulesets => {
+            const newSortedJson = JSON.stringify([...newRulesetsData].sort((a,b) => a.id.localeCompare(b.id)));
+            const prevSortedJson = JSON.stringify([...prevRulesets].sort((a,b) => a.id.localeCompare(b.id)));
+            return newSortedJson !== prevSortedJson ? newRulesetsData : prevRulesets;
+          });
+        }
+      } else {
+        setValidationRulesets([]);
       }
 
-      const newUsersData = await fetchAllUsersInternal();
-      if (newUsersData) {
-        setAllUsers(prevUsers => {
-          const newSortedJson = JSON.stringify([...newUsersData].sort((a,b) => a.id.localeCompare(b.id)));
-          const prevSortedJson = JSON.stringify([...prevUsers].sort((a,b) => a.id.localeCompare(b.id)));
-          return newSortedJson !== prevSortedJson ? newUsersData : prevUsers;
-        });
+      if (hasPermission('users:view')) {
+        const newUsersData = await fetchAllUsersInternal();
+        if (newUsersData) {
+          setAllUsers(prevUsers => {
+            const newSortedJson = JSON.stringify([...newUsersData].sort((a,b) => a.id.localeCompare(b.id)));
+            const prevSortedJson = JSON.stringify([...prevUsers].sort((a,b) => a.id.localeCompare(b.id)));
+            return newSortedJson !== prevSortedJson ? newUsersData : prevUsers;
+          });
+        }
+      } else {
+        setAllUsers([]);
       }
 
     } catch (error: any) {
@@ -308,15 +316,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setIsBackgroundFetching(false);
       isFetchingDataRef.current = false;
     }
-  }, [fetchWorkflowsInternal, fetchValidationRulesetsInternal, fetchAllUsersInternal]);
+  }, [authIsLoading, hasPermission, fetchWorkflowsInternal, fetchValidationRulesetsInternal, fetchAllUsersInternal]);
 
 
   useEffect(() => {
-    fetchData('Initial Load');
+    if (!authIsLoading) {
+        fetchData('Initial Load / Auth Change');
+    }
     return () => {
       if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
     };
-  }, [fetchData]);
+  }, [fetchData, authIsLoading]);
 
 
   const addModel = useCallback(async (modelData: Omit<Model, 'id' | 'modelGroupId' | 'workflowId'> & { modelGroupId?: string | null, workflowId?: string | null }): Promise<Model> => {
