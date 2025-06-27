@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
-import { DatabaseZap, FileText, Loader2, ListFilter } from 'lucide-react';
+import { DatabaseZap, FileText, Loader2, ListFilter, MessageSquareQuote } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import type { Model, DataObject } from '@/lib/types';
@@ -38,6 +38,21 @@ async function fetchSearchResults(query: string): Promise<SearchResult[]> {
   return response.json();
 }
 
+async function fetchPropertyValues(propertyName: string, modelName?: string): Promise<string[]> {
+  if (!propertyName) return [];
+  let url = `/api/codex-structure/properties/${propertyName}/values`;
+  if (modelName) {
+    url += `?modelName=${encodeURIComponent(modelName)}`;
+  }
+  const response = await fetch(url);
+  if (!response.ok) {
+    console.error("Failed to fetch property values");
+    return [];
+  }
+  return response.json();
+}
+
+
 export function GlobalSearch({ open, setOpen }: { open: boolean; setOpen: (open: boolean) => void }) {
   const router = useRouter();
   const [query, setQuery] = React.useState('');
@@ -50,7 +65,7 @@ export function GlobalSearch({ open, setOpen }: { open: boolean; setOpen: (open:
     const propertySet = new Set<string>();
     models.forEach(model => {
       model.properties.forEach(prop => {
-        if (prop.type === 'string' || prop.type === 'number') {
+        if (prop.type === 'string' || prop.type === 'number' || prop.type === 'boolean') {
           propertySet.add(prop.name);
         }
       });
@@ -58,15 +73,34 @@ export function GlobalSearch({ open, setOpen }: { open: boolean; setOpen: (open:
     return Array.from(propertySet).sort();
   }, [models, dataIsReady]);
 
-  const showModelSuggestions = debouncedQuery.trim().toLowerCase() === 'model:';
-  const propertyFilterMatch = debouncedQuery.trim().match(/^(\w+):$/);
-  const showPropertyValueHint = propertyFilterMatch && allSearchableProperties.includes(propertyFilterMatch[1]);
-  
-  const { data: results, isLoading } = useQuery<SearchResult[]>({
+  // --- Search State Logic ---
+  const modelSuggestionMatch = debouncedQuery.trim().toLowerCase() === 'model:';
+
+  const modelFilterRegex = /model:(\S+)/;
+  const modelFilterMatch = debouncedQuery.match(modelFilterRegex);
+  const modelNameFilter = modelFilterMatch ? modelFilterMatch[1] : undefined;
+
+  const propertyFilterRegex = /(\w+):$/;
+  const propertyFilterMatch = debouncedQuery.trim().match(propertyFilterRegex);
+  const propertyNameForSuggestions = propertyFilterMatch ? propertyFilterMatch[1] : null;
+
+  const showModelSuggestions = modelSuggestionMatch;
+  const showPropertyValueSuggestions = !!propertyNameForSuggestions;
+  // --- End Search State Logic ---
+
+
+  const { data: results, isLoading: isLoadingSearchResults } = useQuery<SearchResult[]>({
     queryKey: ['globalSearch', debouncedQuery],
     queryFn: () => fetchSearchResults(debouncedQuery),
-    enabled: !!debouncedQuery.trim() && !showModelSuggestions && !showPropertyValueHint,
+    enabled: !!debouncedQuery.trim() && !showModelSuggestions && !showPropertyValueSuggestions,
   });
+
+  const { data: propertyValueSuggestions, isLoading: isLoadingPropertyValues } = useQuery<string[]>({
+    queryKey: ['propertyValues', propertyNameForSuggestions, modelNameFilter],
+    queryFn: () => fetchPropertyValues(propertyNameForSuggestions!, modelNameFilter),
+    enabled: showPropertyValueSuggestions,
+  });
+
 
   React.useEffect(() => {
     if (!open) {
@@ -91,113 +125,113 @@ export function GlobalSearch({ open, setOpen }: { open: boolean; setOpen: (open:
     }, {} as Record<string, SearchResult[]>);
   }, [results]);
 
+
+  const renderContent = () => {
+    // State 1: Loading main search results
+    if (isLoadingSearchResults) return <CommandEmpty>Searching...</CommandEmpty>;
+
+    // State 2: Show model suggestions for 'model:' query
+    if (showModelSuggestions) {
+      return (
+        <CommandGroup heading="Select a model to filter by">
+          {models.map(model => (
+            <CommandItem key={model.id} value={model.name} onSelect={() => { setQuery(`model:${model.name} `); }}>
+              <DatabaseZap className="mr-2 h-4 w-4" />
+              <span>{model.name}</span>
+            </CommandItem>
+          ))}
+        </CommandGroup>
+      );
+    }
+
+    // State 3: Show property value suggestions for 'prop:' query
+    if (showPropertyValueSuggestions) {
+      if (isLoadingPropertyValues) return <CommandEmpty>Loading suggestions...</CommandEmpty>;
+      if (propertyValueSuggestions && propertyValueSuggestions.length > 0) {
+        return (
+          <CommandGroup heading={`Suggestions for '${propertyNameForSuggestions}'`}>
+            {propertyValueSuggestions.map(value => (
+              <CommandItem key={value} value={value} onSelect={() => { setQuery(`${query}${value} `); }}>
+                 <MessageSquareQuote className="mr-2 h-4 w-4" />
+                 <span>{value}</span>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        );
+      }
+      return <CommandEmpty>No suggestions found. Continue typing a value.</CommandEmpty>;
+    }
+    
+    // State 4: Display actual search results
+    if (results && results.length > 0) {
+      return Object.entries(groupedResults).map(([modelName, items]) => (
+        <CommandGroup key={modelName} heading={modelName}>
+          {items.map((result) => (
+            <CommandItem
+              key={result.object.id}
+              value={result.displayValue}
+              onSelect={() => { runCommand(() => router.push(`/data/${result.model.id}/view/${result.object.id}`)); }}
+            >
+              <FileText className="mr-2 h-4 w-4" />
+              <span>{result.displayValue}</span>
+            </CommandItem>
+          ))}
+        </CommandGroup>
+      ));
+    }
+    
+    // State 5: Initial state (no query)
+    if (!debouncedQuery.trim()) {
+      return (
+        <>
+          <CommandGroup heading="Suggestions">
+            <CommandItem onSelect={() => setQuery('model:')}>
+              <DatabaseZap className="mr-2 h-4 w-4" />
+              <span>Filter by model...</span>
+            </CommandItem>
+            {allSearchableProperties.slice(0, 3).map(propName => (
+              <CommandItem key={propName} onSelect={() => setQuery(`${propName}:`)}>
+                <ListFilter className="mr-2 h-4 w-4" />
+                <span>Filter by property: {propName}</span>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+          {dataIsReady && models.length > 0 && (
+            <CommandGroup heading="Models">
+              {models.slice(0, 5).map(model => (
+                <CommandItem key={model.id} value={model.name} onSelect={() => { runCommand(() => router.push(`/data/${model.id}`)); }}>
+                  <DatabaseZap className="mr-2 h-4 w-4" />
+                  <span>{model.name}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          )}
+        </>
+      );
+    }
+    
+    // Final State: No results found for the query
+    return <CommandEmpty>No results found for "{debouncedQuery}".</CommandEmpty>;
+  };
+
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="overflow-hidden p-0 shadow-lg">
+         <DialogHeader className="sr-only">
+             <DialogTitle>Global Search</DialogTitle>
+          </DialogHeader>
         <Command
-          shouldFilter={false}
+          shouldFilter={false} // We do all filtering/suggestion logic ourselves
           className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-group]]:px-2 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5"
         >
-          <DialogHeader className="sr-only">
-            <DialogTitle>Global Search</DialogTitle>
-          </DialogHeader>
           <CommandInput
             placeholder="Search... (e.g., 'Task' or 'model:Project status:done')"
             value={query}
             onValueChange={setQuery}
           />
           <CommandList>
-            {/* Loading State */}
-            {isLoading && <CommandEmpty>Searching...</CommandEmpty>}
-
-            {/* Display Results */}
-            {!isLoading && results && results.length > 0 && (
-              Object.entries(groupedResults).map(([modelName, items]) => (
-                <CommandGroup key={modelName} heading={modelName}>
-                  {items.map((result) => (
-                    <CommandItem
-                      key={result.object.id}
-                      value={result.displayValue}
-                      onSelect={() => {
-                        runCommand(() => router.push(`/data/${result.model.id}/view/${result.object.id}`));
-                      }}
-                    >
-                      <FileText className="mr-2 h-4 w-4" />
-                      <span>{result.displayValue}</span>
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              ))
-            )}
-
-            {/* Display Model Suggestions when 'model:' is typed */}
-            {!isLoading && showModelSuggestions && (
-                <CommandGroup heading="Select a model to filter by">
-                    {models.map(model => (
-                        <CommandItem
-                            key={model.id}
-                            value={model.name}
-                            onSelect={() => {
-                                setQuery(`model:${model.name} `);
-                            }}
-                        >
-                            <DatabaseZap className="mr-2 h-4 w-4" />
-                            <span>{model.name}</span>
-                        </CommandItem>
-                    ))}
-                </CommandGroup>
-            )}
-            
-            {/* NEW: Display Property Value Hint */}
-            {!isLoading && showPropertyValueHint && propertyFilterMatch && (
-              <CommandGroup heading={`Filtering by '${propertyFilterMatch[1]}'`}>
-                <div className="p-2 text-sm text-muted-foreground">
-                  Continue typing to filter by the value of "{propertyFilterMatch[1]}".
-                </div>
-              </CommandGroup>
-            )}
-
-
-            {/* Initial State (no query) */}
-            {!isLoading && !debouncedQuery.trim() && (
-              <>
-                <CommandGroup heading="Suggestions">
-                  <CommandItem onSelect={() => setQuery('model:')}>
-                    <DatabaseZap className="mr-2 h-4 w-4" />
-                    <span>Filter by model...</span>
-                  </CommandItem>
-                  {allSearchableProperties.slice(0, 3).map(propName => (
-                    <CommandItem key={propName} onSelect={() => setQuery(`${propName}:`)}>
-                      <ListFilter className="mr-2 h-4 w-4" />
-                      <span>Filter by property: {propName}</span>
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-                
-                {dataIsReady && models.length > 0 && (
-                  <CommandGroup heading="Models">
-                    {models.slice(0, 5).map(model => (
-                      <CommandItem 
-                          key={model.id}
-                          value={model.name}
-                          onSelect={() => {
-                              runCommand(() => router.push(`/data/${model.id}`));
-                          }}
-                      >
-                          <DatabaseZap className="mr-2 h-4 w-4" />
-                          <span>{model.name}</span>
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                )}
-              </>
-            )}
-
-            {/* No Results Fallback */}
-            {!isLoading && (!results || results.length === 0) && debouncedQuery.trim() && !showModelSuggestions && !showPropertyValueHint && (
-                <CommandEmpty>No results found for "{debouncedQuery}".</CommandEmpty>
-            )}
-            
+            {renderContent()}
           </CommandList>
         </Command>
       </DialogContent>
