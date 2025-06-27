@@ -39,7 +39,7 @@ async function getWorkflowSnapshot(db: any, workflowId: string): Promise<any> {
 // GET a single workflow by ID
 export async function GET(request: Request, { params }: Params) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || !currentUser.permissionIds.includes('admin:manage_workflows')) {
+  if (!currentUser || (!currentUser.permissionIds.includes('admin:manage_workflows') && !currentUser.permissionIds.includes('*'))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
@@ -86,7 +86,7 @@ export async function GET(request: Request, { params }: Params) {
 // PUT (update) an existing workflow
 export async function PUT(request: Request, { params }: Params) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || !currentUser.permissionIds.includes('admin:manage_workflows')) {
+  if (!currentUser || (!currentUser.permissionIds.includes('admin:manage_workflows') && !currentUser.permissionIds.includes('*'))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
@@ -255,7 +255,7 @@ export async function PUT(request: Request, { params }: Params) {
 // DELETE a workflow
 export async function DELETE(request: Request, { params }: Params) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || !currentUser.permissionIds.includes('admin:manage_workflows')) {
+  if (!currentUser || (!currentUser.permissionIds.includes('admin:manage_workflows') && !currentUser.permissionIds.includes('*'))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
@@ -306,5 +306,3 @@ export async function DELETE(request: Request, { params }: Params) {
     return NextResponse.json({ error: 'Failed to delete workflow', details: error.message }, { status: 500 });
   }
 }
-
-    
