@@ -186,11 +186,12 @@ export async function POST(request: Request) {
     }
 
     // --- Create model-specific permissions ---
-    const actions = ['view', 'edit', 'delete', 'edit_own', 'delete_own', 'manage'];
+    const actions = ['view', 'create', 'edit', 'delete', 'edit_own', 'delete_own', 'manage'];
     for (const action of actions) {
         const permId = `model:${action}:${modelId}`;
         let permName = '';
-        if (action === 'edit_own') permName = `Edit Own ${name} Objects`;
+        if (action === 'create') permName = `Create ${name} Objects`;
+        else if (action === 'edit_own') permName = `Edit Own ${name} Objects`;
         else if (action === 'delete_own') permName = `Delete Own ${name} Objects`;
         else if (action === 'manage') permName = `Manage ${name} Structure`;
         else permName = `${action.charAt(0).toUpperCase() + action.slice(1)} ${name} Objects`;

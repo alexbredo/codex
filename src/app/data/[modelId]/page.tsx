@@ -799,7 +799,7 @@ export default function DataObjectsPage() {
     if (selectedGroupablePropDef?.isDateColumn) {
         const groupedByDate = sortedObjects.reduce((acc, obj) => {
             let dateValueStr = "Not Set";
-            const dateFieldValue = groupingPropertyKey === CREATED_AT_COLUMN_KEY ? obj.createdAt : groupingPropertyKey === UPDATED_AT_COLUMN_KEY ? obj.updatedAt : obj.deletedAt;
+            const dateFieldValue = groupingPropertyKey === CREATED_AT_COLUMN_KEY ? obj.createdAt : groupingPropertyKey === UPDATED_AT_COLUMN_KEY ? obj.updatedAt : groupingPropertyKey === DELETED_AT_COLUMN_KEY ? obj.deletedAt : null;
             if (dateFieldValue) {
                 try { dateValueStr = formatDateFns(new Date(dateFieldValue), 'PPP'); } catch { dateValueStr = "Invalid Date"; }
             }
@@ -1168,6 +1168,7 @@ export default function DataObjectsPage() {
     }
   };
 
+  const canCreate = hasPermission('objects:create') || hasPermission(`model:create:${modelIdFromUrl}`);
 
   if (!dataContextIsReady || !currentModel) {
     return (
@@ -1225,7 +1226,7 @@ export default function DataObjectsPage() {
       {selectedObjectIds.size > 0 && viewMode === 'table' && !viewingRecycleBin && (
         <div className="mb-4 flex items-center gap-2 p-3 bg-secondary rounded-md shadow">
             <span className="text-sm font-medium text-secondary-foreground">{selectedObjectIds.size} item(s) selected</span>
-            {hasPermission(`model:edit:${modelId}`) && (
+            {hasPermission(`model:edit:${modelIdFromUrl}`) && (
                 <Dialog open={isBatchUpdateDialogOpen} onOpenChange={(open) => {
                     setIsBatchUpdateDialogOpen(open);
                     if (!open) {
@@ -1411,7 +1412,7 @@ export default function DataObjectsPage() {
         </div>
       )}
       {filteredObjects.length === 0 && !searchTerm && !hasActiveColumnFilters ? (
-        <Card className="text-center py-12"> <CardContent> <ListChecks size={48} className="mx-auto text-muted-foreground mb-4" /> <h3 className="text-xl font-semibold">No {viewingRecycleBin ? 'Deleted' : 'Active'} Objects Found</h3> <p className="text-muted-foreground mb-4"> There are no {viewingRecycleBin ? 'deleted' : 'active'} data objects for the model "{currentModel.name}" yet. </p> {!viewingRecycleBin && hasPermission('objects:create') && <Button onClick={handleCreateNew} variant="default"> <PlusCircle className="mr-2 h-4 w-4" /> Create First Object </Button>} </CardContent> </Card>
+        <Card className="text-center py-12"> <CardContent> <ListChecks size={48} className="mx-auto text-muted-foreground mb-4" /> <h3 className="text-xl font-semibold">No {viewingRecycleBin ? 'Deleted' : 'Active'} Objects Found</h3> <p className="text-muted-foreground mb-4"> There are no {viewingRecycleBin ? 'deleted' : 'active'} data objects for the model "{currentModel.name}" yet. </p> {!viewingRecycleBin && canCreate && <Button onClick={handleCreateNew} variant="default"> <PlusCircle className="mr-2 h-4 w-4" /> Create First Object </Button>} </CardContent> </Card>
       ) : sortedObjects.length === 0 && (searchTerm || hasActiveColumnFilters) ? (
          <Card className="text-center py-12"> <CardContent> <SearchIconLucide size={48} className="mx-auto text-muted-foreground mb-4" /> <h3 className="text-xl font-semibold">No Results Found</h3> <p className="text-muted-foreground mb-4"> Your {searchTerm && hasActiveColumnFilters ? "search and column filters" : searchTerm ? "search" : "column filters"} did not match any {viewingRecycleBin ? 'deleted' : 'active'} {currentModel.name.toLowerCase()}s. </p> </CardContent> </Card>
       ) : viewMode === 'table' ? (

@@ -38,6 +38,7 @@ interface RoleFormProps {
 
 
 const permissionDisplayMap: Record<string, { label: string; description: string }> = {
+    create: { label: "Create Objects", description: "Can create new objects for this model."},
     view: { label: "View Objects", description: "Can see objects of this model." },
     edit: { label: "Edit Objects", description: "Can modify any object of this model." },
     delete: { label: "Delete Objects", description: "Can delete any object of this model." },
@@ -74,7 +75,7 @@ const ModelPermissionCard = ({ model, form }: { model: Model; form: UseFormRetur
         {/* Object Permissions */}
         <div className="space-y-2">
             <h4 className="text-sm font-semibold flex items-center"><Edit2 className="h-4 w-4 mr-2 text-muted-foreground"/> Object Actions</h4>
-            {['view', 'edit', 'delete'].map(action => (
+            {['create', 'view', 'edit', 'delete'].map(action => (
                 <FormField
                     key={action}
                     control={form.control}

@@ -11,8 +11,8 @@ interface Params {
 // GET all objects for a model
 export async function GET(request: Request, { params }: Params) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || !['user', 'administrator'].includes(currentUser.role)) {
-    return NextResponse.json({ error: 'Unauthorized to view objects' }, { status: 403 });
+  if (!currentUser || (!currentUser.permissionIds.includes(`model:view:${params.modelId}`) && !currentUser.permissionIds.includes('*'))) {
+    return NextResponse.json({ error: 'Unauthorized to view these objects' }, { status: 403 });
   }
 
   const { searchParams } = new URL(request.url);
@@ -54,9 +54,11 @@ export async function GET(request: Request, { params }: Params) {
 // POST a new object for a model
 export async function POST(request: Request, { params }: Params) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || !['user', 'administrator'].includes(currentUser.role)) {
-    return NextResponse.json({ error: 'Unauthorized to create objects' }, { status: 403 });
+  const canCreate = currentUser?.permissionIds.includes('objects:create') || currentUser?.permissionIds.includes(`model:create:${params.modelId}`);
+  if (!currentUser || (!currentUser.permissionIds.includes('*') && !canCreate)) {
+    return NextResponse.json({ error: 'Unauthorized to create objects for this model' }, { status: 403 });
   }
+  
   const db = await getDb();
   await db.run('BEGIN TRANSACTION');
 

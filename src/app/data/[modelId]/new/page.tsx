@@ -71,8 +71,8 @@ export default function CreateObjectPage() {
   const [formObjectId, setFormObjectId] = useState<string | null>(null); 
 
   useEffect(() => {
-    if (!isAuthLoading && !hasPermission('objects:create')) {
-        toast({ variant: "destructive", title: "Unauthorized", description: "You don't have permission to create new objects." });
+    if (!isAuthLoading && !hasPermission('objects:create') && !hasPermission(`model:create:${modelId}`)) {
+        toast({ variant: "destructive", title: "Unauthorized", description: "You don't have permission to create objects for this model." });
         router.replace(`/data/${modelId}`);
     }
   }, [isAuthLoading, hasPermission, router, modelId, toast]);
@@ -223,7 +223,7 @@ export default function CreateObjectPage() {
             form={form}
             model={currentModel}
             onSubmit={onSubmit}
-            onCancel={() => router.push(`/data/${modelId}`)}
+            onCancel={() => router.push(`/data/${currentModel.id}`)}
             isLoading={form.formState.isSubmitting}
             formObjectId={formObjectId}
           />

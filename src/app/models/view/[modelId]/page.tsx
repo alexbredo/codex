@@ -188,6 +188,7 @@ function ViewModelPageInternal() {
   };
 
   const groupName = modelGroups.find(g => g.id === currentModel.modelGroupId)?.name || 'Default';
+  const canCreateObjects = hasPermission('objects:create') || hasPermission(`model:create:${modelId}`);
 
   return (
     <div className="container mx-auto py-8 space-y-8">
@@ -195,7 +196,7 @@ function ViewModelPageInternal() {
         <Button variant="outline" onClick={() => router.push('/models')}>
           <ArrowLeft className="mr-2 h-4 w-4" /> Back to Model Admin
         </Button>
-        {hasPermission(`objects:create`) && (
+        {canCreateObjects && (
             <Link href={`/data/${currentModel.id}/new`} passHref legacyBehavior>
                 <Button variant="default" className="bg-accent text-accent-foreground hover:bg-accent/90">
                     <PlusCircle className="mr-2 h-4 w-4" /> New {currentModel.name} Object

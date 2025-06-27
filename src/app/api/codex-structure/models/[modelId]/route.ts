@@ -144,11 +144,12 @@ export async function PUT(request: Request, { params }: Params) {
 
     // --- Update model-specific permissions if name changed ---
     if (body.name && body.name !== oldModelRow.name) {
-      const actions = ['view', 'edit', 'delete', 'edit_own', 'delete_own', 'manage'];
+      const actions = ['view', 'create', 'edit', 'delete', 'edit_own', 'delete_own', 'manage'];
       for (const action of actions) {
         const permId = `model:${action}:${params.modelId}`;
         let permName = '';
-        if (action === 'edit_own') permName = `Edit Own ${body.name} Objects`;
+        if (action === 'create') permName = `Create ${body.name} Objects`;
+        else if (action === 'edit_own') permName = `Edit Own ${body.name} Objects`;
         else if (action === 'delete_own') permName = `Delete Own ${body.name} Objects`;
         else if (action === 'manage') permName = `Manage ${body.name} Structure`;
         else permName = `${action.charAt(0).toUpperCase() + action.slice(1)} ${body.name} Objects`;
