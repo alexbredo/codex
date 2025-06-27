@@ -2,6 +2,7 @@
 'use client';
 
 import * as React from 'react';
+import { useEffect } from 'react'; // Added import
 import type { UseFormReturn } from 'react-hook-form';
 import { useForm, Controller, useWatch } from 'react-hook-form';
 import { Button } from '@/components/ui/button';
@@ -36,16 +37,6 @@ interface RoleFormProps {
   allPermissions: Record<string, Permission[]>;
 }
 
-
-const permissionDisplayMap: Record<string, { label: string; description: string }> = {
-    create: { label: "Create Objects", description: "Can create new objects for this model."},
-    view: { label: "View Objects", description: "Can see objects of this model." },
-    edit: { label: "Edit Objects", description: "Can modify any object of this model." },
-    delete: { label: "Delete Objects", description: "Can delete any object of this model." },
-    edit_own: { label: "Edit Own Objects", description: "Can only edit objects they own." },
-    delete_own: { label: "Delete Own Objects", description: "Can only delete objects they own." },
-    manage: { label: "Manage Structure", description: "Can edit/delete the model's structure." },
-};
 
 const ModelPermissionCard = ({ model, form }: { model: Model; form: UseFormReturn<RoleFormValues> }) => {
   const permissionIds = useWatch({ control: form.control, name: 'permissionIds' });
@@ -88,7 +79,7 @@ const ModelPermissionCard = ({ model, form }: { model: Model; form: UseFormRetur
                                     onCheckedChange={(checked) => handlePermissionChange(action, model.id, !!checked)}
                                 />
                             </FormControl>
-                            <FormLabel className="text-sm font-normal">{permissionDisplayMap[action].label}</FormLabel>
+                            <FormLabel className="text-sm font-normal">{action.charAt(0).toUpperCase() + action.slice(1)} Objects</FormLabel>
                         </FormItem>
                     )}
                 />
@@ -110,7 +101,7 @@ const ModelPermissionCard = ({ model, form }: { model: Model; form: UseFormRetur
                                     onCheckedChange={(checked) => handlePermissionChange(action, model.id, !!checked)}
                                 />
                             </FormControl>
-                            <FormLabel className="text-sm font-normal">{permissionDisplayMap[action].label}</FormLabel>
+                            <FormLabel className="text-sm font-normal">{action === 'edit_own' ? 'Edit Own Objects' : 'Delete Own Objects'}</FormLabel>
                         </FormItem>
                     )}
                 />
@@ -131,7 +122,7 @@ const ModelPermissionCard = ({ model, form }: { model: Model; form: UseFormRetur
                                 onCheckedChange={(checked) => handlePermissionChange('manage', model.id, !!checked)}
                             />
                         </FormControl>
-                        <FormLabel className="text-sm font-normal">{permissionDisplayMap['manage'].label}</FormLabel>
+                        <FormLabel className="text-sm font-normal">Manage Structure</FormLabel>
                     </FormItem>
                 )}
             />
@@ -152,19 +143,34 @@ export default function RoleForm({
   allPermissions,
 }: RoleFormProps) {
   const { models } = useData();
+  const [configuredModelIds, setConfiguredModelIds] = React.useState<Set<string>>(new Set());
 
-  const [configuredModelIds, setConfiguredModelIds] = React.useState<Set<string>>(() => {
-    // Pre-populate with models that already have permissions in this role
-    const initialIds = new Set<string>();
-    const permissionIds = form.getValues('permissionIds') || [];
-    permissionIds.forEach(id => {
-      const parts = id.split(':');
-      if (parts[0] === 'model' && parts.length === 3) {
-        initialIds.add(parts[2]);
+  // Watch the permissionIds field from the form to react to its changes, especially after async data loading
+  const permissionIds = useWatch({ control: form.control, name: 'permissionIds' });
+
+  // This effect synchronizes the local state `configuredModelIds` with the permissions loaded into the form.
+  useEffect(() => {
+    const modelIdsFromPermissions = new Set<string>();
+    if (permissionIds && Array.isArray(permissionIds)) {
+      permissionIds.forEach(id => {
+        const parts = id.split(':');
+        if (parts[0] === 'model' && parts.length === 3) {
+          modelIdsFromPermissions.add(parts[2]);
+        }
+      });
+    }
+
+    // Only update state if the derived set of IDs is different from the current one.
+    // This prevents unnecessary re-renders.
+    setConfiguredModelIds(currentIds => {
+      if (currentIds.size === modelIdsFromPermissions.size &&
+          [...currentIds].every(id => modelIdsFromPermissions.has(id))) {
+        return currentIds; // Sets are identical, no need to update
       }
+      return modelIdsFromPermissions; // Sets are different, update state
     });
-    return initialIds;
-  });
+  }, [permissionIds]); // Dependency on the watched permissionIds
+
 
   const availableModelsToAdd = React.useMemo(() => {
     return models.filter(m => !configuredModelIds.has(m.id)).sort((a,b) => a.name.localeCompare(b.name));
