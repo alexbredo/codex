@@ -224,11 +224,12 @@ async function initializeDb(): Promise<Database> {
   // Now, grant admin all *dynamic* model permissions that might exist
   const existingModels = await db.all('SELECT id, name FROM models');
   for (const model of existingModels) {
-    const actions = ['view', 'edit', 'delete', 'edit_own', 'delete_own', 'manage'];
+    const actions = ['view', 'create', 'edit', 'delete', 'edit_own', 'delete_own', 'manage'];
     for (const action of actions) {
         const permId = `model:${action}:${model.id}`;
         let permName = '';
-        if (action === 'edit_own') permName = `Edit Own ${model.name} Objects`;
+        if (action === 'create') permName = `Create ${model.name} Objects`;
+        else if (action === 'edit_own') permName = `Edit Own ${model.name} Objects`;
         else if (action === 'delete_own') permName = `Delete Own ${model.name} Objects`;
         else if (action === 'manage') permName = `Manage ${model.name} Structure`;
         else permName = `${action.charAt(0).toUpperCase() + action.slice(1)} ${model.name} Objects`;
