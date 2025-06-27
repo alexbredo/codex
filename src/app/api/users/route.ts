@@ -13,15 +13,24 @@ const createUserSchema = z.object({
 // GET all users with their roles
 export async function GET(request: Request) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || !currentUser.permissionIds.includes('users:view')) {
+  
+  const permissions = currentUser?.permissionIds || [];
+  const canView =
+    permissions.includes('*') ||
+    permissions.includes('users:view') ||
+    permissions.includes('users:create') ||
+    permissions.includes('users:edit') ||
+    permissions.includes('users:delete');
+
+  if (!currentUser || !canView) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
   try {
     const db = await getDb();
     const users = await db.all(`
-        SELECT 
-          u.id, 
+        SELECT
+          u.id,
           u.username,
           GROUP_CONCAT(r.id) as roleIds,
           GROUP_CONCAT(r.name) as roleNames
@@ -31,7 +40,7 @@ export async function GET(request: Request) {
         GROUP BY u.id
         ORDER BY u.username ASC
     `);
-    
+
     const formattedUsers = users.map(u => ({
         id: u.id,
         username: u.username,
@@ -51,7 +60,9 @@ export async function GET(request: Request) {
 // POST (create) a new user (Admin action)
 export async function POST(request: Request) {
   const adminUser = await getCurrentUserFromCookie();
-  if (!adminUser || !adminUser.permissionIds.includes('users:create')) {
+  const canCreate = adminUser?.permissionIds.includes('users:create') || adminUser?.permissionIds.includes('*');
+
+  if (!adminUser || !canCreate) {
     return NextResponse.json({ error: 'Unauthorized to create user' }, { status: 403 });
   }
 
@@ -74,7 +85,7 @@ export async function POST(request: Request) {
       await db.run('ROLLBACK');
       return NextResponse.json({ error: 'Username already taken' }, { status: 409 });
     }
-    
+
     const userId = crypto.randomUUID();
     await db.run('INSERT INTO users (id, username, password) VALUES (?, ?, ?)', userId, username, password);
 
@@ -84,7 +95,7 @@ export async function POST(request: Request) {
       await roleStmt.run(userId, roleId);
     }
     await roleStmt.finalize();
-    
+
     const assignedRoles = await db.all('SELECT name from roles WHERE id IN (' + roleIds.map(() => '?').join(',') + ')', ...roleIds);
     const assignedRoleNames = assignedRoles.map(r => r.name);
 
@@ -102,7 +113,7 @@ export async function POST(request: Request) {
     );
 
     await db.run('COMMIT');
-    
+
     const createdUser = await db.get('SELECT id, username FROM users WHERE id = ?', userId);
     createdUser.roles = assignedRoles.map((r, i) => ({ id: roleIds[i], name: r.name }));
 
