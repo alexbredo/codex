@@ -12,9 +12,13 @@ interface Params {
 export async function GET(request: Request, { params }: Params) {
   const { modelId, objectId } = params;
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || !['user', 'administrator'].includes(currentUser.role)) {
+
+  // Permission Check
+  const canView = currentUser?.permissionIds.includes('*') || currentUser?.permissionIds.includes(`model:view:${modelId}`);
+  if (!currentUser || !canView) {
     return NextResponse.json({ error: 'Unauthorized to view object' }, { status: 403 });
   }
+
   try {
     const db = await getDb();
     // Also fetch isDeleted and deletedAt
@@ -42,37 +46,43 @@ export async function GET(request: Request, { params }: Params) {
 export async function PUT(request: Request, { params }: Params) {
   const { modelId, objectId } = params;
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || !['user', 'administrator'].includes(currentUser.role)) {
-    return NextResponse.json({ error: 'Unauthorized to update object' }, { status: 403 });
-  }
-
+  
   const db = await getDb();
   await db.run('BEGIN TRANSACTION');
 
   try {
+    const existingObjectRecord = await db.get('SELECT data, currentStateId, ownerId, model_id, isDeleted FROM data_objects WHERE id = ? AND model_id = ?', objectId, modelId);
+    if (!existingObjectRecord) {
+      await db.run('ROLLBACK');
+      return NextResponse.json({ error: 'Object not found' }, { status: 404 });
+    }
+
+    // Permission Check
+    const isOwner = existingObjectRecord.ownerId === currentUser?.id;
+    const canEdit = currentUser?.permissionIds.includes('*') || currentUser?.permissionIds.includes(`model:edit:${modelId}`) || (currentUser?.permissionIds.includes('objects:edit_own') && isOwner);
+    if (!currentUser || !canEdit) {
+      await db.run('ROLLBACK');
+      return NextResponse.json({ error: 'Unauthorized to update this object' }, { status: 403 });
+    }
+
+
+    if (existingObjectRecord.isDeleted) {
+      await db.run('ROLLBACK');
+      return NextResponse.json({ error: 'Cannot update a deleted object. Please restore it first.' }, { status: 400 });
+    }
+
     const requestBody = await request.clone().json();
     const {
       id: _id,
       model_id: _model_id,
       currentStateId: newCurrentStateIdFromRequest,
       ownerId: newOwnerIdFromRequest,
-      createdAt: _clientSuppliedCreatedAt, 
-      updatedAt: _clientSuppliedUpdatedAt, 
+      createdAt: _clientSuppliedCreatedAt,
+      updatedAt: _clientSuppliedUpdatedAt,
       isDeleted: _clientSuppliedIsDeleted, // Ignore client-supplied soft delete fields
       deletedAt: _clientSuppliedDeletedAt, // Ignore client-supplied soft delete fields
       ...updates
     }: Partial<DataObject> & {id?: string, model_id?:string, currentStateId?: string | null, ownerId?: string | null, createdAt?:string, updatedAt?:string, isDeleted?: boolean, deletedAt?: string | null} = requestBody;
-
-
-    const existingObjectRecord = await db.get('SELECT data, currentStateId, ownerId, model_id, isDeleted FROM data_objects WHERE id = ? AND model_id = ?', objectId, modelId);
-    if (!existingObjectRecord) {
-      await db.run('ROLLBACK');
-      return NextResponse.json({ error: 'Object not found' }, { status: 404 });
-    }
-    if (existingObjectRecord.isDeleted) {
-      await db.run('ROLLBACK');
-      return NextResponse.json({ error: 'Cannot update a deleted object. Please restore it first.' }, { status: 400 });
-    }
 
 
     const oldDataParsed = JSON.parse(existingObjectRecord.data);
@@ -202,7 +212,7 @@ export async function PUT(request: Request, { params }: Params) {
     }
 
     let finalOwnerIdToSave: string | null = oldOwnerId;
-    if (currentUser.role === 'administrator' && Object.prototype.hasOwnProperty.call(requestBody, 'ownerId')) {
+    if (currentUser.permissionIds.includes('*') && Object.prototype.hasOwnProperty.call(requestBody, 'ownerId')) { // Admins can change owner
       if (newOwnerIdFromRequest === null || newOwnerIdFromRequest === '') {
         finalOwnerIdToSave = null;
       } else {
@@ -234,8 +244,8 @@ export async function PUT(request: Request, { params }: Params) {
     // --- Changelog Logic ---
     const propertyChanges: PropertyChangeDetail[] = [];
     const allPropertiesIncludingMeta = [...properties,
-        { name: '__workflowState__', type: 'string' } as Property, 
-        { name: '__owner__', type: 'string' } as Property 
+        { name: '__workflowState__', type: 'string' } as Property,
+        { name: '__owner__', type: 'string' } as Property
     ];
 
     for (const prop of allPropertiesIncludingMeta) {
@@ -267,10 +277,10 @@ export async function PUT(request: Request, { params }: Params) {
             oldValue = oldDataParsed[propName];
             newValue = newData[propName];
         } else {
-            continue; 
+            continue;
         }
 
-        
+
         if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
             propertyChanges.push({ propertyName: propName, oldValue, newValue, oldLabel, newLabel });
         }
@@ -334,21 +344,26 @@ export async function PUT(request: Request, { params }: Params) {
 export async function DELETE(request: Request, { params }: Params) {
   const { modelId, objectId } = params;
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || !['user', 'administrator'].includes(currentUser.role)) {
-    return NextResponse.json({ error: 'Unauthorized to delete object' }, { status: 403 });
-  }
-  
+
   const db = await getDb();
   await db.run('BEGIN TRANSACTION');
   try {
-    const currentTimestamp = new Date().toISOString();
-    const objectToSoftDelete = await db.get('SELECT data FROM data_objects WHERE id = ? AND model_id = ? AND (isDeleted = 0 OR isDeleted IS NULL)', objectId, modelId);
+    const objectToSoftDelete = await db.get('SELECT data, ownerId FROM data_objects WHERE id = ? AND model_id = ? AND (isDeleted = 0 OR isDeleted IS NULL)', objectId, modelId);
 
     if (!objectToSoftDelete) {
       await db.run('ROLLBACK');
       return NextResponse.json({ error: 'Object not found or already deleted' }, { status: 404 });
     }
 
+    // Permission Check
+    const isOwner = objectToSoftDelete.ownerId === currentUser?.id;
+    const canDelete = currentUser?.permissionIds.includes('*') || currentUser?.permissionIds.includes(`model:delete:${modelId}`) || (currentUser?.permissionIds.includes('objects:delete_own') && isOwner);
+    if (!currentUser || !canDelete) {
+      await db.run('ROLLBACK');
+      return NextResponse.json({ error: 'Unauthorized to delete this object' }, { status: 403 });
+    }
+
+    const currentTimestamp = new Date().toISOString();
     const result = await db.run(
       'UPDATE data_objects SET isDeleted = 1, deletedAt = ? WHERE id = ? AND model_id = ?',
       currentTimestamp,
