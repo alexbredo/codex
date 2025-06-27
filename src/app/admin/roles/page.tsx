@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '@/contexts/auth-context';
+import { withAuth, useAuth } from '@/contexts/auth-context';
 import { useToast } from '@/hooks/use-toast';
 import { useData } from '@/contexts/data-context';
 import { Button } from '@/components/ui/button';
