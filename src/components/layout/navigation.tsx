@@ -87,12 +87,18 @@ export default function Navigation() {
   if (!isMounted || authIsLoading) {
     return (
       <SidebarMenu>
-        <div className="p-2 space-y-2">
+        <SidebarMenuItem>
           <SidebarMenuSkeleton showIcon />
+        </SidebarMenuItem>
+        <SidebarMenuItem>
           <SidebarMenuSkeleton showIcon />
+        </SidebarMenuItem>
+        <SidebarMenuItem>
           <SidebarMenuSkeleton showIcon />
-          <SidebarMenuSkeleton showIcon />
-        </div>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+           <SidebarMenuSkeleton showIcon />
+        </SidebarMenuItem>
       </SidebarMenu>
     );
   }
