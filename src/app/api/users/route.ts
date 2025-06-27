@@ -8,7 +8,7 @@ import { z } from 'zod';
 const createUserSchema = z.object({
   username: z.string().min(3, 'Username must be at least 3 characters').max(50),
   password: z.string().min(6, 'Password must be at least 6 characters').max(100),
-  role: z.enum(['user', 'administrator']),
+  roleId: z.string().uuid("A valid role ID must be provided."),
 });
 
 // GET all users
@@ -22,10 +22,20 @@ export async function GET(request: Request) {
 
   try {
     const db = await getDb();
-    // Return only id, username, and role for general listing.
-    // Sensitive info like password hash should never be returned here.
-    const users = await db.all('SELECT id, username, role FROM users ORDER BY username ASC');
-    return NextResponse.json(users);
+    // Join with roles table to get role name for display
+    const users = await db.all(`
+        SELECT u.id, u.username, r.name as role
+        FROM users u
+        LEFT JOIN roles r ON u.roleId = r.id
+        ORDER BY u.username ASC
+    `);
+    
+    const formattedUsers = users.map(u => ({
+        ...u,
+        role: u.role?.toLowerCase() === 'administrator' ? 'administrator' : 'user'
+    }));
+
+    return NextResponse.json(formattedUsers);
   } catch (error: any) {
     console.error('API Error - Failed to fetch users:', error);
     return NextResponse.json({ error: 'Failed to fetch users', details: error.message }, { status: 500 });
@@ -47,7 +57,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid input', details: validation.error.flatten().fieldErrors }, { status: 400 });
     }
 
-    const { username, password, role } = validation.data;
+    const { username, password, roleId } = validation.data;
     const db = await getDb();
 
     const existingUser = await db.get('SELECT id FROM users WHERE username = ?', username);
@@ -55,14 +65,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Username already taken' }, { status: 409 });
     }
 
+    const roleExists = await db.get('SELECT id, name FROM roles WHERE id = ?', roleId);
+    if (!roleExists) {
+        return NextResponse.json({ error: 'Invalid roleId provided.' }, { status: 400 });
+    }
+
     const userId = crypto.randomUUID();
     // WARNING: Storing plaintext password. Highly insecure. For demo only.
     await db.run(
-      'INSERT INTO users (id, username, password, role) VALUES (?, ?, ?, ?)',
+      'INSERT INTO users (id, username, password, roleId, role) VALUES (?, ?, ?, ?, ?)',
       userId,
       username,
       password, // Plaintext password
-      role
+      roleId,
+      roleExists.name // Store text role for compatibility if needed
     );
     
     // Log security event
@@ -76,10 +92,14 @@ export async function POST(request: Request) {
       'USER_CREATE',
       'User',
       userId, // The user that was created
-      JSON.stringify({ createdUsername: username, roleAssigned: role })
+      JSON.stringify({ createdUsername: username, roleAssigned: roleExists.name })
     );
 
-    const createdUser = await db.get('SELECT id, username, role FROM users WHERE id = ?', userId);
+    const createdUser = {
+      id: userId,
+      username,
+      role: roleExists.name?.toLowerCase() === 'administrator' ? 'administrator' : 'user',
+    };
     return NextResponse.json(createdUser, { status: 201 });
 
   } catch (error: any) {

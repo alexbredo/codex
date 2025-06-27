@@ -22,7 +22,13 @@ export async function POST(request: Request) {
     const db = await getDb();
 
     // WARNING: Comparing plaintext password. Highly insecure. For demo only.
-    const user = await db.get('SELECT id, username, role, password FROM users WHERE username = ?', username);
+    // Join with roles table to get role name
+    const user = await db.get(`
+        SELECT u.id, u.username, u.password, r.name as role 
+        FROM users u
+        LEFT JOIN roles r ON u.roleId = r.id
+        WHERE u.username = ?
+    `, username);
 
     if (!user || user.password !== password) {
        if (user) { // User exists, but password was wrong
@@ -64,6 +70,9 @@ export async function POST(request: Request) {
 
     // Don't send password back
     const { password: _, ...userWithoutPassword } = user;
+     // Normalize role name for consistency
+    userWithoutPassword.role = userWithoutPassword.role?.toLowerCase() === 'administrator' ? 'administrator' : 'user';
+
     return NextResponse.json(userWithoutPassword);
 
   } catch (error: any) {

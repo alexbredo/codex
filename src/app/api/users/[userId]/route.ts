@@ -8,11 +8,11 @@ interface Params {
   params: { userId: string };
 }
 
-// Schema for updating user (username, password, role)
+// Schema for updating user (username, password, roleId)
 const updateUserSchema = z.object({
   username: z.string().min(3, 'Username must be at least 3 characters').max(50).optional(),
   password: z.string().min(6, 'Password must be at least 6 characters').max(100).optional().or(z.literal('')), // Allow empty string to indicate no change
-  role: z.enum(['user', 'administrator']).optional(),
+  roleId: z.string().uuid("A valid role ID must be provided.").optional(),
 });
 
 
@@ -30,17 +30,18 @@ export async function PUT(request: Request, { params }: Params) {
       return NextResponse.json({ error: 'Invalid input', details: validation.error.flatten().fieldErrors }, { status: 400 });
     }
 
-    const { username: newUsername, password: newPassword, role: newRole } = validation.data;
+    const { username: newUsername, password: newPassword, roleId: newRoleId } = validation.data;
     const { userId } = params;
     const db = await getDb();
 
-    const targetUser = await db.get('SELECT id, username, role FROM users WHERE id = ?', userId);
+    const targetUser = await db.get('SELECT id, username, roleId FROM users WHERE id = ?', userId);
     if (!targetUser) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
     const updates: string[] = [];
     const values: any[] = [];
+    const updatedFieldsForLog = [];
 
     if (newUsername && newUsername !== targetUser.username) {
       const existingUserWithNewName = await db.get('SELECT id FROM users WHERE username = ? AND id != ?', newUsername, userId);
@@ -49,30 +50,33 @@ export async function PUT(request: Request, { params }: Params) {
       }
       updates.push('username = ?');
       values.push(newUsername);
+      updatedFieldsForLog.push('username');
     }
 
     if (newPassword && newPassword.trim() !== '') { // Only update password if a new one is provided and not empty
       updates.push('password = ?');
       values.push(newPassword); // Plaintext password
+      updatedFieldsForLog.push('password');
     }
 
-    if (newRole && newRole !== targetUser.role) {
+    if (newRoleId && newRoleId !== targetUser.roleId) {
+      const newRole = await db.get('SELECT id, name, isSystemRole FROM roles WHERE id = ?', newRoleId);
+      if (!newRole) {
+        return NextResponse.json({ error: 'Invalid roleId provided.' }, { status: 400 });
+      }
+      
+      const oldRole = await db.get('SELECT id, name, isSystemRole FROM roles WHERE id = ?', targetUser.roleId);
+      
       // Safety check: Prevent demoting the last admin
-      if (targetUser.role === 'administrator' && newRole === 'user') {
-        const adminCountResult = await db.get("SELECT COUNT(*) as count FROM users WHERE role = 'administrator'");
+      if (oldRole?.name === 'Administrator' && newRole.name !== 'Administrator') {
+        const adminCountResult = await db.get("SELECT COUNT(*) as count FROM users u JOIN roles r ON u.roleId = r.id WHERE r.name = 'Administrator'");
         if (adminCountResult && adminCountResult.count === 1) {
-          return NextResponse.json({ error: 'Cannot demote the last administrator.' }, { status: 400 });
+          return NextResponse.json({ error: 'Cannot change the role of the last administrator.' }, { status: 400 });
         }
       }
-      // Prevent admin from demoting themselves if they are the only admin
-      if (currentUser.id === userId && newRole === 'user' && targetUser.role === 'administrator') {
-        const adminCountResult = await db.get("SELECT COUNT(*) as count FROM users WHERE role = 'administrator'");
-        if (adminCountResult && adminCountResult.count === 1) {
-          return NextResponse.json({ error: 'You cannot demote yourself as the last administrator.' }, { status: 400 });
-        }
-      }
-      updates.push('role = ?');
-      values.push(newRole);
+      updates.push('roleId = ?', 'role = ?');
+      values.push(newRoleId, newRole.name);
+      updatedFieldsForLog.push('role');
     }
 
     if (updates.length > 0) {
@@ -90,13 +94,16 @@ export async function PUT(request: Request, { params }: Params) {
           'USER_UPDATE',
           'User',
           userId,
-          JSON.stringify({ updatedFields: updates.map(u => u.split(' ')[0]), targetUsername: newUsername || targetUser.username })
+          JSON.stringify({ updatedFields: updatedFieldsForLog, targetUsername: newUsername || targetUser.username })
       );
     }
 
 
-    const updatedUser = await db.get('SELECT id, username, role FROM users WHERE id = ?', userId);
-    return NextResponse.json(updatedUser);
+    const updatedUserResult = await db.get('SELECT u.id, u.username, r.name as role FROM users u JOIN roles r ON u.roleId = r.id WHERE u.id = ?', userId);
+    if (updatedUserResult) {
+      updatedUserResult.role = updatedUserResult.role?.toLowerCase() === 'administrator' ? 'administrator' : 'user';
+    }
+    return NextResponse.json(updatedUserResult);
 
   } catch (error: any) {
     console.error(`API Error - Failed to update user ${params.userId}:`, error);
@@ -114,7 +121,7 @@ export async function DELETE(request: Request, { params }: Params) {
   const db = await getDb();
 
   try {
-    const targetUser = await db.get('SELECT id, role, username FROM users WHERE id = ?', userId);
+    const targetUser = await db.get('SELECT u.id, u.username, r.name as role FROM users u JOIN roles r ON u.roleId = r.id WHERE u.id = ?', userId);
     if (!targetUser) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
@@ -123,8 +130,8 @@ export async function DELETE(request: Request, { params }: Params) {
       return NextResponse.json({ error: 'Cannot delete yourself.' }, { status: 400 });
     }
 
-    if (targetUser.role === 'administrator') {
-      const adminCountResult = await db.get("SELECT COUNT(*) as count FROM users WHERE role = 'administrator'");
+    if (targetUser.role?.toLowerCase() === 'administrator') {
+      const adminCountResult = await db.get("SELECT COUNT(*) as count FROM users u JOIN roles r ON u.roleId = r.id WHERE r.name = 'Administrator'");
       if (adminCountResult && adminCountResult.count === 1) {
         return NextResponse.json({ error: 'Cannot delete the last administrator.' }, { status: 400 });
       }

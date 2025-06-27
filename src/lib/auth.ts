@@ -9,12 +9,15 @@ interface UserSession {
   id: string;
   username: string;
   role: 'user' | 'administrator';
+  roleId: string;
 }
 
+const adminRoleId = '00000000-role-0000-0000-administrator';
 export const MOCK_API_ADMIN_USER: UserSession = {
   id: 'debug-api-admin-user',
   username: 'DebugApiAdmin',
   role: 'administrator',
+  roleId: adminRoleId,
 };
 
 export async function getCurrentUserFromCookie(): Promise<UserSession | null> {
@@ -32,17 +35,27 @@ export async function getCurrentUserFromCookie(): Promise<UserSession | null> {
 
   try {
     const db = await getDb();
-    const user = await db.get('SELECT id, username, role FROM users WHERE id = ?', sessionId);
+    // Join with roles table to get the role name
+    const userRow = await db.get(`
+      SELECT u.id, u.username, u.roleId, r.name as role
+      FROM users u
+      LEFT JOIN roles r ON u.roleId = r.id
+      WHERE u.id = ?
+    `, sessionId);
     
-    if (!user) {
+    if (!userRow) {
       return null;
     }
-    if (user.role !== 'user' && user.role !== 'administrator') {
-        console.warn(`User ${user.id} has an invalid role: ${user.role}. Defaulting to 'user'.`);
-        user.role = 'user'; // Or handle as unauthorized appropriately
-    }
 
-    return user as UserSession;
+    // Normalize role name to fit the expected enum type
+    const roleName = userRow.role?.toLowerCase() === 'administrator' ? 'administrator' : 'user';
+
+    return {
+        id: userRow.id,
+        username: userRow.username,
+        roleId: userRow.roleId,
+        role: roleName
+    };
   } catch (error) {
     console.error("Error fetching user from session cookie:", error);
     return null;

@@ -4,6 +4,8 @@ import { open, type Database } from 'sqlite';
 import path from 'path';
 import fs from 'fs/promises'; // Use fs.promises for async file operations
 import { DEBUG_MODE, MOCK_API_ADMIN_USER } from '@/lib/auth'; // Import debug constants
+import type { Permission } from '@/lib/types';
+
 
 // Determine the database path.
 // It will be created in a 'data' subdirectory of the application root.
@@ -13,6 +15,39 @@ const dbPath = process.env.DATABASE_PATH || path.join(dataDir, 'database.sqlite'
 
 
 let dbInstance: Promise<Database> | null = null;
+
+
+const ALL_PERMISSIONS: Omit<Permission, 'id'>[] = [
+  // User Management
+  { name: 'View Users', category: 'Users', id: 'users:view' },
+  { name: 'Create Users', category: 'Users', id: 'users:create' },
+  { name: 'Edit Users', category: 'Users', id: 'users:edit' },
+  { name: 'Delete Users', category: 'Users', id: 'users:delete' },
+  { name: 'Manage Roles', category: 'Users', id: 'roles:manage' },
+  
+  // Model Structure
+  { name: 'View Models', category: 'Models', id: 'models:view' },
+  { name: 'Create Models', category: 'Models', id: 'models:create' },
+  { name: 'Edit Models', category: 'Models', id: 'models:edit' },
+  { name: 'Delete Models', category: 'Models', id: 'models:delete' },
+  { name: 'Import/Export Models', category: 'Models', id: 'models:import_export' },
+
+  // Data Objects
+  { name: 'View Any Object', category: 'Objects', id: 'objects:view_any' },
+  { name: 'Create Objects', category: 'Objects', id: 'objects:create' },
+  { name: 'Edit Any Object', category: 'Objects', id: 'objects:edit_any' },
+  { name: 'Edit Own Objects', category: 'Objects', id: 'objects:edit_own' },
+  { name: 'Delete Any Object', category: 'Objects', id: 'objects:delete_any' },
+  { name: 'Delete Own Objects', category: 'Objects', id: 'objects:delete_own' },
+  { name: 'Revert Object History', category: 'Objects', id: 'objects:revert' },
+
+  // Administration
+  { name: 'View Activity Log', category: 'Admin', id: 'admin:view_activity_log' },
+  { name: 'Manage Workflows', category: 'Admin', id: 'admin:manage_workflows' },
+  { name: 'Manage Validation Rules', category: 'Admin', id: 'admin:manage_validation_rules' },
+  { name: 'Manage Model Groups', category: 'Admin', id: 'admin:manage_model_groups' },
+];
+
 
 
 async function initializeDb(): Promise<Database> {
@@ -127,15 +162,88 @@ async function initializeDb(): Promise<Database> {
     );
   `);
 
+   // RBAC Tables
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS roles (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      description TEXT,
+      isSystemRole INTEGER DEFAULT 0
+    );
+  `);
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS permissions (
+      id TEXT PRIMARY KEY, -- e.g., 'users:create'
+      name TEXT NOT NULL UNIQUE, -- e.g., 'Create Users'
+      category TEXT NOT NULL -- e.g., 'User Management'
+    );
+  `);
+  
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS role_permissions (
+      roleId TEXT NOT NULL,
+      permissionId TEXT NOT NULL,
+      PRIMARY KEY (roleId, permissionId),
+      FOREIGN KEY (roleId) REFERENCES roles(id) ON DELETE CASCADE,
+      FOREIGN KEY (permissionId) REFERENCES permissions(id) ON DELETE CASCADE
+    );
+  `);
+
   // Users Table (for placeholder authentication)
   await db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       username TEXT NOT NULL UNIQUE,
       password TEXT NOT NULL,
-      role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('user', 'administrator'))
+      role TEXT, -- Old field, will be deprecated
+      roleId TEXT REFERENCES roles(id) ON DELETE SET NULL
     );
   `);
+  // Migration: Add roleId to users table if it doesn't exist (older schemas)
+  const usersTableInfo = await db.all("PRAGMA table_info(users);");
+  if (!usersTableInfo.some(col => col.name === 'roleId')) {
+    await db.exec('ALTER TABLE users ADD COLUMN roleId TEXT REFERENCES roles(id) ON DELETE SET NULL;');
+  }
+  if (!usersTableInfo.some(col => col.name === 'role')) { // Handle even older schemas
+    await db.exec("ALTER TABLE users ADD COLUMN role TEXT;");
+  }
+
+
+  // --- Seed Data for RBAC ---
+  const adminRoleId = '00000000-role-0000-0000-administrator';
+  const userRoleId = '00000000-role-0000-0000-000user000000';
+
+  // Seed Roles
+  await db.run('INSERT OR IGNORE INTO roles (id, name, description, isSystemRole) VALUES (?, ?, ?, ?)', adminRoleId, 'Administrator', 'Has all permissions.', 1);
+  await db.run('INSERT OR IGNORE INTO roles (id, name, description, isSystemRole) VALUES (?, ?, ?, ?)', userRoleId, 'User', 'Standard user with basic data interaction permissions.', 1);
+  
+  // Seed Permissions
+  for (const perm of ALL_PERMISSIONS) {
+    await db.run('INSERT OR IGNORE INTO permissions (id, name, category) VALUES (?, ?, ?)', perm.id, perm.name, perm.category);
+  }
+
+  // Seed Role-Permissions links
+  // Admin gets all permissions
+  for (const perm of ALL_PERMISSIONS) {
+    await db.run('INSERT OR IGNORE INTO role_permissions (roleId, permissionId) VALUES (?, ?)', adminRoleId, perm.id);
+  }
+  // User gets a subset
+  const userPermissions = [
+    'models:view', 'objects:view_any', 'objects:create', 'objects:edit_own', 'objects:delete_own'
+  ];
+  for (const permId of userPermissions) {
+     await db.run('INSERT OR IGNORE INTO role_permissions (roleId, permissionId) VALUES (?, ?)', userRoleId, permId);
+  }
+  // End RBAC Seed ---
+
+
+  // Update users to have the new roleId based on old role string where roleId is not set
+  await db.run('UPDATE users SET roleId = ? WHERE role = ? AND roleId IS NULL', adminRoleId, 'administrator');
+  await db.run('UPDATE users SET roleId = ? WHERE role = ? AND roleId IS NULL', userRoleId, 'user');
+  // Ensure any user without a role gets the default user role
+  await db.run('UPDATE users SET roleId = ? WHERE roleId IS NULL', userRoleId);
+
 
   // Data Objects Table
   await db.exec(`
@@ -234,11 +342,12 @@ async function initializeDb(): Promise<Database> {
     const placeholderPassword = 'debugpassword';
     try {
       await db.run(
-        `INSERT OR IGNORE INTO users (id, username, password, role) VALUES (?, ?, ?, ?)`,
+        `INSERT OR IGNORE INTO users (id, username, password, role, roleId) VALUES (?, ?, ?, ?, ?)`,
         mockAdmin.id,
         mockAdmin.username,
         placeholderPassword,
-        mockAdmin.role
+        mockAdmin.role,
+        adminRoleId
       );
     } catch (error: any) {
       console.error(`DEBUG_MODE: Failed to ensure mock admin user '${mockAdmin.username}' in database:`, error.message);

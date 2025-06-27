@@ -1,4 +1,5 @@
 
+
 export type PropertyType = 'string' | 'number' | 'boolean' | 'date' | 'relationship' | 'markdown' | 'rating' | 'image' | 'fileAttachment';
 
 export interface Property {
@@ -250,4 +251,19 @@ export interface Dashboard {
   widgets: WidgetInstance[]; // Stored as JSON in DB, parsed on fetch
   createdAt: string;
   updatedAt: string;
+}
+
+// RBAC Types
+export interface Permission {
+  id: string; // e.g., 'users:create'
+  name: string; // e.g., 'Create Users'
+  category: string; // e.g., 'User Management'
+}
+
+export interface Role {
+  id: string;
+  name: string;
+  description?: string;
+  isSystemRole?: boolean;
+  permissionIds?: string[]; // Populated when fetching a single role
 }
