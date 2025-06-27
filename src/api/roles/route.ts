@@ -15,6 +15,7 @@ export async function GET(request: Request) {
   const currentUser = await getCurrentUserFromCookie();
   // A user can view roles if they can manage roles, or create/edit users.
   const canViewRoles = 
+    currentUser?.permissionIds.includes('*') ||
     currentUser?.permissionIds.includes('roles:manage') ||
     currentUser?.permissionIds.includes('users:create') ||
     currentUser?.permissionIds.includes('users:edit');
