@@ -20,9 +20,12 @@ interface Params {
 
 export async function POST(request: Request, { params }: Params) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || !['user', 'administrator'].includes(currentUser.role)) {
-    return NextResponse.json({ error: 'Unauthorized to perform batch update' }, { status: 403 });
+  
+  // Permission Check: User must have general edit permissions for this model to perform batch actions.
+  if (!currentUser || (!currentUser.permissionIds.includes('*') && !currentUser.permissionIds.includes(`model:edit:${params.modelId}`))) {
+    return NextResponse.json({ error: 'Unauthorized to perform batch update on this model' }, { status: 403 });
   }
+
 
   const { modelId } = params;
   let db;
@@ -255,4 +258,3 @@ export async function POST(request: Request, { params }: Params) {
     }, { status: 500 });
   }
 }
-

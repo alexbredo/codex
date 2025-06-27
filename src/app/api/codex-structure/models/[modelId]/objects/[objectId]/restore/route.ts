@@ -10,22 +10,27 @@ interface Params {
 
 export async function POST(request: Request, { params }: Params) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || !['user', 'administrator'].includes(currentUser.role)) {
-    return NextResponse.json({ error: 'Unauthorized to restore object' }, { status: 403 });
-  }
-
+  
   const db = await getDb();
   await db.run('BEGIN TRANSACTION');
 
   try {
-    const currentTimestamp = new Date().toISOString();
-    const objectToRestore = await db.get('SELECT id FROM data_objects WHERE id = ? AND model_id = ? AND isDeleted = 1', params.objectId, params.modelId);
+    const objectToRestore = await db.get('SELECT id, ownerId FROM data_objects WHERE id = ? AND model_id = ? AND isDeleted = 1', params.objectId, params.modelId);
 
     if (!objectToRestore) {
       await db.run('ROLLBACK');
       return NextResponse.json({ error: 'Object not found or not deleted' }, { status: 404 });
     }
+    
+    // Permission Check
+    const isOwner = objectToRestore.ownerId === currentUser?.id;
+    const canEdit = currentUser?.permissionIds.includes(`model:edit:${params.modelId}`) || (currentUser?.permissionIds.includes('objects:edit_own') && isOwner);
+    if (!currentUser || (!currentUser.permissionIds.includes('*') && !canEdit)) {
+        await db.run('ROLLBACK');
+        return NextResponse.json({ error: 'Unauthorized to restore this object' }, { status: 403 });
+    }
 
+    const currentTimestamp = new Date().toISOString();
     const result = await db.run(
       'UPDATE data_objects SET isDeleted = 0, deletedAt = NULL, data = json_patch(data, json_object(\'updatedAt\', ?)) WHERE id = ? AND model_id = ?',
       currentTimestamp, // Update updatedAt on restore
@@ -50,7 +55,6 @@ export async function POST(request: Request, { params }: Params) {
       changelogId,
       params.objectId,
       params.modelId,
-      currentTimestamp,
       currentUser?.id || null,
       'RESTORE',
       JSON.stringify(changelogEventData)

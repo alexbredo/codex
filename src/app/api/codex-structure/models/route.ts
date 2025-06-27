@@ -6,6 +6,8 @@ import { getCurrentUserFromCookie } from '@/lib/auth';
 
 // GET all models
 export async function GET(request: Request) {
+  const currentUser = await getCurrentUserFromCookie();
+  
   try {
     const db = await getDb();
     const rows = await db.all(`
@@ -95,7 +97,16 @@ export async function GET(request: Request) {
           return NextResponse.json({ error: 'Failed to fetch models', details: errorMessage }, { status: 500 });
       }
     }
-    return NextResponse.json(modelsWithProperties);
+    
+    // Filter models based on user permissions
+    const permittedModels = modelsWithProperties.filter(model => {
+        if (!currentUser) return false;
+        if (currentUser.permissionIds.includes('*')) return true;
+        return currentUser.permissionIds.includes(`model:view:${model.id}`);
+    });
+
+    return NextResponse.json(permittedModels);
+
   } catch (error: any) {
     const errorMessage = error.message || 'An unknown server error occurred while fetching models.';
     const errorStack = error.stack || 'No stack trace available.';
@@ -107,7 +118,7 @@ export async function GET(request: Request) {
 // POST a new model
 export async function POST(request: Request) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || currentUser.role !== 'administrator') {
+  if (!currentUser || !currentUser.permissionIds.includes('models:manage')) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 

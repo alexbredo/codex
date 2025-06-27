@@ -24,7 +24,7 @@ export async function GET(request: Request, { params }: Params) {
   try {
     const db = await getDb();
     let query: string;
-    const queryParams: any[] = [`$.${propertyName}`];
+    const queryParams: any[] = [];
     
     const whereConditions = [`json_extract(data, ?) IS NOT NULL`];
     queryParams.push(`$.${propertyName}`);
@@ -38,6 +38,22 @@ export async function GET(request: Request, { params }: Params) {
         queryParams.push(model.id);
       }
     }
+
+    // NEW: Add permission check to WHERE clause
+    if (!currentUser.permissionIds.includes('*')) {
+        const permittedModelIds = currentUser.permissionIds
+            .filter(p => p.startsWith('model:view:'))
+            .map(p => p.replace('model:view:', ''));
+        
+        if (permittedModelIds.length === 0) {
+            return NextResponse.json([]); // No view permissions, return empty array
+        }
+        
+        // Add IN clause for permitted model IDs
+        whereConditions.push(`model_id IN (${permittedModelIds.map(() => '?').join(',')})`);
+        queryParams.push(...permittedModelIds);
+    }
+
 
     query = `
       SELECT DISTINCT json_extract(data, ?) as value

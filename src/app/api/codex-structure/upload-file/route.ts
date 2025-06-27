@@ -4,6 +4,7 @@ import { getCurrentUserFromCookie } from '@/lib/auth';
 import fs from 'fs/promises';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import { getDb } from '@/lib/db';
 
 const UPLOADS_DIR = path.join(process.cwd(), 'data', 'uploads');
 
@@ -32,10 +33,7 @@ const MAX_FILE_SIZE_MB = 10;
 
 export async function POST(request: Request) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || !['user', 'administrator'].includes(currentUser.role)) {
-    return NextResponse.json({ error: 'Unauthorized to upload files' }, { status: 403 });
-  }
-
+  
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
@@ -46,6 +44,20 @@ export async function POST(request: Request) {
     if (!file) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
+    if (!modelId || !objectId || !propertyName) {
+      return NextResponse.json({ error: 'Missing modelId, objectId, or propertyName for file storage path.' }, { status: 400 });
+    }
+
+    // --- Permission Check ---
+    const db = await getDb();
+    const objForPermCheck = await db.get('SELECT ownerId FROM data_objects WHERE id = ?', objectId);
+    const isOwner = objForPermCheck?.ownerId === currentUser?.id;
+    const canEdit = currentUser?.permissionIds.includes(`model:edit:${modelId}`) || (currentUser?.permissionIds.includes('objects:edit_own') && isOwner);
+
+    if (!currentUser || (!currentUser.permissionIds.includes('*') && !canEdit)) {
+      return NextResponse.json({ error: 'Unauthorized to upload file for this object' }, { status: 403 });
+    }
+    // --- End Permission Check ---
     
     // --- Server-side validation ---
     if (DISALLOWED_FILE_TYPES.includes(file.type)) {
@@ -55,10 +67,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `File is too large. Maximum size is ${MAX_FILE_SIZE_MB}MB.` }, { status: 400 });
     }
     // --- End validation ---
-
-    if (!modelId || !objectId || !propertyName) {
-      return NextResponse.json({ error: 'Missing modelId, objectId, or propertyName for file storage path.' }, { status: 400 });
-    }
 
     const safeModelId = modelId.replace(/[^a-z0-9_-]/gi, '');
     const safeObjectId = objectId.replace(/[^a-z0-9_-]/gi, '');

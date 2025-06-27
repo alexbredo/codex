@@ -94,11 +94,18 @@ export async function GET(request: Request) {
 
     const filteredObjectRows = await db.all(sqlQuery, ...queryParams);
     
+    // NEW: Filter results based on permissions
+    const permittedObjectRows = filteredObjectRows.filter(row => {
+        if (currentUser.permissionIds.includes('*')) return true;
+        return currentUser.permissionIds.includes(`model:view:${row.model_id}`);
+    });
+
+
     // Now, perform full-text search on the narrowed down results in JS
     let searchResults: SearchResult[] = [];
 
     if (fullTextTerms.length > 0) {
-        for (const row of filteredObjectRows) {
+        for (const row of permittedObjectRows) {
             // Search within the object's data AND its model's name for better relevance
             const objectDataString = row.data.toLowerCase();
             const modelForObject = allModels.find(m => m.id === row.model_id);
@@ -123,7 +130,7 @@ export async function GET(request: Request) {
         }
     } else {
         // If no full text terms, all SQL results are valid
-        searchResults = filteredObjectRows.map(row => {
+        searchResults = permittedObjectRows.map(row => {
             const modelForObject = allModels.find(m => m.id === row.model_id);
             if (!modelForObject) return null;
             const data: DataObject = { id: row.id, ...JSON.parse(row.data) };
