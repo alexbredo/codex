@@ -33,8 +33,9 @@ export async function getCurrentUserFromCookie(): Promise<UserSession | null> {
   const db = await getDb();
   let userIdToAuth: string | null = null;
 
-  // 1. Check for Bearer Token in Authorization header
   const authHeader = headers().get('Authorization');
+  
+  // 1. If an Authorization header with a Bearer token is present, use it exclusively.
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.substring(7);
     const tokenRecord = await db.get('SELECT userId FROM api_tokens WHERE token = ?', token);
@@ -45,11 +46,13 @@ export async function getCurrentUserFromCookie(): Promise<UserSession | null> {
       db.run('UPDATE api_tokens SET lastUsedAt = ? WHERE token = ?', new Date().toISOString(), token).catch(err => {
         console.error("Failed to update token lastUsedAt timestamp:", err);
       });
+    } else {
+      // If a token was provided but it's invalid, we fail the authentication immediately
+      // without checking for cookies. This is a stricter security measure.
+      return null;
     }
-  }
-
-  // 2. If no valid token, fallback to session cookie
-  if (!userIdToAuth) {
+  } else {
+    // 2. If no Authorization header, fall back to checking the session cookie for browser-based access.
     const cookieStore = cookies();
     const sessionId = cookieStore.get('codex_structure_session')?.value;
     if (sessionId) {
@@ -57,6 +60,7 @@ export async function getCurrentUserFromCookie(): Promise<UserSession | null> {
     }
   }
 
+  // If we couldn't determine a user from either token or cookie, there's no session.
   if (!userIdToAuth) {
     return null;
   }
