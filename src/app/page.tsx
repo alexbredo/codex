@@ -32,9 +32,15 @@ const getDefaultDashboardLayout = (): WidgetInstance[] => [
   },
   {
     id: uuidv4(),
+    type: 'recentActivity',
+    config: { title: 'Recent Activity', limit: 5 },
+    gridConfig: { colSpan: 3, rowSpan: 2, order: 4 },
+  },
+  {
+    id: uuidv4(),
     type: 'modelCountChart',
     config: { title: 'Object Distribution by Model' },
-    gridConfig: { colSpan: 3, rowSpan: 2, order: 4 },
+    gridConfig: { colSpan: 3, rowSpan: 2, order: 5 },
   },
 ];
 
@@ -177,6 +183,14 @@ export default function HomePage() {
             type: widgetType,
             config: { title: 'New Numeric Summary Widget', modelId: '', propertyId: '', calculationType: 'sum' }, // Default config
             gridConfig: { colSpan: 1, rowSpan: 1, order: localDashboardConfig.widgets.length + 1 }, // Place at the end
+          };
+          break;
+        case 'recentActivity':
+          newWidget = {
+            id: uuidv4(),
+            type: widgetType,
+            config: { title: 'New Recent Activity Widget' }, // Default config
+            gridConfig: { colSpan: 3, rowSpan: 2, order: localDashboardConfig.widgets.length + 1 }, // Place at the end
           };
           break;
         default:

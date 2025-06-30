@@ -59,6 +59,19 @@ const widgetInstanceSchema = z.discriminatedUnion("type", [
       rowSpan: z.number().optional(),
       order: z.number().optional(),
     }),
+  }),
+  z.object({
+    id: z.string().uuid(),
+    type: z.literal('recentActivity'),
+    config: z.object({
+      title: z.string().optional(),
+      limit: z.number().optional()
+    }).optional(),
+    gridConfig: z.object({
+      colSpan: z.number().optional(),
+      rowSpan: z.number().optional(),
+      order: z.number().optional(),
+    }),
   })
 ]);
 

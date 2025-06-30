@@ -5,6 +5,7 @@ import DataSummaryWidget from './widgets/DataSummaryWidget';
 import ModelCountChartWidget from './widgets/ModelCountChartWidget';
 import QuickStartWidget from './widgets/QuickStartWidget';
 import NumericSummaryWidget from './widgets/NumericSummaryWidget';
+import RecentActivityWidget from './widgets/RecentActivityWidget';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DndContext, DragEndEvent, PointerSensor, useSensor, useSensors, closestCenter } from '@dnd-kit/core';
 import { SortableContext, arrayMove } from '@dnd-kit/sortable';
@@ -133,6 +134,9 @@ export default function DashboardDisplay({ widgets, isEditMode, onRemoveWidget, 
                 break;
               case 'numericSummary':
                 content = <NumericSummaryWidget config={widget.config} isEditMode={isEditMode} onConfigChange={(newConfig) => handleConfigChange(widget.id, newConfig)} />;
+                break;
+              case 'recentActivity':
+                content = <RecentActivityWidget config={widget.config} />;
                 break;
               default:
                 content = (

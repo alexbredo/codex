@@ -31,6 +31,7 @@ const AddWidgetDialog: React.FC<AddWidgetDialogProps> = ({ onAddWidget }) => {
           <Button onClick={() => handleAddWidget('modelCountChart')}>Model Count Chart</Button>
           <Button onClick={() => handleAddWidget('quickStart')}>Quick Start</Button>
           <Button onClick={() => handleAddWidget('numericSummary')}>Numeric Summary</Button>
+          <Button onClick={() => handleAddWidget('recentActivity')}>Recent Activity</Button>
         </div>
       </DialogContent>
     </Dialog>

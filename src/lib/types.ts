@@ -203,7 +203,7 @@ export interface ExportedModelBundle {
 }
 
 // Dashboard and Widget Types
-export type WidgetType = 'dataSummary' | 'modelCountChart' | 'quickStart' | 'numericSummary';
+export type WidgetType = 'dataSummary' | 'modelCountChart' | 'quickStart' | 'numericSummary' | 'recentActivity';
 
 export interface WidgetConfigBase {
   title?: string;
@@ -227,7 +227,11 @@ export interface NumericSummaryWidgetConfig extends WidgetConfigBase {
   calculationType: 'min' | 'max' | 'sum' | 'avg';
 }
 
-export type SpecificWidgetConfig = DataSummaryWidgetConfig | ModelCountChartWidgetConfig | QuickStartWidgetConfig | NumericSummaryWidgetConfig;
+export interface RecentActivityWidgetConfig extends WidgetConfigBase {
+    limit?: number;
+}
+
+export type SpecificWidgetConfig = DataSummaryWidgetConfig | ModelCountChartWidgetConfig | QuickStartWidgetConfig | NumericSummaryWidgetConfig | RecentActivityWidgetConfig;
 
 export interface WidgetGridConfig {
   colSpan?: number; // e.g., 1, 2, 3 for a 3-column grid
