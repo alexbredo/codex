@@ -10,6 +10,12 @@ export async function GET(request: Request) {
   const canManageRoles = currentUser?.permissionIds.includes('roles:manage') || currentUser?.permissionIds.includes('*');
 
   if (!currentUser || !canManageRoles) {
+    await getDb().then(db => db.run(
+      'INSERT INTO security_log (id, timestamp, userId, username, action, details) VALUES (?, ?, ?, ?, ?, ?)',
+      crypto.randomUUID(), new Date().toISOString(), currentUser?.id || null, currentUser?.username || 'Anonymous', 'PERMISSION_DENIED',
+      JSON.stringify({ reason: "Attempted to view permissions list without 'roles:manage' permission." })
+    )).catch(err => console.error("Failed to log security event:", err));
+
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
