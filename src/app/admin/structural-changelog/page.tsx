@@ -15,7 +15,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, History, ShieldAlert, Info, Search, FilterX, Calendar as CalendarIcon, User as UserIcon, Layers, Edit2, ShieldQuestion } from 'lucide-react';
+import { Loader2, History, ShieldAlert, Info, Search, FilterX, Calendar as CalendarIcon, User as UserIcon, Layers, Edit2, ShieldQuestion, DatabaseZap } from 'lucide-react';
 import type { ActivityLogEntry, PaginatedActivityLogResponse } from '@/lib/types';
 import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
@@ -33,7 +33,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-const CATEGORY_TYPES = ['Structural', 'Security']; // Add more like 'Data' in the future
+const CATEGORY_TYPES = ['Structural', 'Data', 'Security'];
 const ALL_CATEGORIES_VALUE = "__ALL_CATEGORIES__";
 const ALL_USERS_VALUE = "__ALL_USERS__";
 
@@ -214,8 +214,10 @@ function ActivityLogPageInternal() {
                 <TableRow key={entry.id}>
                   <TableCell className="text-xs">{format(new Date(entry.timestamp), 'PPpp')}</TableCell>
                    <TableCell>
-                    <Badge variant={entry.category === 'Security' ? 'destructive' : 'secondary'} className="text-xs flex items-center gap-1">
-                       {entry.category === 'Security' ? <ShieldQuestion className="h-3 w-3" /> : <Layers className="h-3 w-3" />}
+                    <Badge variant={entry.category === 'Security' ? 'destructive' : entry.category === 'Data' ? 'default' : 'secondary'} className="text-xs flex items-center gap-1">
+                       {entry.category === 'Security' ? <ShieldQuestion className="h-3 w-3" /> 
+                        : entry.category === 'Data' ? <DatabaseZap className="h-3 w-3" />
+                        : <Layers className="h-3 w-3" />}
                        {entry.category}
                     </Badge>
                   </TableCell>

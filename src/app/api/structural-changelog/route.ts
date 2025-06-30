@@ -66,6 +66,42 @@ export async function GET(request: Request) {
         }
       }));
     }
+
+    // Fetch Data Changes
+    if (!categoryFilter || categoryFilter === 'Data') {
+      const dataChangeRows: any[] = await db.all(`
+        SELECT 
+            dcl.id,
+            dcl.changedAt as timestamp,
+            dcl.changedByUserId as userId,
+            u.username,
+            dcl.changeType as action,
+            dcl.dataObjectId as entityId,
+            dcl.modelId as modelId,
+            m.name as modelName,
+            dcl.changes
+        FROM data_object_changelog dcl
+        LEFT JOIN users u ON dcl.changedByUserId = u.id
+        JOIN models m ON dcl.modelId = m.id
+        ORDER BY dcl.changedAt DESC
+      `);
+      
+      allEntries.push(...dataChangeRows.map(row => {
+        const details = JSON.parse(row.changes as any);
+        let summary = `${row.action} an object in model '${row.modelName}'`;
+        
+        return {
+            id: row.id,
+            timestamp: row.timestamp,
+            category: 'Data' as const,
+            user: { id: row.userId, name: row.username || (row.userId ? 'Unknown User' : 'System') },
+            action: row.action,
+            entity: { type: 'DataObject', id: row.entityId, name: null }, // Don't have object display name here easily
+            summary: summary,
+            details: details,
+        };
+      }));
+    }
     
     // Manual Filtering
     let filteredEntries = allEntries;
