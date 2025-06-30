@@ -149,4 +149,4 @@ function EditRolePageInternal() {
   );
 }
 
-export default withAuth(EditRolePageInternal, ['administrator']);
+export default withAuth(EditRolePageInternal, ['roles:manage']);

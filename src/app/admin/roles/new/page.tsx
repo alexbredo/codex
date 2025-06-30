@@ -110,4 +110,4 @@ function CreateRolePageInternal() {
   );
 }
 
-export default withAuth(CreateRolePageInternal, ['administrator']);
+export default withAuth(CreateRolePageInternal, ['roles:manage']);
