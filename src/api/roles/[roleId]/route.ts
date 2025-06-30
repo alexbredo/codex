@@ -17,14 +17,17 @@ const roleUpdateSchema = z.object({
 // GET a single role by ID, including its permissions
 export async function GET(request: Request, { params }: Params) {
   const currentUser = await getCurrentUserFromCookie();
-  const canManage = currentUser?.permissionIds.includes('roles:manage') || currentUser?.permissionIds.includes('*');
+  // Allow viewing if the user can manage roles OR view the users page (to populate user edit forms)
+  const canView = currentUser?.permissionIds.includes('*') ||
+                  currentUser?.permissionIds.includes('roles:manage') ||
+                  currentUser?.permissionIds.includes('users:view');
   
-  if (!currentUser || !canManage) {
+  if (!currentUser || !canView) {
     const db = await getDb();
     await db.run(
       'INSERT INTO security_log (id, timestamp, userId, username, action, targetEntityType, targetEntityId, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       crypto.randomUUID(), new Date().toISOString(), currentUser?.id || null, currentUser?.username || 'Anonymous', 'PERMISSION_DENIED',
-      'Role', params.roleId, JSON.stringify({ reason: "Attempted to view role details without 'roles:manage' permission." })
+      'Role', params.roleId, JSON.stringify({ reason: "Attempted to view role details without 'roles:manage' or 'users:view' permission." })
     );
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
