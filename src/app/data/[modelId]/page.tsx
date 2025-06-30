@@ -23,7 +23,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { format as formatDateFns, isValid as isDateValidFn, startOfDay, isEqual as isEqualDate } from 'date-fns';
-import { getObjectDisplayValue, cn } from '@/lib/utils';
+import { getObjectDisplayValue, cn, getObjectGroupValue } from '@/lib/utils';
 import { StarRatingInput } from '@/components/ui/star-rating-input';
 import GalleryCard from '@/components/objects/gallery-card';
 import ColumnFilterPopover, { type ColumnFilterValue } from '@/components/objects/column-filter-popover';
@@ -856,7 +856,7 @@ export default function DataObjectsPage() {
         .sort((a, b) => a.groupTitle.localeCompare(b.groupTitle));
     }
     return null;
-  }, [groupingPropertyKey, sortedObjects, currentModel, currentWorkflow, allModels, allDbObjects, virtualIncomingRelationColumns, groupableProperties, getOwnerUsername]);
+  }, [groupingPropertyKey, sortedObjects, currentModel, currentWorkflow, allModels, allDbObjects, virtualIncomingRelationColumns, groupableProperties, getOwnerUsername, getObjectGroupValue]);
 
 
   const totalItemsForPagination = groupedDataForRender ? groupedDataForRender.length : sortedObjects.length;
@@ -1198,7 +1198,7 @@ export default function DataObjectsPage() {
         onRefreshData={handleRefreshData}
         onEditModelStructure={handleEditModelStructure}
         onExportCSV={handleExportCSV}
-        onCreateNew={handleCreateNew}
+        onCreateNew={onCreateNew}
         onNavigateBack={() => router.push('/models')}
         viewingRecycleBin={viewingRecycleBin}
       />
