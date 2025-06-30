@@ -110,7 +110,7 @@ function RoleAdminPageInternal() {
                 <TableRow key={role.id}>
                   <TableCell className="font-medium">
                     {role.name}
-                    {role.isSystemRole && <Badge variant="secondary" className="ml-2 text-xs">System</Badge>}
+                    {!!role.isSystemRole && <Badge variant="secondary" className="ml-2 text-xs">System</Badge>}
                   </TableCell>
                   <TableCell className="text-muted-foreground truncate max-w-xs">{role.description || 'N/A'}</TableCell>
                   <TableCell className="text-center">
