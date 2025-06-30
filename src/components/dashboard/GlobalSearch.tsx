@@ -4,12 +4,26 @@
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
-import { DatabaseZap, FileText, Loader2, ListFilter, MessageSquareQuote } from 'lucide-react';
+import {
+  DatabaseZap,
+  FileText,
+  Loader2,
+  ListFilter,
+  MessageSquareQuote,
+  LayoutDashboard,
+  FolderKanban,
+  Users,
+  Workflow as WorkflowIcon,
+  ShieldCheck,
+  History,
+  KeyRound,
+} from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import type { Model, DataObject } from '@/lib/types';
 import { useData } from '@/contexts/data-context';
 import { useDebounce } from '@/hooks/use-debounce';
+import { useAuth } from '@/contexts/auth-context';
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
@@ -27,6 +41,21 @@ interface SearchResult {
   model: Model;
   displayValue: string;
 }
+
+// Navigation Items for Search
+const staticNavItemsBase = [
+  { href: '/', label: 'Dashboard', icon: LayoutDashboard, permission: 'any' },
+];
+const adminNavItems = [
+  { href: '/models', label: 'Model Admin', icon: DatabaseZap, permission: 'models:manage' },
+  { href: '/model-groups', label: 'Group Admin', icon: FolderKanban, permission: 'admin:manage_model_groups' },
+  { href: '/admin/workflows', label: 'Workflow Admin', icon: WorkflowIcon, permission: 'admin:manage_workflows' },
+  { href: '/admin/validation-rules', label: 'Validation Rules', icon: ShieldCheck, permission: 'admin:manage_validation_rules' },
+  { href: '/admin/users', label: 'User Admin', icon: Users, permission: 'users:view' },
+  { href: '/admin/roles', label: 'Role Admin', icon: KeyRound, permission: 'roles:manage' },
+  { href: '/admin/structural-changelog', label: 'Activity Log', icon: History, permission: 'admin:view_activity_log' },
+];
+
 
 async function fetchSearchResults(query: string): Promise<SearchResult[]> {
   if (!query) return [];
@@ -59,6 +88,7 @@ export function GlobalSearch({ open, setOpen }: { open: boolean; setOpen: (open:
   const debouncedQuery = useDebounce(query, 300);
 
   const { models, isReady: dataIsReady } = useData();
+  const { hasPermission } = useAuth();
   
   const allSearchableProperties = React.useMemo(() => {
     if (!dataIsReady) return [];
@@ -100,6 +130,23 @@ export function GlobalSearch({ open, setOpen }: { open: boolean; setOpen: (open:
     queryFn: () => fetchPropertyValues(propertyNameForSuggestions!, modelNameFilter),
     enabled: showPropertyValueSuggestions,
   });
+
+  const allNavItems = React.useMemo(() => {
+    return [...staticNavItemsBase, ...adminNavItems].filter(item => {
+      if (item.permission === 'any') return true;
+      return hasPermission(item.permission);
+    });
+  }, [hasPermission]);
+
+  const filteredNavItems = React.useMemo(() => {
+    if (!debouncedQuery.trim()) return [];
+    const lowercasedQuery = debouncedQuery.trim().toLowerCase();
+    // Exclude special filter queries like 'model:' from nav search
+    if (lowercasedQuery.includes(':')) return [];
+    return allNavItems.filter(item => 
+      item.label.toLowerCase().includes(lowercasedQuery)
+    );
+  }, [debouncedQuery, allNavItems]);
 
 
   React.useEffect(() => {
@@ -163,21 +210,42 @@ export function GlobalSearch({ open, setOpen }: { open: boolean; setOpen: (open:
     }
     
     // State 4: Display actual search results
-    if (results && results.length > 0) {
-      return Object.entries(groupedResults).map(([modelName, items]) => (
-        <CommandGroup key={modelName} heading={modelName}>
-          {items.map((result) => (
-            <CommandItem
-              key={result.object.id}
-              value={result.displayValue}
-              onSelect={() => { runCommand(() => router.push(`/data/${result.model.id}/view/${result.object.id}`)); }}
-            >
-              <FileText className="mr-2 h-4 w-4" />
-              <span>{result.displayValue}</span>
-            </CommandItem>
+    const hasObjectResults = results && results.length > 0;
+    const hasNavResults = filteredNavItems.length > 0;
+    if (hasObjectResults || hasNavResults) {
+      return (
+        <>
+          {hasNavResults && (
+            <CommandGroup heading="Navigation">
+              {filteredNavItems.map((item) => (
+                <CommandItem
+                  key={item.href}
+                  value={item.label}
+                  onSelect={() => { runCommand(() => router.push(item.href)); }}
+                >
+                  <item.icon className="mr-2 h-4 w-4" />
+                  <span>{item.label}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          )}
+
+          {hasObjectResults && Object.entries(groupedResults).map(([modelName, items]) => (
+            <CommandGroup key={modelName} heading={`Data: ${modelName}`}>
+              {items.map((result) => (
+                <CommandItem
+                  key={result.object.id}
+                  value={result.displayValue}
+                  onSelect={() => { runCommand(() => router.push(`/data/${result.model.id}/view/${result.object.id}`)); }}
+                >
+                  <FileText className="mr-2 h-4 w-4" />
+                  <span>{result.displayValue}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
           ))}
-        </CommandGroup>
-      ));
+        </>
+      )
     }
     
     // State 5: Initial state (no query)
