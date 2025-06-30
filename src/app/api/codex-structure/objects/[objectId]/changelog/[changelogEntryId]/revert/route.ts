@@ -10,7 +10,7 @@ interface Params {
 
 export async function POST(request: Request, { params }: Params) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || !currentUser.permissionIds.includes('objects:revert')) {
+  if (!currentUser || (!currentUser.permissionIds.includes('objects:revert') && !currentUser.permissionIds.includes('*'))) {
     return NextResponse.json({ error: 'Unauthorized to revert object state' }, { status: 403 });
   }
 

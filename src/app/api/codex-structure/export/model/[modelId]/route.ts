@@ -11,7 +11,7 @@ interface Params {
 
 export async function GET(request: Request, { params }: Params) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || !currentUser.permissionIds.includes('models:import_export')) {
+  if (!currentUser || (!currentUser.permissionIds.includes('models:import_export') && !currentUser.permissionIds.includes('*'))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
