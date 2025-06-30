@@ -31,7 +31,7 @@ export async function GET(request: Request, { params }: Params) {
 // PUT (update) an existing validation ruleset
 export async function PUT(request: Request, { params }: Params) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || !currentUser.permissionIds.includes('admin:manage_validation_rules')) {
+  if (!currentUser || (!currentUser.permissionIds.includes('admin:manage_validation_rules') && !currentUser.permissionIds.includes('*'))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
@@ -126,7 +126,7 @@ export async function PUT(request: Request, { params }: Params) {
 // DELETE a validation ruleset
 export async function DELETE(request: Request, { params }: Params) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || !currentUser.permissionIds.includes('admin:manage_validation_rules')) {
+  if (!currentUser || (!currentUser.permissionIds.includes('admin:manage_validation_rules') && !currentUser.permissionIds.includes('*'))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 

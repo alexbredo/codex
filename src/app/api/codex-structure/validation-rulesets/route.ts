@@ -25,7 +25,7 @@ export async function GET(request: Request) {
 // POST a new validation ruleset
 export async function POST(request: Request) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || !currentUser.permissionIds.includes('admin:manage_validation_rules')) {
+  if (!currentUser || (!currentUser.permissionIds.includes('admin:manage_validation_rules') && !currentUser.permissionIds.includes('*'))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
