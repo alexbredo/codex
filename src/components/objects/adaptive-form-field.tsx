@@ -307,9 +307,10 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
         }
 
         return (
-          <Popover modal={false}>
+          <Popover>
             <PopoverTrigger asChild>
               <Button
+                type="button"
                 variant={"outline"}
                 className={cn("w-full justify-start text-left font-normal", !controllerField.value && !fieldIsDisabled && "text-muted-foreground", fieldIsDisabled && "cursor-not-allowed opacity-70")}
                 disabled={fieldIsDisabled}
@@ -319,7 +320,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
               </Button>
             </PopoverTrigger>
             {!fieldIsDisabled && (
-              <PopoverContent className="w-auto p-0" onPointerDownOutside={(e) => e.preventDefault()}>
+              <PopoverContent className="w-auto p-0" onInteractOutside={(e) => e.preventDefault()}>
                 <Calendar
                   mode="single"
                   selected={controllerField.value ? new Date(controllerField.value) : undefined}
@@ -351,10 +352,11 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
             : `Select ${relatedModel.name}...`;
 
           return (
-            <Popover modal={false} open={customPopoverOpen} onOpenChange={setCustomPopoverOpen}>
+            <Popover open={customPopoverOpen} onOpenChange={setCustomPopoverOpen}>
               <PopoverTrigger asChild>
                 <Button
                   ref={triggerRef}
+                  type="button"
                   variant="outline"
                   role="combobox"
                   aria-expanded={customPopoverOpen}
@@ -365,7 +367,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent style={{ width: popoverWidth }} className="p-0" onPointerDownOutside={(e) => e.preventDefault()}>
+              <PopoverContent style={{ width: popoverWidth }} className="p-0 z-50" onInteractOutside={(e) => e.preventDefault()}>
                 <div className="p-2 border-b">
                   <div className="relative">
                     <SearchIcon className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -379,11 +381,6 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
                   </div>
                 </div>
                 <ScrollArea className="max-h-60">
-                  {filteredCustomOptions.length === 0 && customSearchValue && (
-                    <div className="p-2 text-center text-sm text-muted-foreground">
-                      No {relatedModel.name.toLowerCase()} found for "{customSearchValue}".
-                    </div>
-                  )}
                    <div
                       key={INTERNAL_NONE_SELECT_VALUE}
                       className={cn("relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground", (controllerField.value === "" || !controllerField.value) && "bg-accent text-accent-foreground")}
@@ -410,6 +407,11 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
                       {String(option.label ?? "")}
                     </div>
                   ))}
+                  {filteredCustomOptions.length === 0 && customSearchValue && (
+                    <div className="p-2 text-center text-sm text-muted-foreground">
+                      No {relatedModel.name.toLowerCase()} found for "{customSearchValue}".
+                    </div>
+                  )}
                 </ScrollArea>
               </PopoverContent>
             </Popover>
@@ -487,7 +489,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" className="ml-1 h-auto w-auto p-0.5 text-blue-500 hover:bg-blue-500/10">
+                    <Button type="button" variant="ghost" size="icon" className="ml-1 h-auto w-auto p-0.5 text-blue-500 hover:bg-blue-500/10">
                         <ShieldCheck className="h-4 w-4" />
                     </Button>
                   </TooltipTrigger>

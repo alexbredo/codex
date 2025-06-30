@@ -44,23 +44,9 @@ export function MultiSelectAutocomplete({
   emptyIndicator = "No items found.",
 }: MultiSelectAutocompleteProps) {
   const [open, setOpen] = React.useState(false);
-  const [inputValue, setInputValue] = React.useState("");
-  const inputRef = React.useRef<HTMLInputElement>(null);
-
-  React.useEffect(() => {
-    if (open && inputRef.current) {
-      // Timeout to allow the popover to render and be focusable
-      const timeoutId = setTimeout(() => {
-        inputRef.current?.focus();
-      }, 0);
-      return () => clearTimeout(timeoutId);
-    }
-  }, [open]);
 
   const handleSelect = (value: string) => {
-    if (!selected.includes(value)) {
-      onChange([...selected, value]);
-    }
+    onChange([...selected, value]);
   };
 
   const handleDeselect = (value: string) => {
@@ -72,14 +58,14 @@ export function MultiSelectAutocomplete({
     .filter(Boolean) as MultiSelectOption[];
 
   return (
-    <Popover open={open} onOpenChange={setOpen} modal={false}>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild className={cn("w-full", className)}>
         <Button
+          type="button"
           variant="outline"
           role="combobox"
           aria-expanded={open}
           className="w-full justify-between h-auto min-h-10"
-          onClick={() => setOpen(!open)}
         >
           <div className="flex gap-1 flex-wrap">
             {selectedObjects.length > 0 ? (
@@ -89,7 +75,7 @@ export function MultiSelectAutocomplete({
                   key={item.value}
                   className="mr-1 mb-1"
                   onClick={(e) => {
-                    e.stopPropagation(); 
+                    e.stopPropagation();
                     handleDeselect(item.value);
                   }}
                 >
@@ -105,28 +91,14 @@ export function MultiSelectAutocomplete({
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="w-[--radix-popover-trigger-width] p-0 z-[51]" // Increased z-index
-        data-multiselect-popover-content="true"
-        onPointerDownOutside={(event) => {
-          // Prevent the popover from closing if the click is inside another popover or select (e.g. ColorPicker)
-          // More importantly, prevent Dialog from closing due to this interaction
-          event.preventDefault();
+        className="w-[--radix-popover-trigger-width] p-0 z-[51]"
+        onInteractOutside={(e) => {
+            e.preventDefault();
         }}
       >
-        <Command
-          filter={(value, search) => {
-            const option = options.find(opt => opt.value === value);
-            if (option && option.label.toLowerCase().includes(search.toLowerCase())) return 1;
-            return 0;
-          }}
-        >
-          <CommandInput
-            ref={inputRef} // Added ref
-            placeholder="Search items..."
-            value={inputValue}
-            onValueChange={setInputValue}
-          />
-          <CommandList> 
+        <Command>
+          <CommandInput placeholder="Search items..." />
+          <CommandList>
             <CommandEmpty>{emptyIndicator}</CommandEmpty>
             <CommandGroup>
               {options.map((option) => {
@@ -141,16 +113,16 @@ export function MultiSelectAutocomplete({
                       } else {
                         handleSelect(option.value);
                       }
+                      setOpen(false);
                     }}
-                    className="flex items-center justify-between"
                   >
-                    <span className="truncate">{option.label}</span>
                     <Check
                       className={cn(
-                        "ml-2 h-4 w-4",
+                        "mr-2 h-4 w-4",
                         isSelected ? "opacity-100" : "opacity-0"
                       )}
                     />
+                    <span className="truncate">{option.label}</span>
                   </CommandItem>
                 );
               })}
