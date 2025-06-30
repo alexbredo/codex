@@ -60,7 +60,7 @@ export async function POST(request: Request) {
         JSON.stringify({ ip: request.headers.get('x-forwarded-for') ?? 'unknown' })
     );
 
-    // Fetch user's roles
+    // Fetch user's roles from the correct join table
     const userRoles = await db.all<UserRoleInfo[]>(`
         SELECT r.id, r.name 
         FROM user_roles ur

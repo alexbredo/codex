@@ -44,8 +44,10 @@ export async function POST(request: Request) {
     
     const userId = crypto.randomUUID();
     // WARNING: Storing plaintext password. Highly insecure. For demo only.
+    // Corrected: No longer inserts into obsolete `role` or `roleId` columns
     await db.run('INSERT INTO users (id, username, password) VALUES (?, ?, ?)', userId, username, password);
-    // Assign the role in the new join table
+    
+    // Corrected: Assign the role in the new user_roles join table
     await db.run('INSERT INTO user_roles (userId, roleId) VALUES (?, ?)', userId, roleToAssign.id);
 
     const logId = crypto.randomUUID();
@@ -61,6 +63,7 @@ export async function POST(request: Request) {
       JSON.stringify({ ip: request.headers.get('x-forwarded-for') ?? 'unknown', roleAssigned: roleToAssign.name })
     );
 
+    // Return the new user with their assigned role(s)
     return NextResponse.json({ id: userId, username, roles: [roleToAssign] }, { status: 201 });
   } catch (error: any) {
     console.error('API Error (POST /api/auth/register):', error);

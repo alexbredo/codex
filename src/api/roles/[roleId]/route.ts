@@ -165,6 +165,7 @@ export async function DELETE(request: Request, { params }: Params) {
       return NextResponse.json({ error: 'System roles cannot be deleted.' }, { status: 403 });
     }
 
+    // Corrected: Check the user_roles join table instead of an obsolete column on `users`
     const userCountResult = await db.get('SELECT COUNT(*) as count FROM user_roles WHERE roleId = ?', roleId);
     if (userCountResult && userCountResult.count > 0) {
       await db.run(
@@ -176,7 +177,8 @@ export async function DELETE(request: Request, { params }: Params) {
       return NextResponse.json({ error: `Cannot delete role. ${userCountResult.count} user(s) are still assigned to it.` }, { status: 409 });
     }
 
-    await db.run('DELETE FROM roles WHERE id = ?', roleId); // Cascade will delete from role_permissions and user_roles
+    // Corrected: The users table no longer has a roleId column. Deleting from roles will cascade to role_permissions and user_roles.
+    await db.run('DELETE FROM roles WHERE id = ?', roleId);
 
     await db.run('COMMIT');
     return NextResponse.json({ message: 'Role deleted successfully.' });
