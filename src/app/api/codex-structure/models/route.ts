@@ -119,7 +119,7 @@ export async function GET(request: Request) {
 // POST a new model
 export async function POST(request: Request) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || !currentUser.permissionIds.includes('models:manage')) {
+  if (!currentUser || (!currentUser.permissionIds.includes('models:manage') && !currentUser.permissionIds.includes('*'))) {
     return NextResponse.json({ error: 'Unauthorized to create models' }, { status: 403 });
   }
 
