@@ -1,2 +1,2 @@
-// This file is no longer used as WebSocket functionality has been removed.
-// It can be safely deleted from the project.
+// This file is obsolete and can be safely deleted.
+// WebSocket functionality has been removed from the project.
