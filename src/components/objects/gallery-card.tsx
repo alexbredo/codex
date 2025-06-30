@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react'; // Import React
@@ -89,7 +88,8 @@ const GalleryCard = React.memo(function GalleryCard({
      imageUrl = placeholderImage;
      imageAltText = `${displayName} placeholder image`;
   }
-
+  
+  const displayImage = imageUrl && imageUrl !== placeholderImage;
 
   const displayProperties = model.properties
     .filter(p => p.name !== imageProp?.name && model.displayPropertyNames?.includes(p.name) === false)
@@ -226,7 +226,7 @@ const GalleryCard = React.memo(function GalleryCard({
             {displayPropertyValue(prop, obj[prop.name])}
           </div>
         ))}
-        {propertiesToDisplay.length === 0 && (!displayImage || !imageUrl) && (
+        {displayProperties.length === 0 && !displayImage && (
             <p className="text-xs text-muted-foreground italic">No additional details to display.</p>
         )}
         {obj.deletedAt && viewingRecycleBin && (
@@ -277,3 +277,5 @@ const GalleryCard = React.memo(function GalleryCard({
 });
 
 export default GalleryCard;
+
+    
