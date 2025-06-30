@@ -92,9 +92,6 @@ export function MultiSelectAutocomplete({
       </PopoverTrigger>
       <PopoverContent
         className="w-[--radix-popover-trigger-width] p-0 z-[51]"
-        onInteractOutside={(e) => {
-            e.preventDefault();
-        }}
       >
         <Command>
           <CommandInput placeholder="Search items..." />

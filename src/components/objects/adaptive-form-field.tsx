@@ -320,7 +320,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
               </Button>
             </PopoverTrigger>
             {!fieldIsDisabled && (
-              <PopoverContent className="w-auto p-0" onInteractOutside={(e) => e.preventDefault()}>
+              <PopoverContent className="w-auto p-0">
                 <Calendar
                   mode="single"
                   selected={controllerField.value ? new Date(controllerField.value) : undefined}
@@ -367,7 +367,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent style={{ width: popoverWidth }} className="p-0 z-50" onInteractOutside={(e) => e.preventDefault()}>
+              <PopoverContent style={{ width: popoverWidth }} className="p-0 z-50">
                 <div className="p-2 border-b">
                   <div className="relative">
                     <SearchIcon className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
