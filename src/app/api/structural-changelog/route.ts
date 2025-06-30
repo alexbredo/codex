@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getCurrentUserFromCookie } from '@/lib/auth';
-import type { StructuralChangelogEntry, PaginatedStructuralChangelogResponse, SecurityLogEntry, ActivityLogEntry, PaginatedActivityLogResponse } from '@/lib/types';
+import type { StructuralChangelogEntry, SecurityLogEntry, ActivityLogEntry, PaginatedActivityLogResponse } from '@/lib/types';
 
 export async function GET(request: Request) {
   const currentUser = await getCurrentUserFromCookie();
