@@ -200,7 +200,7 @@ function UserAdminPageInternal() {
       <Dialog open={isFormOpen} onOpenChange={(open) => {
           setIsFormOpen(open);
           if (!open) setEditingUser(null);
-      }}>
+      }} modal={false}>
         <DialogContent className="sm:max-w-[525px]">
           <DialogHeader>
             <DialogTitle>{editingUser ? 'Edit User' : 'Create New User'}</DialogTitle>
