@@ -72,7 +72,7 @@ export function MultiSelectAutocomplete({
     .filter(Boolean) as MultiSelectOption[];
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={setOpen} modal={false}>
       <PopoverTrigger asChild className={cn("w-full", className)}>
         <Button
           variant="outline"

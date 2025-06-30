@@ -307,7 +307,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
         }
 
         return (
-          <Popover>
+          <Popover modal={false}>
             <PopoverTrigger asChild>
               <Button
                 variant={"outline"}
@@ -319,7 +319,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
               </Button>
             </PopoverTrigger>
             {!fieldIsDisabled && (
-              <PopoverContent className="w-auto p-0">
+              <PopoverContent className="w-auto p-0" onPointerDownOutside={(e) => e.preventDefault()}>
                 <Calendar
                   mode="single"
                   selected={controllerField.value ? new Date(controllerField.value) : undefined}
@@ -351,7 +351,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
             : `Select ${relatedModel.name}...`;
 
           return (
-            <Popover open={customPopoverOpen} onOpenChange={setCustomPopoverOpen}>
+            <Popover modal={false} open={customPopoverOpen} onOpenChange={setCustomPopoverOpen}>
               <PopoverTrigger asChild>
                 <Button
                   ref={triggerRef}
@@ -365,7 +365,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent style={{ width: popoverWidth }} className="p-0">
+              <PopoverContent style={{ width: popoverWidth }} className="p-0" onPointerDownOutside={(e) => e.preventDefault()}>
                 <div className="p-2 border-b">
                   <div className="relative">
                     <SearchIcon className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
