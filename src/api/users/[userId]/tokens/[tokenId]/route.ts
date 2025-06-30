@@ -3,12 +3,8 @@ import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getCurrentUserFromCookie } from '@/lib/auth';
 
-interface Params {
-  params: { userId: string, tokenId: string };
-}
-
 // DELETE to revoke an API token
-export async function DELETE(request: Request, { params }: Params) {
+export async function DELETE(request: Request, { params }: { params: { userId: string, tokenId: string } }) {
   const currentUser = await getCurrentUserFromCookie();
   const { userId, tokenId } = params;
 

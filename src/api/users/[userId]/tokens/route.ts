@@ -5,16 +5,12 @@ import { getCurrentUserFromCookie } from '@/lib/auth';
 import { z } from 'zod';
 import crypto from 'crypto';
 
-interface Params {
-  params: { userId: string };
-}
-
 const createTokenSchema = z.object({
   name: z.string().min(3, "Token name must be at least 3 characters.").max(50),
 });
 
 // GET user's API tokens (metadata only)
-export async function GET(request: Request, { params }: Params) {
+export async function GET(request: Request, { params }: { params: { userId: string } }) {
   const currentUser = await getCurrentUserFromCookie();
   const { userId } = params;
 
@@ -37,7 +33,7 @@ export async function GET(request: Request, { params }: Params) {
 }
 
 // POST to create a new API token
-export async function POST(request: Request, { params }: Params) {
+export async function POST(request: Request, { params }: { params: { userId: string } }) {
   const currentUser = await getCurrentUserFromCookie();
   const { userId } = params;
 
