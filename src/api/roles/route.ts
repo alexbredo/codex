@@ -46,7 +46,7 @@ export async function GET(request: Request) {
       FROM roles r
       LEFT JOIN user_roles ur ON r.id = ur.roleId
       LEFT JOIN role_permissions rp ON r.id = rp.roleId
-      GROUP BY r.id, r.name, r.description, r.isSystemRole
+      GROUP BY r.id
       ORDER BY r.name ASC
     `);
 
