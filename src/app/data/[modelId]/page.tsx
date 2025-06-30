@@ -1198,7 +1198,7 @@ export default function DataObjectsPage() {
         onRefreshData={handleRefreshData}
         onEditModelStructure={handleEditModelStructure}
         onExportCSV={handleExportCSV}
-        onCreateNew={onCreateNew}
+        onCreateNew={handleCreateNew}
         onNavigateBack={() => router.push('/models')}
         viewingRecycleBin={viewingRecycleBin}
       />
