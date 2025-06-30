@@ -1,5 +1,5 @@
 
-export type PropertyType = 'string' | 'number' | 'boolean' | 'date' | 'relationship' | 'markdown' | 'rating' | 'image' | 'fileAttachment' | 'url';
+export type PropertyType = 'string' | 'number' | 'boolean' | 'date' | 'time' | 'datetime' | 'relationship' | 'markdown' | 'rating' | 'image' | 'fileAttachment' | 'url';
 
 export interface Property {
   id: string;
@@ -11,8 +11,8 @@ export interface Property {
   relationshipType?: 'one' | 'many'; // For relationship type
   unit?: string; // For number type
   precision?: number; // For number type
-  autoSetOnCreate?: boolean; // For date type: set to current date on object creation
-  autoSetOnUpdate?: boolean; // For date type: set to current date on object update
+  autoSetOnCreate?: boolean; // For date/datetime type: set to current on object creation
+  autoSetOnUpdate?: boolean; // For date/datetime type: set to current on object update
   isUnique?: boolean; // For string type: enforce unique value across objects of this model
   orderIndex: number; // For property display order
   defaultValue?: string; // Stored as string, parsed based on 'type' when used

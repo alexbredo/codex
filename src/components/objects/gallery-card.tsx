@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react'; // Import React
@@ -111,6 +112,13 @@ const GalleryCard = React.memo(function GalleryCard({
         try {
           const date = new Date(value);
           return <span className="text-xs">{isDateValid(date) ? formatDateFns(date, 'PP') : String(value)}</span>;
+        } catch { return <span className="text-xs">{String(value)}</span>; }
+      case 'time':
+        return <span className="text-xs font-mono">{value}</span>;
+      case 'datetime':
+        try {
+          const date = new Date(value);
+          return <span className="text-xs">{isDateValid(date) ? formatDateFns(date, 'PPp') : String(value)}</span>;
         } catch { return <span className="text-xs">{String(value)}</span>; }
       case 'number':
         const numValue = parseFloat(String(value));
@@ -277,5 +285,3 @@ const GalleryCard = React.memo(function GalleryCard({
 });
 
 export default GalleryCard;
-
-    

@@ -156,7 +156,7 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, vali
 
       const isRelationship = currentPropertyType === 'relationship';
       const isNumber = currentPropertyType === 'number';
-      const isDate = currentPropertyType === 'date';
+      const isDateOrDatetime = ['date', 'datetime'].includes(currentPropertyType);
       const isString = currentPropertyType === 'string';
 
       if (!isRelationship) {
@@ -179,7 +179,7 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, vali
         }
       }
       
-      if (!isDate) {
+      if (!isDateOrDatetime) {
         form.setValue(`properties.${index}.autoSetOnCreate`, false, { shouldValidate: false });
         form.setValue(`properties.${index}.autoSetOnUpdate`, false, { shouldValidate: false });
       }
@@ -206,6 +206,10 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, vali
         return "Enter default text or URL";
       case 'number':
         return "Enter default number (e.g., 0)";
+      case 'time':
+        return "Enter default time (HH:mm)";
+      case 'datetime':
+        return "Enter default date and time";
       case 'relationship':
         return "Enter ID or comma-separated IDs";
       default:
@@ -269,10 +273,20 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, vali
                   <SelectContent>
                     {propertyTypes.map((type) => (
                       <SelectItem key={type} value={type}>
-                        {type === 'rating' ? 'Rating (1-5 Stars)' :
-                         type === 'image' ? 'Image' :
-                         type === 'markdown' ? 'Markdown Text' :
-                         type.charAt(0).toUpperCase() + type.slice(1)}
+                        {{
+                          'string': 'String',
+                          'number': 'Number',
+                          'boolean': 'Boolean',
+                          'date': 'Date',
+                          'time': 'Time',
+                          'datetime': 'Date + Time',
+                          'relationship': 'Relationship',
+                          'markdown': 'Markdown Text',
+                          'rating': 'Rating (1-5 Stars)',
+                          'image': 'Image',
+                          'fileAttachment': 'File Attachment',
+                          'url': 'URL'
+                        }[type] || type.charAt(0).toUpperCase() + type.slice(1)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -453,7 +467,7 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, vali
               />
             </>
           )}
-          {currentPropertyType === 'date' && (
+          {(currentPropertyType === 'date' || currentPropertyType === 'datetime') && (
             <>
               <FormField
                 control={form.control}
@@ -468,7 +482,7 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, vali
                     </FormControl>
                     <div className="space-y-0.5 leading-none">
                       <FormLabel className="text-sm">Auto-set on Create</FormLabel>
-                      <FormDescription className="text-xs">Set to current date when a new object is created.</FormDescription>
+                      <FormDescription className="text-xs">Set to current date/time when a new object is created.</FormDescription>
                     </div>
                   </FormItem>
                 )}
@@ -486,7 +500,7 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, vali
                     </FormControl>
                     <div className="space-y-0.5 leading-none">
                       <FormLabel className="text-sm">Auto-set on Update</FormLabel>
-                      <FormDescription className="text-xs">Set to current date when an object is updated.</FormDescription>
+                      <FormDescription className="text-xs">Set to current date/time when an object is updated.</FormDescription>
                     </div>
                   </FormItem>
                 )}
@@ -598,6 +612,7 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, vali
                             <Popover>
                                 <PopoverTrigger asChild>
                                 <Button
+                                    type="button"
                                     variant={"outline"}
                                     className={cn(
                                     "w-full justify-start text-left font-normal",
@@ -665,7 +680,11 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, vali
                     )}
                     {(!['boolean', 'date', 'rating', 'relationship'].includes(currentPropertyType)) && (
                        <Input
-                        type={currentPropertyType === 'number' ? 'number' : 'text'}
+                        type={{
+                            'number': 'number',
+                            'time': 'time',
+                            'datetime': 'datetime-local'
+                        }[currentPropertyType] || 'text'}
                         placeholder={getDefaultValuePlaceholder(currentPropertyType)}
                         {...field}
                         value={field.value ?? ''}
@@ -679,6 +698,8 @@ const PropertyAccordionContent = ({ form, index, modelsForRelationsGrouped, vali
                 <FormDescription className="text-xs">
                   {currentPropertyType === 'boolean' && "Default state for new records."}
                   {currentPropertyType === 'date' && "Default date (YYYY-MM-DD) for new records."}
+                  {currentPropertyType === 'datetime' && "Default date and time for new records."}
+                  {currentPropertyType === 'time' && "Default time for new records."}
                   {currentPropertyType === 'rating' && "Default star rating (0 for none)."}
                   {currentPropertyType === 'relationship' && currentRelationshipType === 'many' && "Select multiple default related items."}
                   {currentPropertyType === 'relationship' && currentRelationshipType !== 'many' && "Select a single default related item."}

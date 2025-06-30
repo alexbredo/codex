@@ -140,7 +140,9 @@ export default function EditObjectPage() {
     if (!currentModel || !editingObject) return;
 
     const processedValues = { ...values };
-    const currentDateISO = new Date().toISOString();
+    const currentDate = new Date();
+    const localISODate = new Date(currentDate.getTime() - (currentDate.getTimezoneOffset() * 60000)).toISOString();
+
 
     try {
       for (const prop of currentModel.properties) {
@@ -163,8 +165,12 @@ export default function EditObjectPage() {
           }
           const uploadResult = await uploadResponse.json();
           processedValues[prop.name] = uploadResult.url; 
-        } else if (prop.type === 'date' && prop.autoSetOnUpdate) {
-          processedValues[prop.name] = currentDateISO;
+        } else if (prop.autoSetOnUpdate) {
+          if (prop.type === 'date') {
+            processedValues[prop.name] = localISODate.split('T')[0];
+          } else if (prop.type === 'datetime') {
+            processedValues[prop.name] = localISODate.slice(0, 16);
+          }
         }
       }
 

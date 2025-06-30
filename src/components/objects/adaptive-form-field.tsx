@@ -117,18 +117,18 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
   }, [customPopoverOpen]);
 
 
-  if (formContext === 'create' && property.type === 'date' && property.autoSetOnCreate) {
+  if (formContext === 'create' && (property.type === 'date' || property.type === 'datetime') && property.autoSetOnCreate) {
     return null;
   }
 
   const renderField = (controllerField: ControllerRenderProps<TFieldValues, FieldPath<TFieldValues>>) => {
     let fieldIsDisabled = false;
-    if (property.type === 'date') {
+    if (property.type === 'date' || property.type === 'datetime') {
         if (formContext === 'edit' && (property.autoSetOnUpdate || property.autoSetOnCreate)) {
             fieldIsDisabled = true;
         }
     }
-    if (property.type === 'date' && formContext === 'create' && property.autoSetOnCreate) {
+    if ((property.type === 'date' || property.type === 'datetime') && formContext === 'create' && property.autoSetOnCreate) {
         fieldIsDisabled = true;
     }
      if (isUploading) { // Disable all fields during upload
@@ -153,7 +153,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
                 });
                 const data = await response.json();
                 if (data.title) {
-                    controllerField.onChange({ ...currentValue, title: data.title });
+                    controllerField.onChange({ ...currentValue, url, title: data.title });
                 }
             } catch (error) {
                 console.error("Failed to fetch title", error);
@@ -324,13 +324,17 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
                 <Calendar
                   mode="single"
                   selected={controllerField.value ? new Date(controllerField.value) : undefined}
-                  onSelect={(date) => controllerField.onChange(date ? date.toISOString() : null)}
+                  onSelect={(date) => controllerField.onChange(date ? date.toISOString().split('T')[0] : null)}
                   initialFocus
                 />
               </PopoverContent>
             )}
           </Popover>
         );
+      case 'time':
+        return <Input type="time" {...controllerField} value={controllerField.value ?? ''} disabled={fieldIsDisabled} />;
+      case 'datetime':
+        return <Input type="datetime-local" {...controllerField} value={controllerField.value ?? ''} disabled={fieldIsDisabled} />;
       case 'relationship':
         if (!property.relatedModelId || !relatedModel) {
           return <p className="text-destructive">Configuration error: Related model info missing.</p>;
@@ -439,6 +443,8 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
       defaultValueForController = false;
       break;
     case 'date':
+    case 'datetime':
+    case 'time':
       defaultValueForController = null;
       break;
     case 'rating':

@@ -1,7 +1,7 @@
 
 import { z } from 'zod';
 
-export const propertyTypes = ['string', 'number', 'boolean', 'date', 'relationship', 'markdown', 'rating', 'image', 'fileAttachment', 'url'] as const;
+export const propertyTypes = ['string', 'number', 'boolean', 'date', 'time', 'datetime', 'relationship', 'markdown', 'rating', 'image', 'fileAttachment', 'url'] as const;
 export const relationshipTypes = ['one', 'many'] as const;
 
 export const propertyFormSchema = z.object({
@@ -54,12 +54,12 @@ export const propertyFormSchema = z.object({
   message: "Precision can only be set for number type properties.",
   path: ["precision"],
 }).refine(data => {
-  if (data.type !== 'date' && (data.autoSetOnCreate || data.autoSetOnUpdate)) {
+  if (!['date', 'datetime'].includes(data.type) && (data.autoSetOnCreate || data.autoSetOnUpdate)) {
     return false;
   }
   return true;
 }, {
-  message: "Auto-set options are only available for date type properties.",
+  message: "Auto-set options are only available for date or datetime type properties.",
   path: ["type"],
 }).refine(data => {
   if (data.type !== 'string' && data.isUnique) {
@@ -70,22 +70,22 @@ export const propertyFormSchema = z.object({
   message: "Unique constraint can only be set for string type properties.",
   path: ["isUnique"],
 })
-.refine(data => ['rating', 'markdown', 'image', 'fileAttachment', 'url'].includes(data.type) ? (data.unit === undefined || data.unit === null || data.unit === '') : true, {
+.refine(data => ['rating', 'markdown', 'image', 'fileAttachment', 'url', 'time', 'datetime'].includes(data.type) ? (data.unit === undefined || data.unit === null || data.unit === '') : true, {
     message: "Unit cannot be set for this property type.", path: ["unit"],
 })
-.refine(data => ['rating', 'markdown', 'image', 'fileAttachment', 'url'].includes(data.type) ? data.precision === undefined : true, {
+.refine(data => ['rating', 'markdown', 'image', 'fileAttachment', 'url', 'time', 'datetime'].includes(data.type) ? data.precision === undefined : true, {
     message: "Precision cannot be set for this property type.", path: ["precision"],
 })
-.refine(data => ['rating', 'markdown', 'image', 'fileAttachment', 'url'].includes(data.type) ? data.relatedModelId === undefined : true, {
+.refine(data => ['rating', 'markdown', 'image', 'fileAttachment', 'url', 'time', 'datetime'].includes(data.type) ? data.relatedModelId === undefined : true, {
     message: "Related Model ID cannot be set for this property type.", path: ["relatedModelId"],
 })
-.refine(data => ['rating', 'markdown', 'image', 'fileAttachment', 'url'].includes(data.type) ? (data.relationshipType === undefined || data.relationshipType === 'one') : true, {
+.refine(data => ['rating', 'markdown', 'image', 'fileAttachment', 'url', 'time', 'datetime'].includes(data.type) ? (data.relationshipType === undefined || data.relationshipType === 'one') : true, {
     message: "Relationship Type cannot be set for this property type.", path: ["relationshipType"],
 })
-.refine(data => ['rating', 'markdown', 'image', 'fileAttachment', 'url'].includes(data.type) ? (!data.autoSetOnCreate && !data.autoSetOnUpdate) : true, {
+.refine(data => ['rating', 'markdown', 'image', 'fileAttachment', 'url', 'time'].includes(data.type) ? (!data.autoSetOnCreate && !data.autoSetOnUpdate) : true, {
     message: "Auto-set options are not available for this property type.", path: ["autoSetOnCreate"],
 })
-.refine(data => ['rating', 'markdown', 'image', 'fileAttachment', 'url'].includes(data.type) ? !data.isUnique : true, {
+.refine(data => ['rating', 'markdown', 'image', 'fileAttachment', 'url', 'time', 'datetime'].includes(data.type) ? !data.isUnique : true, {
     message: "Unique constraint cannot be set for this property type.", path: ["isUnique"],
 })
 .refine(data => data.type === 'string' || data.validationRulesetId === null, {

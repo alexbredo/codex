@@ -25,6 +25,9 @@ function parseDefaultValue(value: string | undefined, type: Property['type'], re
     case 'string':
     case 'markdown':
     case 'image':
+    case 'url':
+    case 'time':
+    case 'datetime':
       return value;
     case 'number':
     case 'rating':
@@ -101,20 +104,32 @@ export default function CreateObjectPage() {
         setFormObjectId(newObjectId);
 
         const defaultValues: Record<string, any> = {};
-        const currentDateISO = new Date().toISOString();
+        const currentDate = new Date();
+        const localISODate = new Date(currentDate.getTime() - (currentDate.getTimezoneOffset() * 60000)).toISOString();
+
         
         foundModel.properties.forEach(prop => {
           let valueToSet: any;
-          if (prop.type === 'date' && prop.autoSetOnCreate) {
-            valueToSet = currentDateISO;
-          } else if (prop.defaultValue !== undefined && prop.defaultValue !== null) {
+          if (prop.autoSetOnCreate) {
+            if (prop.type === 'date') {
+              valueToSet = localISODate.split('T')[0];
+            } else if (prop.type === 'datetime') {
+              valueToSet = localISODate.slice(0, 16);
+            }
+          }
+          
+          if (valueToSet === undefined && prop.defaultValue !== undefined && prop.defaultValue !== null) {
              valueToSet = parseDefaultValue(prop.defaultValue, prop.type, prop.relationshipType);
           }
           
           if (valueToSet === undefined) { 
              switch (prop.type) {
                 case 'boolean': valueToSet = false; break;
-                case 'date': valueToSet = null; break;
+                case 'date':
+                case 'datetime':
+                case 'time': 
+                  valueToSet = null; 
+                  break;
                 case 'relationship': valueToSet = prop.relationshipType === 'many' ? [] : ''; break;
                 case 'rating': valueToSet = 0; break;
                 case 'image': valueToSet = null; break;
@@ -141,7 +156,9 @@ export default function CreateObjectPage() {
     if (!currentModel || !formObjectId) return;
 
     const processedValues = { ...values };
-    const currentDateISO = new Date().toISOString();
+    const currentDate = new Date();
+    const localISODate = new Date(currentDate.getTime() - (currentDate.getTimezoneOffset() * 60000)).toISOString();
+
 
     try {
       for (const prop of currentModel.properties) {
@@ -164,8 +181,12 @@ export default function CreateObjectPage() {
           }
           const uploadResult = await uploadResponse.json();
           processedValues[prop.name] = uploadResult.url; 
-        } else if (prop.type === 'date' && prop.autoSetOnCreate) {
-          processedValues[prop.name] = currentDateISO;
+        } else if (prop.autoSetOnCreate) {
+          if (prop.type === 'date') {
+            processedValues[prop.name] = localISODate.split('T')[0];
+          } else if (prop.type === 'datetime') {
+            processedValues[prop.name] = localISODate.slice(0, 16);
+          }
         }
       }
       

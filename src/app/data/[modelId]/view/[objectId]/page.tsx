@@ -232,6 +232,15 @@ function ViewObjectPageInternal() {
       case 'date':
         try {
           const date = new Date(value);
+          return isDateValid(date) ? formatDateFns(date, 'PPP') : String(value);
+        } catch {
+          return String(value);
+        }
+      case 'time':
+        return <span className="font-mono">{value}</span>;
+      case 'datetime':
+        try {
+          const date = new Date(value);
           return isDateValid(date) ? formatDateFns(date, 'PPP p') : String(value);
         } catch {
           return String(value);
@@ -741,5 +750,3 @@ function ViewObjectPageInternal() {
 // withAuth doesn't support dynamic checks like this, so we do it inside the component.
 // The wrapper is still useful for the initial user/loading check.
 export default ViewObjectPageInternal;
-
-    

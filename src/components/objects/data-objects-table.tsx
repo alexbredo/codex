@@ -155,6 +155,8 @@ export default function DataObjectsTable({
     switch (property.type) {
       case 'boolean': return value ? <Badge variant="default" className="bg-green-500 hover:bg-green-600">Yes</Badge> : <Badge variant="secondary">No</Badge>;
       case 'date': try { const date = new Date(value); return isDateValidFn(date) ? formatDateFns(date, 'PP') : String(value); } catch { return String(value); }
+      case 'time': return <span className="font-mono">{value}</span>;
+      case 'datetime': try { const date = new Date(value); return isDateValidFn(date) ? formatDateFns(date, 'PPp') : String(value); } catch { return String(value); }
       case 'number':
         const numValue = parseFloat(String(value));
         const precision = property.precision === undefined ? 2 : property.precision;
