@@ -20,6 +20,12 @@ export async function GET(request: Request, { params }: Params) {
   const canView = currentUser?.permissionIds.includes('users:view') || currentUser?.permissionIds.includes('*');
 
   if (!currentUser || !canView) {
+    const db = await getDb();
+    await db.run(
+      'INSERT INTO security_log (id, timestamp, userId, username, action, targetEntityType, targetEntityId, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      crypto.randomUUID(), new Date().toISOString(), currentUser?.id || null, currentUser?.username || 'Anonymous', 'PERMISSION_DENIED',
+      'User', params.userId, JSON.stringify({ reason: "Attempted to view user details without 'users:view' permission." })
+    );
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
@@ -46,6 +52,12 @@ export async function PUT(request: Request, { params }: Params) {
   const canEdit = currentUser?.permissionIds.includes('users:edit') || currentUser?.permissionIds.includes('*');
 
   if (!currentUser || !canEdit) {
+    const db = await getDb();
+    await db.run(
+      'INSERT INTO security_log (id, timestamp, userId, username, action, targetEntityType, targetEntityId, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      crypto.randomUUID(), new Date().toISOString(), currentUser?.id || null, currentUser?.username || 'Anonymous', 'PERMISSION_DENIED',
+      'User', params.userId, JSON.stringify({ reason: "Attempted to update user without 'users:edit' permission." })
+    );
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
@@ -77,6 +89,11 @@ export async function PUT(request: Request, { params }: Params) {
     if (newUsername && newUsername !== targetUser.username) {
       const existingUserWithNewName = await db.get('SELECT id FROM users WHERE username = ? AND id != ?', newUsername, userId);
       if (existingUserWithNewName) {
+        await db.run(
+          'INSERT INTO security_log (id, timestamp, userId, username, action, targetEntityType, targetEntityId, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          crypto.randomUUID(), new Date().toISOString(), currentUser.id, currentUser.username, 'USER_UPDATE_FAILURE',
+          'User', userId, JSON.stringify({ reason: 'Username already taken', attemptedName: newUsername })
+        );
         await db.run('ROLLBACK');
         return NextResponse.json({ error: 'Username already taken' }, { status: 409 });
       }
@@ -104,6 +121,11 @@ export async function PUT(request: Request, { params }: Params) {
       if (userHadAdmin && !userWillHaveAdmin) {
         const adminCountResult = await db.get("SELECT COUNT(*) as count FROM user_roles WHERE roleId = ?", '00000000-role-0000-0000-administrator');
         if (adminCountResult && adminCountResult.count <= 1) {
+            await db.run(
+              'INSERT INTO security_log (id, timestamp, userId, username, action, targetEntityType, targetEntityId, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+              crypto.randomUUID(), new Date().toISOString(), currentUser.id, currentUser.username, 'USER_UPDATE_FAILURE',
+              'User', userId, JSON.stringify({ reason: 'Cannot remove the role from the last administrator.' })
+            );
             await db.run('ROLLBACK');
             return NextResponse.json({ error: 'Cannot remove the role from the last administrator.' }, { status: 400 });
         }
@@ -153,6 +175,12 @@ export async function DELETE(request: Request, { params }: Params) {
   const canDelete = currentUser?.permissionIds.includes('users:delete') || currentUser?.permissionIds.includes('*');
 
   if (!currentUser || !canDelete) {
+    const db = await getDb();
+    await db.run(
+      'INSERT INTO security_log (id, timestamp, userId, username, action, targetEntityType, targetEntityId, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      crypto.randomUUID(), new Date().toISOString(), currentUser?.id || null, currentUser?.username || 'Anonymous', 'PERMISSION_DENIED',
+      'User', params.userId, JSON.stringify({ reason: "Attempted to delete user without 'users:delete' permission." })
+    );
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
@@ -168,6 +196,11 @@ export async function DELETE(request: Request, { params }: Params) {
     }
 
     if (currentUser.id === userId) {
+      await db.run(
+        'INSERT INTO security_log (id, timestamp, userId, username, action, targetEntityType, targetEntityId, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        crypto.randomUUID(), new Date().toISOString(), currentUser.id, currentUser.username, 'USER_DELETE_FAILURE',
+        'User', userId, JSON.stringify({ reason: 'Attempted to delete self.' })
+      );
       await db.run('ROLLBACK');
       return NextResponse.json({ error: 'Cannot delete yourself.' }, { status: 400 });
     }
@@ -177,6 +210,11 @@ export async function DELETE(request: Request, { params }: Params) {
     if (userHadAdmin) {
       const adminCountResult = await db.get("SELECT COUNT(*) as count FROM user_roles WHERE roleId = ?", '00000000-role-0000-0000-administrator');
       if (adminCountResult && adminCountResult.count <= 1) {
+        await db.run(
+          'INSERT INTO security_log (id, timestamp, userId, username, action, targetEntityType, targetEntityId, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          crypto.randomUUID(), new Date().toISOString(), currentUser.id, currentUser.username, 'USER_DELETE_FAILURE',
+          'User', userId, JSON.stringify({ reason: 'Cannot delete the last administrator.' })
+        );
         await db.run('ROLLBACK');
         return NextResponse.json({ error: 'Cannot delete the last administrator.' }, { status: 400 });
       }

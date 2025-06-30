@@ -23,6 +23,12 @@ export async function GET(request: Request) {
     permissions.includes('users:delete');
 
   if (!currentUser || !canView) {
+    const db = await getDb();
+    await db.run(
+      'INSERT INTO security_log (id, timestamp, userId, username, action, details) VALUES (?, ?, ?, ?, ?, ?)',
+      crypto.randomUUID(), new Date().toISOString(), currentUser?.id || null, currentUser?.username || 'Anonymous', 'PERMISSION_DENIED',
+      JSON.stringify({ reason: "Attempted to view users list without sufficient permissions." })
+    );
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
@@ -63,6 +69,12 @@ export async function POST(request: Request) {
   const canCreate = adminUser?.permissionIds.includes('users:create') || adminUser?.permissionIds.includes('*');
 
   if (!adminUser || !canCreate) {
+    const db = await getDb();
+    await db.run(
+      'INSERT INTO security_log (id, timestamp, userId, username, action, details) VALUES (?, ?, ?, ?, ?, ?)',
+      crypto.randomUUID(), new Date().toISOString(), adminUser?.id || null, adminUser?.username || 'Anonymous', 'PERMISSION_DENIED',
+      JSON.stringify({ reason: "Attempted to create user without 'users:create' permission." })
+    );
     return NextResponse.json({ error: 'Unauthorized to create user' }, { status: 403 });
   }
 
@@ -82,6 +94,11 @@ export async function POST(request: Request) {
 
     const existingUser = await db.get('SELECT id FROM users WHERE username = ?', username);
     if (existingUser) {
+      await db.run(
+        'INSERT INTO security_log (id, timestamp, userId, username, action, targetEntityType, details) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        crypto.randomUUID(), new Date().toISOString(), adminUser.id, adminUser.username, 'USER_CREATE_FAILURE',
+        'User', JSON.stringify({ reason: 'Username already taken', attemptedName: username })
+      );
       await db.run('ROLLBACK');
       return NextResponse.json({ error: 'Username already taken' }, { status: 409 });
     }

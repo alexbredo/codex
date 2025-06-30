@@ -24,6 +24,12 @@ export async function GET(request: Request) {
 
 
   if (!currentUser || !canViewRoles) {
+    const db = await getDb();
+    await db.run(
+      'INSERT INTO security_log (id, timestamp, userId, username, action, details) VALUES (?, ?, ?, ?, ?, ?)',
+      crypto.randomUUID(), new Date().toISOString(), currentUser?.id || null, currentUser?.username || 'Anonymous', 'PERMISSION_DENIED',
+      JSON.stringify({ reason: "Attempted to view roles list without sufficient permissions." })
+    );
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
   
@@ -55,6 +61,12 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const currentUser = await getCurrentUserFromCookie();
   if (!currentUser || !currentUser.permissionIds.includes('roles:manage')) {
+    const db = await getDb();
+    await db.run(
+      'INSERT INTO security_log (id, timestamp, userId, username, action, details) VALUES (?, ?, ?, ?, ?, ?)',
+      crypto.randomUUID(), new Date().toISOString(), currentUser?.id || null, currentUser?.username || 'Anonymous', 'PERMISSION_DENIED',
+      JSON.stringify({ reason: "Attempted to create role without 'roles:manage' permission." })
+    );
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
@@ -73,6 +85,11 @@ export async function POST(request: Request) {
     // Check for name uniqueness
     const existingRole = await db.get('SELECT id FROM roles WHERE name = ?', name);
     if (existingRole) {
+      await db.run(
+        'INSERT INTO security_log (id, timestamp, userId, username, action, targetEntityType, details) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        crypto.randomUUID(), new Date().toISOString(), currentUser.id, currentUser.username, 'ROLE_CREATE_FAILURE',
+        'Role', JSON.stringify({ reason: 'A role with this name already exists.', attemptedName: name })
+      );
       await db.run('ROLLBACK');
       return NextResponse.json({ error: 'A role with this name already exists.' }, { status: 409 });
     }
