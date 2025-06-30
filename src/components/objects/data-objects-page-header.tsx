@@ -110,8 +110,8 @@ export default function DataObjectsPageHeader({
       </Button>
       <header className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
         <div className="text-center md:text-left">
-          <h1 className="text-3xl font-bold text-primary">Data for: {currentModel.name}</h1>
-          <p className="text-muted-foreground">{currentModel.description || 'Manage data entries for this model.'}</p>
+          <h1 className="text-3xl font-bold text-primary">{currentModel.name}</h1>
+          <p className="text-muted-foreground">{currentModel.description}</p>
           {currentWorkflow && <Badge variant="secondary" className="mt-1">Workflow: {currentWorkflow.name}</Badge>}
         </div>
         <div className="flex flex-wrap gap-2 w-full md:w-auto justify-center md:justify-end">
@@ -191,4 +191,3 @@ export default function DataObjectsPageHeader({
     </>
   );
 }
-
