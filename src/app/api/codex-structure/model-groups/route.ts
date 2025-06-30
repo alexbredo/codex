@@ -23,7 +23,9 @@ export async function GET(request: Request) {
 // POST a new model group
 export async function POST(request: Request) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || !currentUser.permissionIds.includes('admin:manage_model_groups')) {
+  const canManageGroups = currentUser?.permissionIds.includes('*') || currentUser?.permissionIds.includes('admin:manage_model_groups');
+
+  if (!currentUser || !canManageGroups) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 

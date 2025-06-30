@@ -28,7 +28,9 @@ export async function GET(request: Request, { params }: Params) {
 // PUT (update) a model group
 export async function PUT(request: Request, { params }: Params) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || !currentUser.permissionIds.includes('admin:manage_model_groups')) {
+  const canManageGroups = currentUser?.permissionIds.includes('*') || currentUser?.permissionIds.includes('admin:manage_model_groups');
+
+  if (!currentUser || !canManageGroups) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
@@ -123,7 +125,9 @@ export async function PUT(request: Request, { params }: Params) {
 // DELETE a model group
 export async function DELETE(request: Request, { params }: Params) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || !currentUser.permissionIds.includes('admin:manage_model_groups')) {
+  const canManageGroups = currentUser?.permissionIds.includes('*') || currentUser?.permissionIds.includes('admin:manage_model_groups');
+
+  if (!currentUser || !canManageGroups) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
