@@ -32,6 +32,12 @@ export async function GET(request: Request, { params }: Params) {
 export async function PUT(request: Request, { params }: Params) {
   const currentUser = await getCurrentUserFromCookie();
   if (!currentUser || (!currentUser.permissionIds.includes('admin:manage_validation_rules') && !currentUser.permissionIds.includes('*'))) {
+    const db = await getDb();
+    await db.run(
+      'INSERT INTO security_log (id, timestamp, userId, username, action, targetEntityType, targetEntityId, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      crypto.randomUUID(), new Date().toISOString(), currentUser?.id || null, currentUser?.username || 'Anonymous', 'PERMISSION_DENIED',
+      'ValidationRuleset', params.rulesetId, JSON.stringify({ reason: "Attempted to update validation ruleset without 'admin:manage_validation_rules' permission." })
+    );
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
@@ -127,6 +133,12 @@ export async function PUT(request: Request, { params }: Params) {
 export async function DELETE(request: Request, { params }: Params) {
   const currentUser = await getCurrentUserFromCookie();
   if (!currentUser || (!currentUser.permissionIds.includes('admin:manage_validation_rules') && !currentUser.permissionIds.includes('*'))) {
+    const db = await getDb();
+    await db.run(
+      'INSERT INTO security_log (id, timestamp, userId, username, action, targetEntityType, targetEntityId, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      crypto.randomUUID(), new Date().toISOString(), currentUser?.id || null, currentUser?.username || 'Anonymous', 'PERMISSION_DENIED',
+      'ValidationRuleset', params.rulesetId, JSON.stringify({ reason: "Attempted to delete validation ruleset without 'admin:manage_validation_rules' permission." })
+    );
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
