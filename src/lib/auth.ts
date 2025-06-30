@@ -1,5 +1,5 @@
 
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { getDb } from '@/lib/db';
 
 // DEBUG MODE FLAG - Should match the one in auth-context.tsx for consistency during dev
@@ -29,43 +29,56 @@ export async function getCurrentUserFromCookie(): Promise<UserSession | null> {
   if (DEBUG_MODE) {
     return MOCK_API_ADMIN_USER;
   }
+  
+  const db = await getDb();
+  let userIdToAuth: string | null = null;
 
-  const cookieStore = cookies();
-  const sessionId = cookieStore.get('codex_structure_session')?.value;
+  // 1. Check for Bearer Token in Authorization header
+  const authHeader = headers().get('Authorization');
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7);
+    const tokenRecord = await db.get('SELECT userId FROM api_tokens WHERE token = ?', token);
+    
+    if (tokenRecord) {
+      userIdToAuth = tokenRecord.userId;
+      // Update last used timestamp (fire-and-forget for performance)
+      db.run('UPDATE api_tokens SET lastUsedAt = ? WHERE token = ?', new Date().toISOString(), token).catch(err => {
+        console.error("Failed to update token lastUsedAt timestamp:", err);
+      });
+    }
+  }
 
-  if (!sessionId) {
+  // 2. If no valid token, fallback to session cookie
+  if (!userIdToAuth) {
+    const cookieStore = cookies();
+    const sessionId = cookieStore.get('codex_structure_session')?.value;
+    if (sessionId) {
+      userIdToAuth = sessionId;
+    }
+  }
+
+  if (!userIdToAuth) {
     return null;
   }
 
+  // 3. Fetch user details, roles, and permissions using the determined user ID
   try {
-    const db = await getDb();
-    const userRow = await db.get(`SELECT id, username FROM users WHERE id = ?`, sessionId);
-    
-    if (!userRow) {
-      return null;
-    }
+    const userRow = await db.get(`SELECT id, username FROM users WHERE id = ?`, userIdToAuth);
+    if (!userRow) return null;
 
-    // Fetch all roles for the user
     const userRoles = await db.all<UserRoleInfo[]>(`
         SELECT r.id, r.name
         FROM user_roles ur
         JOIN roles r ON ur.roleId = r.id
         WHERE ur.userId = ?
-    `, sessionId);
+    `, userIdToAuth);
 
     if (userRoles.length === 0) {
-        // A user should always have at least one role, but handle this edge case.
-        return {
-            id: userRow.id,
-            username: userRow.username,
-            roles: [],
-            permissionIds: [],
-        };
+      return { id: userRow.id, username: userRow.username, roles: [], permissionIds: [] };
     }
 
     const roleIds = userRoles.map(r => r.id);
 
-    // Fetch all unique permission IDs for all of the user's roles
     const permissions = await db.all<{ permissionId: string }>(`
         SELECT DISTINCT permissionId 
         FROM role_permissions 
@@ -74,11 +87,8 @@ export async function getCurrentUserFromCookie(): Promise<UserSession | null> {
     
     const permissionIds = permissions.map(p => p.permissionId);
 
-    // Handle admin wildcard
-    if (roleIds.includes(adminRoleId)) {
-        if (!permissionIds.includes('*')) {
-            permissionIds.push('*');
-        }
+    if (roleIds.includes(adminRoleId) && !permissionIds.includes('*')) {
+        permissionIds.push('*');
     }
 
     return {
@@ -88,7 +98,7 @@ export async function getCurrentUserFromCookie(): Promise<UserSession | null> {
         permissionIds,
     };
   } catch (error) {
-    console.error("Error fetching user from session cookie:", error);
+    console.error("Error fetching user session:", error);
     return null;
   }
 }

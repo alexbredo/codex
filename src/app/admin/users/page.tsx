@@ -11,13 +11,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Loader2, Users as UsersIcon, ShieldAlert, PlusCircle, Edit, Trash2 } from 'lucide-react';
+import { Loader2, Users as UsersIcon, ShieldAlert, PlusCircle, Edit, Trash2, KeyRound } from 'lucide-react';
 import { useData } from '@/contexts/data-context';
 import UserForm from '@/components/admin/users/user-form';
 import type { UserFormValues } from '@/components/admin/users/user-form-schema';
 import { userFormSchema, updateUserFormSchema } from '@/components/admin/users/user-form-schema';
 import type { Role } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
+import ApiTokenManager from '@/components/admin/users/api-token-manager';
 
 
 interface UserWithRoles {
@@ -33,6 +34,8 @@ function UserAdminPageInternal() {
   const [error, setError] = useState<string | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserWithRoles | null>(null);
+  const [isTokenManagerOpen, setIsTokenManagerOpen] = useState(false);
+  const [selectedUserForTokens, setSelectedUserForTokens] = useState<{ id: string, username: string } | null>(null);
 
   const { toast } = useToast();
   const { hasPermission } = useAuth();
@@ -219,6 +222,20 @@ function UserAdminPageInternal() {
         </DialogContent>
       </Dialog>
       
+       <Dialog open={isTokenManagerOpen} onOpenChange={setIsTokenManagerOpen}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>API Token Management for {selectedUserForTokens?.username}</DialogTitle>
+            <DialogDescription>
+              Manage personal access tokens for this user. Tokens have the same permissions as the user.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedUserForTokens && (
+            <ApiTokenManager userId={selectedUserForTokens.id} username={selectedUserForTokens.username} />
+          )}
+        </DialogContent>
+      </Dialog>
+      
       <Card>
         <CardContent className="pt-6">
           {users.length === 0 ? (
@@ -247,6 +264,12 @@ function UserAdminPageInternal() {
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
+                       <Button variant="ghost" size="icon" onClick={() => {
+                          setSelectedUserForTokens({ id: user.id, username: user.username });
+                          setIsTokenManagerOpen(true);
+                        }} className="mr-2 hover:text-primary" title="Manage API Tokens">
+                            <KeyRound className="h-4 w-4" />
+                        </Button>
                       {hasPermission('users:edit') && (
                         <Button variant="ghost" size="icon" onClick={() => handleEditUser(user.id)} className="mr-2 hover:text-primary">
                             <Edit className="h-4 w-4" />

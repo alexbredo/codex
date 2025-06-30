@@ -202,6 +202,21 @@ async function initializeDb(): Promise<Database> {
     );
   `);
   
+  // NEW: API Tokens Table
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS api_tokens (
+        id TEXT PRIMARY KEY,
+        userId TEXT NOT NULL,
+        token TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        createdAt TEXT NOT NULL,
+        lastUsedAt TEXT,
+        FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+    );
+  `);
+  await db.exec(`CREATE INDEX IF NOT EXISTS idx_api_tokens_token ON api_tokens (token);`);
+  await db.exec(`CREATE INDEX IF NOT EXISTS idx_api_tokens_userId ON api_tokens (userId);`);
+  
   // --- Seed Data for RBAC ---
   const adminRoleId = '00000000-role-0000-0000-administrator';
   const userRoleId = '00000000-role-0000-0000-000user000000';

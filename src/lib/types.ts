@@ -280,3 +280,12 @@ export interface UserSession {
   roles: UserRoleInfo[];
   permissionIds: string[];
 }
+// API Token Types
+export interface ApiToken {
+  id: string;
+  userId: string;
+  name: string;
+  token: string;
+  createdAt: string;
+  lastUsedAt?: string | null;
+}
