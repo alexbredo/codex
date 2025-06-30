@@ -17,7 +17,18 @@ const roleUpdateSchema = z.object({
 // GET a single role by ID, including its permissions
 export async function GET(request: Request, { params }: Params) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || currentUser.role !== 'administrator') {
+  // Allow viewing if the user can manage roles OR view the users page (to populate user edit forms)
+  const canView = currentUser?.permissionIds.includes('*') ||
+                  currentUser?.permissionIds.includes('roles:manage') ||
+                  currentUser?.permissionIds.includes('users:view');
+  
+  if (!currentUser || !canView) {
+    const db = await getDb();
+    await db.run(
+      'INSERT INTO security_log (id, timestamp, userId, username, action, targetEntityType, targetEntityId, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      crypto.randomUUID(), new Date().toISOString(), currentUser?.id || null, currentUser?.username || 'Anonymous', 'PERMISSION_DENIED',
+      'Role', params.roleId, JSON.stringify({ reason: "Attempted to view role details without 'roles:manage' or 'users:view' permission." })
+    );
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
@@ -41,7 +52,15 @@ export async function GET(request: Request, { params }: Params) {
 // PUT (update) an existing role
 export async function PUT(request: Request, { params }: Params) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || currentUser.role !== 'administrator') {
+  const canManage = currentUser?.permissionIds.includes('roles:manage') || currentUser?.permissionIds.includes('*');
+
+  if (!currentUser || !canManage) {
+    const db = await getDb();
+    await db.run(
+      'INSERT INTO security_log (id, timestamp, userId, username, action, targetEntityType, targetEntityId, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      crypto.randomUUID(), new Date().toISOString(), currentUser?.id || null, currentUser?.username || 'Anonymous', 'PERMISSION_DENIED',
+      'Role', params.roleId, JSON.stringify({ reason: "Attempted to update role without 'roles:manage' permission." })
+    );
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
@@ -64,12 +83,22 @@ export async function PUT(request: Request, { params }: Params) {
       return NextResponse.json({ error: 'Role not found' }, { status: 404 });
     }
     if (existingRole.isSystemRole) {
+      await db.run(
+        'INSERT INTO security_log (id, timestamp, userId, username, action, targetEntityType, targetEntityId, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        crypto.randomUUID(), new Date().toISOString(), currentUser.id, currentUser.username, 'ROLE_UPDATE_FAILURE',
+        'Role', roleId, JSON.stringify({ reason: 'Attempted to modify a system role.' })
+      );
       await db.run('ROLLBACK');
       return NextResponse.json({ error: 'System roles cannot be fully modified.' }, { status: 403 });
     }
 
     const nameCheck = await db.get('SELECT id FROM roles WHERE name = ? AND id != ?', name, roleId);
     if (nameCheck) {
+      await db.run(
+        'INSERT INTO security_log (id, timestamp, userId, username, action, targetEntityType, targetEntityId, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        crypto.randomUUID(), new Date().toISOString(), currentUser.id, currentUser.username, 'ROLE_UPDATE_FAILURE',
+        'Role', roleId, JSON.stringify({ reason: 'A role with this name already exists.', attemptedName: name })
+      );
       await db.run('ROLLBACK');
       return NextResponse.json({ error: 'A role with this name already exists.' }, { status: 409 });
     }
@@ -103,7 +132,15 @@ export async function PUT(request: Request, { params }: Params) {
 // DELETE a role
 export async function DELETE(request: Request, { params }: Params) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || currentUser.role !== 'administrator') {
+  const canManage = currentUser?.permissionIds.includes('roles:manage') || currentUser?.permissionIds.includes('*');
+
+  if (!currentUser || !canManage) {
+    const db = await getDb();
+    await db.run(
+      'INSERT INTO security_log (id, timestamp, userId, username, action, targetEntityType, targetEntityId, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      crypto.randomUUID(), new Date().toISOString(), currentUser?.id || null, currentUser?.username || 'Anonymous', 'PERMISSION_DENIED',
+      'Role', params.roleId, JSON.stringify({ reason: "Attempted to delete role without 'roles:manage' permission." })
+    );
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
@@ -119,17 +156,29 @@ export async function DELETE(request: Request, { params }: Params) {
       return NextResponse.json({ error: 'Role not found' }, { status: 404 });
     }
     if (roleToDelete.isSystemRole) {
+      await db.run(
+        'INSERT INTO security_log (id, timestamp, userId, username, action, targetEntityType, targetEntityId, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        crypto.randomUUID(), new Date().toISOString(), currentUser.id, currentUser.username, 'ROLE_DELETE_FAILURE',
+        'Role', roleId, JSON.stringify({ reason: 'Attempted to delete a system role.' })
+      );
       await db.run('ROLLBACK');
       return NextResponse.json({ error: 'System roles cannot be deleted.' }, { status: 403 });
     }
 
-    const userCountResult = await db.get('SELECT COUNT(*) as count FROM users WHERE roleId = ?', roleId);
+    // Corrected: Check the user_roles join table instead of an obsolete column on `users`
+    const userCountResult = await db.get('SELECT COUNT(*) as count FROM user_roles WHERE roleId = ?', roleId);
     if (userCountResult && userCountResult.count > 0) {
+      await db.run(
+        'INSERT INTO security_log (id, timestamp, userId, username, action, targetEntityType, targetEntityId, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        crypto.randomUUID(), new Date().toISOString(), currentUser.id, currentUser.username, 'ROLE_DELETE_FAILURE',
+        'Role', roleId, JSON.stringify({ reason: 'Attempted to delete a role that is still in use.', userCount: userCountResult.count })
+      );
       await db.run('ROLLBACK');
       return NextResponse.json({ error: `Cannot delete role. ${userCountResult.count} user(s) are still assigned to it.` }, { status: 409 });
     }
 
-    await db.run('DELETE FROM roles WHERE id = ?', roleId); // Cascade will delete from role_permissions
+    // Corrected: The users table no longer has a roleId column. Deleting from roles will cascade to role_permissions and user_roles.
+    await db.run('DELETE FROM roles WHERE id = ?', roleId);
 
     await db.run('COMMIT');
     return NextResponse.json({ message: 'Role deleted successfully.' });

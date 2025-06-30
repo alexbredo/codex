@@ -7,7 +7,15 @@ import type { Permission } from '@/lib/types';
 // GET all available permissions
 export async function GET(request: Request) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || currentUser.role !== 'administrator') {
+  const canManageRoles = currentUser?.permissionIds.includes('roles:manage') || currentUser?.permissionIds.includes('*');
+
+  if (!currentUser || !canManageRoles) {
+    await getDb().then(db => db.run(
+      'INSERT INTO security_log (id, timestamp, userId, username, action, details) VALUES (?, ?, ?, ?, ?, ?)',
+      crypto.randomUUID(), new Date().toISOString(), currentUser?.id || null, currentUser?.username || 'Anonymous', 'PERMISSION_DENIED',
+      JSON.stringify({ reason: "Attempted to view permissions list without 'roles:manage' permission." })
+    )).catch(err => console.error("Failed to log security event:", err));
+
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
@@ -17,10 +25,11 @@ export async function GET(request: Request) {
     
     // Group permissions by category for easier use in the UI
     const groupedPermissions = permissions.reduce((acc, perm) => {
-      if (!acc[perm.category]) {
-        acc[perm.category] = [];
+      const category = perm.category || 'General';
+      if (!acc[category]) {
+        acc[category] = [];
       }
-      acc[perm.category].push(perm);
+      acc[category].push(perm);
       return acc;
     }, {} as Record<string, Permission[]>);
 
