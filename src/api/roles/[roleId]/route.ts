@@ -17,7 +17,9 @@ const roleUpdateSchema = z.object({
 // GET a single role by ID, including its permissions
 export async function GET(request: Request, { params }: Params) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || !currentUser.permissionIds.includes('roles:manage')) {
+  const canManage = currentUser?.permissionIds.includes('roles:manage') || currentUser?.permissionIds.includes('*');
+  
+  if (!currentUser || !canManage) {
     const db = await getDb();
     await db.run(
       'INSERT INTO security_log (id, timestamp, userId, username, action, targetEntityType, targetEntityId, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
@@ -47,7 +49,9 @@ export async function GET(request: Request, { params }: Params) {
 // PUT (update) an existing role
 export async function PUT(request: Request, { params }: Params) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || !currentUser.permissionIds.includes('roles:manage')) {
+  const canManage = currentUser?.permissionIds.includes('roles:manage') || currentUser?.permissionIds.includes('*');
+
+  if (!currentUser || !canManage) {
     const db = await getDb();
     await db.run(
       'INSERT INTO security_log (id, timestamp, userId, username, action, targetEntityType, targetEntityId, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
@@ -125,7 +129,9 @@ export async function PUT(request: Request, { params }: Params) {
 // DELETE a role
 export async function DELETE(request: Request, { params }: Params) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || !currentUser.permissionIds.includes('roles:manage')) {
+  const canManage = currentUser?.permissionIds.includes('roles:manage') || currentUser?.permissionIds.includes('*');
+
+  if (!currentUser || !canManage) {
     const db = await getDb();
     await db.run(
       'INSERT INTO security_log (id, timestamp, userId, username, action, targetEntityType, targetEntityId, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',

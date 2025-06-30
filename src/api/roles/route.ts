@@ -60,7 +60,9 @@ export async function GET(request: Request) {
 // POST a new role
 export async function POST(request: Request) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || !currentUser.permissionIds.includes('roles:manage')) {
+  const canManage = currentUser?.permissionIds.includes('roles:manage') || currentUser?.permissionIds.includes('*');
+  
+  if (!currentUser || !canManage) {
     const db = await getDb();
     await db.run(
       'INSERT INTO security_log (id, timestamp, userId, username, action, details) VALUES (?, ?, ?, ?, ?, ?)',
