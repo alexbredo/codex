@@ -2,7 +2,7 @@
 import { z } from 'zod';
 import type { Model, Property, ValidationRuleset } from '@/lib/types';
 
-export function createObjectFormSchema(model: Model | undefined, validationRulesets: ValidationRuleset[] = []) {
+export function createObjectFormSchema(model: Model | undefined, validationRulesets: ValidationRuleset[] = [], propertyIdsToShow?: string[]) {
   if (!model) {
     return z.object({});
   }
@@ -11,8 +11,12 @@ export function createObjectFormSchema(model: Model | undefined, validationRules
     currentStateId: z.string().nullable().optional(),
     ownerId: z.string().nullable().optional(), // Added ownerId here
   };
+  
+  const propertiesToInclude = propertyIdsToShow
+    ? model.properties.filter(p => propertyIdsToShow.includes(p.id))
+    : model.properties;
 
-  model.properties.forEach((prop: Property) => {
+  propertiesToInclude.forEach((prop: Property) => {
     let fieldSchema: z.ZodTypeAny;
 
     switch (prop.type) {
@@ -49,15 +53,29 @@ export function createObjectFormSchema(model: Model | undefined, validationRules
         }
         break;
       case 'image':
+      case 'fileAttachment':
         fieldSchema = z.any()
           .refine(value => {
             if (prop.required) {
-              return value instanceof File || (typeof value === 'string' && value.trim() !== '');
+              // For edit, existing value is a string URL. For create/update, it's a File object.
+              return (value instanceof File) || (typeof value === 'string' && value.trim() !== '') || (typeof value === 'object' && value !== null && !!value.url);
             }
             return true;
           }, { message: `${prop.name} is required. Please select an image or provide a URL.` })
           .optional()
           .nullable();
+        break;
+      case 'url':
+         fieldSchema = z.object({
+            url: z.string().optional().or(z.literal('')),
+            title: z.string().optional().or(z.literal(''))
+        }).optional().nullable()
+          .refine(value => {
+            if (prop.required) {
+                return !!value && !!value.url && value.url.trim() !== '';
+            }
+            return true;
+        }, { message: `${prop.name} URL is required.` });
         break;
       case 'number':
         fieldSchema = z.coerce.number();
@@ -90,12 +108,14 @@ export function createObjectFormSchema(model: Model | undefined, validationRules
         fieldSchema = z.boolean().default(false);
         break;
       case 'date':
-        let baseDateSchema = z.union([z.string().datetime({ offset: true }), z.date()]).nullable();
+      case 'time':
+      case 'datetime':
+        let baseDateSchema = z.union([z.string(), z.date()]).nullable();
         if (prop.autoSetOnCreate || prop.autoSetOnUpdate) {
           fieldSchema = baseDateSchema.optional().nullable();
         } else {
           if (prop.required) {
-            fieldSchema = baseDateSchema.refine(val => val !== null, { message: `${prop.name} is required.` });
+            fieldSchema = baseDateSchema.refine(val => val !== null && val !== '', { message: `${prop.name} is required.` });
           } else {
             fieldSchema = baseDateSchema.optional().nullable();
           }

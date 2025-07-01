@@ -17,7 +17,7 @@ import { Loader2 } from 'lucide-react';
 interface User {
   id: string;
   username: string;
-  role: 'user' | 'administrator';
+  roles: { id: string; name: string; }[];
 }
 interface ObjectFormProps {
   form: UseFormReturn<Record<string, any>>;
@@ -30,6 +30,7 @@ interface ObjectFormProps {
   currentWorkflow?: WorkflowWithDetails | null;
   allUsers?: User[];
   currentUser?: User | null;
+  propertyIdsToShow?: string[]; // New optional prop
 }
 
 const INTERNAL_NO_STATE_CHANGE = "__NO_STATE_CHANGE__";
@@ -47,12 +48,19 @@ export default function ObjectForm({
   currentWorkflow,
   allUsers = [],
   currentUser,
+  propertyIdsToShow, // Destructure new prop
 }: ObjectFormProps) {
   const formContext = existingObject ? 'edit' : 'create';
   const { toast } = useToast();
 
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
+
+  // Filter properties based on propertyIdsToShow if it's provided
+  const propertiesToRender = propertyIdsToShow
+    ? model.properties.filter(p => propertyIdsToShow.includes(p.id)).sort((a, b) => a.orderIndex - b.orderIndex)
+    : model.properties.sort((a, b) => a.orderIndex - b.orderIndex);
+
 
   let availableStatesForSelect: Array<{ value: string; label: string; isCurrent: boolean }> = [];
   let currentStateName: string | undefined;
@@ -83,7 +91,7 @@ export default function ObjectForm({
     }
   }
 
-  const isAdmin = currentUser?.role === 'administrator';
+  const isAdmin = currentUser?.roles.some(r => r.name.toLowerCase() === 'administrator');
 
   const handleFormSubmit = async (values: Record<string, any>) => {
     setIsUploadingFiles(true);
@@ -243,7 +251,7 @@ export default function ObjectForm({
                             <SelectItem value={INTERNAL_NO_OWNER_SELECTED}>-- No Owner / Unassigned --</SelectItem>
                             {allUsers.map(user => (
                               <SelectItem key={user.id} value={user.id}>
-                                {user.username} ({user.role})
+                                {user.username} ({user.roles.map(r => r.name).join(', ')})
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -258,7 +266,7 @@ export default function ObjectForm({
                 )}
 
 
-                {model.properties.map((property) => (
+                {propertiesToRender.map((property) => (
                 <AdaptiveFormField
                     key={property.id}
                     form={form} 

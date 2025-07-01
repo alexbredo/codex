@@ -5,7 +5,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger
@@ -17,7 +17,7 @@ import { Input } from '@/components/ui/input';
 import { useData } from '@/contexts/data-context';
 import { withAuth } from '@/contexts/auth-context';
 import type { Wizard } from '@/lib/types';
-import { PlusCircle, Edit, Trash2, Search, Loader2, Wand2, StepForward } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, Search, Loader2, Wand2, StepForward, PlayCircle } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 
@@ -57,6 +57,10 @@ function WizardsAdminPageInternal() {
     }
   };
   
+  const handleRunWizard = (wizardId: string) => {
+    router.push(`/wizards/run/${wizardId}`);
+  };
+
   if (!dataIsReady) {
     return (
       <div className="flex flex-col justify-center items-center h-screen">
@@ -115,7 +119,7 @@ function WizardsAdminPageInternal() {
                 <TableHead>Name</TableHead>
                 <TableHead>Description</TableHead>
                 <TableHead>Steps</TableHead>
-                <TableHead className="text-right w-[150px]">Actions</TableHead>
+                <TableHead className="text-right w-[200px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -129,8 +133,11 @@ function WizardsAdminPageInternal() {
                         {w.steps.length}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="icon" onClick={() => handleEdit(w.id)} className="mr-2 hover:text-primary">
+                  <TableCell className="text-right space-x-1">
+                     <Button variant="outline" size="sm" onClick={() => handleRunWizard(w.id)}>
+                        <PlayCircle className="h-4 w-4 mr-2"/> Run
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={() => handleEdit(w.id)} className="hover:text-primary">
                       <Edit className="h-4 w-4" />
                     </Button>
                     <AlertDialog>

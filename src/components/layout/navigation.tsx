@@ -14,7 +14,7 @@ import {
   SidebarGroupLabel,
   SidebarMenuSkeleton,
 } from '@/components/ui/sidebar';
-import { LayoutDashboard, DatabaseZap, ListChecks, FolderOpen, FolderKanban, Users, Workflow as WorkflowIcon, ShieldCheck, History, KeyRound, Wand2 } from 'lucide-react';
+import { LayoutDashboard, DatabaseZap, ListChecks, FolderOpen, FolderKanban, Users, Workflow as WorkflowIcon, ShieldCheck, History, KeyRound, Wand2, PlayCircle } from 'lucide-react';
 import { useData } from '@/contexts/data-context';
 import { useAuth } from '@/contexts/auth-context';
 import type { Model } from '@/lib/types';
@@ -36,7 +36,7 @@ const adminNavItems = [
 
 export default function Navigation() {
   const pathname = usePathname();
-  const { models, modelGroups, isReady: dataIsReady } = useData();
+  const { models, modelGroups, wizards, isReady: dataIsReady } = useData();
   const { user, isLoading: authIsLoading, hasPermission } = useAuth();
   const [isMounted, setIsMounted] = React.useState(false);
 
@@ -121,6 +121,30 @@ export default function Navigation() {
           </Link>
         </SidebarMenuItem>
       ))}
+
+      {dataIsReady && user && wizards.length > 0 && (
+          <>
+            <SidebarSeparator className="my-2 mx-2 !w-auto" />
+            <SidebarGroupLabel className="px-2 text-xs text-sidebar-foreground/70 group-data-[collapsible=icon]:justify-center">
+                <PlayCircle size={16} className="mr-2 group-data-[collapsible=icon]:mr-0" />
+                <span className="group-data-[collapsible=icon]:hidden">Run Wizards</span>
+            </SidebarGroupLabel>
+            {wizards.map((wizard) => (
+                <SidebarMenuItem key={wizard.id}>
+                    <Link href={`/wizards/run/${wizard.id}`} passHref legacyBehavior>
+                        <SidebarMenuButton
+                            isActive={pathname.startsWith(`/wizards/run/${wizard.id}`)}
+                            tooltip={{ children: `Run: ${wizard.name}`, side: 'right', align: 'center' }}
+                            aria-label={wizard.name}
+                        >
+                            <Wand2 size={18} />
+                            <span className="truncate">{wizard.name}</span>
+                        </SidebarMenuButton>
+                    </Link>
+                </SidebarMenuItem>
+            ))}
+          </>
+      )}
 
       {dataIsReady && user && sortedGroupNames.length > 0 && (
         <>
