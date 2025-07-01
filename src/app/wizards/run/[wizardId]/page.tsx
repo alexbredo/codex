@@ -12,7 +12,7 @@ import { useData } from '@/contexts/data-context';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import type { Model, DataObject, Wizard } from '@/lib/types';
+import type { Model, DataObject, Wizard, WizardStepFormValues } from '@/lib/types';
 import { ArrowLeft, Loader2, ShieldAlert, CheckCircle, ListOrdered, Home, Wand2 } from 'lucide-react';
 import { z } from 'zod';
 import { withAuth } from '@/contexts/auth-context';
@@ -55,7 +55,7 @@ function RunWizardPageInternal() {
   const params = useParams();
   const wizardId = params.wizardId as string;
 
-  const { getModelById, getWizardById, addObject, isReady, validationRulesets, models: allModels, getAllObjects, getObjectsByModelId } = useData();
+  const { getModelById, getWizardById, addObject, isReady, validationRulesets, models, getAllObjects, getObjectsByModelId } = useData();
   const { toast } = useToast();
 
   const [currentWizard, setCurrentWizard] = useState<Wizard | null>(null);
@@ -144,8 +144,48 @@ function RunWizardPageInternal() {
   const onSubmitCreateStep = async (values: Record<string, any>) => {
     setIsSubmittingStep(true);
     
+    // Start with the data entered by the user in the current step's form
+    const finalPayload = { ...values };
+
+    // Augment the payload with values from mappings, which might be for hidden fields
+    if (currentStep?.propertyMappings && currentStep.propertyMappings.length > 0 && currentWizard) {
+      for (const mapping of currentStep.propertyMappings) {
+        const { sourceStepIndex, sourcePropertyId, targetPropertyId } = mapping;
+        
+        // Find the full data object from the source step
+        const sourceStepObject = wizardData[sourceStepIndex];
+        
+        // Find the source model definition to look up property names
+        const sourceModel = models.find(m => m.id === currentWizard?.steps[sourceStepIndex].modelId);
+
+        if (sourceStepObject && sourceModel) {
+          let valueToMap: any;
+
+          // Handle the special case where we map the entire object ID
+          if (sourcePropertyId === INTERNAL_MAPPING_OBJECT_ID_KEY) {
+            valueToMap = stepObjectIds[sourceStepIndex];
+          } else {
+            // Find the source property definition by its ID
+            const sourceProperty = sourceModel.properties.find(p => p.id === sourcePropertyId);
+            if (sourceProperty) {
+              // Get the value from the source object using the property name
+              valueToMap = sourceStepObject[sourceProperty.name];
+            }
+          }
+
+          // Find the target property definition by its ID
+          const targetProperty = modelForStep?.properties.find(p => p.id === targetPropertyId);
+          
+          // If we found the target property and have a value to map, add it to the payload
+          if (targetProperty && valueToMap !== undefined) {
+            finalPayload[targetProperty.name] = valueToMap;
+          }
+        }
+      }
+    }
+
     try {
-        const createdObject = await addObject(modelForStep!.id, values);
+        const createdObject = await addObject(modelForStep!.id, finalPayload);
         if (createdObject && createdObject.id) {
             setWizardData(prev => ({ ...prev, [currentStepIndex]: createdObject }));
             setStepObjectIds(prev => ({ ...prev, [currentStepIndex]: createdObject.id }));
@@ -242,7 +282,7 @@ function RunWizardPageInternal() {
                             <Card key={step.id} className="bg-muted/50">
                                 <CardHeader className="flex flex-row items-center justify-between p-4">
                                     <div>
-                                        <CardTitle className="text-xl">{getObjectDisplayValue(objectData, model, allModels, allDbObjects)}</CardTitle>
+                                        <CardTitle className="text-xl">{getObjectDisplayValue(objectData, model, models, allDbObjects)}</CardTitle>
                                         <CardDescription>Data from Step {index + 1}: {model.name} ({step.stepType})</CardDescription>
                                     </div>
                                     <Button asChild variant="secondary" size="sm">
@@ -262,7 +302,7 @@ function RunWizardPageInternal() {
                                         } else if (propDef.type === 'relationship' && !Array.isArray(value)) {
                                             const relatedModel = getModelById(propDef.relatedModelId!);
                                             const relatedObj = (allDbObjects[propDef.relatedModelId!] || []).find(o => o.id === value);
-                                            displayValue = getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
+                                            displayValue = getObjectDisplayValue(relatedObj, relatedModel, models, allDbObjects);
                                         } else if (propDef.type === 'boolean') {
                                             displayValue = value ? 'Yes' : 'No';
                                         }
@@ -338,7 +378,7 @@ function RunWizardPageInternal() {
                     <PopoverTrigger asChild>
                         <Button variant="outline" role="combobox" aria-expanded={isLookupPopoverOpen} className="w-full justify-between">
                             <span className="truncate">
-                                {selectedLookupId ? getObjectDisplayValue(getObjectsByModelId(modelForStep.id).find(o=>o.id === selectedLookupId), modelForStep, allModels, allDbObjects) : `Select a ${modelForStep.name}...`}
+                                {selectedLookupId ? getObjectDisplayValue(getObjectsByModelId(modelForStep.id).find(o=>o.id === selectedLookupId), modelForStep, models, allDbObjects) : `Select a ${modelForStep.name}...`}
                             </span>
                             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                         </Button>
@@ -350,12 +390,12 @@ function RunWizardPageInternal() {
                             <CommandGroup>
                                 <CommandList>
                                 {getObjectsByModelId(modelForStep.id).map(obj => (
-                                    <CommandItem key={obj.id} value={getObjectDisplayValue(obj, modelForStep, allModels, allDbObjects)} onSelect={() => {
+                                    <CommandItem key={obj.id} value={getObjectDisplayValue(obj, modelForStep, models, allDbObjects)} onSelect={() => {
                                         setSelectedLookupId(obj.id);
                                         setIsLookupPopoverOpen(false);
                                     }}>
                                        <CheckCircle className={`mr-2 h-4 w-4 ${selectedLookupId === obj.id ? "opacity-100" : "opacity-0"}`} />
-                                       {getObjectDisplayValue(obj, modelForStep, allModels, allDbObjects)}
+                                       {getObjectDisplayValue(obj, modelForStep, models, allDbObjects)}
                                     </CommandItem>
                                 ))}
                                 </CommandList>
@@ -384,3 +424,5 @@ function RunWizardPageInternal() {
 }
 
 export default withAuth(RunWizardPageInternal, 'any');
+
+    
