@@ -12,7 +12,7 @@ interface Params {
 // GET a single wizard by ID
 export async function GET(request: Request, { params }: Params) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || !currentUser.permissionIds.includes('admin:manage_wizards')) {
+  if (!currentUser || (!currentUser.permissionIds.includes('admin:manage_wizards') && !currentUser.permissionIds.includes('*'))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
   
@@ -40,7 +40,7 @@ export async function GET(request: Request, { params }: Params) {
 // PUT (update) an existing wizard
 export async function PUT(request: Request, { params }: Params) {
     const currentUser = await getCurrentUserFromCookie();
-    if (!currentUser || !currentUser.permissionIds.includes('admin:manage_wizards')) {
+    if (!currentUser || (!currentUser.permissionIds.includes('admin:manage_wizards') && !currentUser.permissionIds.includes('*'))) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
@@ -90,7 +90,7 @@ export async function PUT(request: Request, { params }: Params) {
 // DELETE a wizard
 export async function DELETE(request: Request, { params }: Params) {
     const currentUser = await getCurrentUserFromCookie();
-    if (!currentUser || !currentUser.permissionIds.includes('admin:manage_wizards')) {
+    if (!currentUser || (!currentUser.permissionIds.includes('admin:manage_wizards') && !currentUser.permissionIds.includes('*'))) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
     
