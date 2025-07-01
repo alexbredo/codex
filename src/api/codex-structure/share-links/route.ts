@@ -86,9 +86,13 @@ export async function POST(request: Request) {
     const linkId = randomUUID();
     const createdAt = new Date().toISOString();
 
+    // Explicitly handle optional values to ensure they are passed as null if undefined
+    const dataObjectIdToInsert = data_object_id === undefined ? null : data_object_id;
+    const expiresAtToInsert = expires_at === undefined ? null : expires_at;
+
     await db.run(
       'INSERT INTO shared_object_links (id, link_type, model_id, data_object_id, created_by_user_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      linkId, link_type, model_id, data_object_id, currentUser.id, createdAt, expires_at
+      linkId, link_type, model_id, dataObjectIdToInsert, currentUser.id, createdAt, expiresAtToInsert
     );
 
     const newLink: SharedObjectLink = {
