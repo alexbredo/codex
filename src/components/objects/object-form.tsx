@@ -68,6 +68,10 @@ export default function ObjectForm({
     return isVisibleInStep && !isMappedAndHidden;
   });
 
+  const hiddenMappedProperties = allPropertiesSorted.filter(property =>
+    hiddenPropertyIds.includes(property.id)
+  );
+
   let availableStatesForSelect: Array<{ value: string; label: string; isCurrent: boolean }> = [];
   let currentStateName: string | undefined;
 
@@ -283,6 +287,21 @@ export default function ObjectForm({
                       uploadProgress={uploadProgress[property.name]}
                     />
                   </div>
+                ))}
+                 {/* Render hidden fields for mapped properties */}
+                {hiddenMappedProperties.map(property => (
+                    <Controller
+                        key={property.id}
+                        name={property.name as any}
+                        control={form.control}
+                        render={({ field }) => (
+                            <input
+                                type="hidden"
+                                {...field}
+                                value={field.value ?? ''} // Ensure value is never undefined
+                            />
+                        )}
+                    />
                 ))}
             </div>
         </ScrollArea>

@@ -99,42 +99,43 @@ function RunWizardPageInternal() {
   }, [wizardId, getWizardById, isReady]);
 
   useEffect(() => {
-    if (currentStep?.stepType === 'create') {
-        const stepData = wizardData[currentStepIndex] || {};
-        const newDefaultValues: Record<string, any> = { ...stepData };
+    if (currentStep) {
+        if (currentStep.stepType === 'create') {
+            const newDefaultValues: Record<string, any> = {};
 
-        if (currentStep && currentStep.propertyMappings && currentStepIndex > 0) {
-        currentStep.propertyMappings.forEach(mapping => {
-            const sourceStepData = wizardData[mapping.sourceStepIndex];
-            const sourceModel = getModelById(currentWizard?.steps[mapping.sourceStepIndex].modelId || '');
-            
-            if (sourceStepData && sourceModel) {
-            let valueToMap: any;
+            if (currentStep.propertyMappings && currentStepIndex > 0) {
+                currentStep.propertyMappings.forEach(mapping => {
+                    const sourceStepData = wizardData[mapping.sourceStepIndex];
+                    const sourceModel = getModelById(currentWizard?.steps[mapping.sourceStepIndex].modelId || '');
+                    
+                    if (sourceStepData && sourceModel) {
+                        let valueToMap: any;
 
-            if (mapping.sourcePropertyId === INTERNAL_MAPPING_OBJECT_ID_KEY) {
-                valueToMap = stepObjectIds[mapping.sourceStepIndex];
-            } else {
-                const sourceProperty = sourceModel.properties.find(p => p.id === mapping.sourcePropertyId);
-                if (sourceProperty) {
-                    valueToMap = sourceStepData[sourceProperty.name];
-                }
-            }
+                        if (mapping.sourcePropertyId === INTERNAL_MAPPING_OBJECT_ID_KEY) {
+                            valueToMap = stepObjectIds[mapping.sourceStepIndex];
+                        } else {
+                            const sourceProperty = sourceModel.properties.find(p => p.id === mapping.sourcePropertyId);
+                            if (sourceProperty) {
+                                valueToMap = sourceStepData[sourceProperty.name];
+                            }
+                        }
 
-            if (valueToMap !== undefined) {
-                const targetProperty = modelForStep?.properties.find(p => p.id === mapping.targetPropertyId);
-                if (targetProperty) {
-                newDefaultValues[targetProperty.name] = valueToMap;
-                }
+                        if (valueToMap !== undefined) {
+                            const targetProperty = modelForStep?.properties.find(p => p.id === mapping.targetPropertyId);
+                            if (targetProperty) {
+                                newDefaultValues[targetProperty.name] = valueToMap;
+                            }
+                        }
+                    }
+                });
             }
-            }
-        });
+            form.reset(newDefaultValues);
+        } else {
+            form.reset({});
+            setSelectedLookupId(stepObjectIds[currentStepIndex] || '');
         }
-        form.reset(newDefaultValues);
-    } else {
-        form.reset({});
-        setSelectedLookupId(stepObjectIds[currentStepIndex] || '');
     }
-  }, [currentStepIndex, wizardData, form, currentStep, getModelById, currentWizard, modelForStep, stepObjectIds]);
+}, [currentStepIndex, wizardData, form, currentStep, getModelById, currentWizard, modelForStep, stepObjectIds]);
 
   useEffect(() => {
     form.resolver = zodResolver(dynamicSchema) as any;
@@ -144,36 +145,7 @@ function RunWizardPageInternal() {
     setIsSubmittingStep(true);
     
     try {
-        const finalPayload = { ...values };
-
-        if (currentStep && currentStep.propertyMappings && currentStepIndex > 0) {
-            currentStep.propertyMappings.forEach(mapping => {
-                const sourceStepData = wizardData[mapping.sourceStepIndex];
-                const sourceModel = getModelById(currentWizard?.steps[mapping.sourceStepIndex].modelId || '');
-                
-                if (sourceStepData && sourceModel) {
-                    let valueToMap: any;
-
-                    if (mapping.sourcePropertyId === INTERNAL_MAPPING_OBJECT_ID_KEY) {
-                        valueToMap = stepObjectIds[mapping.sourceStepIndex];
-                    } else {
-                        const sourceProperty = sourceModel.properties.find(p => p.id === mapping.sourcePropertyId);
-                        if (sourceProperty) {
-                            valueToMap = sourceStepData[sourceProperty.name];
-                        }
-                    }
-
-                    if (valueToMap !== undefined) {
-                        const targetProperty = modelForStep?.properties.find(p => p.id === mapping.targetPropertyId);
-                        if (targetProperty) {
-                            finalPayload[targetProperty.name] = valueToMap;
-                        }
-                    }
-                }
-            });
-        }
-
-        const createdObject = await addObject(modelForStep!.id, finalPayload);
+        const createdObject = await addObject(modelForStep!.id, values);
         if (createdObject && createdObject.id) {
             setWizardData(prev => ({ ...prev, [currentStepIndex]: createdObject }));
             setStepObjectIds(prev => ({ ...prev, [currentStepIndex]: createdObject.id }));
