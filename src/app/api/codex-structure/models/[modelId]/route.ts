@@ -130,11 +130,12 @@ export async function PUT(request: Request, { params }: Params) {
     const finalDisplayPropertyNames = 'displayPropertyNames' in body ? JSON.stringify(body.displayPropertyNames || []) : oldModelRow.displayPropertyNames;
     const finalWorkflowId = 'workflowId' in body ? body.workflowId : oldModelRow.workflowId;
 
+    // --- Correct handling for modelGroupId ---
     const defaultGroupId = "00000000-0000-0000-0000-000000000001";
-    let finalModelGroupId = oldModelRow.model_group_id;
-    if ('modelGroupId' in body) {
-      finalModelGroupId = body.modelGroupId === null ? defaultGroupId : body.modelGroupId;
-    }
+    // Use the value from the body if it exists, otherwise use the old value from DB.
+    const incomingModelGroupId = 'modelGroupId' in body ? body.modelGroupId : oldModelRow.model_group_id;
+    // Normalize the incoming value: null or undefined becomes the default group ID.
+    const finalModelGroupId = (incomingModelGroupId === null || incomingModelGroupId === undefined) ? defaultGroupId : incomingModelGroupId;
 
 
     await db.run(
@@ -224,7 +225,10 @@ export async function PUT(request: Request, { params }: Params) {
     const changelogDetails: StructuralChangeDetail[] = [];
     if (finalName !== oldModelRow.name) changelogDetails.push({ field: 'name', oldValue: oldModelRow.name, newValue: finalName });
     if (finalDescription !== oldModelRow.description) changelogDetails.push({ field: 'description', oldValue: oldModelRow.description, newValue: finalDescription });
-    if (finalModelGroupId !== oldModelRow.model_group_id) changelogDetails.push({ field: 'modelGroupId', oldValue: oldModelRow.model_group_id, newValue: finalModelGroupId });
+    
+    if (finalModelGroupId !== oldModelRow.model_group_id) {
+        changelogDetails.push({ field: 'modelGroupId', oldValue: oldModelRow.model_group_id, newValue: finalModelGroupId });
+    }
     
     const safeJsonParse = (jsonString: string | null | undefined, defaultValue: any = []) => {
         if (jsonString === null || jsonString === undefined) return defaultValue;
@@ -240,8 +244,8 @@ export async function PUT(request: Request, { params }: Params) {
     
     if (finalWorkflowId !== oldModelRow.workflowId) changelogDetails.push({ field: 'workflowId', oldValue: oldModelRow.workflowId, newValue: finalWorkflowId });
     
-    const oldPropsForLog = oldPropertiesFromDb.map(p => ({name: p.name, type: p.type, orderIndex: p.orderIndex, required: !!p.required}));
-    const newPropsForLog = newProcessedProperties.map(p => ({name: p.name, type: p.type, orderIndex: p.orderIndex, required: !!p.required}));
+    const oldPropsForLog = oldPropertiesFromDb.map(prop => ({name: prop.name, type: prop.type, orderIndex: prop.orderIndex, required: !!prop.required}));
+    const newPropsForLog = newProcessedProperties.map(prop => ({name: prop.name, type: prop.type, orderIndex: prop.orderIndex, required: !!prop.required}));
     if(JSON.stringify(oldPropsForLog) !== JSON.stringify(newPropsForLog)){
         changelogDetails.push({ field: 'properties', oldValue: oldPropsForLog, newValue: newPropsForLog });
     }
@@ -317,12 +321,12 @@ export async function DELETE(request: Request, { params }: Params) {
     const oldPropertiesFromDb = await db.all('SELECT * FROM properties WHERE model_id = ?', params.modelId);
     const modelSnapshot = {
       ...modelToDelete,
-      properties: oldPropertiesFromDb.map(p => ({
-        name: p.name, type: p.type, orderIndex: p.orderIndex, required: !!p.required,
-        relatedModelId: p.relatedModelId, relationshipType: p.relationshipType, unit: p.unit, 
-        precision: p.precision, autoSetOnCreate: !!p.autoSetOnCreate, autoSetOnUpdate: !!p.autoSetOnUpdate, 
-        isUnique: !!p.isUnique, defaultValue: p.defaultValue, validationRulesetId: p.validationRulesetId,
-        minValue: p.minValue, maxValue: p.maxValue
+      properties: oldPropertiesFromDb.map(prop => ({
+        name: prop.name, type: prop.type, orderIndex: prop.orderIndex, required: !!prop.required,
+        relatedModelId: prop.relatedModelId, relationshipType: prop.relationshipType, unit: prop.unit, 
+        precision: prop.precision, autoSetOnCreate: !!prop.autoSetOnCreate, autoSetOnUpdate: !!prop.autoSetOnUpdate, 
+        isUnique: !!prop.isUnique, defaultValue: prop.defaultValue, validationRulesetId: prop.validationRulesetId,
+        minValue: prop.minValue, maxValue: prop.maxValue
       }))
     };
 
