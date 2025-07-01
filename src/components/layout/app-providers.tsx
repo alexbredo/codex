@@ -6,9 +6,27 @@ import { useState } from 'react';
 import { AuthProvider } from '@/contexts/auth-context';
 import { DataProvider } from '@/contexts/data-context';
 import AppLayout from '@/components/layout/app-layout';
+import { usePathname } from 'next/navigation'; // Import usePathname
 
 interface AppProvidersProps {
   children: ReactNode;
+}
+
+// This new component checks the route and applies the AppLayout only to non-public pages.
+function ConditionalLayout({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  
+  // Define public paths that should not have the main application layout
+  const publicPaths = ['/login', '/register'];
+  const isPublicPath = publicPaths.includes(pathname) || pathname.startsWith('/share');
+
+  if (isPublicPath) {
+    // For public paths, render children directly without the main AppLayout
+    return <>{children}</>;
+  }
+
+  // For all other app paths, wrap children with the main AppLayout
+  return <AppLayout>{children}</AppLayout>;
 }
 
 export default function AppProviders({ children }: AppProvidersProps) {
@@ -20,9 +38,9 @@ export default function AppProviders({ children }: AppProvidersProps) {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <DataProvider>
-          <AppLayout>
+          <ConditionalLayout>
             {children}
-          </AppLayout>
+          </ConditionalLayout>
         </DataProvider>
       </AuthProvider>
     </QueryClientProvider>

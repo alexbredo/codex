@@ -17,12 +17,13 @@ export default function ShareLayout({
 }) {
   return (
     // Note: No AppProviders or main AppLayout here to keep the view minimal
+    // The conditional logic is now handled inside AppProviders
     <>
       <div className="flex flex-col min-h-screen bg-muted/40">
         <main className="flex-1">
           {children}
         </main>
-        <Toaster />
+        {/* Toaster removed from here, it's in the root layout */}
       </div>
     </>
   );
