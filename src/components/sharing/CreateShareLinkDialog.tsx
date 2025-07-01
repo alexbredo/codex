@@ -15,6 +15,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import type { ShareLinkType, SharedObjectLink } from '@/lib/types';
 import { Loader2, Share2, ClipboardCopy, Check } from 'lucide-react';
@@ -32,6 +33,7 @@ const createShareLink = async (payload: {
   model_id: string;
   data_object_id?: string | null;
   expires_at?: string | null;
+  expires_on_submit?: boolean;
 }): Promise<SharedObjectLink> => {
   const response = await fetch('/api/codex-structure/share-links', {
     method: 'POST',
@@ -51,6 +53,7 @@ export default function CreateShareLinkDialog({ modelId, objectId, objectName, a
   const [open, setOpen] = useState(false);
   const [linkType, setLinkType] = useState<ShareLinkType>('view');
   const [expiration, setExpiration] = useState('7d');
+  const [expiresOnSubmit, setExpiresOnSubmit] = useState(false);
   const [generatedLink, setGeneratedLink] = useState('');
   const [hasCopied, setHasCopied] = useState(false);
 
@@ -88,6 +91,7 @@ export default function CreateShareLinkDialog({ modelId, objectId, objectName, a
       model_id: modelId,
       data_object_id: objectId,
       expires_at: expiresAt,
+      expires_on_submit: expiresOnSubmit,
     });
   };
 
@@ -108,6 +112,7 @@ export default function CreateShareLinkDialog({ modelId, objectId, objectName, a
         setGeneratedLink('');
         setLinkType(isCreateMode ? 'create' : 'view');
         setExpiration('7d');
+        setExpiresOnSubmit(false);
       }, 200);
     } else {
         setLinkType(isCreateMode ? 'create' : 'view');
@@ -155,7 +160,7 @@ export default function CreateShareLinkDialog({ modelId, objectId, objectName, a
             <p className="text-sm text-muted-foreground">Anyone with this link can access the content. The link expires {expiration === 'never' ? 'never' : `in ${expiration.replace('d', ' days').replace('h', ' hours')}`}.</p>
           </div>
         ) : (
-          <div className="grid gap-4 py-4">
+          <div className="space-y-4 py-4">
             {!isCreateMode && (
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="link-type" className="text-right">Link Type</Label>
@@ -184,6 +189,20 @@ export default function CreateShareLinkDialog({ modelId, objectId, objectName, a
                   <SelectItem value="never">Never</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+                <div />
+                <div className="col-span-3 flex items-center space-x-2">
+                    <Checkbox
+                        id="expires-on-submit"
+                        checked={expiresOnSubmit}
+                        onCheckedChange={(checked) => setExpiresOnSubmit(!!checked)}
+                        disabled={linkType === 'view'}
+                    />
+                    <Label htmlFor="expires-on-submit" className="text-sm font-normal">
+                        Single-use link (expires after first submission)
+                    </Label>
+                </div>
             </div>
           </div>
         )}

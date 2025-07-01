@@ -363,17 +363,16 @@ async function initializeDb(): Promise<Database> {
   `);
   await db.exec('CREATE INDEX IF NOT EXISTS idx_dashboards_userId_isDefault ON dashboards (userId, isDefault);');
   
-  // Robust migration for shared_object_links
-  const tableExists = await db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='shared_object_links';");
-  if (tableExists) {
-    const columns = await db.all("PRAGMA table_info(shared_object_links)");
-    if (!columns.find(c => c.name === 'data_object_id')) {
-        console.log("Legacy 'shared_object_links' table detected. Dropping and recreating for schema update.");
-        await db.exec('DROP TABLE shared_object_links');
+  // Migration for shared_object_links
+  const sharedLinksTableInfo = await db.all("PRAGMA table_info(shared_object_links)").catch(() => []);
+  if (sharedLinksTableInfo.length > 0) { // Table exists
+    if (!sharedLinksTableInfo.some(col => col.name === 'expires_on_submit')) {
+      console.log("Migrating 'shared_object_links' table: adding 'expires_on_submit' column.");
+      await db.exec('ALTER TABLE shared_object_links ADD COLUMN expires_on_submit INTEGER DEFAULT 0');
     }
   }
 
-  // Shared Object Links Table (will be created if it doesn't exist or was just dropped)
+  // Shared Object Links Table (ensuring it exists with the new column)
   await db.exec(`
     CREATE TABLE IF NOT EXISTS shared_object_links (
       id TEXT PRIMARY KEY,
@@ -383,6 +382,7 @@ async function initializeDb(): Promise<Database> {
       created_by_user_id TEXT NOT NULL,
       created_at TEXT NOT NULL,
       expires_at TEXT,
+      expires_on_submit INTEGER DEFAULT 0,
       FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE,
       FOREIGN KEY (data_object_id) REFERENCES data_objects(id) ON DELETE CASCADE,
       FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE CASCADE

@@ -302,6 +302,7 @@ export interface SharedObjectLink {
   created_by_username?: string; // Populated on fetch
   created_at: string;
   expires_at?: string | null;
+  expires_on_submit?: boolean;
   is_active?: boolean; // Calculated property
 }
 

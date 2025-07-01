@@ -13,6 +13,7 @@ const createLinkSchema = z.object({
   model_id: z.string().uuid(),
   data_object_id: z.string().uuid().optional().nullable(),
   expires_at: z.string().datetime({ offset: true }).optional().nullable(),
+  expires_on_submit: z.boolean().optional().default(false),
 });
 
 // GET all share links for a specific object or model
@@ -85,7 +86,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid input', details: validation.error.flatten().fieldErrors }, { status: 400 });
     }
 
-    const { link_type, model_id, data_object_id, expires_at } = validation.data;
+    const { link_type, model_id, data_object_id, expires_at, expires_on_submit } = validation.data;
     
     if ((link_type === 'view' || link_type === 'update') && !data_object_id) {
         return NextResponse.json({ error: 'data_object_id is required for view and update links.' }, { status: 400 });
@@ -99,8 +100,8 @@ export async function POST(request: Request) {
     const expiresAtToInsert = expires_at || null;
 
     await db.run(
-      'INSERT INTO shared_object_links (id, link_type, model_id, data_object_id, created_by_user_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      linkId, link_type, model_id, dataObjectIdToInsert, currentUser.id, createdAt, expiresAtToInsert
+      'INSERT INTO shared_object_links (id, link_type, model_id, data_object_id, created_by_user_id, created_at, expires_at, expires_on_submit) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      linkId, link_type, model_id, dataObjectIdToInsert, currentUser.id, createdAt, expiresAtToInsert, expires_on_submit ? 1 : 0
     );
 
     const newLink: SharedObjectLink = {
@@ -112,6 +113,7 @@ export async function POST(request: Request) {
       created_by_username: currentUser.username,
       created_at: createdAt,
       expires_at: expiresAtToInsert,
+      expires_on_submit: expires_on_submit,
     };
     
     return NextResponse.json(newLink, { status: 201 });
