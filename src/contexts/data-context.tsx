@@ -1,9 +1,10 @@
 
+
 'use client';
 
 import type { ReactNode } from 'react';
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import type { Model, DataObject, Property, ModelGroup, WorkflowWithDetails, ValidationRuleset, UserSession as User, SharedObjectLink } from '@/lib/types';
+import type { Model, DataObject, Property, ModelGroup, WorkflowWithDetails, ValidationRuleset, UserSession as User, SharedObjectLink, Wizard } from '@/lib/types';
 import { useAuth } from './auth-context';
 import { mapDbModelToClientModel, formatApiError } from '@/lib/utils'; // Import from utils
 
@@ -18,6 +19,7 @@ export interface DataContextType {
   deletedObjects: Record<string, DataObject[]>; // Stores soft-deleted objects
   modelGroups: ModelGroup[];
   workflows: WorkflowWithDetails[];
+  wizards: Wizard[];
   validationRulesets: ValidationRuleset[];
   allUsers: User[];
   lastChangedInfo: { modelId: string, objectId: string, changeType: 'added' | 'updated' | 'restored' | 'deleted' } | null;
@@ -47,6 +49,11 @@ export interface DataContextType {
   deleteWorkflow: (workflowId: string) => Promise<void>;
   getWorkflowById: (workflowId: string) => WorkflowWithDetails | undefined;
 
+  addWizard: (wizardData: Omit<Wizard, 'id' | 'steps'> & { steps: Array<Omit<Wizard['steps'][0], 'id' | 'wizardId'>> }) => Promise<Wizard>;
+  updateWizard: (wizardId: string, wizardData: Omit<Wizard, 'id' | 'steps'> & { steps: Array<Omit<Wizard['steps'][0], 'id' | 'wizardId'> & {id?:string}> }) => Promise<Wizard | undefined>;
+  deleteWizard: (wizardId: string) => Promise<void>;
+  getWizardById: (wizardId: string) => Wizard | undefined;
+
   addValidationRuleset: (rulesetData: Omit<ValidationRuleset, 'id'>) => Promise<ValidationRuleset>;
   updateValidationRuleset: (rulesetId: string, updates: Partial<Omit<ValidationRuleset, 'id'>>) => Promise<ValidationRuleset | undefined>;
   deleteValidationRuleset: (rulesetId: string) => Promise<void>;
@@ -68,6 +75,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [deletedObjects, setDeletedObjects] = useState<Record<string, DataObject[]>>({}); // Soft-deleted objects
   const [modelGroups, setModelGroups] = useState<ModelGroup[]>([]);
   const [workflows, setWorkflows] = useState<WorkflowWithDetails[]>([]);
+  const [wizards, setWizards] = useState<Wizard[]>([]);
   const [validationRulesets, setValidationRulesets] = useState<ValidationRuleset[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [isReady, setIsReady] = useState(false);
@@ -99,6 +107,21 @@ export function DataProvider({ children }: { children: ReactNode }) {
     } catch (error: any) {
       console.error("[DataContext] Failed to load workflows from API:", error.message, error);
       return null;
+    }
+  }, []);
+
+  const fetchWizardsInternal = useCallback(async (): Promise<Wizard[] | null> => {
+    try {
+        const response = await fetch('/api/codex-structure/wizards');
+        if (!response.ok) {
+            const errorMessage = await formatApiError(response.clone(), 'Failed to fetch wizards');
+            throw new Error(errorMessage);
+        }
+        const wizardsDataFromApi: Wizard[] = await response.json();
+        return wizardsDataFromApi.sort((a, b) => a.name.localeCompare(b.name));
+    } catch (error: any) {
+        console.error("[DataContext] Failed to load wizards from API:", error.message, error);
+        return null;
     }
   }, []);
 
@@ -197,6 +220,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
       } else {
         setWorkflows([]); // Clear data if no permission
       }
+      
+      if (hasPermission('admin:manage_wizards')) {
+        const newWizardsData = await fetchWizardsInternal();
+        if (newWizardsData) {
+            setWizards(prevWizards => {
+                const newSortedJson = JSON.stringify([...newWizardsData].sort((a, b) => a.id.localeCompare(b.id)));
+                const prevSortedJson = JSON.stringify([...prevWizards].sort((a, b) => a.id.localeCompare(b.id)));
+                return newSortedJson !== prevSortedJson ? newWizardsData : prevWizards;
+            });
+        }
+      } else {
+        setWizards([]);
+      }
 
       if (hasPermission('admin:manage_validation_rules')) {
         const newRulesetsData = await fetchValidationRulesetsInternal();
@@ -234,7 +270,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setIsBackgroundFetching(false);
       isFetchingDataRef.current = false;
     }
-  }, [authIsLoading, hasPermission, fetchWorkflowsInternal, fetchValidationRulesetsInternal, fetchAllUsersInternal]);
+  }, [authIsLoading, hasPermission, fetchWorkflowsInternal, fetchWizardsInternal, fetchValidationRulesetsInternal, fetchAllUsersInternal]);
 
 
   useEffect(() => {
@@ -454,6 +490,30 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [fetchData]);
 
   const getWorkflowById = useCallback((workflowId: string) => workflows.find((wf) => wf.id === workflowId), [workflows]);
+  
+  const addWizard = useCallback(async (wizardData: Omit<Wizard, 'id' | 'steps'> & { steps: Array<Omit<Wizard['steps'][0], 'id' | 'wizardId'>> }): Promise<Wizard> => {
+    const response = await fetch('/api/codex-structure/wizards', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(wizardData) });
+    if (!response.ok) throw new Error(await formatApiError(response, 'Failed to add wizard'));
+    const newWizard: Wizard = await response.json();
+    await fetchData('After Add Wizard');
+    return newWizard;
+  }, [fetchData]);
+
+  const updateWizard = useCallback(async (wizardId: string, wizardData: Omit<Wizard, 'id' | 'steps'> & { steps: Array<Omit<Wizard['steps'][0], 'id' | 'wizardId'> & {id?:string}> }): Promise<Wizard | undefined> => {
+    const response = await fetch(`/api/codex-structure/wizards/${wizardId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(wizardData) });
+    if (!response.ok) throw new Error(await formatApiError(response, 'Failed to update wizard'));
+    const updatedWizard: Wizard = await response.json();
+    await fetchData('After Update Wizard');
+    return updatedWizard;
+  }, [fetchData]);
+
+  const deleteWizard = useCallback(async (wizardId: string) => {
+    const response = await fetch(`/api/codex-structure/wizards/${wizardId}`, { method: 'DELETE' });
+    if (!response.ok) throw new Error(await formatApiError(response, 'Failed to delete wizard'));
+    await fetchData('After Delete Wizard');
+  }, [fetchData]);
+
+  const getWizardById = useCallback((wizardId: string) => wizards.find(w => w.id === wizardId), [wizards]);
 
   const addValidationRuleset = useCallback(async (rulesetData: Omit<ValidationRuleset, 'id'>): Promise<ValidationRuleset> => {
     const response = await fetch('/api/codex-structure/validation-rulesets', {
@@ -486,11 +546,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
 
   const contextValue: DataContextType = {
-    models, objects, deletedObjects, modelGroups, workflows, validationRulesets, allUsers, lastChangedInfo,
+    models, objects, deletedObjects, modelGroups, workflows, wizards, validationRulesets, allUsers, lastChangedInfo,
     addModel, updateModel, deleteModel, getModelById, getModelByName,
     addObject, updateObject, deleteObject, restoreObject, getObjectsByModelId, getAllObjects,
     addModelGroup, updateModelGroup, deleteModelGroup, getModelGroupById, getModelGroupByName, getAllModelGroups,
     addWorkflow, updateWorkflow, deleteWorkflow, getWorkflowById, 
+    addWizard, updateWizard, deleteWizard, getWizardById,
     addValidationRuleset, updateValidationRuleset, deleteValidationRuleset, getValidationRulesetById,
     getUserById,
     isReady, isBackgroundFetching, fetchData, formatApiError,

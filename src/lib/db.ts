@@ -1,4 +1,5 @@
 
+
 import sqlite3 from 'sqlite3';
 import { open, type Database } from 'sqlite';
 import path from 'path';
@@ -34,6 +35,7 @@ const ALL_PERMISSIONS: Omit<Permission, 'id'>[] = [
   // Administration
   { name: 'View Activity Log', category: 'Admin', id: 'admin:view_activity_log' },
   { name: 'Manage Workflows', category: 'Admin', id: 'admin:manage_workflows' },
+  { name: 'Manage Wizards', category: 'Admin', id: 'admin:manage_wizards' },
   { name: 'Manage Validation Rules', category: 'Admin', id: 'admin:manage_validation_rules' },
   { name: 'Manage Model Groups', category: 'Admin', id: 'admin:manage_model_groups' },
   { name: 'Manage All Models & Structure', category: 'Admin', id: 'models:manage' },
@@ -299,6 +301,28 @@ async function initializeDb(): Promise<Database> {
       FOREIGN KEY (fromStateId) REFERENCES workflow_states(id) ON DELETE CASCADE,
       FOREIGN KEY (toStateId) REFERENCES workflow_states(id) ON DELETE CASCADE,
       UNIQUE(workflowId, fromStateId, toStateId)
+    );
+  `);
+  
+  // Wizard Tables
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS wizards (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      description TEXT
+    );
+  `);
+  
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS wizard_steps (
+      id TEXT PRIMARY KEY,
+      wizardId TEXT NOT NULL,
+      modelId TEXT NOT NULL,
+      orderIndex INTEGER NOT NULL,
+      instructions TEXT,
+      propertyIds TEXT NOT NULL, -- Stored as JSON array of strings
+      FOREIGN KEY (wizardId) REFERENCES wizards(id) ON DELETE CASCADE,
+      FOREIGN KEY (modelId) REFERENCES models(id) ON DELETE CASCADE
     );
   `);
 

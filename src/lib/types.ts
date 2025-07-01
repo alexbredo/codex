@@ -1,4 +1,5 @@
 
+
 export type PropertyType = 'string' | 'number' | 'boolean' | 'date' | 'time' | 'datetime' | 'relationship' | 'markdown' | 'rating' | 'image' | 'fileAttachment' | 'url';
 
 export interface Property {
@@ -311,4 +312,26 @@ export interface PublicShareData {
   link: SharedObjectLink;
   model: Model;
   object?: DataObject; // Only for 'view' and 'update' types
+}
+
+// Wizard Types
+export interface WizardStep {
+    id: string;
+    wizardId: string;
+    modelId: string;
+    orderIndex: number;
+    instructions?: string;
+    propertyIds: string[]; // JSON array of property IDs
+}
+
+export interface Wizard {
+    id: string;
+    name: string;
+    description?: string;
+    steps: WizardStep[];
+}
+
+export interface ModelGroupFormValues {
+    name: string;
+    description?: string;
 }
