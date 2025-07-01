@@ -20,7 +20,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { useData } from '@/contexts/data-context';
 import type { Model, DataObject, Property, WorkflowWithDetails, DataContextType, SharedObjectLink } from '@/lib/types';
-import { PlusCircle, Edit3, ListChecks, Download, Eye, LayoutGrid, List as ListIcon, Search as SearchIconLucide, FilterX, X as XIcon, Workflow as WorkflowIconLucide, CalendarIcon as CalendarIconLucide, Star, Loader2, Kanban as KanbanIcon, ArchiveRestore, ArchiveX } from 'lucide-react';
+import { PlusCircle, Edit3, ListChecks, Download, Eye, LayoutGrid, List as ListIcon, Search as SearchIconLucide, FilterX, X as XIcon, Workflow as WorkflowIconLucide, CalendarIcon as CalendarIconLucide, Star, Loader2, Kanban as KanbanIcon, ArchiveRestore, ArchiveX, Trash2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -37,12 +37,22 @@ import DataObjectsPageHeader, { type GroupablePropertyOption, type ColumnToggleO
 import DataObjectsTable, { type SortConfig, type IncomingRelationColumn } from '@/components/objects/data-objects-table';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel as UiSelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/contexts/auth-context';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 
 export type ViewMode = 'table' | 'gallery' | 'kanban';
 
 const INTERNAL_NO_REFERENCES_VALUE = "__NO_REFERENCES__";
-const INTERNAL_WORKFLOW_STATE_UPDATE_KEY = "__workflowStateUpdate__";
+const INTERNAL_WORKFLOW_STATE_UPDATE_KEY = "__WORKFLOW_STATE_UPDATE__";
 const INTERNAL_CLEAR_RELATIONSHIP_VALUE = "__CLEAR_RELATIONSHIP__";
 
 const WORKFLOW_STATE_GROUPING_KEY = "__WORKFLOW_STATE_GROUPING__";
@@ -72,6 +82,7 @@ export default function DataObjectsPage() {
     getModelById,
     getObjectsByModelId,
     deleteObject,
+    batchDeleteObjects, // Added this
     restoreObject,
     updateObject,
     getAllObjects,
@@ -404,11 +415,11 @@ export default function DataObjectsPage() {
     if (relatedModelForBatchUpdate && relatedModelForBatchUpdate.id) {
         const relatedObjects = getObjectsByModelId(relatedModelForBatchUpdate.id); 
         return relatedObjects.reduce((acc, obj) => {
-            const namespace = allModels.find(m => m.id === relatedModelForBatchUpdate.id)?.namespace || 'Default';
-            if (!acc[namespace]) {
-                acc[namespace] = [];
+            const groupName = allModels.find(m => m.id === relatedModelForBatchUpdate.id)?.namespace || 'Default';
+            if (!acc[groupName]) {
+                acc[groupName] = [];
             }
-            acc[namespace].push({
+            acc[groupName].push({
                 value: obj.id,
                 label: getObjectDisplayValue(obj, relatedModelForBatchUpdate, allModels, allDbObjects),
             });
@@ -574,6 +585,24 @@ export default function DataObjectsPage() {
         toast({ variant: "destructive", title: "Error Deleting Object", description: error.message || "An unexpected error occurred." });
     }
   }, [currentModel, deleteObject, toast]);
+
+  const handleBatchDelete = async () => {
+    if (!currentModel || selectedObjectIds.size === 0) return;
+    try {
+      await batchDeleteObjects(currentModel.id, Array.from(selectedObjectIds));
+      toast({
+        title: "Batch Delete Successful",
+        description: `${selectedObjectIds.size} items have been moved to the recycle bin.`,
+      });
+      setSelectedObjectIds(new Set()); // Clear selection after successful deletion
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Batch Delete Failed",
+        description: error.message || "An unexpected error occurred.",
+      });
+    }
+  };
 
   const handleRestoreObject = useCallback(async (objectId: string, objectName: string) => {
     if (!currentModel) return;
@@ -1194,6 +1223,7 @@ export default function DataObjectsPage() {
   };
 
   const canCreate = hasPermission('objects:create') || hasPermission(`model:create:${modelIdFromUrl}`);
+  const canDelete = hasPermission(`model:delete:${modelIdFromUrl}`);
 
   if (!dataContextIsReady || !currentModel) {
     return (
@@ -1212,7 +1242,7 @@ export default function DataObjectsPage() {
         searchTerm={searchTerm}
         onSearchTermChange={(term) => { setSearchTerm(term); setCurrentPage(1); }}
         viewMode={viewMode}
-        onViewModeChange={handleViewModeChange}
+        onViewModeChange={onViewModeChange}
         allAvailableColumnsForToggle={allAvailableColumnsForToggle}
         hiddenColumns={hiddenColumns}
         onToggleColumnVisibility={toggleColumnVisibility}
@@ -1221,8 +1251,8 @@ export default function DataObjectsPage() {
         onGroupingPropertyKeyChange={(key) => { setGroupingPropertyKey(key); setCurrentPage(1); }}
         isRefreshing={isRefreshing}
         onRefreshData={handleRefreshData}
-        onEditModelStructure={handleEditModelStructure}
-        onExportCSV={handleExportCSV}
+        onEditModelStructure={onEditModelStructure}
+        onExportCSV={onExportCSV}
         onCreateNew={handleCreateNew}
         onNavigateBack={() => router.push('/models')}
         viewingRecycleBin={viewingRecycleBin}
@@ -1414,6 +1444,28 @@ export default function DataObjectsPage() {
                     </DialogContent>
                 </Dialog>
             )}
+            {canDelete && (
+                <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                        <Button variant="destructive" size="sm">
+                            <Trash2 className="mr-2 h-4 w-4" /> Batch Delete
+                        </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                This will move {selectedObjectIds.size} selected item(s) to the recycle bin.
+                                This action can be undone by restoring them individually from the recycle bin.
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={handleBatchDelete} className="bg-destructive hover:bg-destructive/90">Delete Items</AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+            )}
             <Button variant="outline" size="sm" onClick={() => setSelectedObjectIds(new Set())} className="ml-auto">Clear Selection</Button>
         </div>
       )}
@@ -1549,4 +1601,3 @@ export default function DataObjectsPage() {
     </div>
   );
 }
-
