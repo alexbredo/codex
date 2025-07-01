@@ -1,4 +1,3 @@
-
 'use server';
 
 import { NextResponse } from 'next/server';
@@ -16,58 +15,20 @@ const createLinkSchema = z.object({
 });
 
 // GET all share links for a specific object or model
+// SIMPLIFIED FOR DEBUGGING
 export async function GET(request: Request) {
   const currentUser = await getCurrentUserFromCookie();
   if (!currentUser) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  // This is a temporary debugging step.
+  // Instead of fetching from DB, return an empty array to see if the route itself works.
   try {
-    // Robustly construct the full URL to prevent crashes from relative paths
-    const host = request.headers.get('host') || 'localhost';
-    const protocol = host.startsWith('localhost') ? 'http' : 'https';
-    const requestUrl = new URL(request.url, `${protocol}://${host}`);
-
-    const dataObjectId = requestUrl.searchParams.get('data_object_id');
-    const modelId = requestUrl.searchParams.get('model_id');
-
-    if (!dataObjectId && !modelId) {
-      return NextResponse.json({ error: 'A data_object_id or model_id must be provided' }, { status: 400 });
-    }
-
-    const db = await getDb();
-    let query: string;
-    const queryParams: any[] = [];
-    
-    if (dataObjectId) {
-      query = `
-        SELECT sl.id, sl.link_type, sl.model_id, sl.data_object_id, sl.created_by_user_id, sl.created_at, sl.expires_at, u.username as created_by_username
-        FROM shared_object_links sl
-        LEFT JOIN users u ON sl.created_by_user_id = u.id
-        WHERE sl.data_object_id = ?
-        ORDER BY sl.created_at DESC
-      `;
-      queryParams.push(dataObjectId);
-    } else { // modelId must be present
-      query = `
-        SELECT sl.id, sl.link_type, sl.model_id, sl.data_object_id, sl.created_by_user_id, sl.created_at, sl.expires_at, u.username as created_by_username
-        FROM shared_object_links sl
-        LEFT JOIN users u ON sl.created_by_user_id = u.id
-        WHERE sl.model_id = ? AND sl.link_type = 'create'
-        ORDER BY sl.created_at DESC
-      `;
-      queryParams.push(modelId);
-    }
-    
-    const links: SharedObjectLink[] = await db.all(query, ...queryParams);
-    return NextResponse.json(links);
+    return NextResponse.json([]);
   } catch (error: any) {
-    console.error(`[CRITICAL API ERROR] at GET /api/codex-structure/share-links:`, {
-        message: error.message,
-        stack: error.stack,
-        url: request.url,
-    });
-    return NextResponse.json({ error: 'Failed to fetch share links due to a server error.', details: error.message }, { status: 500 });
+    console.error(`[DEBUG] API route /api/codex-structure/share-links crashed even with simple response:`, error);
+    return NextResponse.json({ error: 'Fallback error from simplified route.', details: error.message }, { status: 500 });
   }
 }
 
