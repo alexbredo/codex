@@ -57,7 +57,12 @@ export async function GET(request: Request) {
     const links: SharedObjectLink[] = await db.all(query, ...queryParams);
     return NextResponse.json(links);
   } catch (error: any) {
-    console.error(`API Error (GET /share-links): Failed to fetch. Query: ${new URL(request.url).search}. Error:`, error);
+    // Enhanced server-side logging
+    console.error(`[CRITICAL API ERROR] at GET /api/codex-structure/share-links:`, {
+        message: error.message,
+        stack: error.stack,
+        url: request.url,
+    });
     return NextResponse.json({ error: 'Failed to fetch share links due to a server error.', details: error.message }, { status: 500 });
   }
 }
@@ -110,7 +115,12 @@ export async function POST(request: Request) {
     
     return NextResponse.json(newLink, { status: 201 });
   } catch (error: any) {
-    console.error('API Error (POST /share-links):', error);
+    // Enhanced server-side logging
+    console.error(`[CRITICAL API ERROR] at POST /api/codex-structure/share-links:`, {
+        message: error.message,
+        stack: error.stack,
+        url: request.url,
+    });
     const errorMessage = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: 'Failed to create share link', details: errorMessage }, { status: 500 });
   }
