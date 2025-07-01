@@ -122,14 +122,26 @@ function WizardStepsManager({ form, statesFieldArray }: { form: UseFormReturn<Wi
                           <span className="text-lg font-medium text-foreground truncate mr-2">{headerTitle}</span>
                         </div>
                         <Button
-                          type="button"
+                          asChild
                           variant="ghost"
                           size="icon"
                           onClick={(e) => { e.stopPropagation(); remove(index); }}
                           className="text-destructive hover:bg-destructive/10 flex-shrink-0"
                           aria-label="Remove step"
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  remove(index);
+                                }
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </span>
                         </Button>
                       </div>
                     </AccordionTrigger>
