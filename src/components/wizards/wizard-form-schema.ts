@@ -14,7 +14,7 @@ export const wizardStepSchema = z.object({
   stepType: z.enum(['create', 'lookup']).default('create'),
   orderIndex: z.number(),
   instructions: z.string().optional(),
-  propertyIds: z.array(z.string()), // Validation is now conditional
+  propertyIds: z.array(z.string()).optional().default([]), // Make optional for lookup steps
   propertyMappings: z.array(propertyMappingSchema).optional(),
 }).superRefine((data, ctx) => {
     if (data.stepType === 'create' && (!data.propertyIds || data.propertyIds.length === 0)) {
