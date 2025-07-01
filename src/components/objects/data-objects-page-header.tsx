@@ -191,6 +191,7 @@ export default function DataObjectsPageHeader({
           <Button onClick={onExportCSV} variant="outline" size="sm"><Download className="mr-2 h-4 w-4" /> Export CSV</Button>
           <CreateShareLinkDialog
             modelId={currentModel.id}
+            modelName={currentModel.name}
             activeLinkStatus={createShareStatus}
            />
           <Button onClick={onCreateNew} size="sm" className="bg-accent text-accent-foreground hover:bg-accent/90" disabled={viewingRecycleBin}><PlusCircle className="mr-2 h-4 w-4" /> Create New</Button>

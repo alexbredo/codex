@@ -20,9 +20,12 @@ import { useToast } from '@/hooks/use-toast';
 import type { ShareLinkType, SharedObjectLink } from '@/lib/types';
 import { Loader2, Share2, ClipboardCopy, Check } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Separator } from '@/components/ui/separator';
+import ShareLinkManager from './ShareLinkManager';
 
 interface CreateShareLinkDialogProps {
   modelId: string;
+  modelName?: string;
   objectId?: string | null;
   objectName?: string | null;
   activeLinkStatus?: 'view' | 'update' | 'create' | 'none';
@@ -47,7 +50,7 @@ const createShareLink = async (payload: {
   return response.json();
 };
 
-export default function CreateShareLinkDialog({ modelId, objectId, objectName, activeLinkStatus = 'none' }: CreateShareLinkDialogProps) {
+export default function CreateShareLinkDialog({ modelId, modelName, objectId, objectName, activeLinkStatus = 'none' }: CreateShareLinkDialogProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -135,79 +138,93 @@ export default function CreateShareLinkDialog({ modelId, objectId, objectName, a
           <Share2 className="mr-2 h-4 w-4"/>{isCreateMode ? 'Share Form' : 'Share'}
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="sm:max-w-2xl flex flex-col max-h-[90vh]">
         <DialogHeader>
-          <DialogTitle>Share {objectName ? `"${objectName}"` : 'Form'}</DialogTitle>
+          <DialogTitle>Share {objectName ? `"${objectName}"` : (modelName ? `${modelName} Form` : 'Form')}</DialogTitle>
           <DialogDescription>
             Generate a public link to {isCreateMode ? 'allow others to create new entries.' : 'share or allow edits to this object.'}
           </DialogDescription>
         </DialogHeader>
         
-        {generatedLink ? (
-          <div className="py-4 space-y-4">
-            <Label htmlFor="generated-link">Your Shareable Link</Label>
-            <div className="relative">
-              <Input id="generated-link" value={generatedLink} readOnly />
-              <Button
-                size="icon"
-                variant="ghost"
-                className="absolute top-1/2 right-1 -translate-y-1/2 h-8 w-8"
-                onClick={handleCopyToClipboard}
-              >
-                {hasCopied ? <Check className="h-4 w-4 text-green-500" /> : <ClipboardCopy className="h-4 w-4" />}
-              </Button>
+        <div className="flex-shrink-0 -mx-6 px-6 py-4 border-t">
+          {generatedLink ? (
+            <div className="space-y-4">
+              <Label htmlFor="generated-link">Your Shareable Link</Label>
+              <div className="relative">
+                <Input id="generated-link" value={generatedLink} readOnly />
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="absolute top-1/2 right-1 -translate-y-1/2 h-8 w-8"
+                  onClick={handleCopyToClipboard}
+                >
+                  {hasCopied ? <Check className="h-4 w-4 text-green-500" /> : <ClipboardCopy className="h-4 w-4" />}
+                </Button>
+              </div>
+              <p className="text-sm text-muted-foreground">Anyone with this link can access the content. The link expires {expiration === 'never' ? 'never' : `in ${expiration.replace('d', ' days').replace('h', ' hours')}`}.</p>
             </div>
-            <p className="text-sm text-muted-foreground">Anyone with this link can access the content. The link expires {expiration === 'never' ? 'never' : `in ${expiration.replace('d', ' days').replace('h', ' hours')}`}.</p>
-          </div>
-        ) : (
-          <div className="space-y-4 py-4">
-            {!isCreateMode && (
+          ) : (
+            <div className="space-y-4">
+              {!isCreateMode && (
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="link-type" className="text-right">Link Type</Label>
+                  <Select value={linkType} onValueChange={(value) => setLinkType(value as ShareLinkType)}>
+                    <SelectTrigger id="link-type" className="col-span-3">
+                      <SelectValue placeholder="Select link type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="view">View-only</SelectItem>
+                      <SelectItem value="update">Allow editing</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="link-type" className="text-right">Link Type</Label>
-                <Select value={linkType} onValueChange={(value) => setLinkType(value as ShareLinkType)}>
-                  <SelectTrigger id="link-type" className="col-span-3">
-                    <SelectValue placeholder="Select link type" />
+                <Label htmlFor="expiration" className="text-right">Expires In</Label>
+                <Select value={expiration} onValueChange={setExpiration}>
+                  <SelectTrigger id="expiration" className="col-span-3">
+                    <SelectValue placeholder="Set expiration" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="view">View-only</SelectItem>
-                    <SelectItem value="update">Allow editing</SelectItem>
+                    <SelectItem value="1h">1 Hour</SelectItem>
+                    <SelectItem value="24h">24 Hours</SelectItem>
+                    <SelectItem value="7d">7 Days</SelectItem>
+                    <SelectItem value="30d">30 Days</SelectItem>
+                    <SelectItem value="never">Never</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-            )}
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="expiration" className="text-right">Expires In</Label>
-              <Select value={expiration} onValueChange={setExpiration}>
-                <SelectTrigger id="expiration" className="col-span-3">
-                  <SelectValue placeholder="Set expiration" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1h">1 Hour</SelectItem>
-                  <SelectItem value="24h">24 Hours</SelectItem>
-                  <SelectItem value="7d">7 Days</SelectItem>
-                  <SelectItem value="30d">30 Days</SelectItem>
-                  <SelectItem value="never">Never</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="grid grid-cols-4 items-center gap-4">
+                  <div />
+                  <div className="col-span-3 flex items-center space-x-2">
+                      <Checkbox
+                          id="expires-on-submit"
+                          checked={expiresOnSubmit}
+                          onCheckedChange={(checked) => setExpiresOnSubmit(!!checked)}
+                          disabled={linkType === 'view'}
+                      />
+                      <Label htmlFor="expires-on-submit" className="text-sm font-normal">
+                          Single-use link (expires after first submission)
+                      </Label>
+                  </div>
+              </div>
             </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-                <div />
-                <div className="col-span-3 flex items-center space-x-2">
-                    <Checkbox
-                        id="expires-on-submit"
-                        checked={expiresOnSubmit}
-                        onCheckedChange={(checked) => setExpiresOnSubmit(!!checked)}
-                        disabled={linkType === 'view'}
-                    />
-                    <Label htmlFor="expires-on-submit" className="text-sm font-normal">
-                        Single-use link (expires after first submission)
-                    </Label>
+          )}
+        </div>
+        
+        {isCreateMode && !generatedLink && (
+            <div className="flex-grow overflow-y-auto -mx-6 px-6 pt-4 border-t space-y-4">
+                <div className="space-y-2">
+                    <h4 className="font-medium text-foreground">Existing Form Links</h4>
+                    <p className="text-xs text-muted-foreground">Manage existing public links for creating new "{modelName || 'items'}".</p>
+                </div>
+                <div className="mt-4">
+                    <ShareLinkManager modelId={modelId} />
                 </div>
             </div>
-          </div>
         )}
-
-        <DialogFooter>
+        
+        <DialogFooter className="flex-shrink-0 pt-4 border-t">
           {generatedLink ? (
              <Button onClick={() => setOpen(false)}>Done</Button>
           ) : (
