@@ -4,12 +4,13 @@ import { getDb } from '@/lib/db';
 import { getCurrentUserFromCookie } from '@/lib/auth';
 import { z } from 'zod';
 import type { SharedObjectLink } from '@/lib/types';
+import { randomUUID } from 'crypto';
 
 const createLinkSchema = z.object({
   link_type: z.enum(['view', 'create', 'update']),
   model_id: z.string().uuid(),
   data_object_id: z.string().uuid().optional().nullable(),
-  expires_at: z.string().datetime().optional().nullable(),
+  expires_at: z.string().datetime({ offset: true }).optional().nullable(),
 });
 
 // GET all share links for a specific object or model
@@ -82,7 +83,7 @@ export async function POST(request: Request) {
     }
     
     const db = await getDb();
-    const linkId = crypto.randomUUID();
+    const linkId = randomUUID();
     const createdAt = new Date().toISOString();
 
     await db.run(
@@ -104,6 +105,7 @@ export async function POST(request: Request) {
     return NextResponse.json(newLink, { status: 201 });
   } catch (error: any) {
     console.error('API Error (POST /share-links):', error);
-    return NextResponse.json({ error: 'Failed to create share link', details: error.message }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ error: 'Failed to create share link', details: errorMessage }, { status: 500 });
   }
 }
