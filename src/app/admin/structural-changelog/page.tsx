@@ -36,6 +36,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 const CATEGORY_TYPES = ['Structural', 'Data', 'Security'];
 const ALL_CATEGORIES_VALUE = "__ALL_CATEGORIES__";
 const ALL_USERS_VALUE = "__ALL_USERS__";
+const PUBLIC_USER_ID_FILTER_VALUE = "__PUBLIC_SUBMISSION__";
 
 
 function ActivityLogPageInternal() {
@@ -155,6 +156,7 @@ function ActivityLogPageInternal() {
             <SelectTrigger><SelectValue placeholder="User..." /></SelectTrigger>
             <SelectContent>
               <SelectItem value={ALL_USERS_VALUE}>Any User</SelectItem>
+              <SelectItem value={PUBLIC_USER_ID_FILTER_VALUE}>Public Submission</SelectItem>
               {allUsers.map(user => <SelectItem key={user.id} value={user.id}>{user.username}</SelectItem>)}
             </SelectContent>
           </Select>

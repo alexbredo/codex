@@ -4,6 +4,8 @@ import { getDb } from '@/lib/db';
 import { getCurrentUserFromCookie } from '@/lib/auth';
 import type { StructuralChangelogEntry, SecurityLogEntry, ActivityLogEntry, PaginatedActivityLogResponse } from '@/lib/types';
 
+const PUBLIC_USER_ID_FILTER_VALUE = "__PUBLIC_SUBMISSION__";
+
 export async function GET(request: Request) {
   const currentUser = await getCurrentUserFromCookie();
   if (!currentUser || (!currentUser.permissionIds.includes('admin:view_activity_log') && !currentUser.permissionIds.includes('*'))) {
@@ -106,7 +108,12 @@ export async function GET(request: Request) {
     // Manual Filtering
     let filteredEntries = allEntries;
     if (userIdFilter) {
-      filteredEntries = filteredEntries.filter(entry => entry.user.id === userIdFilter);
+      if (userIdFilter === PUBLIC_USER_ID_FILTER_VALUE) {
+        // Special case for public submissions which have a null userId in 'Data' category logs
+        filteredEntries = filteredEntries.filter(entry => entry.user.id === null && entry.category === 'Data');
+      } else {
+        filteredEntries = filteredEntries.filter(entry => entry.user.id === userIdFilter);
+      }
     }
     if (actionFilter) {
       filteredEntries = filteredEntries.filter(entry => entry.action === actionFilter);
