@@ -27,10 +27,11 @@ function mapWizardToFormValues(wizard?: Wizard): WizardFormValues {
     steps: wizard.steps.map(step => ({
         id: step.id,
         modelId: step.modelId,
+        stepType: step.stepType || 'create',
         instructions: step.instructions || '',
         propertyIds: step.propertyIds || [],
         orderIndex: step.orderIndex,
-        propertyMappings: step.propertyMappings || [], // This line was missing
+        propertyMappings: step.propertyMappings || [],
     })),
   };
 }
