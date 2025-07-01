@@ -376,4 +376,3 @@ function RunWizardPageInternal() {
 }
 
 export default withAuth(RunWizardPageInternal, 'any');
-
