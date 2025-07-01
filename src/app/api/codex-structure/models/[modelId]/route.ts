@@ -194,7 +194,7 @@ export async function PUT(request: Request, { params }: Params) {
         );
         newProcessedProperties.push({
             ...prop, id: propertyId, model_id: params.modelId, 
-            required: !!prop.required, autoSetOnCreate: !!prop.autoSetOnCreate, autoSetOnUpdate: !!p.autoSetOnUpdate, isUnique: !!p.isUnique,
+            required: !!prop.required, autoSetOnCreate: !!prop.autoSetOnCreate, autoSetOnUpdate: !!prop.autoSetOnUpdate, isUnique: !!prop.isUnique,
             defaultValue: prop.defaultValue, validationRulesetId: prop.validationRulesetId ?? null, minValue: propMinValueForDb, maxValue: propMaxValueForDb
         } as Property);
       }
@@ -361,5 +361,3 @@ export async function DELETE(request: Request, { params }: Params) {
     return NextResponse.json({ error: 'Failed to delete model', details: errorMessage }, { status: 500 });
   }
 }
-
-    
