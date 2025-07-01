@@ -49,7 +49,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
   return (
     <SidebarProvider defaultOpen>
-      <div className="flex min-h-screen">
+      <div className="flex h-screen w-full">
         <GlobalSearch open={isSearchOpen} setOpen={setIsSearchOpen} />
         <Sidebar collapsible="icon" className="border-r">
           <SidebarHeader>
@@ -99,35 +99,43 @@ export default function AppLayout({ children }: AppLayoutProps) {
         
         <SidebarInset>
           <header className="sticky top-0 z-10 flex items-center h-14 px-4 border-b bg-background/80 backdrop-blur-sm justify-between gap-4">
-            <SidebarTrigger className="md:hidden" />
-            <div className="flex-1 flex justify-center">
-              <Button
-                variant="outline"
-                onClick={() => setIsSearchOpen(true)}
-                className="w-full max-w-xs justify-start text-muted-foreground"
-              >
-                <Search className="mr-2 h-4 w-4" />
-                Search...
-                <kbd className="pointer-events-none ml-auto pl-4 inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
-                    <span className="text-xs">⌘</span>K
-                </kbd>
-              </Button>
+             {/* LEFT GROUP */}
+            <div className="flex items-center gap-4">
+                <SidebarTrigger className="md:hidden" />
+                {isClient && user && (
+                    <div className="flex items-center gap-2">
+                        <UserCircle size={24} className="text-muted-foreground" />
+                        <div className="hidden sm:flex flex-col items-start leading-tight">
+                        <span className="text-sm font-medium">{user.username}</span>
+                        <span className="text-xs text-muted-foreground">{userRoleDisplay}</span>
+                        </div>
+                        <Button variant="ghost" size="icon" onClick={logout} className="text-muted-foreground hover:text-destructive h-8 w-8">
+                            <LogOut size={18} />
+                        </Button>
+                    </div>
+                )}
             </div>
-            <div className="flex items-center">
-              {user && (
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground hidden md:inline">{user.username}</span>
-                  <Button variant="ghost" size="sm" onClick={logout} className="text-destructive hover:text-destructive hover:bg-destructive/10">
-                    <LogOut size={18} className="md:mr-1" /> <span className="hidden md:inline">Logout</span>
-                  </Button>
-                </div>
-              )}
-              {!user && (
-                <div className="hidden md:flex items-center gap-2">
-                  <Link href="/login" passHref legacyBehavior><Button variant="outline" size="sm">Login</Button></Link>
-                  <Link href="/register" passHref legacyBehavior><Button variant="default" size="sm">Register</Button></Link>
-                </div>
-              )}
+            
+            {/* RIGHT GROUP */}
+            <div className="flex items-center gap-2">
+                <Button
+                    variant="outline"
+                    onClick={() => setIsSearchOpen(true)}
+                    className="w-40 sm:w-64 justify-start text-muted-foreground"
+                >
+                    <Search className="mr-2 h-4 w-4" />
+                    <span className="hidden sm:inline">Search...</span>
+                    <kbd className="pointer-events-none ml-auto hidden sm:inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
+                        <span className="text-xs">⌘</span>K
+                    </kbd>
+                </Button>
+
+                {isClient && !user && (
+                    <div className="hidden md:flex items-center gap-2">
+                        <Link href="/login" passHref legacyBehavior><Button variant="outline" size="sm">Login</Button></Link>
+                        <Link href="/register" passHref legacyBehavior><Button variant="default" size="sm">Register</Button></Link>
+                    </div>
+                )}
             </div>
           </header>
           <main className="flex-1 p-6 overflow-auto">
