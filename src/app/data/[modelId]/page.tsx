@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -80,6 +81,7 @@ export default function DataObjectsPage() {
     isReady: dataContextIsReady,
     fetchData,
     formatApiError,
+    lastChangedInfo,
   }: DataContextType = dataContext;
   const { toast } = useToast();
   const { user, hasPermission, isLoading: isAuthLoading } = useAuth();
@@ -1547,3 +1549,4 @@ export default function DataObjectsPage() {
     </div>
   );
 }
+
