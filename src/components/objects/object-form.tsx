@@ -292,10 +292,11 @@ export default function ObjectForm({
                 ))}
                 
                 {hiddenMappedProperties.map((property) => (
-                  <input
+                  <Controller
                     key={property.id}
-                    type="hidden"
-                    {...form.register(property.name)}
+                    name={property.name as any}
+                    control={form.control}
+                    render={({ field }) => <input type="hidden" {...field} />}
                   />
                 ))}
             </div>
