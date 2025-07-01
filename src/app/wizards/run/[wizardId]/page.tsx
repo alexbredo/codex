@@ -10,7 +10,7 @@ import { createObjectFormSchema } from '@/components/objects/object-form-schema'
 import { useData } from '@/contexts/data-context';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import type { Model, DataObject, Wizard } from '@/lib/types';
 import { ArrowLeft, Loader2, ShieldAlert, CheckCircle, ListOrdered, Home, Wand2 } from 'lucide-react';
 import { z } from 'zod';
