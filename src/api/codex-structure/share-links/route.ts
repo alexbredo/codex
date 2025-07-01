@@ -37,7 +37,7 @@ export async function GET(request: Request) {
       query = `
         SELECT sl.*, u.username as created_by_username 
         FROM shared_object_links sl
-        JOIN users u ON sl.created_by_user_id = u.id
+        LEFT JOIN users u ON sl.created_by_user_id = u.id
         WHERE sl.data_object_id = ?
         ORDER BY sl.created_at DESC
       `;
@@ -46,7 +46,7 @@ export async function GET(request: Request) {
       query = `
         SELECT sl.*, u.username as created_by_username 
         FROM shared_object_links sl
-        JOIN users u ON sl.created_by_user_id = u.id
+        LEFT JOIN users u ON sl.created_by_user_id = u.id
         WHERE sl.model_id = ? AND sl.link_type = 'create'
         ORDER BY sl.created_at DESC
       `;
