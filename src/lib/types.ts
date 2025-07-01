@@ -324,6 +324,7 @@ export interface WizardStep {
     id: string;
     wizardId: string;
     modelId: string;
+    stepType: 'create' | 'lookup';
     orderIndex: number;
     instructions?: string;
     propertyIds: string[]; // JSON array of property IDs

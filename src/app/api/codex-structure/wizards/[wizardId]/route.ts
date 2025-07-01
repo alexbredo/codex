@@ -25,6 +25,7 @@ export async function GET(request: Request, { params }: Params) {
     const stepsFromDb = await db.all('SELECT * FROM wizard_steps WHERE wizardId = ? ORDER BY orderIndex ASC', params.wizardId);
     const steps: WizardStep[] = stepsFromDb.map(s => ({
         ...s,
+        stepType: s.step_type,
         propertyIds: JSON.parse(s.propertyIds || '[]'),
         propertyMappings: JSON.parse(s.propertyMappings || '[]'),
     }));
@@ -48,7 +49,7 @@ export async function PUT(request: Request, { params }: Params) {
     await db.run('BEGIN TRANSACTION');
 
     try {
-        const { name, description, steps }: Omit<Wizard, 'id'> & { steps: Array<Omit<WizardStep, 'wizardId'> & {id?: string}> } = await request.json();
+        const { name, description, steps }: Omit<Wizard, 'id'> & { steps: Array<Omit<WizardStep, 'wizardId' | 'stepType'> & {id?: string; stepType: 'create' | 'lookup'}> } = await request.json();
         const { wizardId } = params;
 
         const existingWizard = await db.get('SELECT id FROM wizards WHERE id = ?', wizardId);
@@ -66,8 +67,8 @@ export async function PUT(request: Request, { params }: Params) {
         for (const step of steps) {
             const stepId = step.id && !step.id.startsWith('temp-') ? step.id : crypto.randomUUID();
             await db.run(
-                'INSERT INTO wizard_steps (id, wizardId, modelId, orderIndex, instructions, propertyIds, propertyMappings) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                stepId, wizardId, step.modelId, step.orderIndex, step.instructions, JSON.stringify(step.propertyIds), JSON.stringify(step.propertyMappings || [])
+                'INSERT INTO wizard_steps (id, wizardId, modelId, step_type, orderIndex, instructions, propertyIds, propertyMappings) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                stepId, wizardId, step.modelId, step.stepType || 'create', step.orderIndex, step.instructions, JSON.stringify(step.propertyIds), JSON.stringify(step.propertyMappings || [])
             );
             insertedSteps.push({ ...step, id: stepId, wizardId });
         }

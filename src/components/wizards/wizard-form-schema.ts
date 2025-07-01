@@ -11,10 +11,19 @@ export const propertyMappingSchema = z.object({
 export const wizardStepSchema = z.object({
   id: z.string().optional(),
   modelId: z.string().min(1, "A model must be selected for each step."),
+  stepType: z.enum(['create', 'lookup']).default('create'),
   orderIndex: z.number(),
   instructions: z.string().optional(),
-  propertyIds: z.array(z.string()).min(1, "At least one property must be selected for each step."),
+  propertyIds: z.array(z.string()), // Validation is now conditional
   propertyMappings: z.array(propertyMappingSchema).optional(),
+}).superRefine((data, ctx) => {
+    if (data.stepType === 'create' && (!data.propertyIds || data.propertyIds.length === 0)) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "At least one property must be selected for a 'Create' step.",
+            path: ["propertyIds"],
+        });
+    }
 });
 
 export const wizardFormSchema = z.object({

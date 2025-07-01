@@ -22,6 +22,7 @@ export async function GET(request: Request) {
             .filter(s => s.wizardId === w.id)
             .map(s => ({
                 ...s,
+                stepType: s.step_type || 'create',
                 propertyIds: JSON.parse(s.propertyIds || '[]') as string[],
                 propertyMappings: JSON.parse(s.propertyMappings || '[]') as PropertyMapping[],
             }))
@@ -58,8 +59,8 @@ export async function POST(request: Request) {
     for (const step of steps) {
         const stepId = crypto.randomUUID();
         await db.run(
-            'INSERT INTO wizard_steps (id, wizardId, modelId, orderIndex, instructions, propertyIds, propertyMappings) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            stepId, wizardId, step.modelId, step.orderIndex, step.instructions, JSON.stringify(step.propertyIds), JSON.stringify(step.propertyMappings || [])
+            'INSERT INTO wizard_steps (id, wizardId, modelId, step_type, orderIndex, instructions, propertyIds, propertyMappings) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            stepId, wizardId, step.modelId, step.stepType || 'create', step.orderIndex, step.instructions, JSON.stringify(step.propertyIds), JSON.stringify(step.propertyMappings || [])
         );
     }
     

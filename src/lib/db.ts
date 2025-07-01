@@ -312,11 +312,17 @@ async function initializeDb(): Promise<Database> {
     );
   `);
   
-  // Migration for wizard_steps table to add propertyMappings
+  // Migration for wizard_steps table
   const wizardStepsTableInfo = await db.all("PRAGMA table_info(wizard_steps)").catch(() => []);
-  if (wizardStepsTableInfo.length > 0 && !wizardStepsTableInfo.some(col => col.name === 'propertyMappings')) {
-    console.log("Migrating 'wizard_steps' table: adding 'propertyMappings' column.");
-    await db.exec('ALTER TABLE wizard_steps ADD COLUMN propertyMappings TEXT');
+  if (wizardStepsTableInfo.length > 0) {
+      if (!wizardStepsTableInfo.some(col => col.name === 'propertyMappings')) {
+        console.log("Migrating 'wizard_steps' table: adding 'propertyMappings' column.");
+        await db.exec('ALTER TABLE wizard_steps ADD COLUMN propertyMappings TEXT');
+      }
+      if (!wizardStepsTableInfo.some(col => col.name === 'step_type')) {
+        console.log("Migrating 'wizard_steps' table: adding 'step_type' column.");
+        await db.exec("ALTER TABLE wizard_steps ADD COLUMN step_type TEXT NOT NULL DEFAULT 'create'");
+      }
   }
 
   await db.exec(`
@@ -324,6 +330,7 @@ async function initializeDb(): Promise<Database> {
       id TEXT PRIMARY KEY,
       wizardId TEXT NOT NULL,
       modelId TEXT NOT NULL,
+      step_type TEXT NOT NULL DEFAULT 'create',
       orderIndex INTEGER NOT NULL,
       instructions TEXT,
       propertyIds TEXT NOT NULL, -- Stored as JSON array of strings

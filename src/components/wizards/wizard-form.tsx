@@ -28,6 +28,7 @@ import { Tooltip, TooltipProvider, TooltipTrigger, TooltipContent } from '@/comp
 import { modelGroupFormSchema } from '@/components/model-groups/model-group-form-schema'; // For new group dialog
 import type { ModelGroupFormValues } from '@/components/model-groups/model-group-form-schema'; // For new group dialog
 import { zodResolver } from '@hookform/resolvers/zod'; // For new group dialog
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
 const INTERNAL_MAPPING_OBJECT_ID_KEY = "__OBJECT_ID__";
 
@@ -138,7 +139,7 @@ function StepPropertyMappings({ form, stepIndex, allSteps }: {
                           <Select onValueChange={field.onChange} value={field.value} disabled={!sourceModel}>
                               <FormControl><SelectTrigger><SelectValue placeholder={sourceModel ? "Select source field..." : "Select source step first"} /></SelectTrigger></FormControl>
                               <SelectContent>
-                                  <SelectItem value={INTERNAL_MAPPING_OBJECT_ID_KEY}>-- Created Object ID --</SelectItem>
+                                  <SelectItem value={INTERNAL_MAPPING_OBJECT_ID_KEY}>-- Created/Selected Object ID --</SelectItem>
                                   {sourceModel?.properties.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
                               </SelectContent>
                           </Select><FormMessage />
@@ -190,6 +191,7 @@ function WizardStepsManager({ form, statesFieldArray }: { form: UseFormReturn<Wi
             const modelForStep = models.find(m => m.id === selectedModelId);
             const headerTitle = modelForStep ? `Step ${index + 1}: ${modelForStep.name}` : `Step #${index + 1}`;
             const selectedProps = form.watch(`steps.${index}.propertyIds`) || [];
+            const stepType = form.watch(`steps.${index}.stepType`) || 'create';
 
             return (
               <SortableItem key={fieldItem.id} id={fieldItem.id} className="bg-card rounded-md border">
@@ -228,9 +230,7 @@ function WizardStepsManager({ form, statesFieldArray }: { form: UseFormReturn<Wi
                       </div>
                     </AccordionTrigger>
                     <AccordionContent className="p-4 pt-2 space-y-4">
-                        <FormField
-                            control={form.control}
-                            name={`steps.${index}.modelId`}
+                        <FormField control={form.control} name={`steps.${index}.modelId`}
                             render={({ field }) => (
                                 <FormItem>
                                     <FormLabel>Model for this Step</FormLabel>
@@ -239,6 +239,32 @@ function WizardStepsManager({ form, statesFieldArray }: { form: UseFormReturn<Wi
                                         <SelectContent>{models.sort((a,b) => a.name.localeCompare(b.name)).map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}</SelectContent>
                                     </Select>
                                     <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+                        <FormField
+                            control={form.control}
+                            name={`steps.${index}.stepType`}
+                            render={({ field }) => (
+                                <FormItem className="space-y-3">
+                                <FormLabel>Step Type</FormLabel>
+                                <FormControl>
+                                    <RadioGroup
+                                    onValueChange={field.onChange}
+                                    value={field.value}
+                                    className="flex space-x-4"
+                                    >
+                                    <FormItem className="flex items-center space-x-2">
+                                        <FormControl><RadioGroupItem value="create" /></FormControl>
+                                        <FormLabel className="font-normal">Create New Object</FormLabel>
+                                    </FormItem>
+                                    <FormItem className="flex items-center space-x-2">
+                                        <FormControl><RadioGroupItem value="lookup" /></FormControl>
+                                        <FormLabel className="font-normal">Find Existing Object</FormLabel>
+                                    </FormItem>
+                                    </RadioGroup>
+                                </FormControl>
+                                <FormMessage />
                                 </FormItem>
                             )}
                         />
@@ -253,25 +279,27 @@ function WizardStepsManager({ form, statesFieldArray }: { form: UseFormReturn<Wi
                                 </FormItem>
                             )}
                         />
-                        <FormField
-                            control={form.control}
-                            name={`steps.${index}.propertyIds`}
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>Included Properties</FormLabel>
-                                    <Dialog>
-                                        <DialogTrigger asChild>
-                                            <Button type="button" variant="outline" className="w-full justify-start" disabled={!modelForStep}>
-                                                <ListChecks className="mr-2 h-4 w-4"/> {selectedProps.length} of {modelForStep?.properties.length || 0} properties selected
-                                            </Button>
-                                        </DialogTrigger>
-                                        {modelForStep && <StepPropertySelector model={modelForStep} selectedPropertyIds={field.value || []} onSelectionChange={field.onChange} />}
-                                    </Dialog>
-                                    <FormDescription>Select which fields from "{modelForStep?.name || 'the model'}" to show in this step.</FormDescription>
-                                    <FormMessage />
-                                </FormItem>
-                            )}
-                        />
+                        {stepType === 'create' && (
+                            <FormField
+                                control={form.control}
+                                name={`steps.${index}.propertyIds`}
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Included Properties</FormLabel>
+                                        <Dialog>
+                                            <DialogTrigger asChild>
+                                                <Button type="button" variant="outline" className="w-full justify-start" disabled={!modelForStep}>
+                                                    <ListChecks className="mr-2 h-4 w-4"/> {selectedProps.length} of {modelForStep?.properties.length || 0} properties selected
+                                                </Button>
+                                            </DialogTrigger>
+                                            {modelForStep && <StepPropertySelector model={modelForStep} selectedPropertyIds={field.value || []} onSelectionChange={field.onChange} />}
+                                        </Dialog>
+                                        <FormDescription>Select which fields from "{modelForStep?.name || 'the model'}" to show in this step.</FormDescription>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                        )}
                         {index > 0 && <StepPropertyMappings form={form} stepIndex={index} allSteps={watchedSteps} />}
                     </AccordionContent>
                   </AccordionItem>
@@ -285,7 +313,7 @@ function WizardStepsManager({ form, statesFieldArray }: { form: UseFormReturn<Wi
         type="button"
         variant="outline"
         size="sm"
-        onClick={() => append({ id: crypto.randomUUID(), modelId: '', instructions: '', propertyIds: [], propertyMappings:[], orderIndex: fields.length })}
+        onClick={() => append({ id: crypto.randomUUID(), modelId: '', stepType: 'create', instructions: '', propertyIds: [], propertyMappings:[], orderIndex: fields.length })}
         className="mt-4 w-full border-dashed hover:border-solid"
       >
         <PlusCircle className="mr-2 h-4 w-4" /> Add Step
