@@ -793,7 +793,7 @@ function ViewObjectPageInternal({ isPublicView = false, publicObjectData, public
       )}
 
       <LightboxDialog open={!!lightboxImageUrl} onOpenChange={(open) => !open && setLightboxImageUrl(null)}>
-        <LightboxDialogContent className="max-w-5xl w-auto p-0 bg-transparent border-0 shadow-none">
+        <LightboxDialogContent className="w-[90vw] max-w-[1600px] bg-transparent border-0 p-0 shadow-none">
           <LightboxDialogHeader className="sr-only">
             <LightboxDialogTitle>Image Lightbox</LightboxDialogTitle>
             <LightboxDialogDescription>A larger view of the selected image. Click outside the image or press escape to close.</LightboxDialogDescription>

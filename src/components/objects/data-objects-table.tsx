@@ -446,7 +446,7 @@ export default function DataObjectsTable({
         </TableBody>
       </Table>
       <Dialog open={!!lightboxImageUrl} onOpenChange={(open) => !open && setLightboxImageUrl(null)}>
-        <DialogContent className="max-w-5xl w-auto p-0 bg-transparent border-0 shadow-none">
+        <DialogContent className="w-[90vw] max-w-[1600px] bg-transparent border-0 p-0 shadow-none">
           <LightboxDialogHeader className="sr-only">
             <LightboxDialogTitle>Image Lightbox</LightboxDialogTitle>
             <LightboxDialogDescription>A larger view of the selected image. Click outside the image or press escape to close.</LightboxDialogDescription>
