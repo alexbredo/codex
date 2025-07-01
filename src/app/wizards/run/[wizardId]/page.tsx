@@ -146,7 +146,7 @@ function RunWizardPageInternal() {
     try {
         const createdObject = await addObject(modelForStep!.id, values);
         if (createdObject && createdObject.id) {
-            setWizardData(prev => ({ ...prev, [currentStepIndex]: values }));
+            setWizardData(prev => ({ ...prev, [currentStepIndex]: createdObject }));
             setStepObjectIds(prev => ({ ...prev, [currentStepIndex]: createdObject.id }));
             
             if (currentStepIndex < currentWizard!.steps.length - 1) {
@@ -226,9 +226,16 @@ function RunWizardPageInternal() {
                         const objectData = wizardData[index];
                         if (!model || !objectId || !objectData) return null;
 
-                        const propertiesToShow = step.stepType === 'create' 
-                            ? step.propertyIds 
-                            : model.properties.filter(p => p.name !== 'name' && p.name !== 'title').map(p => p.id).slice(0,3);
+                        const propertiesToShowIds = new Set<string>();
+                        if (step.stepType === 'create') {
+                            (step.propertyIds || []).forEach(id => propertiesToShowIds.add(id));
+                            (step.propertyMappings || []).forEach(mapping => propertiesToShowIds.add(mapping.targetPropertyId));
+                        } else {
+                            model.properties
+                                .filter(p => p.name.toLowerCase() !== 'name' && p.name.toLowerCase() !== 'title')
+                                .slice(0, 3)
+                                .forEach(p => propertiesToShowIds.add(p.id));
+                        }
 
                         return (
                             <Card key={step.id} className="bg-muted/50">
@@ -242,7 +249,7 @@ function RunWizardPageInternal() {
                                     </Button>
                                 </CardHeader>
                                 <CardContent className="p-4 pt-0 text-sm space-y-2">
-                                    {propertiesToShow.map(propId => {
+                                    {Array.from(propertiesToShowIds).map(propId => {
                                         const propDef = model.properties.find(p => p.id === propId);
                                         if (!propDef) return null;
                                         
@@ -268,7 +275,7 @@ function RunWizardPageInternal() {
                                             </div>
                                         );
                                     })}
-                                    {propertiesToShow.length === 0 && <p className="text-xs text-muted-foreground italic text-center">No specific fields were configured for display in this step.</p>}
+                                    {propertiesToShowIds.size === 0 && <p className="text-xs text-muted-foreground italic text-center">No specific fields were configured for display in this step.</p>}
                                 </CardContent>
                             </Card>
                         );

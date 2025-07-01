@@ -60,9 +60,7 @@ export default function ObjectForm({
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
 
-  const propertiesToRender = (propertyIdsToShow
-    ? model.properties.filter(p => propertyIdsToShow.includes(p.id))
-    : model.properties).sort((a, b) => a.orderIndex - b.orderIndex);
+  const allPropertiesSorted = model.properties.sort((a, b) => a.orderIndex - b.orderIndex);
 
 
   let availableStatesForSelect: Array<{ value: string; label: string; isCurrent: boolean }> = [];
@@ -269,10 +267,13 @@ export default function ObjectForm({
                 )}
 
 
-                {propertiesToRender.map((property) => {
-                  const isHidden = hiddenPropertyIds.includes(property.id);
+                {allPropertiesSorted.map((property) => {
+                  const isVisibleInStep = propertyIdsToShow ? propertyIdsToShow.includes(property.id) : true;
+                  const isMappedAndHidden = hiddenPropertyIds.includes(property.id);
+                  const shouldDisplay = isVisibleInStep && !isMappedAndHidden;
+
                   return (
-                    <div key={property.id} className={isHidden ? 'hidden' : ''}>
+                    <div key={property.id} className={!shouldDisplay ? 'hidden' : ''}>
                       <AdaptiveFormField
                           form={form} 
                           property={property}
