@@ -217,9 +217,10 @@ function RunWizardPageInternal() {
             form={form}
             model={modelForStep}
             onSubmit={onSubmitStep}
-            onCancel={handleBack}
+            onCancel={() => {}} // onCancel is not used here, the wizard has its own Back button
             isLoading={isSubmittingStep}
             propertyIdsToShow={currentStep?.propertyIds}
+            hideFooter={true} // Hide the form's default buttons
           />
         </CardContent>
         <CardFooter className="flex justify-between">
@@ -237,4 +238,3 @@ function RunWizardPageInternal() {
 }
 
 export default withAuth(RunWizardPageInternal, 'any');
-    

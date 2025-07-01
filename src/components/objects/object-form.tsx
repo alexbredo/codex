@@ -1,4 +1,3 @@
-
 'use client';
 
 import type { UseFormReturn, ControllerRenderProps, FieldValues, FieldPath } from 'react-hook-form';
@@ -31,6 +30,7 @@ interface ObjectFormProps {
   allUsers?: User[];
   currentUser?: User | null;
   propertyIdsToShow?: string[]; // New optional prop
+  hideFooter?: boolean; // New prop
 }
 
 const INTERNAL_NO_STATE_CHANGE = "__NO_STATE_CHANGE__";
@@ -48,7 +48,8 @@ export default function ObjectForm({
   currentWorkflow,
   allUsers = [],
   currentUser,
-  propertyIdsToShow, // Destructure new prop
+  propertyIdsToShow,
+  hideFooter = false, // Default to false
 }: ObjectFormProps) {
   const formContext = existingObject ? 'edit' : 'create';
   const { toast } = useToast();
@@ -280,16 +281,18 @@ export default function ObjectForm({
                 ))}
             </div>
         </ScrollArea>
-        <div className="flex justify-end space-x-2 pt-4 border-t">
-          <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading || isUploadingFiles}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={isLoading || form.formState.isSubmitting || isUploadingFiles} className="bg-primary hover:bg-primary/90">
-            {isUploadingFiles ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Uploading...</>
-              : (isLoading || form.formState.isSubmitting) ? 'Saving...' 
-              : (existingObject ? `Update ${model.name}` : `Create ${model.name}`)}
-          </Button>
-        </div>
+        {!hideFooter && (
+            <div className="flex justify-end space-x-2 pt-4 border-t">
+            <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading || isUploadingFiles}>
+                Cancel
+            </Button>
+            <Button type="submit" disabled={isLoading || form.formState.isSubmitting || isUploadingFiles} className="bg-primary hover:bg-primary/90">
+                {isUploadingFiles ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Uploading...</>
+                : (isLoading || form.formState.isSubmitting) ? 'Saving...' 
+                : (existingObject ? `Update ${model.name}` : `Create ${model.name}`)}
+            </Button>
+            </div>
+        )}
       </form>
     </Form>
   );
