@@ -1242,7 +1242,7 @@ export default function DataObjectsPage() {
         searchTerm={searchTerm}
         onSearchTermChange={(term) => { setSearchTerm(term); setCurrentPage(1); }}
         viewMode={viewMode}
-        onViewModeChange={onViewModeChange}
+        onViewModeChange={handleViewModeChange}
         allAvailableColumnsForToggle={allAvailableColumnsForToggle}
         hiddenColumns={hiddenColumns}
         onToggleColumnVisibility={toggleColumnVisibility}
@@ -1251,8 +1251,8 @@ export default function DataObjectsPage() {
         onGroupingPropertyKeyChange={(key) => { setGroupingPropertyKey(key); setCurrentPage(1); }}
         isRefreshing={isRefreshing}
         onRefreshData={handleRefreshData}
-        onEditModelStructure={onEditModelStructure}
-        onExportCSV={onExportCSV}
+        onEditModelStructure={handleEditModelStructure}
+        onExportCSV={handleExportCSV}
         onCreateNew={handleCreateNew}
         onNavigateBack={() => router.push('/models')}
         viewingRecycleBin={viewingRecycleBin}
