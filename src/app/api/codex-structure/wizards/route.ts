@@ -1,8 +1,7 @@
 
-
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import type { Wizard, WizardStep } from '@/lib/types';
+import type { Wizard, WizardStep, PropertyMapping } from '@/lib/types';
 import { getCurrentUserFromCookie } from '@/lib/auth';
 
 // GET all wizards
@@ -23,7 +22,8 @@ export async function GET(request: Request) {
             .filter(s => s.wizardId === w.id)
             .map(s => ({
                 ...s,
-                propertyIds: JSON.parse(s.propertyIds || '[]') as string[]
+                propertyIds: JSON.parse(s.propertyIds || '[]') as string[],
+                propertyMappings: JSON.parse(s.propertyMappings || '[]') as PropertyMapping[],
             }))
     }));
     
@@ -58,8 +58,8 @@ export async function POST(request: Request) {
     for (const step of steps) {
         const stepId = crypto.randomUUID();
         await db.run(
-            'INSERT INTO wizard_steps (id, wizardId, modelId, orderIndex, instructions, propertyIds) VALUES (?, ?, ?, ?, ?, ?)',
-            stepId, wizardId, step.modelId, step.orderIndex, step.instructions, JSON.stringify(step.propertyIds)
+            'INSERT INTO wizard_steps (id, wizardId, modelId, orderIndex, instructions, propertyIds, propertyMappings) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            stepId, wizardId, step.modelId, step.orderIndex, step.instructions, JSON.stringify(step.propertyIds), JSON.stringify(step.propertyMappings || [])
         );
     }
     

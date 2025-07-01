@@ -1,8 +1,7 @@
 
-
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import type { Wizard, WizardStep } from '@/lib/types';
+import type { Wizard, WizardStep, PropertyMapping } from '@/lib/types';
 import { getCurrentUserFromCookie } from '@/lib/auth';
 
 interface Params {
@@ -26,7 +25,8 @@ export async function GET(request: Request, { params }: Params) {
     const stepsFromDb = await db.all('SELECT * FROM wizard_steps WHERE wizardId = ? ORDER BY orderIndex ASC', params.wizardId);
     const steps: WizardStep[] = stepsFromDb.map(s => ({
         ...s,
-        propertyIds: JSON.parse(s.propertyIds || '[]')
+        propertyIds: JSON.parse(s.propertyIds || '[]'),
+        propertyMappings: JSON.parse(s.propertyMappings || '[]'),
     }));
 
     const wizard: Wizard = { ...wizardRow, steps };
@@ -64,10 +64,10 @@ export async function PUT(request: Request, { params }: Params) {
 
         const insertedSteps: WizardStep[] = [];
         for (const step of steps) {
-            const stepId = step.id || crypto.randomUUID();
+            const stepId = step.id && !step.id.startsWith('temp-') ? step.id : crypto.randomUUID();
             await db.run(
-                'INSERT INTO wizard_steps (id, wizardId, modelId, orderIndex, instructions, propertyIds) VALUES (?, ?, ?, ?, ?, ?)',
-                stepId, wizardId, step.modelId, step.orderIndex, step.instructions, JSON.stringify(step.propertyIds)
+                'INSERT INTO wizard_steps (id, wizardId, modelId, orderIndex, instructions, propertyIds, propertyMappings) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                stepId, wizardId, step.modelId, step.orderIndex, step.instructions, JSON.stringify(step.propertyIds), JSON.stringify(step.propertyMappings || [])
             );
             insertedSteps.push({ ...step, id: stepId, wizardId });
         }
