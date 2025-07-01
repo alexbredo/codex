@@ -73,20 +73,23 @@ import { cn } from '@/lib/utils';
 interface ViewObjectPageProps {
   isPublicView?: boolean;
   publicObjectData?: DataObject; // Data passed in for public view
+  publicModelData?: Model; // Model data passed in for public view
 }
 
 
-function ViewObjectPageInternal({ isPublicView = false, publicObjectData }: ViewObjectPageProps) {
+function ViewObjectPageInternal({ isPublicView = false, publicObjectData, publicModelData }: ViewObjectPageProps) {
   const router = useRouter();
   const params = useParams();
-  const modelId = params.modelId as string;
-  const objectId = params.objectId as string;
+  // For normal view, get IDs from URL. For public view, get from props.
+  const modelId = isPublicView ? publicModelData?.id : params.modelId as string;
+  const objectId = isPublicView ? publicObjectData?.id : params.objectId as string;
+  
   const { toast } = useToast();
   const { user: currentUser, hasPermission, isLoading: authIsLoading } = useAuth(); // Get current user
 
   const { getModelById, models: allModels, getAllObjects, getWorkflowById, validationRulesets, getUserById, isReady: dataContextIsReady, formatApiError, fetchData: refreshDataContext } = useData();
 
-  const [currentModel, setCurrentModel] = React.useState<Model | null>(null);
+  const [currentModel, setCurrentModel] = React.useState<Model | null>(publicModelData || null);
   const [viewingObject, setViewingObject] = React.useState<DataObject | null>(publicObjectData || null);
   const [currentWorkflow, setCurrentWorkflow] = React.useState<WorkflowWithDetails | null>(null);
   const [changelog, setChangelog] = React.useState<ChangelogEntry[]>([]);
@@ -158,16 +161,11 @@ function ViewObjectPageInternal({ isPublicView = false, publicObjectData }: View
 
   const loadObjectData = React.useCallback(async () => {
     // In public view, data is passed as a prop, so we don't need to fetch
-    if (isPublicView && publicObjectData) {
-        setIsLoadingPageData(true); // Still set loading to true initially
-        const foundModel = await getModelById(modelId);
-        if (foundModel) {
-            setCurrentModel(foundModel);
-            if(foundModel.workflowId) {
-                setCurrentWorkflow(getWorkflowById(foundModel.workflowId) || null);
-            }
-        } else {
-             setPageError(`Associated model with ID ${modelId} not found.`);
+    if (isPublicView && publicObjectData && publicModelData) {
+        setIsLoadingPageData(true);
+        setCurrentModel(publicModelData); // Use the passed model directly
+        if(publicModelData.workflowId) {
+            setCurrentWorkflow(getWorkflowById(publicModelData.workflowId) || null);
         }
         setViewingObject(publicObjectData);
         setIsLoadingPageData(false);
@@ -210,7 +208,7 @@ function ViewObjectPageInternal({ isPublicView = false, publicObjectData }: View
     } finally {
       setIsLoadingPageData(false);
     }
-  }, [modelId, objectId, dataContextIsReady, getModelById, getWorkflowById, router, toast, formatApiError, isPublicView, publicObjectData]);
+  }, [modelId, objectId, dataContextIsReady, getModelById, getWorkflowById, router, toast, formatApiError, isPublicView, publicObjectData, publicModelData]);
 
   const fetchChangelog = React.useCallback(async () => {
     if (!objectId) return;

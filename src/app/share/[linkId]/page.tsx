@@ -55,12 +55,8 @@ export default function SharedObjectPage() {
     if (shareData) {
         switch (shareData.link.link_type) {
             case 'view':
-                if (shareData.object) {
-                    // This is a bit of a hack to reuse the component.
-                    // We can pass props to it if it's refactored to accept them,
-                    // but for now, we rely on it fetching its own data via params.
-                    // The public API call has already validated the link.
-                    return <ViewObjectPage isPublicView={true} publicObjectData={shareData.object} />;
+                if (shareData.object && shareData.model) {
+                    return <ViewObjectPage isPublicView={true} publicObjectData={shareData.object} publicModelData={shareData.model} />;
                 }
                 break;
             case 'create':
@@ -91,4 +87,3 @@ export default function SharedObjectPage() {
     </div>
   );
 }
-
