@@ -336,7 +336,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return newObject;
   }, [fetchData]);
 
-  const updateObject = useCallback(async (modelId: string, objectId: string, updates: Partial<Omit<DataObject, 'id'>>): Promise<DataObject | undefined> => {
+  const updateObject = useCallback(async (modelId: string, objectId: string, updates: Partial<Omit<DataObject, 'id'>>) => {
     const response = await fetch(`/api/codex-structure/models/${modelId}/objects/${objectId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
