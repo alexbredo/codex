@@ -296,7 +296,9 @@ export default function ObjectForm({
                     key={property.id}
                     name={property.name as any}
                     control={form.control}
-                    render={({ field }) => <input type="hidden" {...field} />}
+                    render={({ field }) => (
+                      <input type="hidden" {...field} value={field.value ?? ""} />
+                    )}
                   />
                 ))}
             </div>
