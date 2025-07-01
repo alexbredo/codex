@@ -112,6 +112,7 @@ export interface ChangelogEventData {
   modifiedProperties?: PropertyChangeDetail[]; // For UPDATE type, also for REVERT_UPDATE
   snapshot?: Record<string, any>; // For DELETE to store pre-delete state, also used by REVERT_DELETE
   revertedFromChangelogEntryId?: string; // For REVERT_* types, to link back to the entry that was reverted
+  viaShareLinkId?: string;
 }
 
 export interface ChangelogEntry {

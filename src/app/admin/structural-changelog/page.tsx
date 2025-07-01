@@ -95,7 +95,19 @@ function ActivityLogPageInternal() {
     setPage(1);
   };
 
-  const entries = data?.entries || [];
+  const entries = useMemo(() => {
+    return (data?.entries || []).map(entry => {
+        if (entry.category === 'Data' && entry.details?.viaShareLinkId) {
+            return {
+                ...entry,
+                summary: `${entry.summary} via public link`,
+                user: { id: null, name: 'Public Submission' },
+            };
+        }
+        return entry;
+    });
+  }, [data?.entries]);
+
   const totalPages = data?.totalPages || 1;
 
 

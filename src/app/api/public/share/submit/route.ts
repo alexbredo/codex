@@ -1,111 +1,188 @@
 
-'use server';
 
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import type { PublicShareData, DataObject, ChangelogEventData } from '@/lib/types';
-import { z } from 'zod';
+import type { SharedObjectLink, Model, Property, DataObject, ChangelogEventData, PropertyChangeDetail } from '@/lib/types';
+import { z, ZodObject, ZodTypeAny } from 'zod';
 import { createObjectFormSchema } from '@/components/objects/object-form-schema';
+import crypto from 'crypto';
 
-const submissionSchema = z.object({
+// Reusable handler to create a zod schema from model properties
+function buildValidationSchema(model: Model): ZodObject<Record<string, ZodTypeAny>> {
+  const shape: Record<string, ZodTypeAny> = {};
+  model.properties.forEach((prop: Property) => {
+    // This is a simplified validation for the public API.
+    // For a more robust solution, reuse or adapt `createObjectFormSchema`.
+    switch (prop.type) {
+      case 'string':
+      case 'markdown':
+      case 'image':
+      case 'url':
+      case 'fileAttachment':
+        shape[prop.name] = z.any(); // Allow flexible string/object inputs for these
+        break;
+      case 'number':
+      case 'rating':
+        shape[prop.name] = z.number().nullable().optional();
+        break;
+      case 'boolean':
+        shape[prop.name] = z.boolean().nullable().optional();
+        break;
+      case 'date':
+      case 'time':
+      case 'datetime':
+        shape[prop.name] = z.string().nullable().optional();
+        break;
+      case 'relationship':
+        if (prop.relationshipType === 'many') {
+          shape[prop.name] = z.array(z.string()).nullable().optional();
+        } else {
+          shape[prop.name] = z.string().nullable().optional();
+        }
+        break;
+      default:
+        shape[prop.name] = z.any();
+    }
+  });
+  return z.object(shape);
+}
+
+const submitPayloadSchema = z.object({
   linkId: z.string().uuid(),
   formData: z.record(z.any()),
 });
 
 export async function POST(request: Request) {
   const db = await getDb();
+  await db.run('BEGIN TRANSACTION');
 
   try {
     const body = await request.json();
-    const submissionValidation = submissionSchema.safeParse(body);
-    if (!submissionValidation.success) {
-      return NextResponse.json({ error: 'Invalid submission format.', details: submissionValidation.error.flatten() }, { status: 400 });
+    const payloadValidation = submitPayloadSchema.safeParse(body);
+    if (!payloadValidation.success) {
+      await db.run('ROLLBACK');
+      return NextResponse.json({ error: 'Invalid payload structure.', details: payloadValidation.error.flatten().fieldErrors }, { status: 400 });
     }
+    const { linkId, formData } = payloadValidation.data;
 
-    const { linkId, formData } = submissionValidation.data;
-
-    // 1. Validate the link
-    const link: PublicShareData['link'] | undefined = await db.get(
-      `SELECT * FROM shared_object_links WHERE id = ?`,
+    // 1. Fetch and validate the link
+    const link: SharedObjectLink | undefined = await db.get(
+      'SELECT * FROM shared_object_links WHERE id = ?',
       linkId
     );
 
     if (!link) {
+      await db.run('ROLLBACK');
       return NextResponse.json({ error: 'Share link not found.' }, { status: 404 });
     }
     if (link.expires_at && new Date(link.expires_at) < new Date()) {
+      await db.run('ROLLBACK');
       return NextResponse.json({ error: 'This share link has expired.' }, { status: 410 });
     }
-    if (link.link_type === 'view') {
-        return NextResponse.json({ error: 'This is a view-only link and cannot be used for submission.' }, { status: 403 });
-    }
 
-    // 2. Fetch model and validate form data
-    const model = await db.get('SELECT * FROM models WHERE id = ?', link.model_id);
+    // 2. Fetch the associated model and properties
+    const model: Model | undefined = await db.get('SELECT * FROM models WHERE id = ?', link.model_id);
     if (!model) {
-      return NextResponse.json({ error: `Could not find model associated with this link.` }, { status: 500 });
+      await db.run('ROLLBACK');
+      return NextResponse.json({ error: 'Associated model not found.' }, { status: 500 });
     }
     model.properties = await db.all('SELECT * FROM properties WHERE model_id = ?', model.id);
-    const validationRulesets = await db.all('SELECT * FROM validation_rulesets');
-
-    const formSchema = createObjectFormSchema(model, validationRulesets);
-    const formValidation = formSchema.safeParse(formData);
-
-    if (!formValidation.success) {
-      return NextResponse.json({ error: 'Invalid form data.', details: formValidation.error.flatten() }, { status: 400 });
-    }
     
-    const validatedData = formValidation.data;
+    // 3. Validate form data against model properties
+    const modelValidationSchema = buildValidationSchema(model);
+    const formDataValidation = modelValidationSchema.safeParse(formData);
+    if (!formDataValidation.success) {
+      await db.run('ROLLBACK');
+      return NextResponse.json({ error: 'Submitted data is invalid.', details: formDataValidation.error.flatten().fieldErrors }, { status: 400 });
+    }
+    const validatedData = formDataValidation.data;
     const currentTimestamp = new Date().toISOString();
 
-    // 3. Perform Create or Update operation
-    await db.run('BEGIN TRANSACTION');
-    let message = '';
-    
+
+    // 4. Perform create or update action
     if (link.link_type === 'create') {
-      const newObjectId = crypto.randomUUID();
-      const objectToStore = {
-        createdAt: currentTimestamp,
-        updatedAt: currentTimestamp,
-        ...validatedData
-      };
-      await db.run(
-        'INSERT INTO data_objects (id, model_id, data, ownerId) VALUES (?, ?, ?, ?)',
-        newObjectId, link.model_id, JSON.stringify(objectToStore), link.created_by_user_id
-      );
-      message = `${model.name} created successfully.`;
+        const newObjectId = crypto.randomUUID();
+        const finalObjectData = { ...validatedData, createdAt: currentTimestamp, updatedAt: currentTimestamp };
+        
+        let finalCurrentStateId: string | null = null;
+        if (model.workflowId) {
+            const initialState = await db.get('SELECT id FROM workflow_states WHERE workflowId = ? AND isInitial = 1', model.workflowId);
+            finalCurrentStateId = initialState?.id || null;
+        }
+
+        await db.run(
+            'INSERT INTO data_objects (id, model_id, data, currentStateId, ownerId, isDeleted, deletedAt) VALUES (?, ?, ?, ?, ?, 0, NULL)',
+            newObjectId, model.id, JSON.stringify(finalObjectData), finalCurrentStateId, null // Owner is null for public submissions
+        );
+
+        // Log data object creation
+        const changelogId = crypto.randomUUID();
+        const changelogEventData: ChangelogEventData = {
+            type: 'CREATE',
+            initialData: { ...finalObjectData },
+            viaShareLinkId: link.id,
+        };
+        delete changelogEventData.initialData?.createdAt;
+        delete changelogEventData.initialData?.updatedAt;
+        
+        await db.run(
+            'INSERT INTO data_object_changelog (id, dataObjectId, modelId, changedAt, changedByUserId, changeType, changes) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            changelogId, newObjectId, model.id, currentTimestamp, null, 'CREATE', JSON.stringify(changelogEventData)
+        );
 
     } else if (link.link_type === 'update' && link.data_object_id) {
-      const existingObject = await db.get('SELECT data FROM data_objects WHERE id = ?', link.data_object_id);
-      if (!existingObject) {
-        await db.run('ROLLBACK');
-        return NextResponse.json({ error: 'The object you are trying to update does not exist.' }, { status: 404 });
-      }
-      const existingDataParsed = JSON.parse(existingObject.data);
-      const updatedData = { ...existingDataParsed, ...validatedData, updatedAt: currentTimestamp };
-      
-      await db.run(
-        'UPDATE data_objects SET data = ? WHERE id = ?',
-        JSON.stringify(updatedData), link.data_object_id
-      );
-      message = `${model.name} updated successfully.`;
+        const objectId = link.data_object_id;
+        const existingObjectRow = await db.get('SELECT data FROM data_objects WHERE id = ?', objectId);
+        if (!existingObjectRow) {
+            await db.run('ROLLBACK');
+            return NextResponse.json({ error: 'Object to update not found.' }, { status: 404 });
+        }
+        
+        const oldDataParsed = JSON.parse(existingObjectRow.data);
+        const newData = { ...oldDataParsed, ...validatedData, updatedAt: currentTimestamp };
+        
+        await db.run('UPDATE data_objects SET data = ? WHERE id = ?', JSON.stringify(newData), objectId);
+        
+        const propertyChanges: PropertyChangeDetail[] = Object.keys(validatedData).map(key => ({
+            propertyName: key,
+            oldValue: oldDataParsed[key],
+            newValue: validatedData[key],
+        }));
+
+        if (propertyChanges.length > 0) {
+            const changelogId = crypto.randomUUID();
+            const changelogEventData: ChangelogEventData = {
+                type: 'UPDATE',
+                modifiedProperties: propertyChanges,
+                viaShareLinkId: link.id,
+            };
+            await db.run(
+                'INSERT INTO data_object_changelog (id, dataObjectId, modelId, changedAt, changedByUserId, changeType, changes) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                changelogId, objectId, model.id, currentTimestamp, null, 'UPDATE', JSON.stringify(changelogEventData)
+            );
+        }
+
     } else {
         await db.run('ROLLBACK');
-        return NextResponse.json({ error: 'Invalid link type or missing object ID for update.' }, { status: 400 });
+        return NextResponse.json({ error: `Link type "${link.link_type}" is not a valid submission type or is missing required data.` }, { status: 400 });
     }
-    
-    await db.run('COMMIT');
 
-    // 4. Invalidate the link if it's single-use
+    // 5. Expire link if it's single-use
     if (link.expires_on_submit) {
       await db.run('DELETE FROM shared_object_links WHERE id = ?', linkId);
     }
-    
-    return NextResponse.json({ message });
+
+    await db.run('COMMIT');
+
+    return NextResponse.json({ message: `Your submission for "${model.name}" has been received. Thank you!` });
 
   } catch (error: any) {
-    await db.run('ROLLBACK').catch(rbError => console.error("Rollback failed:", rbError));
-    console.error('[API /public/share/submit] Error:', error);
-    return NextResponse.json({ error: 'An unexpected error occurred during submission.', details: error.message }, { status: 500 });
+    try {
+      await db.run('ROLLBACK');
+    } catch (rbError: any) {
+        console.error("CRITICAL: Failed to rollback transaction in public submit API:", rbError.message);
+    }
+    console.error('[API /public/share/submit] Unhandled Error:', error);
+    return NextResponse.json({ error: 'An unexpected server error occurred.', details: error.message }, { status: 500 });
   }
 }
