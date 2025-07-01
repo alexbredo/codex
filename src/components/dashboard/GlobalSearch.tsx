@@ -17,10 +17,11 @@ import {
   ShieldCheck,
   History,
   KeyRound,
+  Wand2,
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
-import type { Model, DataObject } from '@/lib/types';
+import type { Model, DataObject, Wizard } from '@/lib/types';
 import { useData } from '@/contexts/data-context';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useAuth } from '@/contexts/auth-context';
@@ -54,6 +55,7 @@ const adminNavItems = [
   { href: '/admin/users', label: 'User Admin', icon: Users, permission: 'users:view' },
   { href: '/admin/roles', label: 'Role Admin', icon: KeyRound, permission: 'roles:manage' },
   { href: '/admin/structural-changelog', label: 'Activity Log', icon: History, permission: 'admin:view_activity_log' },
+  { href: '/admin/wizards', label: 'Wizard Admin', icon: Wand2, permission: 'admin:manage_wizards' },
 ];
 
 
@@ -87,7 +89,7 @@ export function GlobalSearch({ open, setOpen }: { open: boolean; setOpen: (open:
   const [query, setQuery] = React.useState('');
   const debouncedQuery = useDebounce(query, 300);
 
-  const { models, isReady: dataIsReady } = useData();
+  const { models, wizards, isReady: dataIsReady } = useData();
   const { hasPermission } = useAuth();
   
   const allSearchableProperties = React.useMemo(() => {
@@ -147,6 +149,15 @@ export function GlobalSearch({ open, setOpen }: { open: boolean; setOpen: (open:
       item.label.toLowerCase().includes(lowercasedQuery)
     );
   }, [debouncedQuery, allNavItems]);
+
+  const filteredWizards = React.useMemo(() => {
+    if (!debouncedQuery.trim() || debouncedQuery.includes(':')) return [];
+    const lowercasedQuery = debouncedQuery.trim().toLowerCase();
+    return wizards.filter(wizard =>
+        wizard.name.toLowerCase().includes(lowercasedQuery) ||
+        (wizard.description && wizard.description.toLowerCase().includes(lowercasedQuery))
+    );
+  }, [debouncedQuery, wizards]);
 
 
   React.useEffect(() => {
@@ -212,7 +223,8 @@ export function GlobalSearch({ open, setOpen }: { open: boolean; setOpen: (open:
     // State 4: Display actual search results
     const hasObjectResults = results && results.length > 0;
     const hasNavResults = filteredNavItems.length > 0;
-    if (hasObjectResults || hasNavResults) {
+    const hasWizardResults = filteredWizards.length > 0;
+    if (hasObjectResults || hasNavResults || hasWizardResults) {
       return (
         <>
           {hasNavResults && (
@@ -225,6 +237,21 @@ export function GlobalSearch({ open, setOpen }: { open: boolean; setOpen: (open:
                 >
                   <item.icon className="mr-2 h-4 w-4" />
                   <span>{item.label}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          )}
+
+          {hasWizardResults && (
+            <CommandGroup heading="Wizards">
+              {filteredWizards.map((wizard) => (
+                <CommandItem
+                  key={wizard.id}
+                  value={wizard.name}
+                  onSelect={() => { runCommand(() => router.push(`/wizards/run/${wizard.id}`)); }}
+                >
+                  <Wand2 className="mr-2 h-4 w-4" />
+                  <span>Run: {wizard.name}</span>
                 </CommandItem>
               ))}
             </CommandGroup>
