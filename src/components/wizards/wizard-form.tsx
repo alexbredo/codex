@@ -25,6 +25,11 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Trash2, PlusCircle, GripVertical, Wand2, Database, ListChecks, Edit2, Link as LinkIcon, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipProvider, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+import { modelGroupFormSchema } from '@/components/model-groups/model-group-form-schema'; // For new group dialog
+import type { ModelGroupFormValues } from '@/components/model-groups/model-group-form-schema'; // For new group dialog
+import { zodResolver } from '@hookform/resolvers/zod'; // For new group dialog
+
+const INTERNAL_MAPPING_OBJECT_ID_KEY = "__OBJECT_ID__";
 
 interface WizardFormProps {
   form: UseFormReturn<WizardFormValues>;
@@ -132,7 +137,10 @@ function StepPropertyMappings({ form, stepIndex, allSteps }: {
                       <FormItem><FormLabel className="text-xs">Source Field</FormLabel>
                           <Select onValueChange={field.onChange} value={field.value} disabled={!sourceModel}>
                               <FormControl><SelectTrigger><SelectValue placeholder={sourceModel ? "Select source field..." : "Select source step first"} /></SelectTrigger></FormControl>
-                              <SelectContent>{sourceModel?.properties.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+                              <SelectContent>
+                                  <SelectItem value={INTERNAL_MAPPING_OBJECT_ID_KEY}>-- Created Object ID --</SelectItem>
+                                  {sourceModel?.properties.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                              </SelectContent>
                           </Select><FormMessage />
                       </FormItem>
                   )}
@@ -180,7 +188,7 @@ function WizardStepsManager({ form, statesFieldArray }: { form: UseFormReturn<Wi
           {fields.map((fieldItem, index) => {
             const selectedModelId = form.watch(`steps.${index}.modelId`);
             const modelForStep = models.find(m => m.id === selectedModelId);
-            const headerTitle = modelForStep ? modelForStep.name : `Step #${index + 1}`;
+            const headerTitle = modelForStep ? `Step ${index + 1}: ${modelForStep.name}` : `Step #${index + 1}`;
             const selectedProps = form.watch(`steps.${index}.propertyIds`) || [];
 
             return (

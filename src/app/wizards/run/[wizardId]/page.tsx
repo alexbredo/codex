@@ -46,6 +46,8 @@ const WizardStepper = ({ steps, currentStepIndex }: WizardStepperProps) => (
   </div>
 );
 
+const INTERNAL_MAPPING_OBJECT_ID_KEY = "__OBJECT_ID__";
+
 function RunWizardPageInternal() {
   const router = useRouter();
   const params = useParams();
@@ -91,8 +93,6 @@ function RunWizardPageInternal() {
   }, [wizardId, getWizardById, isReady]);
 
   useEffect(() => {
-    // This effect runs when the step changes. It resets the form with either
-    // previously entered data for this step, or new defaults possibly pre-filled from mappings.
     const stepData = wizardData[currentStepIndex] || {};
     const newDefaultValues: Record<string, any> = { ...stepData };
 
@@ -103,9 +103,14 @@ function RunWizardPageInternal() {
         
         if (sourceStepData && sourceModel) {
           let valueToMap: any;
-          const sourceProperty = sourceModel.properties.find(p => p.id === mapping.sourcePropertyId);
-          if (sourceProperty) {
-            valueToMap = sourceStepData[sourceProperty.name];
+
+          if (mapping.sourcePropertyId === INTERNAL_MAPPING_OBJECT_ID_KEY) {
+              valueToMap = createdObjectIds[mapping.sourceStepIndex];
+          } else {
+              const sourceProperty = sourceModel.properties.find(p => p.id === mapping.sourcePropertyId);
+              if (sourceProperty) {
+                valueToMap = sourceStepData[sourceProperty.name];
+              }
           }
 
           if (valueToMap !== undefined) {
@@ -119,7 +124,7 @@ function RunWizardPageInternal() {
     }
 
     form.reset(newDefaultValues);
-  }, [currentStepIndex, wizardData, form, currentStep, getModelById, currentWizard, modelForStep]);
+  }, [currentStepIndex, wizardData, form, currentStep, getModelById, currentWizard, modelForStep, createdObjectIds]);
 
   useEffect(() => {
     form.resolver = zodResolver(dynamicSchema) as any;
@@ -127,30 +132,28 @@ function RunWizardPageInternal() {
 
   const onSubmitStep = async (values: Record<string, any>) => {
     setIsSubmittingStep(true);
-    setWizardData(prev => ({ ...prev, [currentStepIndex]: values }));
+    const newWizardData = { ...wizardData, [currentStepIndex]: values };
+    setWizardData(newWizardData);
     
-    if (currentStepIndex < currentWizard!.steps.length - 1) {
-      setCurrentStepIndex(prev => prev + 1);
-    } else {
-      // Final submission logic
-      try {
-        const finalData = { ...wizardData, [currentStepIndex]: values };
-        const newCreatedIds: Record<number, string> = {};
-
-        for (let i = 0; i < currentWizard!.steps.length; i++) {
-          const step = currentWizard!.steps[i];
-          const stepData = finalData[i];
-          const createdObject = await addObject(step.modelId, stepData);
-          newCreatedIds[i] = createdObject.id;
+    try {
+        const createdObject = await addObject(modelForStep!.id, values);
+        if (createdObject && createdObject.id) {
+            setCreatedObjectIds(prev => ({ ...prev, [currentStepIndex]: createdObject.id }));
+            
+            if (currentStepIndex < currentWizard!.steps.length - 1) {
+                setCurrentStepIndex(prev => prev + 1);
+            } else {
+                setIsFinished(true);
+                toast({ title: "Wizard Completed!", description: "All data has been successfully created." });
+            }
+        } else {
+            throw new Error("API did not return a valid object on creation.");
         }
-        setCreatedObjectIds(newCreatedIds);
-        setIsFinished(true);
-        toast({ title: "Wizard Completed!", description: "All data has been successfully created." });
-      } catch (error: any) {
-        toast({ variant: "destructive", title: "Error Completing Wizard", description: error.message });
-      }
+    } catch (error: any) {
+        toast({ variant: "destructive", title: `Error on Step ${currentStepIndex + 1}`, description: error.message });
+    } finally {
+        setIsSubmittingStep(false);
     }
-    setIsSubmittingStep(false);
   };
   
   const handleBack = () => {
@@ -158,6 +161,11 @@ function RunWizardPageInternal() {
       setCurrentStepIndex(prev => prev - 1);
     }
   };
+
+  const mappedTargetPropertyIds = useMemo(() => {
+    if (!currentStep?.propertyMappings) return new Set<string>();
+    return new Set(currentStep.propertyMappings.map(m => m.targetPropertyId));
+  }, [currentStep]);
 
   if (!isReady || !currentWizard) {
     return (
@@ -274,10 +282,11 @@ function RunWizardPageInternal() {
             form={form}
             model={modelForStep}
             onSubmit={onSubmitStep}
-            onCancel={() => {}} // onCancel is not used here, the wizard has its own Back button
+            onCancel={() => {}}
             isLoading={isSubmittingStep}
             propertyIdsToShow={currentStep?.propertyIds}
-            hideFooter={true} // Hide the form's default buttons
+            hiddenPropertyIds={Array.from(mappedTargetPropertyIds)}
+            hideFooter={true}
           />
         </CardContent>
         <CardFooter className="flex justify-between">

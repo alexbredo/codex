@@ -1,3 +1,4 @@
+
 'use client';
 
 import type { UseFormReturn, ControllerRenderProps, FieldValues, FieldPath } from 'react-hook-form';
@@ -29,8 +30,9 @@ interface ObjectFormProps {
   currentWorkflow?: WorkflowWithDetails | null;
   allUsers?: User[];
   currentUser?: User | null;
-  propertyIdsToShow?: string[]; // New optional prop
-  hideFooter?: boolean; // New prop
+  propertyIdsToShow?: string[];
+  hiddenPropertyIds?: string[];
+  hideFooter?: boolean;
 }
 
 const INTERNAL_NO_STATE_CHANGE = "__NO_STATE_CHANGE__";
@@ -49,7 +51,8 @@ export default function ObjectForm({
   allUsers = [],
   currentUser,
   propertyIdsToShow,
-  hideFooter = false, // Default to false
+  hiddenPropertyIds = [],
+  hideFooter = false,
 }: ObjectFormProps) {
   const formContext = existingObject ? 'edit' : 'create';
   const { toast } = useToast();
@@ -57,10 +60,9 @@ export default function ObjectForm({
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
 
-  // Filter properties based on propertyIdsToShow if it's provided
-  const propertiesToRender = propertyIdsToShow
-    ? model.properties.filter(p => propertyIdsToShow.includes(p.id)).sort((a, b) => a.orderIndex - b.orderIndex)
-    : model.properties.sort((a, b) => a.orderIndex - b.orderIndex);
+  const propertiesToRender = (propertyIdsToShow
+    ? model.properties.filter(p => propertyIdsToShow.includes(p.id))
+    : model.properties).sort((a, b) => a.orderIndex - b.orderIndex);
 
 
   let availableStatesForSelect: Array<{ value: string; label: string; isCurrent: boolean }> = [];
@@ -267,18 +269,23 @@ export default function ObjectForm({
                 )}
 
 
-                {propertiesToRender.map((property) => (
-                <AdaptiveFormField
-                    key={property.id}
-                    form={form} 
-                    property={property}
-                    formContext={formContext}
-                    modelId={model.id}
-                    objectId={formObjectId || existingObject?.id}
-                    isUploading={isUploadingFiles}
-                    uploadProgress={uploadProgress[property.name]}
-                />
-                ))}
+                {propertiesToRender.map((property) => {
+                  if (hiddenPropertyIds.includes(property.id)) {
+                      return null;
+                  }
+                  return (
+                    <AdaptiveFormField
+                        key={property.id}
+                        form={form} 
+                        property={property}
+                        formContext={formContext}
+                        modelId={model.id}
+                        objectId={formObjectId || existingObject?.id}
+                        isUploading={isUploadingFiles}
+                        uploadProgress={uploadProgress[property.name]}
+                    />
+                  );
+                })}
             </div>
         </ScrollArea>
         {!hideFooter && (
