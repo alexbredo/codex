@@ -11,7 +11,6 @@ import {
   SidebarFooter,
   SidebarInset,
   SidebarTrigger,
-  SidebarMenuSkeleton,
 } from '@/components/ui/sidebar';
 import Navigation from './navigation';
 import { Button } from '@/components/ui/button';
@@ -28,12 +27,7 @@ interface AppLayoutProps {
 
 export default function AppLayout({ children }: AppLayoutProps) {
   const { user, logout, isLoading: authIsLoading } = useAuth();
-  const [isClient, setIsClient] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -47,28 +41,6 @@ export default function AppLayout({ children }: AppLayoutProps) {
   }, [])
 
   const userRoleDisplay = user?.roles.map(r => r.name).join(', ') || 'No Role';
-
-  if (!isClient) {
-    return (
-      <div className="flex min-h-screen">
-        <div className="hidden md:flex flex-col border-r w-[16rem] p-2 bg-muted/30">
-          <div className="flex flex-col gap-2">
-            <SidebarMenuSkeleton showIcon />
-            <SidebarMenuSkeleton showIcon />
-            <SidebarMenuSkeleton showIcon />
-          </div>
-        </div>
-        <main className="flex-1 flex flex-col">
-          <header className="sticky top-0 z-10 flex items-center h-14 px-4 border-b justify-end">
-             <div className="w-64 h-9 rounded-md bg-muted" />
-          </header>
-          <div className="flex-1 flex items-center justify-center">
-             <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          </div>
-        </main>
-      </div>
-    );
-  }
 
   return (
     <SidebarProvider defaultOpen>

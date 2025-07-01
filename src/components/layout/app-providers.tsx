@@ -1,20 +1,30 @@
+
 'use client';
 
 import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AuthProvider } from '@/contexts/auth-context';
 import { DataProvider } from '@/contexts/data-context';
 import AppLayout from '@/components/layout/app-layout';
-import { usePathname } from 'next/navigation'; // Import usePathname
+import { usePathname } from 'next/navigation';
+import { Loader2 } from 'lucide-react';
+import { SidebarMenuSkeleton } from '@/components/ui/sidebar';
+import { Skeleton } from '@/components/ui/skeleton';
+
 
 interface AppProvidersProps {
   children: ReactNode;
 }
 
-// This new component checks the route and applies the AppLayout only to non-public pages.
+// This component checks the route and applies the AppLayout only to non-public pages.
 function ConditionalLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
   
   // Define public paths that should not have the main application layout
   const publicPaths = ['/login', '/register'];
@@ -25,7 +35,31 @@ function ConditionalLayout({ children }: { children: ReactNode }) {
     return <>{children}</>;
   }
 
-  // For all other app paths, wrap children with the main AppLayout
+  // On the server, and for the initial client render, show a static skeleton
+  // to prevent hydration errors from client-side hooks like useIsMobile.
+  if (!isClient) {
+    return (
+       <div className="flex min-h-screen">
+        <div className="hidden md:flex flex-col border-r w-[16rem] p-2 bg-muted/30">
+          <div className="flex flex-col gap-2">
+            <SidebarMenuSkeleton showIcon />
+            <SidebarMenuSkeleton showIcon />
+            <SidebarMenuSkeleton showIcon />
+          </div>
+        </div>
+        <main className="flex-1 flex flex-col">
+          <header className="sticky top-0 z-10 flex items-center h-14 px-4 border-b justify-end">
+             <Skeleton className="w-64 h-9" />
+          </header>
+          <div className="flex-1 flex items-center justify-center">
+             <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  // For all other app paths on the client, wrap children with the main AppLayout
   return <AppLayout>{children}</AppLayout>;
 }
 
