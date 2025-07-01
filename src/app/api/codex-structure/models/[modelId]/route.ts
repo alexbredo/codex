@@ -132,11 +132,15 @@ export async function PUT(request: Request, { params }: Params) {
 
     // --- Correct handling for modelGroupId ---
     const defaultGroupId = "00000000-0000-0000-0000-000000000001";
-    // Use the value from the body if it's present, otherwise keep the old value.
-    const incomingModelGroupId = 'modelGroupId' in body ? body.modelGroupId : oldModelRow.model_group_id;
-    // Normalize the incoming value: null or undefined becomes the default group ID.
-    const finalModelGroupId = (incomingModelGroupId === null || incomingModelGroupId === undefined) ? defaultGroupId : incomingModelGroupId;
+    let finalModelGroupId = oldModelRow.model_group_id; // Default to old value
 
+    if (Object.prototype.hasOwnProperty.call(body, 'modelGroupId')) {
+        // If the client sent the key, determine the value.
+        // A null/undefined value from the client signifies the "Default" group.
+        finalModelGroupId = (body.modelGroupId === null || body.modelGroupId === undefined)
+            ? defaultGroupId
+            : body.modelGroupId;
+    }
 
     await db.run(
         'UPDATE models SET name = ?, description = ?, model_group_id = ?, displayPropertyNames = ?, workflowId = ? WHERE id = ?',
