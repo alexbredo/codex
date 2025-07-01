@@ -11,6 +11,7 @@ import {
   SidebarFooter,
   SidebarInset,
   SidebarTrigger,
+  SidebarMenuSkeleton,
 } from '@/components/ui/sidebar';
 import Navigation from './navigation';
 import { Button } from '@/components/ui/button';
@@ -46,6 +47,28 @@ export default function AppLayout({ children }: AppLayoutProps) {
   }, [])
 
   const userRoleDisplay = user?.roles.map(r => r.name).join(', ') || 'No Role';
+
+  if (!isClient) {
+    return (
+      <div className="flex min-h-screen">
+        <div className="hidden md:flex flex-col border-r w-[16rem] p-2 bg-muted/30">
+          <div className="flex flex-col gap-2">
+            <SidebarMenuSkeleton showIcon />
+            <SidebarMenuSkeleton showIcon />
+            <SidebarMenuSkeleton showIcon />
+          </div>
+        </div>
+        <main className="flex-1 flex flex-col">
+          <header className="sticky top-0 z-10 flex items-center h-14 px-4 border-b justify-end">
+             <div className="w-64 h-9 rounded-md bg-muted" />
+          </header>
+          <div className="flex-1 flex items-center justify-center">
+             <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <SidebarProvider defaultOpen>
@@ -102,7 +125,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
              {/* LEFT GROUP */}
             <div className="flex items-center gap-4">
                 <SidebarTrigger className="md:hidden" />
-                {isClient && user && (
+                {user && (
                     <div className="flex items-center gap-2">
                         <UserCircle size={24} className="text-muted-foreground" />
                         <div className="hidden sm:flex flex-col items-start leading-tight">
@@ -130,7 +153,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                     </kbd>
                 </Button>
 
-                {isClient && !user && (
+                {!user && (
                     <div className="hidden md:flex items-center gap-2">
                         <Link href="/login" passHref legacyBehavior><Button variant="outline" size="sm">Login</Button></Link>
                         <Link href="/register" passHref legacyBehavior><Button variant="default" size="sm">Register</Button></Link>
@@ -139,16 +162,11 @@ export default function AppLayout({ children }: AppLayoutProps) {
             </div>
           </header>
           <main className="flex-1 p-6 overflow-auto">
-            {authIsLoading && !user && isClient ? (
+            {authIsLoading && !user ? (
                  <div className="flex justify-center items-center h-full">
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
                  </div>
-            ) : !isClient && !user ? (
-                 <div className="flex justify-center items-center h-full">
-                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                 </div>
-            )
-            : (
+            ) : (
                 children
             )}
           </main>
