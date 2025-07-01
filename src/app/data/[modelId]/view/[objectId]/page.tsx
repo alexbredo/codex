@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { useData } from '@/contexts/data-context';
@@ -86,20 +86,20 @@ function ViewObjectPageInternal({ isPublicView = false, publicObjectData }: View
 
   const { getModelById, models: allModels, getAllObjects, getWorkflowById, validationRulesets, getUserById, isReady: dataContextIsReady, formatApiError, fetchData: refreshDataContext } = useData();
 
-  const [currentModel, setCurrentModel] = useState<Model | null>(null);
-  const [viewingObject, setViewingObject] = useState<DataObject | null>(publicObjectData || null);
-  const [currentWorkflow, setCurrentWorkflow] = useState<WorkflowWithDetails | null>(null);
-  const [changelog, setChangelog] = useState<ChangelogEntry[]>([]);
-  const [isLoadingPageData, setIsLoadingPageData] = useState(true);
-  const [isLoadingChangelog, setIsLoadingChangelog] = useState(false);
-  const [pageError, setPageError] = useState<string | null>(null);
-  const [changelogError, setChangelogError] = useState<string | null>(null);
+  const [currentModel, setCurrentModel] = React.useState<Model | null>(null);
+  const [viewingObject, setViewingObject] = React.useState<DataObject | null>(publicObjectData || null);
+  const [currentWorkflow, setCurrentWorkflow] = React.useState<WorkflowWithDetails | null>(null);
+  const [changelog, setChangelog] = React.useState<ChangelogEntry[]>([]);
+  const [isLoadingPageData, setIsLoadingPageData] = React.useState(true);
+  const [isLoadingChangelog, setIsLoadingChangelog] = React.useState(false);
+  const [pageError, setPageError] = React.useState<string | null>(null);
+  const [changelogError, setChangelogError] = React.useState<string | null>(null);
 
-  const [isRevertConfirmOpen, setIsRevertConfirmOpen] = useState(false);
-  const [revertingEntryId, setRevertingEntryId] = useState<string | null>(null);
-  const [isReverting, setIsReverting] = useState(false);
-  const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null);
-  const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
+  const [isRevertConfirmOpen, setIsRevertConfirmOpen] = React.useState(false);
+  const [revertingEntryId, setRevertingEntryId] = React.useState<string | null>(null);
+  const [isReverting, setIsReverting] = React.useState(false);
+  const [lightboxImageUrl, setLightboxImageUrl] = React.useState<string | null>(null);
+  const [isShareDialogOpen, setIsShareDialogOpen] = React.useState(false);
 
   const { data: shareLinks } = useQuery<SharedObjectLink[]>({
     queryKey: ['shareLinks', objectId],
@@ -125,7 +125,7 @@ function ViewObjectPageInternal({ isPublicView = false, publicObjectData }: View
   }, [shareLinks]);
 
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (!isPublicView && !authIsLoading && modelId) {
       if (!hasPermission(`model:view:${modelId}`)) {
         toast({
@@ -139,15 +139,15 @@ function ViewObjectPageInternal({ isPublicView = false, publicObjectData }: View
   }, [authIsLoading, hasPermission, modelId, router, toast, isPublicView]);
 
 
-  const allDbObjects = useMemo(() => getAllObjects(true), [getAllObjects, dataContextIsReady]);
+  const allDbObjects = React.useMemo(() => getAllObjects(true), [getAllObjects, dataContextIsReady]);
 
-  const getWorkflowStateName = useCallback((stateId: string | null | undefined): string => {
+  const getWorkflowStateName = React.useCallback((stateId: string | null | undefined): string => {
     if (!stateId || !currentWorkflow) return 'N/A';
     const state = currentWorkflow.states.find(s => s.id === stateId);
     return state ? state.name : 'Unknown State';
   }, [currentWorkflow]);
 
-  const ownerUsername = useMemo(() => {
+  const ownerUsername = React.useMemo(() => {
     if (viewingObject?.ownerId) {
       const owner = getUserById(viewingObject.ownerId);
       return owner?.username || 'Unknown User';
@@ -156,7 +156,7 @@ function ViewObjectPageInternal({ isPublicView = false, publicObjectData }: View
   }, [viewingObject, getUserById]);
 
 
-  const loadObjectData = useCallback(async () => {
+  const loadObjectData = React.useCallback(async () => {
     // In public view, data is passed as a prop, so we don't need to fetch
     if (isPublicView && publicObjectData) {
         setIsLoadingPageData(true); // Still set loading to true initially
@@ -212,7 +212,7 @@ function ViewObjectPageInternal({ isPublicView = false, publicObjectData }: View
     }
   }, [modelId, objectId, dataContextIsReady, getModelById, getWorkflowById, router, toast, formatApiError, isPublicView, publicObjectData]);
 
-  const fetchChangelog = useCallback(async () => {
+  const fetchChangelog = React.useCallback(async () => {
     if (!objectId) return;
     setIsLoadingChangelog(true);
     setChangelogError(null);
@@ -232,11 +232,11 @@ function ViewObjectPageInternal({ isPublicView = false, publicObjectData }: View
     }
   }, [objectId, toast, formatApiError]);
 
-  useEffect(() => {
+  React.useEffect(() => {
     loadObjectData();
   }, [loadObjectData]);
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (viewingObject && !isPublicView) {
       fetchChangelog();
     }
