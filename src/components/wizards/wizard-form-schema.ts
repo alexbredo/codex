@@ -2,12 +2,19 @@
 
 import { z } from 'zod';
 
+export const propertyMappingSchema = z.object({
+  targetPropertyId: z.string(),
+  sourceStepIndex: z.number(),
+  sourcePropertyId: z.string(),
+});
+
 export const wizardStepSchema = z.object({
   id: z.string().optional(),
   modelId: z.string().min(1, "A model must be selected for each step."),
   orderIndex: z.number(),
   instructions: z.string().optional(),
   propertyIds: z.array(z.string()).min(1, "At least one property must be selected for each step."),
+  propertyMappings: z.array(propertyMappingSchema).optional(),
 });
 
 export const wizardFormSchema = z.object({
@@ -16,5 +23,6 @@ export const wizardFormSchema = z.object({
   steps: z.array(wizardStepSchema).min(1, "A wizard must have at least one step."),
 });
 
+export type PropertyMappingFormValues = z.infer<typeof propertyMappingSchema>;
 export type WizardStepFormValues = z.infer<typeof wizardStepSchema>;
 export type WizardFormValues = z.infer<typeof wizardFormSchema>;

@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -75,7 +76,7 @@ function RunWizardPageInternal() {
 
   const form = useForm<Record<string, any>>({
     resolver: zodResolver(dynamicSchema),
-    defaultValues: wizardData[currentStepIndex] || {},
+    defaultValues: {},
   });
 
   useEffect(() => {
@@ -90,8 +91,35 @@ function RunWizardPageInternal() {
   }, [wizardId, getWizardById, isReady]);
 
   useEffect(() => {
-    form.reset(wizardData[currentStepIndex] || {});
-  }, [currentStepIndex, wizardData, form]);
+    // This effect runs when the step changes. It resets the form with either
+    // previously entered data for this step, or new defaults possibly pre-filled from mappings.
+    const stepData = wizardData[currentStepIndex] || {};
+    const newDefaultValues: Record<string, any> = { ...stepData };
+
+    if (currentStep && currentStep.propertyMappings && currentStepIndex > 0) {
+      currentStep.propertyMappings.forEach(mapping => {
+        const sourceStepData = wizardData[mapping.sourceStepIndex];
+        const sourceModel = getModelById(currentWizard?.steps[mapping.sourceStepIndex].modelId || '');
+        
+        if (sourceStepData && sourceModel) {
+          let valueToMap: any;
+          const sourceProperty = sourceModel.properties.find(p => p.id === mapping.sourcePropertyId);
+          if (sourceProperty) {
+            valueToMap = sourceStepData[sourceProperty.name];
+          }
+
+          if (valueToMap !== undefined) {
+            const targetProperty = modelForStep?.properties.find(p => p.id === mapping.targetPropertyId);
+            if (targetProperty) {
+              newDefaultValues[targetProperty.name] = valueToMap;
+            }
+          }
+        }
+      });
+    }
+
+    form.reset(newDefaultValues);
+  }, [currentStepIndex, wizardData, form, currentStep, getModelById, currentWizard, modelForStep]);
 
   useEffect(() => {
     form.resolver = zodResolver(dynamicSchema) as any;

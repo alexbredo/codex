@@ -1,5 +1,4 @@
 
-
 import sqlite3 from 'sqlite3';
 import { open, type Database } from 'sqlite';
 import path from 'path';
@@ -313,6 +312,13 @@ async function initializeDb(): Promise<Database> {
     );
   `);
   
+  // Migration for wizard_steps table to add propertyMappings
+  const wizardStepsTableInfo = await db.all("PRAGMA table_info(wizard_steps)").catch(() => []);
+  if (wizardStepsTableInfo.length > 0 && !wizardStepsTableInfo.some(col => col.name === 'propertyMappings')) {
+    console.log("Migrating 'wizard_steps' table: adding 'propertyMappings' column.");
+    await db.exec('ALTER TABLE wizard_steps ADD COLUMN propertyMappings TEXT');
+  }
+
   await db.exec(`
     CREATE TABLE IF NOT EXISTS wizard_steps (
       id TEXT PRIMARY KEY,
@@ -321,6 +327,7 @@ async function initializeDb(): Promise<Database> {
       orderIndex INTEGER NOT NULL,
       instructions TEXT,
       propertyIds TEXT NOT NULL, -- Stored as JSON array of strings
+      propertyMappings TEXT, -- JSON array of { targetPropertyId, sourceStepIndex, sourcePropertyId }
       FOREIGN KEY (wizardId) REFERENCES wizards(id) ON DELETE CASCADE,
       FOREIGN KEY (modelId) REFERENCES models(id) ON DELETE CASCADE
     );

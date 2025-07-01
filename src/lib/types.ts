@@ -315,6 +315,11 @@ export interface PublicShareData {
 }
 
 // Wizard Types
+export interface PropertyMapping {
+    targetPropertyId: string;
+    sourceStepIndex: number;
+    sourcePropertyId: string; // Can be a property ID or a special value like '__OBJECT_ID__'
+}
 export interface WizardStep {
     id: string;
     wizardId: string;
@@ -322,6 +327,7 @@ export interface WizardStep {
     orderIndex: number;
     instructions?: string;
     propertyIds: string[]; // JSON array of property IDs
+    propertyMappings?: PropertyMapping[];
 }
 
 export interface Wizard {

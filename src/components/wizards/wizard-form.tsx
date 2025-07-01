@@ -10,7 +10,7 @@ import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSo
 import { CSS } from '@dnd-kit/utilities';
 import { useData } from '@/contexts/data-context';
 import { useToast } from '@/hooks/use-toast';
-import type { WizardFormValues, WizardStepFormValues } from './wizard-form-schema';
+import type { WizardFormValues, WizardStepFormValues, PropertyMappingFormValues } from './wizard-form-schema';
 import type { Model, Property } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,8 +22,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Trash2, PlusCircle, GripVertical, Wand2, Database, ListChecks, Edit2 } from 'lucide-react';
+import { Trash2, PlusCircle, GripVertical, Wand2, Database, ListChecks, Edit2, Link as LinkIcon, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Tooltip, TooltipProvider, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 
 interface WizardFormProps {
   form: UseFormReturn<WizardFormValues>;
@@ -77,12 +78,85 @@ function StepPropertySelector({ model, selectedPropertyIds, onSelectionChange }:
     );
 }
 
+function StepPropertyMappings({ form, stepIndex, allSteps }: {
+  form: UseFormReturn<WizardFormValues>;
+  stepIndex: number;
+  allSteps: WizardStepFormValues[];
+}) {
+  const { models } = useData();
+  const currentStepModelId = useWatch({ control: form.control, name: `steps.${stepIndex}.modelId` });
+  const currentStepModel = models.find(m => m.id === currentStepModelId);
+
+  const { fields, append, remove, update } = useFieldArray({
+    control: form.control,
+    name: `steps.${stepIndex}.propertyMappings`,
+  });
+  
+  const previousSteps = allSteps.slice(0, stepIndex).map((step, idx) => ({ ...step, index: idx }));
+
+  if (!currentStepModel) return null;
+  
+  return (
+    <div className="space-y-3 mt-4 pt-4 border-t">
+      <h4 className="font-semibold flex items-center gap-2"><LinkIcon className="h-4 w-4 text-primary"/> Property Mappings</h4>
+       <p className="text-xs text-muted-foreground">Prefill fields in this step using values from previous steps.</p>
+      {fields.map((mappingField, mappingIndex) => {
+        const selectedSourceStepIndex = form.watch(`steps.${stepIndex}.propertyMappings.${mappingIndex}.sourceStepIndex`);
+        const sourceStep = previousSteps.find(s => s.index === selectedSourceStepIndex);
+        const sourceModel = sourceStep ? models.find(m => m.id === sourceStep.modelId) : null;
+        
+        return (
+          <div key={mappingField.id} className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end p-3 border rounded-md bg-muted/30 relative">
+              <FormField control={form.control} name={`steps.${stepIndex}.propertyMappings.${mappingIndex}.targetPropertyId`}
+                  render={({ field }) => (
+                      <FormItem><FormLabel className="text-xs">Target Field</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                              <FormControl><SelectTrigger><SelectValue placeholder="Select target field..." /></SelectTrigger></FormControl>
+                              <SelectContent>{currentStepModel.properties.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+                          </Select><FormMessage />
+                      </FormItem>
+                  )}
+              />
+              <FormField control={form.control} name={`steps.${stepIndex}.propertyMappings.${mappingIndex}.sourceStepIndex`}
+                render={({ field }) => (
+                    <FormItem><FormLabel className="text-xs">Source Step</FormLabel>
+                        <Select onValueChange={(val) => field.onChange(parseInt(val,10))} value={String(field.value)}>
+                            <FormControl><SelectTrigger><SelectValue placeholder="Select source step..." /></SelectTrigger></FormControl>
+                            <SelectContent>{previousSteps.map(s => <SelectItem key={s.index} value={String(s.index)}>Step {s.index + 1}: {models.find(m=>m.id === s.modelId)?.name || '...'}</SelectItem>)}</SelectContent>
+                        </Select><FormMessage />
+                    </FormItem>
+                )}
+              />
+               <FormField control={form.control} name={`steps.${stepIndex}.propertyMappings.${mappingIndex}.sourcePropertyId`}
+                  render={({ field }) => (
+                      <FormItem><FormLabel className="text-xs">Source Field</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value} disabled={!sourceModel}>
+                              <FormControl><SelectTrigger><SelectValue placeholder={sourceModel ? "Select source field..." : "Select source step first"} /></SelectTrigger></FormControl>
+                              <SelectContent>{sourceModel?.properties.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+                          </Select><FormMessage />
+                      </FormItem>
+                  )}
+              />
+              <Button type="button" variant="ghost" size="icon" className="absolute -top-1 -right-1 h-6 w-6" onClick={() => remove(mappingIndex)}><Trash2 className="h-3 w-3 text-destructive"/></Button>
+          </div>
+        )
+      })}
+
+      <Button type="button" variant="outline" size="sm" className="w-full border-dashed" onClick={() => append({ targetPropertyId: '', sourceStepIndex: 0, sourcePropertyId: '' })}>
+        <PlusCircle className="mr-2 h-4 w-4"/> Add Mapping
+      </Button>
+    </div>
+  )
+}
+
 function WizardStepsManager({ form, statesFieldArray }: { form: UseFormReturn<WizardFormValues>; statesFieldArray: UseFieldArrayReturn<WizardFormValues, "steps", "id"> }) {
   const { fields, append, remove, move } = statesFieldArray;
   const { models } = useData();
   const { toast } = useToast();
   const [openAccordionItems, setOpenAccordionItems] = React.useState<string[]>([]);
   const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
+
+  const watchedSteps = useWatch({ control: form.control, name: 'steps' });
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -190,6 +264,7 @@ function WizardStepsManager({ form, statesFieldArray }: { form: UseFormReturn<Wi
                                 </FormItem>
                             )}
                         />
+                        {index > 0 && <StepPropertyMappings form={form} stepIndex={index} allSteps={watchedSteps} />}
                     </AccordionContent>
                   </AccordionItem>
                 )}
@@ -202,7 +277,7 @@ function WizardStepsManager({ form, statesFieldArray }: { form: UseFormReturn<Wi
         type="button"
         variant="outline"
         size="sm"
-        onClick={() => append({ id: crypto.randomUUID(), modelId: '', instructions: '', propertyIds: [], orderIndex: fields.length })}
+        onClick={() => append({ id: crypto.randomUUID(), modelId: '', instructions: '', propertyIds: [], propertyMappings:[], orderIndex: fields.length })}
         className="mt-4 w-full border-dashed hover:border-solid"
       >
         <PlusCircle className="mr-2 h-4 w-4" /> Add Step
