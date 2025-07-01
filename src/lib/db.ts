@@ -364,6 +364,18 @@ async function initializeDb(): Promise<Database> {
   await db.exec('CREATE INDEX IF NOT EXISTS idx_dashboards_userId_isDefault ON dashboards (userId, isDefault);');
 
   // Shared Object Links Table
+  // Migration check: If the table exists but is missing a key column, it's an old version.
+  // We'll drop and recreate it. This is a simple but robust migration strategy for this case.
+  try {
+    const columns = await db.all("PRAGMA table_info(shared_object_links)");
+    if (columns.length > 0 && !columns.find(c => c.name === 'data_object_id')) {
+        console.log("Legacy 'shared_object_links' table detected. Dropping and recreating for schema update.");
+        await db.exec('DROP TABLE shared_object_links');
+    }
+  } catch (e) {
+    // This can fail if the table doesn't exist, which is fine. The `CREATE` below will handle it.
+  }
+
   await db.exec(`
     CREATE TABLE IF NOT EXISTS shared_object_links (
       id TEXT PRIMARY KEY,
