@@ -36,11 +36,11 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
-  Dialog as DetailsDialog,
-  DialogContent as DetailsDialogContent,
-  DialogHeader as DetailsDialogHeader,
-  DialogTitle as DetailsDialogTitle,
-  DialogDescription as DetailsDialogDescription,
+  Dialog as LightboxDialog,
+  DialogContent as LightboxDialogContent,
+  DialogHeader as LightboxDialogHeader,
+  DialogTitle as LightboxDialogTitle,
+  DialogDescription as LightboxDialogDescription,
 } from "@/components/ui/dialog";
 import {
   Tooltip,
@@ -715,7 +715,7 @@ function ViewObjectPageInternal({ isPublicView = false, publicObjectData }: View
                                                 <ul className="space-y-1">
                                                     {entry.changes.modifiedProperties.map((modProp, idx) => (
                                                         <li key={idx} className="flex items-start">
-                                                            <Edit className="h-3.5 w-3.5 mr-1.5 mt-0.5 text-blue-500 shrink-0" />
+                                                            <Edit2Icon className="h-3.5 w-3.5 mr-1.5 mt-0.5 text-blue-500 shrink-0" />
                                                             <div>{renderChangeDetail(modProp)}</div>
                                                         </li>
                                                     ))}
@@ -794,8 +794,8 @@ function ViewObjectPageInternal({ isPublicView = false, publicObjectData }: View
         </AlertDialog>
       )}
 
-      <DetailsDialog open={!!lightboxImageUrl} onOpenChange={(open) => !open && setLightboxImageUrl(null)}>
-        <DetailsDialogContent className="max-w-5xl w-auto p-0 bg-transparent border-0 shadow-none">
+      <LightboxDialog open={!!lightboxImageUrl} onOpenChange={(open) => !open && setLightboxImageUrl(null)}>
+        <LightboxDialogContent className="max-w-5xl w-auto p-0 bg-transparent border-0 shadow-none">
           <LightboxDialogHeader className="sr-only">
             <LightboxDialogTitle>Image Lightbox</LightboxDialogTitle>
             <LightboxDialogDescription>A larger view of the selected image. Click outside the image or press escape to close.</LightboxDialogDescription>
@@ -813,8 +813,8 @@ function ViewObjectPageInternal({ isPublicView = false, publicObjectData }: View
               }}
             />
           )}
-        </DetailsDialogContent>
-      </DetailsDialog>
+        </LightboxDialogContent>
+      </LightboxDialog>
     </div>
   );
 }

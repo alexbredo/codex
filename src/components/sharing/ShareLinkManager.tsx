@@ -146,4 +146,3 @@ export default function ShareLinkManager({ modelId, objectId }: ShareLinkManager
     </Card>
   );
 }
-
