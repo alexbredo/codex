@@ -152,25 +152,54 @@ function RunWizardPageInternal() {
                     <CardTitle className="text-3xl mt-4">Wizard Completed!</CardTitle>
                     <CardDescription>The following data objects were created.</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="space-y-6">
                     {currentWizard.steps.map((step, index) => {
                         const model = getModelById(step.modelId);
                         const objectId = createdObjectIds[index];
                         const objectData = wizardData[index];
                         if (!model || !objectId || !objectData) return null;
-                        
-                        const displayValue = getObjectDisplayValue({...objectData, id: objectId}, model, allModels, allDbObjects);
 
                         return (
-                            <div key={step.id} className="flex items-center justify-between p-3 border rounded-md bg-muted/50">
-                                <div>
-                                    <p className="font-semibold">{model.name}</p>
-                                    <p className="text-sm text-muted-foreground">{displayValue}</p>
-                                </div>
-                                <Button asChild variant="outline" size="sm">
-                                    <Link href={`/data/${model.id}/view/${objectId}`}>View</Link>
-                                </Button>
-                            </div>
+                            <Card key={step.id} className="bg-muted/50">
+                                <CardHeader className="flex flex-row items-center justify-between p-4">
+                                    <div>
+                                        <CardTitle className="text-xl">{model.name}</CardTitle>
+                                        <CardDescription>Data entered in this step.</CardDescription>
+                                    </div>
+                                    <Button asChild variant="secondary" size="sm">
+                                        <Link href={`/data/${model.id}/view/${objectId}`}>View Full Object</Link>
+                                    </Button>
+                                </CardHeader>
+                                <CardContent className="p-4 pt-0 text-sm space-y-2">
+                                    {step.propertyIds.map(propId => {
+                                        const propDef = model.properties.find(p => p.id === propId);
+                                        if (!propDef) return null;
+                                        
+                                        const value = objectData[propDef.name];
+                                        let displayValue: React.ReactNode = String(value ?? '');
+
+                                        if (value === null || value === undefined || value === '') {
+                                          displayValue = <span className="text-muted-foreground italic">Not Set</span>;
+                                        } else if (propDef.type === 'relationship' && !Array.isArray(value)) {
+                                            const relatedModel = getModelById(propDef.relatedModelId!);
+                                            const relatedObj = (allDbObjects[propDef.relatedModelId!] || []).find(o => o.id === value);
+                                            displayValue = getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
+                                        } else if (propDef.type === 'boolean') {
+                                            displayValue = value ? 'Yes' : 'No';
+                                        }
+
+                                        return (
+                                            <div key={propId} className="flex justify-between border-b pb-1 last:border-b-0">
+                                                <span className="font-medium text-muted-foreground">{propDef.name}:</span>
+                                                <span className="text-right truncate pl-4" title={String(value)}>
+                                                  {displayValue}
+                                                </span>
+                                            </div>
+                                        );
+                                    })}
+                                    {step.propertyIds.length === 0 && <p className="text-xs text-muted-foreground italic text-center">No fields were configured for this step.</p>}
+                                </CardContent>
+                            </Card>
                         );
                     })}
                 </CardContent>
