@@ -30,6 +30,7 @@ function mapWizardToFormValues(wizard?: Wizard): WizardFormValues {
         instructions: step.instructions || '',
         propertyIds: step.propertyIds || [],
         orderIndex: step.orderIndex,
+        propertyMappings: step.propertyMappings || [], // This line was missing
     })),
   };
 }
