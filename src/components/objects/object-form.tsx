@@ -62,6 +62,17 @@ export default function ObjectForm({
 
   const allPropertiesSorted = model.properties.sort((a, b) => a.orderIndex - b.orderIndex);
 
+  const visibleProperties = allPropertiesSorted.filter(property => {
+    const isVisibleInStep = propertyIdsToShow ? propertyIdsToShow.includes(property.id) : true;
+    const isMappedAndHidden = hiddenPropertyIds.includes(property.id);
+    return isVisibleInStep && !isMappedAndHidden;
+  });
+
+  const hiddenMappedProperties = allPropertiesSorted.filter(property => {
+    const isMappedAndHidden = hiddenPropertyIds.includes(property.id);
+    return isMappedAndHidden;
+  });
+
 
   let availableStatesForSelect: Array<{ value: string; label: string; isCurrent: boolean }> = [];
   let currentStateName: string | undefined;
@@ -266,26 +277,27 @@ export default function ObjectForm({
                   />
                 )}
 
-
-                {allPropertiesSorted.map((property) => {
-                  const isVisibleInStep = propertyIdsToShow ? propertyIdsToShow.includes(property.id) : true;
-                  const isMappedAndHidden = hiddenPropertyIds.includes(property.id);
-                  const shouldDisplay = isVisibleInStep && !isMappedAndHidden;
-
-                  return (
-                    <div key={property.id} className={!shouldDisplay ? 'hidden' : ''}>
-                      <AdaptiveFormField
-                          form={form} 
-                          property={property}
-                          formContext={formContext}
-                          modelId={model.id}
-                          objectId={formObjectId || existingObject?.id}
-                          isUploading={isUploadingFiles}
-                          uploadProgress={uploadProgress[property.name]}
-                      />
-                    </div>
-                  );
-                })}
+                {visibleProperties.map((property) => (
+                  <div key={property.id}>
+                    <AdaptiveFormField
+                      form={form}
+                      property={property}
+                      formContext={formContext}
+                      modelId={model.id}
+                      objectId={formObjectId || existingObject?.id}
+                      isUploading={isUploadingFiles}
+                      uploadProgress={uploadProgress[property.name]}
+                    />
+                  </div>
+                ))}
+                
+                {hiddenMappedProperties.map((property) => (
+                  <input
+                    key={property.id}
+                    type="hidden"
+                    {...form.register(property.name)}
+                  />
+                ))}
             </div>
         </ScrollArea>
         {!hideFooter && (
