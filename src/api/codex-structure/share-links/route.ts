@@ -73,6 +73,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const validation = createLinkSchema.safeParse(body);
     if (!validation.success) {
+      console.error('[API /share-links] Validation failed:', validation.error.flatten());
       return NextResponse.json({ error: 'Invalid input', details: validation.error.flatten().fieldErrors }, { status: 400 });
     }
 
@@ -86,9 +87,9 @@ export async function POST(request: Request) {
     const linkId = randomUUID();
     const createdAt = new Date().toISOString();
 
-    // Explicitly handle optional values to ensure they are passed as null if undefined
-    const dataObjectIdToInsert = data_object_id === undefined ? null : data_object_id;
-    const expiresAtToInsert = expires_at === undefined ? null : expires_at;
+    // A more robust way to handle optional fields, ensuring they are explicitly null if not provided
+    const dataObjectIdToInsert = data_object_id || null;
+    const expiresAtToInsert = expires_at || null;
 
     await db.run(
       'INSERT INTO shared_object_links (id, link_type, model_id, data_object_id, created_by_user_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
@@ -99,11 +100,11 @@ export async function POST(request: Request) {
       id: linkId,
       link_type,
       model_id,
-      data_object_id: data_object_id,
+      data_object_id: dataObjectIdToInsert, // Use the sanitized value
       created_by_user_id: currentUser.id,
       created_by_username: currentUser.username,
       created_at: createdAt,
-      expires_at: expires_at,
+      expires_at: expiresAtToInsert, // Use the sanitized value
     };
     
     return NextResponse.json(newLink, { status: 201 });
