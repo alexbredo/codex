@@ -104,3 +104,79 @@ export function getObjectGroupValue(
       return unhandledValue.trim() === '' ? '(Empty)' : unhandledValue;
   }
 }
+
+export const formatApiError = async (response: Response, defaultMessage: string): Promise<string> => {
+  const status = response.status;
+  const statusText = response.statusText;
+  let responseBodyText = '';
+
+  try {
+    responseBodyText = await response.text();
+  } catch (e) {
+    return `${defaultMessage}. Status: ${status} - ${statusText || 'Could not read response body.'}`;
+  }
+
+  let errorData;
+  try {
+    errorData = JSON.parse(responseBodyText);
+  } catch (e) {
+    return `${defaultMessage}. Status: ${status} - ${statusText || 'Server returned a non-JSON response.'} Body: ${responseBodyText.substring(0, 200)}...`;
+  }
+
+  if (errorData && errorData.error) {
+    let errorMessage = String(errorData.error);
+    if (errorData.details) {
+      errorMessage += ` (Details: ${ (typeof errorData.details === 'string') ? errorData.details : JSON.stringify(errorData.details) })`;
+    }
+    if (errorData.field && typeof errorData.field === 'string') {
+      throw { message: errorMessage, field: errorData.field };
+    }
+    return errorMessage;
+  }
+  
+  return `${defaultMessage}. Status: ${status} - ${statusText || 'Server did not provide a detailed error message.'}`;
+};
+
+export const mapDbModelToClientModel = (dbModel: any): Model => {
+  let parsedDisplayPropertyNames: string[] = [];
+  if (Array.isArray(dbModel.displayPropertyNames)) {
+    parsedDisplayPropertyNames = dbModel.displayPropertyNames;
+  } else if (typeof dbModel.displayPropertyNames === 'string') {
+    try {
+      const temp = JSON.parse(dbModel.displayPropertyNames);
+      if (Array.isArray(temp)) {
+        parsedDisplayPropertyNames = temp.filter((name: any) => typeof name === 'string');
+      }
+    } catch (e) {
+      // console.warn(`Context: Could not parse displayPropertyNames for model ${dbModel.id}: '${dbModel.displayPropertyNames}'`, e);
+    }
+  }
+
+  return {
+    id: dbModel.id,
+    name: dbModel.name,
+    description: dbModel.description,
+    modelGroupId: dbModel.model_group_id ?? null,
+    displayPropertyNames: parsedDisplayPropertyNames,
+    workflowId: dbModel.workflowId === undefined ? null : dbModel.workflowId,
+    properties: (dbModel.properties || []).map((p: any) => ({
+      id: p.id || crypto.randomUUID(),
+      model_id: p.model_id,
+      name: p.name,
+      type: p.type,
+      relatedModelId: p.type === 'relationship' ? p.relatedModelId : undefined,
+      required: p.required === 1 || p.required === true, 
+      relationshipType: p.type === 'relationship' ? (p.relationshipType || 'one') : undefined,
+      unit: p.type === 'number' ? p.unit : undefined,
+      precision: p.type === 'number' ? (p.precision === undefined || p.precision === null || isNaN(Number(p.precision)) ? 2 : Number(p.precision)) : undefined,
+      autoSetOnCreate: p.type === 'date' ? (p.autoSetOnCreate === 1 || p.autoSetOnCreate === true) : false,
+      autoSetOnUpdate: p.type === 'date' ? (p.autoSetOnUpdate === 1 || p.autoSetOnUpdate === true) : false,
+      isUnique: p.type === 'string' ? (p.isUnique === 1 || p.isUnique === true) : false,
+      orderIndex: p.orderIndex ?? 0,
+      defaultValue: p.defaultValue ?? null,
+      validationRulesetId: p.validationRulesetId ?? null,
+      minValue: p.minValue ?? null,
+      maxValue: p.maxValue ?? null,
+    })).sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0)),
+  };
+};

@@ -34,9 +34,11 @@ import {
   RefreshCw,
   Loader2,
   ArrowLeft,
+  Share2,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import CreateShareLinkDialog from '@/components/sharing/CreateShareLinkDialog';
 
 // Define ViewMode locally for this component. Ideally, this would be in a shared types file.
 export type ViewMode = 'table' | 'gallery' | 'kanban';
@@ -185,6 +187,10 @@ export default function DataObjectsPageHeader({
           </Button>
           <Button onClick={onEditModelStructure} variant="outline" size="sm"><SettingsIcon className="mr-2 h-4 w-4" /> Edit Model</Button>
           <Button onClick={onExportCSV} variant="outline" size="sm"><Download className="mr-2 h-4 w-4" /> Export CSV</Button>
+          <CreateShareLinkDialog
+            modelId={currentModel.id}
+            triggerButton={<Button variant="outline" size="sm"><Share2 className="mr-2 h-4 w-4" /> Share Form</Button>}
+           />
           <Button onClick={onCreateNew} size="sm" className="bg-accent text-accent-foreground hover:bg-accent/90" disabled={viewingRecycleBin}><PlusCircle className="mr-2 h-4 w-4" /> Create New</Button>
         </div>
       </header>

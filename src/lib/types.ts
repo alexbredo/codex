@@ -289,3 +289,24 @@ export interface ApiToken {
   createdAt: string;
   lastUsedAt?: string | null;
 }
+
+// Share Links
+export type ShareLinkType = 'view' | 'create' | 'update';
+
+export interface SharedObjectLink {
+  id: string;
+  link_type: ShareLinkType;
+  model_id: string;
+  data_object_id?: string | null;
+  created_by_user_id: string;
+  created_by_username?: string; // Populated on fetch
+  created_at: string;
+  expires_at?: string | null;
+  is_active?: boolean; // Calculated property
+}
+
+export interface PublicShareData {
+  link: SharedObjectLink;
+  model: Model;
+  object?: DataObject; // Only for 'view' and 'update' types
+}

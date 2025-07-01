@@ -363,6 +363,23 @@ async function initializeDb(): Promise<Database> {
   `);
   await db.exec('CREATE INDEX IF NOT EXISTS idx_dashboards_userId_isDefault ON dashboards (userId, isDefault);');
 
+  // Shared Object Links Table
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS shared_object_links (
+      id TEXT PRIMARY KEY,
+      link_type TEXT NOT NULL, -- 'view', 'create', 'update'
+      model_id TEXT NOT NULL,
+      data_object_id TEXT, -- Nullable for 'create' links
+      created_by_user_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      expires_at TEXT,
+      FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE,
+      FOREIGN KEY (data_object_id) REFERENCES data_objects(id) ON DELETE CASCADE,
+      FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+  `);
+
+
   return db;
 }
 

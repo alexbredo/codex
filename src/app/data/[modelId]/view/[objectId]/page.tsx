@@ -6,7 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { useData } from '@/contexts/data-context';
 import { useAuth } from '@/contexts/auth-context';
-import type { Model, DataObject, Property, WorkflowWithDetails, ValidationRuleset, ChangelogEntry, PaginatedStructuralChangelogResponse } from '@/lib/types';
+import type { DataObject, Model, Property, WorkflowWithDetails, ValidationRuleset, ChangelogEntry, PaginatedStructuralChangelogResponse, SharedObjectLink } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -49,21 +49,34 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Edit, Trash2, DownloadCloud, PlusCircle, Loader2, DatabaseZap, FileText, ListFilter, CheckCircle, ShieldCheck, AlertTriangle, Settings2, Workflow as WorkflowIconLucide, History as HistoryIcon, User as UserIcon, Layers, Edit2 as Edit2Icon, ZoomIn, ExternalLink, RotateCcw, UserCircle as UserCircleIcon, CalendarClock, ShieldAlert, Paperclip } from 'lucide-react';
+import { ArrowLeft, Edit, Trash2, DownloadCloud, PlusCircle, Loader2, DatabaseZap, FileText, ListFilter, CheckCircle, ShieldCheck, AlertTriangle, Settings2, Workflow as WorkflowIconLucide, History as HistoryIcon, User as UserIcon, Layers, Edit2 as Edit2Icon, ZoomIn, ExternalLink, RotateCcw, UserCircle as UserCircleIcon, CalendarClock, ShieldAlert, Paperclip, Share2 } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
+import { withAuth } from '@/contexts/auth-context';
 import { format } from 'date-fns';
 import ReactJson from 'react18-json-view';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import Image from 'next/image';
-import { getObjectDisplayValue } from '@/lib/utils';
+import { getObjectDisplayValue, mapDbModelToClientModel } from '@/lib/utils';
 import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
 import ReactMarkdown from 'react-markdown';
 import { StarDisplay } from '@/components/ui/star-display';
 import { Progress } from '@/components/ui/progress';
+import CreateShareLinkDialog from '@/components/sharing/CreateShareLinkDialog';
+import ShareLinkManager from '@/components/sharing/ShareLinkManager';
+import { cn } from '@/lib/utils';
 
 
-function ViewObjectPageInternal() {
+// This component can now be rendered in two modes:
+// 1. As a regular page within the app layout (default)
+// 2. As a minimal, public-facing page via a share link
+interface ViewObjectPageProps {
+  isPublicView?: boolean;
+  publicObjectData?: DataObject; // Data passed in for public view
+}
+
+
+function ViewObjectPageInternal({ isPublicView = false, publicObjectData }: ViewObjectPageProps) {
   const router = useRouter();
   const params = useParams();
   const modelId = params.modelId as string;
@@ -74,7 +87,7 @@ function ViewObjectPageInternal() {
   const { getModelById, models: allModels, getAllObjects, getWorkflowById, validationRulesets, getUserById, isReady: dataContextIsReady, formatApiError, fetchData: refreshDataContext } = useData();
 
   const [currentModel, setCurrentModel] = useState<Model | null>(null);
-  const [viewingObject, setViewingObject] = useState<DataObject | null>(null);
+  const [viewingObject, setViewingObject] = useState<DataObject | null>(publicObjectData || null);
   const [currentWorkflow, setCurrentWorkflow] = useState<WorkflowWithDetails | null>(null);
   const [changelog, setChangelog] = useState<ChangelogEntry[]>([]);
   const [isLoadingPageData, setIsLoadingPageData] = useState(true);
@@ -86,9 +99,11 @@ function ViewObjectPageInternal() {
   const [revertingEntryId, setRevertingEntryId] = useState<string | null>(null);
   const [isReverting, setIsReverting] = useState(false);
   const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null);
+  const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
+
 
   useEffect(() => {
-    if (!authIsLoading && modelId) {
+    if (!isPublicView && !authIsLoading && modelId) {
       if (!hasPermission(`model:view:${modelId}`)) {
         toast({
           variant: 'destructive',
@@ -98,10 +113,10 @@ function ViewObjectPageInternal() {
         router.replace('/');
       }
     }
-  }, [authIsLoading, hasPermission, modelId, router, toast]);
+  }, [authIsLoading, hasPermission, modelId, router, toast, isPublicView]);
 
 
-  const allDbObjects = useMemo(() => getAllObjects(true), [getAllObjects, dataContextIsReady]); // Include deleted for relationship lookups
+  const allDbObjects = useMemo(() => getAllObjects(true), [getAllObjects, dataContextIsReady]);
 
   const getWorkflowStateName = useCallback((stateId: string | null | undefined): string => {
     if (!stateId || !currentWorkflow) return 'N/A';
@@ -119,6 +134,23 @@ function ViewObjectPageInternal() {
 
 
   const loadObjectData = useCallback(async () => {
+    // In public view, data is passed as a prop, so we don't need to fetch
+    if (isPublicView && publicObjectData) {
+        setIsLoadingPageData(true); // Still set loading to true initially
+        const foundModel = await getModelById(modelId);
+        if (foundModel) {
+            setCurrentModel(foundModel);
+            if(foundModel.workflowId) {
+                setCurrentWorkflow(getWorkflowById(foundModel.workflowId) || null);
+            }
+        } else {
+             setPageError(`Associated model with ID ${modelId} not found.`);
+        }
+        setViewingObject(publicObjectData);
+        setIsLoadingPageData(false);
+        return;
+    }
+
     if (!dataContextIsReady || !modelId || !objectId) {
       return;
     }
@@ -155,7 +187,7 @@ function ViewObjectPageInternal() {
     } finally {
       setIsLoadingPageData(false);
     }
-  }, [modelId, objectId, dataContextIsReady, getModelById, getWorkflowById, router, toast, formatApiError]);
+  }, [modelId, objectId, dataContextIsReady, getModelById, getWorkflowById, router, toast, formatApiError, isPublicView, publicObjectData]);
 
   const fetchChangelog = useCallback(async () => {
     if (!objectId) return;
@@ -182,10 +214,10 @@ function ViewObjectPageInternal() {
   }, [loadObjectData]);
 
   useEffect(() => {
-    if (viewingObject) {
+    if (viewingObject && !isPublicView) {
       fetchChangelog();
     }
-  }, [viewingObject, fetchChangelog]);
+  }, [viewingObject, fetchChangelog, isPublicView]);
 
   const handleRevertClick = (entryId: string) => {
     setRevertingEntryId(entryId);
@@ -426,7 +458,7 @@ function ViewObjectPageInternal() {
   };
 
 
-  if (isLoadingPageData || authIsLoading) {
+  if ((isLoadingPageData && !isPublicView) || (!isPublicView && authIsLoading)) {
     return (
       <div className="flex flex-col justify-center items-center h-screen">
         <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
@@ -470,27 +502,36 @@ function ViewObjectPageInternal() {
       return <span className="text-muted-foreground italic">Invalid date format</span>;
     }
   };
-
-  const isAdmin = currentUser?.role === 'administrator';
+  
   const canRevert = (changeType: ChangelogEntry['changeType']) => {
+    if (isPublicView) return false;
     return hasPermission('objects:revert') && ['UPDATE', 'DELETE', 'RESTORE'].includes(changeType);
   };
 
-  const canEditObject = hasPermission(`model:edit:${modelId}`) || (hasPermission('objects:edit_own') && viewingObject.ownerId === currentUser?.id);
+  const canEditObject = !isPublicView && (hasPermission(`model:edit:${modelId}`) || (hasPermission('objects:edit_own') && viewingObject.ownerId === currentUser?.id));
 
 
   return (
-    <div className="container mx-auto py-8">
-      <div className="flex justify-between items-center mb-6">
-        <Button variant="outline" onClick={() => router.push(`/data/${modelId}`)}>
-          <ArrowLeft className="mr-2 h-4 w-4" /> Back to {currentModel.name} Data
-        </Button>
-        {!viewingObject.isDeleted && canEditObject && (
-          <Button onClick={() => router.push(`/data/${modelId}/edit/${objectId}`)}>
-            <Edit className="mr-2 h-4 w-4" /> Edit This {currentModel.name}
-          </Button>
-        )}
-      </div>
+    <div className={cn("py-8", isPublicView ? "container mx-auto" : "")}>
+       {!isPublicView && (
+            <div className="flex justify-between items-center mb-6">
+                <Button variant="outline" onClick={() => router.push(`/data/${modelId}`)}>
+                <ArrowLeft className="mr-2 h-4 w-4" /> Back to {currentModel.name} Data
+                </Button>
+                <div className="flex items-center gap-2">
+                    {canEditObject && (
+                    <Button onClick={() => router.push(`/data/${modelId}/edit/${objectId}`)}>
+                        <Edit className="mr-2 h-4 w-4" /> Edit This {currentModel.name}
+                    </Button>
+                    )}
+                    <CreateShareLinkDialog 
+                        modelId={modelId} 
+                        objectId={objectId} 
+                        objectName={getObjectDisplayValue(viewingObject, currentModel, allModels, allDbObjects)}
+                    />
+                </div>
+            </div>
+       )}
 
       {viewingObject.isDeleted && (
         <Card className="max-w-4xl mx-auto shadow-lg mb-6 border-destructive bg-destructive/5">
@@ -518,12 +559,14 @@ function ViewObjectPageInternal() {
                   </Badge>
               </div>
             )}
-            <div>
-              <Badge variant="outline" className="text-sm">
-                <UserCircleIcon className="mr-2 h-4 w-4 text-muted-foreground" />
-                Owned By: {ownerUsername}
-              </Badge>
-            </div>
+            {!isPublicView && (
+              <div>
+                <Badge variant="outline" className="text-sm">
+                  <UserCircleIcon className="mr-2 h-4 w-4 text-muted-foreground" />
+                  Owned By: {ownerUsername}
+                </Badge>
+              </div>
+            )}
             <div className="flex flex-wrap gap-2 items-center text-xs text-muted-foreground">
               <div className="flex items-center">
                 <CalendarClock size={14} className="mr-1.5" />
@@ -544,10 +587,6 @@ function ViewObjectPageInternal() {
         </CardHeader>
         <TooltipProvider>
         <CardContent className="space-y-6">
-          <div>
-            <h3 className="text-sm font-medium text-muted-foreground mb-1">Object ID (UUID)</h3>
-            <p className="text-sm font-mono bg-muted p-2 rounded-md">{viewingObject.id}</p>
-          </div>
           <hr/>
           {sortedProperties.map(prop => {
             let appliedRule: ValidationRuleset | undefined;
@@ -581,127 +620,136 @@ function ViewObjectPageInternal() {
         </TooltipProvider>
       </Card>
 
-      <Card className="max-w-4xl mx-auto shadow-lg">
-        <CardHeader>
-            <CardTitle className="text-2xl text-primary flex items-center">
-                <HistoryIcon className="mr-2 h-6 w-6" /> Object Changelog
-            </CardTitle>
-            <CardDescription>History of changes made to this object.</CardDescription>
-        </CardHeader>
-        <CardContent>
-            {isLoadingChangelog && (
-                 <div className="flex items-center justify-center py-6">
-                    <Loader2 className="h-6 w-6 animate-spin text-primary mr-2" />
-                    <p className="text-muted-foreground">Loading changelog...</p>
-                </div>
-            )}
-            {changelogError && !isLoadingChangelog && (
-                <div className="text-destructive text-center py-6">
-                    <ShieldAlert className="h-8 w-8 mx-auto mb-2" />
-                    <p>Error loading changelog: {changelogError}</p>
-                </div>
-            )}
-            {!isLoadingChangelog && !changelogError && changelog.length === 0 && (
-                <p className="text-muted-foreground text-center py-6">No changes recorded for this object yet.</p>
-            )}
-            {!isLoadingChangelog && !changelogError && changelog.length > 0 && (
-                <ScrollArea className="max-h-[500px]">
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead className="w-[180px]">Date & Time</TableHead>
-                                <TableHead className="w-[150px]">User</TableHead>
-                                <TableHead className="w-[100px]">Action</TableHead>
-                                <TableHead>Details</TableHead>
-                                {hasPermission('objects:revert') && <TableHead className="w-[100px] text-right">Revert</TableHead>}
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {changelog.map(entry => (
-                                <TableRow key={entry.id}>
-                                    <TableCell className="text-xs">
-                                        {formatDateFns(new Date(entry.changedAt), 'MMM d, yyyy, HH:mm:ss')}
-                                    </TableCell>
-                                    <TableCell>
-                                        <Badge variant="outline" className="text-xs">
-                                            <UserIcon className="mr-1.5 h-3 w-3" />
-                                            {entry.changedByUsername || 'System'}
-                                        </Badge>
-                                    </TableCell>
-                                    <TableCell>
-                                        <Badge variant={entry.changeType === 'CREATE' ? 'default' : entry.changeType.startsWith('REVERT_') ? 'warning' : 'secondary'} className="capitalize">
-                                            {entry.changeType.toLowerCase().replace('_', ' ')}
-                                        </Badge>
-                                    </TableCell>
-                                    <TableCell className="text-xs">
-                                        {entry.changeType === 'CREATE' && (
-                                            <div className="flex items-center">
-                                                <FileText className="h-3.5 w-3.5 mr-1.5 text-green-600" />
-                                                Object created with initial data.
-                                            </div>
-                                        )}
-                                        {(entry.changeType === 'UPDATE' || entry.changeType === 'REVERT_UPDATE') && entry.changes.modifiedProperties && entry.changes.modifiedProperties.length > 0 && (
-                                            <ul className="space-y-1">
-                                                {entry.changes.modifiedProperties.map((modProp, idx) => (
-                                                    <li key={idx} className="flex items-start">
-                                                        <Edit className="h-3.5 w-3.5 mr-1.5 mt-0.5 text-blue-500 shrink-0" />
-                                                        <div>{renderChangeDetail(modProp)}</div>
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        )}
-                                         {(entry.changeType === 'UPDATE' || entry.changeType === 'REVERT_UPDATE') && (!entry.changes.modifiedProperties || entry.changes.modifiedProperties.length === 0) && (
-                                             <span className="italic text-muted-foreground">Object updated, but no specific property changes logged.</span>
-                                        )}
-                                        {(entry.changeType === 'DELETE' || entry.changeType === 'REVERT_RESTORE') && (
-                                            <div className="flex items-center">
-                                                <Trash2 className="h-3.5 w-3.5 mr-1.5 text-destructive" />
-                                                Object was soft-deleted.
-                                                {entry.changes.snapshot && <span className="text-muted-foreground ml-1 text-xs">(Snapshot taken)</span>}
-                                            </div>
-                                        )}
-                                        {(entry.changeType === 'RESTORE' || entry.changeType === 'REVERT_DELETE') && (
-                                            <div className="flex items-center">
-                                                <RotateCcw className="h-3.5 w-3.5 mr-1.5 text-green-600" />
-                                                Object was restored.
-                                            </div>
-                                        )}
-                                         {(entry.changeType === 'REVERT_UPDATE' || entry.changeType === 'REVERT_DELETE' || entry.changeType === 'REVERT_RESTORE') && entry.changes.revertedFromChangelogEntryId && (
-                                            <p className="text-xs text-muted-foreground mt-1">
-                                                (Reverted from change made on: {formatDateFns(new Date(changelog.find(c => c.id === entry.changes.revertedFromChangelogEntryId)?.changedAt || entry.changedAt), 'MMM d, HH:mm')})
-                                            </p>
-                                        )}
-                                    </TableCell>
-                                     {hasPermission('objects:revert') && (
-                                      <TableCell className="text-right">
-                                        {canRevert(entry.changeType) && (
-                                          <Button
-                                            variant="outline"
-                                            size="xs"
-                                            onClick={() => handleRevertClick(entry.id)}
-                                            disabled={isReverting && revertingEntryId === entry.id}
-                                            className="text-xs"
-                                          >
-                                            {isReverting && revertingEntryId === entry.id ? (
-                                              <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                                            ) : (
-                                              <RotateCcw className="mr-1 h-3 w-3" />
-                                            )}
-                                            Revert
-                                          </Button>
-                                        )}
-                                      </TableCell>
-                                    )}
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </ScrollArea>
-            )}
-        </CardContent>
-      </Card>
+      {!isPublicView && (
+        <ShareLinkManager
+            modelId={modelId}
+            objectId={objectId}
+        />
+      )}
 
-      {hasPermission('objects:revert') && (
+      {!isPublicView && (
+         <Card className="max-w-4xl mx-auto shadow-lg mt-8">
+            <CardHeader>
+                <CardTitle className="text-2xl text-primary flex items-center">
+                    <HistoryIcon className="mr-2 h-6 w-6" /> Object Changelog
+                </CardTitle>
+                <CardDescription>History of changes made to this object.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                {isLoadingChangelog && (
+                    <div className="flex items-center justify-center py-6">
+                        <Loader2 className="h-6 w-6 animate-spin text-primary mr-2" />
+                        <p className="text-muted-foreground">Loading changelog...</p>
+                    </div>
+                )}
+                {changelogError && !isLoadingChangelog && (
+                    <div className="text-destructive text-center py-6">
+                        <ShieldAlert className="h-8 w-8 mx-auto mb-2" />
+                        <p>Error loading changelog: {changelogError}</p>
+                    </div>
+                )}
+                {!isLoadingChangelog && !changelogError && changelog.length === 0 && (
+                    <p className="text-muted-foreground text-center py-6">No changes recorded for this object yet.</p>
+                )}
+                {!isLoadingChangelog && !changelogError && changelog.length > 0 && (
+                    <ScrollArea className="max-h-[500px]">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead className="w-[180px]">Date & Time</TableHead>
+                                    <TableHead className="w-[150px]">User</TableHead>
+                                    <TableHead className="w-[100px]">Action</TableHead>
+                                    <TableHead>Details</TableHead>
+                                    {hasPermission('objects:revert') && <TableHead className="w-[100px] text-right">Revert</TableHead>}
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {changelog.map(entry => (
+                                    <TableRow key={entry.id}>
+                                        <TableCell className="text-xs">
+                                            {formatDateFns(new Date(entry.changedAt), 'MMM d, yyyy, HH:mm:ss')}
+                                        </TableCell>
+                                        <TableCell>
+                                            <Badge variant="outline" className="text-xs">
+                                                <UserIcon className="mr-1.5 h-3 w-3" />
+                                                {entry.changedByUsername || 'System'}
+                                            </Badge>
+                                        </TableCell>
+                                        <TableCell>
+                                            <Badge variant={entry.changeType === 'CREATE' ? 'default' : entry.changeType.startsWith('REVERT_') ? 'warning' : 'secondary'} className="capitalize">
+                                                {entry.changeType.toLowerCase().replace('_', ' ')}
+                                            </Badge>
+                                        </TableCell>
+                                        <TableCell className="text-xs">
+                                            {entry.changeType === 'CREATE' && (
+                                                <div className="flex items-center">
+                                                    <FileText className="h-3.5 w-3.5 mr-1.5 text-green-600" />
+                                                    Object created with initial data.
+                                                </div>
+                                            )}
+                                            {(entry.changeType === 'UPDATE' || entry.changeType === 'REVERT_UPDATE') && entry.changes.modifiedProperties && entry.changes.modifiedProperties.length > 0 && (
+                                                <ul className="space-y-1">
+                                                    {entry.changes.modifiedProperties.map((modProp, idx) => (
+                                                        <li key={idx} className="flex items-start">
+                                                            <Edit className="h-3.5 w-3.5 mr-1.5 mt-0.5 text-blue-500 shrink-0" />
+                                                            <div>{renderChangeDetail(modProp)}</div>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            )}
+                                            {(entry.changeType === 'UPDATE' || entry.changeType === 'REVERT_UPDATE') && (!entry.changes.modifiedProperties || entry.changes.modifiedProperties.length === 0) && (
+                                                <span className="italic text-muted-foreground">Object updated, but no specific property changes logged.</span>
+                                            )}
+                                            {(entry.changeType === 'DELETE' || entry.changeType === 'REVERT_RESTORE') && (
+                                                <div className="flex items-center">
+                                                    <Trash2 className="h-3.5 w-3.5 mr-1.5 text-destructive" />
+                                                    Object was soft-deleted.
+                                                    {entry.changes.snapshot && <span className="text-muted-foreground ml-1 text-xs">(Snapshot taken)</span>}
+                                                </div>
+                                            )}
+                                            {(entry.changeType === 'RESTORE' || entry.changeType === 'REVERT_DELETE') && (
+                                                <div className="flex items-center">
+                                                    <RotateCcw className="h-3.5 w-3.5 mr-1.5 text-green-600" />
+                                                    Object was restored.
+                                                </div>
+                                            )}
+                                            {(entry.changeType === 'REVERT_UPDATE' || entry.changeType === 'REVERT_DELETE' || entry.changeType === 'REVERT_RESTORE') && entry.changes.revertedFromChangelogEntryId && (
+                                                <p className="text-xs text-muted-foreground mt-1">
+                                                    (Reverted from change made on: {formatDateFns(new Date(changelog.find(c => c.id === entry.changes.revertedFromChangelogEntryId)?.changedAt || entry.changedAt), 'MMM d, HH:mm')})
+                                                </p>
+                                            )}
+                                        </TableCell>
+                                        {hasPermission('objects:revert') && (
+                                        <TableCell className="text-right">
+                                            {canRevert(entry.changeType) && (
+                                            <Button
+                                                variant="outline"
+                                                size="xs"
+                                                onClick={() => handleRevertClick(entry.id)}
+                                                disabled={isReverting && revertingEntryId === entry.id}
+                                                className="text-xs"
+                                            >
+                                                {isReverting && revertingEntryId === entry.id ? (
+                                                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                                                ) : (
+                                                <RotateCcw className="mr-1 h-3 w-3" />
+                                                )}
+                                                Revert
+                                            </Button>
+                                            )}
+                                        </TableCell>
+                                        )}
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </ScrollArea>
+                )}
+            </CardContent>
+        </Card>
+      )}
+
+      {!isPublicView && hasPermission('objects:revert') && (
         <AlertDialog open={isRevertConfirmOpen} onOpenChange={setIsRevertConfirmOpen}>
             <AlertDialogContent>
             <AlertDialogHeader>
@@ -724,10 +772,10 @@ function ViewObjectPageInternal() {
 
       <DetailsDialog open={!!lightboxImageUrl} onOpenChange={(open) => !open && setLightboxImageUrl(null)}>
         <DetailsDialogContent className="max-w-5xl w-auto p-0 bg-transparent border-0 shadow-none">
-          <DetailsDialogHeader className="sr-only">
-            <DetailsDialogTitle>Image Lightbox</DetailsDialogTitle>
-            <DetailsDialogDescription>A larger view of the selected image. Click outside the image or press escape to close.</DetailsDialogDescription>
-          </DetailsDialogHeader>
+          <LightboxDialogHeader className="sr-only">
+            <LightboxDialogTitle>Image Lightbox</LightboxDialogTitle>
+            <LightboxDialogDescription>A larger view of the selected image. Click outside the image or press escape to close.</LightboxDialogDescription>
+          </LightboxDialogHeader>
           {lightboxImageUrl && (
             <Image
               src={lightboxImageUrl}
@@ -747,6 +795,11 @@ function ViewObjectPageInternal() {
   );
 }
 
-// withAuth doesn't support dynamic checks like this, so we do it inside the component.
-// The wrapper is still useful for the initial user/loading check.
-export default ViewObjectPageInternal;
+// Check auth only if it's not a public view
+export default function ViewObjectPageWrapper(props: ViewObjectPageProps) {
+  if (props.isPublicView) {
+    return <ViewObjectPageInternal {...props} />;
+  }
+  const AuthenticatedView = withAuth(ViewObjectPageInternal, 'any'); // Use 'any' to ensure user is logged in
+  return <AuthenticatedView {...props} />;
+}
