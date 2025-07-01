@@ -1,5 +1,4 @@
 
-
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import type { Model, Property, WorkflowWithDetails, WorkflowState, StructuralChangeDetail } from '@/lib/types';
@@ -128,9 +127,15 @@ export async function PUT(request: Request, { params }: Params) {
     // ================================================================
     const finalName = body.name ?? oldModelRow.name;
     const finalDescription = 'description' in body ? body.description : oldModelRow.description;
-    const finalModelGroupId = 'modelGroupId' in body ? body.modelGroupId : oldModelRow.model_group_id;
     const finalDisplayPropertyNames = 'displayPropertyNames' in body ? JSON.stringify(body.displayPropertyNames || []) : oldModelRow.displayPropertyNames;
     const finalWorkflowId = 'workflowId' in body ? body.workflowId : oldModelRow.workflowId;
+
+    const defaultGroupId = "00000000-0000-0000-0000-000000000001";
+    let finalModelGroupId = oldModelRow.model_group_id;
+    if ('modelGroupId' in body) {
+      finalModelGroupId = body.modelGroupId === null ? defaultGroupId : body.modelGroupId;
+    }
+
 
     await db.run(
         'UPDATE models SET name = ?, description = ?, model_group_id = ?, displayPropertyNames = ?, workflowId = ? WHERE id = ?',
@@ -189,7 +194,7 @@ export async function PUT(request: Request, { params }: Params) {
         );
         newProcessedProperties.push({
             ...prop, id: propertyId, model_id: params.modelId, 
-            required: !!prop.required, autoSetOnCreate: !!prop.autoSetOnCreate, autoSetOnUpdate: !!prop.autoSetOnUpdate, isUnique: !!prop.isUnique,
+            required: !!prop.required, autoSetOnCreate: !!prop.autoSetOnCreate, autoSetOnUpdate: !!p.autoSetOnUpdate, isUnique: !!p.isUnique,
             defaultValue: prop.defaultValue, validationRulesetId: prop.validationRulesetId ?? null, minValue: propMinValueForDb, maxValue: propMaxValueForDb
         } as Property);
       }
@@ -356,3 +361,5 @@ export async function DELETE(request: Request, { params }: Params) {
     return NextResponse.json({ error: 'Failed to delete model', details: errorMessage }, { status: 500 });
   }
 }
+
+    
