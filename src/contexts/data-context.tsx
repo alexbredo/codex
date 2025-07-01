@@ -53,6 +53,7 @@ export interface DataContextType {
   updateWizard: (wizardId: string, wizardData: Omit<Wizard, 'id' | 'steps'> & { steps: Array<Omit<Wizard['steps'][0], 'id' | 'wizardId'> & {id?:string}> }) => Promise<Wizard | undefined>;
   deleteWizard: (wizardId: string) => Promise<void>;
   getWizardById: (wizardId: string) => Wizard | undefined;
+  getWizardByName: (name: string) => Wizard | undefined;
 
   addValidationRuleset: (rulesetData: Omit<ValidationRuleset, 'id'>) => Promise<ValidationRuleset>;
   updateValidationRuleset: (rulesetId: string, updates: Partial<Omit<ValidationRuleset, 'id'>>) => Promise<ValidationRuleset | undefined>;
@@ -514,6 +515,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [fetchData]);
 
   const getWizardById = useCallback((wizardId: string) => wizards.find(w => w.id === wizardId), [wizards]);
+  const getWizardByName = useCallback((name: string) => wizards.find((wizard) => wizard.name.toLowerCase() === name.toLowerCase()), [wizards]);
 
   const addValidationRuleset = useCallback(async (rulesetData: Omit<ValidationRuleset, 'id'>): Promise<ValidationRuleset> => {
     const response = await fetch('/api/codex-structure/validation-rulesets', {
@@ -551,7 +553,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     addObject, updateObject, deleteObject, restoreObject, getObjectsByModelId, getAllObjects,
     addModelGroup, updateModelGroup, deleteModelGroup, getModelGroupById, getModelGroupByName, getAllModelGroups,
     addWorkflow, updateWorkflow, deleteWorkflow, getWorkflowById, 
-    addWizard, updateWizard, deleteWizard, getWizardById,
+    addWizard, updateWizard, deleteWizard, getWizardById, getWizardByName,
     addValidationRuleset, updateValidationRuleset, deleteValidationRuleset, getValidationRulesetById,
     getUserById,
     isReady, isBackgroundFetching, fetchData, formatApiError,
