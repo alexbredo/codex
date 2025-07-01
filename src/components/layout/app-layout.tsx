@@ -49,7 +49,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
   return (
     <SidebarProvider defaultOpen>
-      <div className="flex min-h-screen w-full">
+      <div className="flex min-h-screen">
         <GlobalSearch open={isSearchOpen} setOpen={setIsSearchOpen} />
         <Sidebar collapsible="icon" className="border-r">
           <SidebarHeader>
