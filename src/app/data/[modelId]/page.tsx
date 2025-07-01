@@ -79,7 +79,7 @@ export default function DataObjectsPage() {
     getUserById, 
     isReady: dataContextIsReady,
     fetchData,
-    lastChangedInfo,
+    formatApiError,
   }: DataContextType = dataContext;
   const { toast } = useToast();
   const { user, hasPermission, isLoading: isAuthLoading } = useAuth();
@@ -113,7 +113,9 @@ export default function DataObjectsPage() {
       if (!modelIdFromUrl) return [];
       const response = await fetch(`/api/codex-structure/share-links?model_id=${modelIdFromUrl}`);
       if (!response.ok) {
-        console.error('Failed to fetch share links for model.');
+        // IMPROVED ERROR LOGGING: Log the actual response text if it's not JSON
+        const responseText = await response.text();
+        console.error('Failed to fetch share links for model.', { status: response.status, response: responseText });
         return [];
       }
       return response.json();

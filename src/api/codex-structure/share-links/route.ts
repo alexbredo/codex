@@ -20,22 +20,23 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { searchParams } = new URL(request.url);
-  const dataObjectId = searchParams.get('data_object_id');
-  const modelId = searchParams.get('model_id');
-
-  if (!dataObjectId && !modelId) {
-    return NextResponse.json({ error: 'A data_object_id or model_id must be provided' }, { status: 400 });
-  }
-
   try {
+    const { searchParams } = new URL(request.url);
+    const dataObjectId = searchParams.get('data_object_id');
+    const modelId = searchParams.get('model_id');
+
+    if (!dataObjectId && !modelId) {
+      return NextResponse.json({ error: 'A data_object_id or model_id must be provided' }, { status: 400 });
+    }
+
     const db = await getDb();
     let query: string;
     const queryParams: any[] = [];
     
+    // This logic has been slightly simplified to be more robust.
     if (dataObjectId) {
       query = `
-        SELECT sl.*, u.username as created_by_username 
+        SELECT sl.id, sl.link_type, sl.model_id, sl.data_object_id, sl.created_by_user_id, sl.created_at, sl.expires_at, u.username as created_by_username
         FROM shared_object_links sl
         LEFT JOIN users u ON sl.created_by_user_id = u.id
         WHERE sl.data_object_id = ?
@@ -44,7 +45,7 @@ export async function GET(request: Request) {
       queryParams.push(dataObjectId);
     } else { // modelId must be present
       query = `
-        SELECT sl.*, u.username as created_by_username 
+        SELECT sl.id, sl.link_type, sl.model_id, sl.data_object_id, sl.created_by_user_id, sl.created_at, sl.expires_at, u.username as created_by_username
         FROM shared_object_links sl
         LEFT JOIN users u ON sl.created_by_user_id = u.id
         WHERE sl.model_id = ? AND sl.link_type = 'create'
@@ -56,8 +57,8 @@ export async function GET(request: Request) {
     const links: SharedObjectLink[] = await db.all(query, ...queryParams);
     return NextResponse.json(links);
   } catch (error: any) {
-    console.error('API Error (GET /share-links):', error);
-    return NextResponse.json({ error: 'Failed to fetch share links', details: error.message }, { status: 500 });
+    console.error(`API Error (GET /share-links): Failed to fetch. Query: ${new URL(request.url).search}. Error:`, error);
+    return NextResponse.json({ error: 'Failed to fetch share links due to a server error.', details: error.message }, { status: 500 });
   }
 }
 
