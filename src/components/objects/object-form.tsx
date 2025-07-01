@@ -270,20 +270,19 @@ export default function ObjectForm({
 
 
                 {propertiesToRender.map((property) => {
-                  if (hiddenPropertyIds.includes(property.id)) {
-                      return null;
-                  }
+                  const isHidden = hiddenPropertyIds.includes(property.id);
                   return (
-                    <AdaptiveFormField
-                        key={property.id}
-                        form={form} 
-                        property={property}
-                        formContext={formContext}
-                        modelId={model.id}
-                        objectId={formObjectId || existingObject?.id}
-                        isUploading={isUploadingFiles}
-                        uploadProgress={uploadProgress[property.name]}
-                    />
+                    <div key={property.id} className={isHidden ? 'hidden' : ''}>
+                      <AdaptiveFormField
+                          form={form} 
+                          property={property}
+                          formContext={formContext}
+                          modelId={model.id}
+                          objectId={formObjectId || existingObject?.id}
+                          isUploading={isUploadingFiles}
+                          uploadProgress={uploadProgress[property.name]}
+                      />
+                    </div>
                   );
                 })}
             </div>
