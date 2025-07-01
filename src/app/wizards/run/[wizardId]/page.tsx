@@ -144,7 +144,36 @@ function RunWizardPageInternal() {
     setIsSubmittingStep(true);
     
     try {
-        const createdObject = await addObject(modelForStep!.id, values);
+        const finalPayload = { ...values };
+
+        if (currentStep && currentStep.propertyMappings && currentStepIndex > 0) {
+            currentStep.propertyMappings.forEach(mapping => {
+                const sourceStepData = wizardData[mapping.sourceStepIndex];
+                const sourceModel = getModelById(currentWizard?.steps[mapping.sourceStepIndex].modelId || '');
+                
+                if (sourceStepData && sourceModel) {
+                    let valueToMap: any;
+
+                    if (mapping.sourcePropertyId === INTERNAL_MAPPING_OBJECT_ID_KEY) {
+                        valueToMap = stepObjectIds[mapping.sourceStepIndex];
+                    } else {
+                        const sourceProperty = sourceModel.properties.find(p => p.id === mapping.sourcePropertyId);
+                        if (sourceProperty) {
+                            valueToMap = sourceStepData[sourceProperty.name];
+                        }
+                    }
+
+                    if (valueToMap !== undefined) {
+                        const targetProperty = modelForStep?.properties.find(p => p.id === mapping.targetPropertyId);
+                        if (targetProperty) {
+                            finalPayload[targetProperty.name] = valueToMap;
+                        }
+                    }
+                }
+            });
+        }
+
+        const createdObject = await addObject(modelForStep!.id, finalPayload);
         if (createdObject && createdObject.id) {
             setWizardData(prev => ({ ...prev, [currentStepIndex]: createdObject }));
             setStepObjectIds(prev => ({ ...prev, [currentStepIndex]: createdObject.id }));
