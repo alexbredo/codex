@@ -1,7 +1,7 @@
 
 'use client';
 
-import type { Model, WorkflowWithDetails } from '@/lib/types';
+import type { Model, WorkflowWithDetails, ShareLinkType } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -82,6 +82,7 @@ interface DataObjectsPageHeaderProps {
   onCreateNew: () => void;
   onNavigateBack: () => void;
   viewingRecycleBin: boolean;
+  createShareStatus: 'create' | 'none';
 }
 
 export default function DataObjectsPageHeader({
@@ -104,6 +105,7 @@ export default function DataObjectsPageHeader({
   onCreateNew,
   onNavigateBack,
   viewingRecycleBin,
+  createShareStatus,
 }: DataObjectsPageHeaderProps) {
   return (
     <>
@@ -189,7 +191,7 @@ export default function DataObjectsPageHeader({
           <Button onClick={onExportCSV} variant="outline" size="sm"><Download className="mr-2 h-4 w-4" /> Export CSV</Button>
           <CreateShareLinkDialog
             modelId={currentModel.id}
-            triggerButton={<Button variant="outline" size="sm"><Share2 className="mr-2 h-4 w-4" /> Share Form</Button>}
+            activeLinkStatus={createShareStatus}
            />
           <Button onClick={onCreateNew} size="sm" className="bg-accent text-accent-foreground hover:bg-accent/90" disabled={viewingRecycleBin}><PlusCircle className="mr-2 h-4 w-4" /> Create New</Button>
         </div>

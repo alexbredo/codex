@@ -101,6 +101,29 @@ function ViewObjectPageInternal({ isPublicView = false, publicObjectData }: View
   const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null);
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
 
+  const { data: shareLinks } = useQuery<SharedObjectLink[]>({
+    queryKey: ['shareLinks', objectId],
+    queryFn: async () => {
+      if (isPublicView || !objectId) return [];
+      const response = await fetch(`/api/codex-structure/share-links?data_object_id=${objectId}`);
+      if (!response.ok) {
+        // Don't throw error, just return empty array on failure for this non-critical data
+        console.error('Failed to fetch share links for object.');
+        return [];
+      }
+      return response.json();
+    },
+    enabled: !isPublicView && !!objectId,
+  });
+
+  const activeLinkStatus = React.useMemo(() => {
+    if (!shareLinks || shareLinks.length === 0) return 'none';
+    const activeLinks = shareLinks.filter(link => !link.expires_at || new Date(link.expires_at) > new Date());
+    if (activeLinks.some(link => link.link_type === 'update')) return 'update';
+    if (activeLinks.some(link => link.link_type === 'view')) return 'view';
+    return 'none';
+  }, [shareLinks]);
+
 
   useEffect(() => {
     if (!isPublicView && !authIsLoading && modelId) {
@@ -528,6 +551,7 @@ function ViewObjectPageInternal({ isPublicView = false, publicObjectData }: View
                         modelId={modelId} 
                         objectId={objectId} 
                         objectName={getObjectDisplayValue(viewingObject, currentModel, allModels, allDbObjects)}
+                        activeLinkStatus={activeLinkStatus}
                     />
                 </div>
             </div>

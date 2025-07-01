@@ -18,14 +18,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import type { ShareLinkType, SharedObjectLink } from '@/lib/types';
 import { Loader2, Share2, ClipboardCopy, Check } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 interface CreateShareLinkDialogProps {
   modelId: string;
   objectId?: string | null;
   objectName?: string | null;
-  triggerButton?: React.ReactNode;
+  activeLinkStatus?: 'view' | 'update' | 'create' | 'none';
 }
 
 const createShareLink = async (payload: {
@@ -46,7 +45,7 @@ const createShareLink = async (payload: {
   return response.json();
 };
 
-export default function CreateShareLinkDialog({ modelId, objectId, objectName, triggerButton }: CreateShareLinkDialogProps) {
+export default function CreateShareLinkDialog({ modelId, objectId, objectName, activeLinkStatus = 'none' }: CreateShareLinkDialogProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -104,7 +103,6 @@ export default function CreateShareLinkDialog({ modelId, objectId, objectName, t
   const isCreateMode = !objectId;
 
   React.useEffect(() => {
-    // Reset state when dialog opens/closes
     if (!open) {
       setTimeout(() => {
         setGeneratedLink('');
@@ -116,10 +114,21 @@ export default function CreateShareLinkDialog({ modelId, objectId, objectName, t
     }
   }, [open, isCreateMode]);
   
+  const buttonVariant = React.useMemo(() => {
+    switch (activeLinkStatus) {
+      case 'view': return 'share-view';
+      case 'update': return 'share-update';
+      case 'create': return 'share-create';
+      default: return 'outline';
+    }
+  }, [activeLinkStatus]);
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        {triggerButton || <Button><Share2 className="mr-2 h-4 w-4"/>Share</Button>}
+        <Button variant={buttonVariant} size="sm">
+          <Share2 className="mr-2 h-4 w-4"/>{isCreateMode ? 'Share Form' : 'Share'}
+        </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>

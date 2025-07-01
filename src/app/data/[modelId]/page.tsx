@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import { Button, buttonVariants } from '@/components/ui/button';
 import {
   Dialog,
@@ -17,7 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { useData } from '@/contexts/data-context';
-import type { Model, DataObject, Property, WorkflowWithDetails, DataContextType } from '@/lib/types';
+import type { Model, DataObject, Property, WorkflowWithDetails, DataContextType, SharedObjectLink } from '@/lib/types';
 import { PlusCircle, Edit3, ListChecks, Download, Eye, LayoutGrid, List as ListIcon, Search as SearchIconLucide, FilterX, X as XIcon, Workflow as WorkflowIconLucide, CalendarIcon as CalendarIconLucide, Star, Loader2, Kanban as KanbanIcon, ArchiveRestore, ArchiveX } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
@@ -105,6 +106,26 @@ export default function DataObjectsPage() {
   const [viewingRecycleBin, setViewingRecycleBin] = useState(false);
 
   const ITEMS_PER_PAGE = viewMode === 'gallery' ? 12 : 10;
+
+  const { data: createShareLinks } = useQuery<SharedObjectLink[]>({
+    queryKey: ['shareLinksForModel', modelIdFromUrl],
+    queryFn: async () => {
+      if (!modelIdFromUrl) return [];
+      const response = await fetch(`/api/codex-structure/share-links?model_id=${modelIdFromUrl}`);
+      if (!response.ok) {
+        console.error('Failed to fetch share links for model.');
+        return [];
+      }
+      return response.json();
+    },
+    enabled: !!modelIdFromUrl,
+  });
+
+  const createShareStatus = useMemo(() => {
+    if (!createShareLinks || createShareLinks.length === 0) return 'none';
+    const activeCreateLinks = createShareLinks.filter(link => link.link_type === 'create' && (!link.expires_at || new Date(link.expires_at) > new Date()));
+    return activeCreateLinks.length > 0 ? 'create' : 'none';
+  }, [createShareLinks]);
 
 
   const previousModelIdRef = useRef<string | null>(null);
@@ -1201,6 +1222,7 @@ export default function DataObjectsPage() {
         onCreateNew={handleCreateNew}
         onNavigateBack={() => router.push('/models')}
         viewingRecycleBin={viewingRecycleBin}
+        createShareStatus={createShareStatus}
       />
       
       <div className="flex items-center justify-end space-x-2 mb-4">
