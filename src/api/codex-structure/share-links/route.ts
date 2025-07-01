@@ -1,4 +1,6 @@
 
+'use server';
+
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getCurrentUserFromCookie } from '@/lib/auth';
@@ -21,9 +23,13 @@ export async function GET(request: Request) {
   }
 
   try {
-    const { searchParams } = new URL(request.url);
-    const dataObjectId = searchParams.get('data_object_id');
-    const modelId = searchParams.get('model_id');
+    // Robustly construct the full URL to prevent crashes from relative paths
+    const host = request.headers.get('host') || 'localhost';
+    const protocol = host.startsWith('localhost') ? 'http' : 'https';
+    const requestUrl = new URL(request.url, `${protocol}://${host}`);
+
+    const dataObjectId = requestUrl.searchParams.get('data_object_id');
+    const modelId = requestUrl.searchParams.get('model_id');
 
     if (!dataObjectId && !modelId) {
       return NextResponse.json({ error: 'A data_object_id or model_id must be provided' }, { status: 400 });
@@ -33,7 +39,6 @@ export async function GET(request: Request) {
     let query: string;
     const queryParams: any[] = [];
     
-    // This logic has been slightly simplified to be more robust.
     if (dataObjectId) {
       query = `
         SELECT sl.id, sl.link_type, sl.model_id, sl.data_object_id, sl.created_by_user_id, sl.created_at, sl.expires_at, u.username as created_by_username
@@ -57,7 +62,6 @@ export async function GET(request: Request) {
     const links: SharedObjectLink[] = await db.all(query, ...queryParams);
     return NextResponse.json(links);
   } catch (error: any) {
-    // Enhanced server-side logging
     console.error(`[CRITICAL API ERROR] at GET /api/codex-structure/share-links:`, {
         message: error.message,
         stack: error.stack,
@@ -93,7 +97,6 @@ export async function POST(request: Request) {
     const linkId = randomUUID();
     const createdAt = new Date().toISOString();
 
-    // A more robust way to handle optional fields, ensuring they are explicitly null if not provided
     const dataObjectIdToInsert = data_object_id || null;
     const expiresAtToInsert = expires_at || null;
 
@@ -106,16 +109,15 @@ export async function POST(request: Request) {
       id: linkId,
       link_type,
       model_id,
-      data_object_id: dataObjectIdToInsert, // Use the sanitized value
+      data_object_id: dataObjectIdToInsert,
       created_by_user_id: currentUser.id,
       created_by_username: currentUser.username,
       created_at: createdAt,
-      expires_at: expiresAtToInsert, // Use the sanitized value
+      expires_at: expiresAtToInsert,
     };
     
     return NextResponse.json(newLink, { status: 201 });
   } catch (error: any) {
-    // Enhanced server-side logging
     console.error(`[CRITICAL API ERROR] at POST /api/codex-structure/share-links:`, {
         message: error.message,
         stack: error.stack,
