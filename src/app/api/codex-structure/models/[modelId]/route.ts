@@ -132,7 +132,7 @@ export async function PUT(request: Request, { params }: Params) {
 
     // --- Correct handling for modelGroupId ---
     const defaultGroupId = "00000000-0000-0000-0000-000000000001";
-    // Use the value from the body if it exists, otherwise use the old value from DB.
+    // Use the value from the body if it's present, otherwise keep the old value.
     const incomingModelGroupId = 'modelGroupId' in body ? body.modelGroupId : oldModelRow.model_group_id;
     // Normalize the incoming value: null or undefined becomes the default group ID.
     const finalModelGroupId = (incomingModelGroupId === null || incomingModelGroupId === undefined) ? defaultGroupId : incomingModelGroupId;
@@ -172,7 +172,7 @@ export async function PUT(request: Request, { params }: Params) {
     // ================================================================
     // Step 2: Handle properties update
     // ================================================================
-    let newProcessedProperties: Property[] = oldPropertiesFromDb.map(p => ({ ...p, required: !!p.required, autoSetOnCreate: !!p.autoSetOnCreate, autoSetOnUpdate: !!p.autoSetOnUpdate, isUnique: !!p.isUnique } as Property));
+    let newProcessedProperties: Property[] = oldPropertiesFromDb.map(prop => ({ ...prop, required: !!prop.required, autoSetOnCreate: !!prop.autoSetOnCreate, autoSetOnUpdate: !!prop.autoSetOnUpdate, isUnique: !!prop.isUnique } as Property));
     
     if (body.properties) {
       await db.run('DELETE FROM properties WHERE model_id = ?', params.modelId);
