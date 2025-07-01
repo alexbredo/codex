@@ -1,13 +1,16 @@
 
+'use server';
+
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import type { PublicShareData, SharedObjectLink, Model, DataObject } from '@/lib/types';
-import { mapDbModelToClientModel } from '@/lib/utils'; // Correct import
+import type { PublicShareData, DataObject } from '@/lib/types';
+import { mapDbModelToClientModel } from '@/lib/utils'; // Correct import path
 
 interface Params {
   params: { linkId: string };
 }
 
+// GET a share link's data
 export async function GET(request: Request, { params }: Params) {
   const { linkId } = params;
 
@@ -18,11 +21,8 @@ export async function GET(request: Request, { params }: Params) {
   try {
     const db = await getDb();
 
-    // 1. Fetch the share link
-    const link: SharedObjectLink | undefined = await db.get(
-      'SELECT * FROM shared_object_links WHERE id = ?',
-      linkId
-    );
+    // 1. Fetch the link
+    const link = await db.get('SELECT * FROM shared_object_links WHERE id = ?', linkId);
 
     if (!link) {
       return NextResponse.json({ error: 'Share link not found.' }, { status: 404 });
@@ -30,52 +30,46 @@ export async function GET(request: Request, { params }: Params) {
 
     // 2. Check for expiration
     if (link.expires_at && new Date(link.expires_at) < new Date()) {
-      return NextResponse.json({ error: 'This share link has expired.' }, { status: 410 });
+      return NextResponse.json({ error: 'This share link has expired.' }, { status: 410 }); // 410 Gone
     }
 
     // 3. Fetch the associated model
     const modelRow = await db.get('SELECT * FROM models WHERE id = ?', link.model_id);
     if (!modelRow) {
-      return NextResponse.json({ error: 'Associated model not found.' }, { status: 404 });
+      return NextResponse.json({ error: 'The data model associated with this link could not be found.' }, { status: 404 });
     }
-    const modelProperties = await db.all('SELECT * FROM properties WHERE model_id = ?', link.model_id);
-    modelRow.properties = modelProperties;
-    const model = mapDbModelToClientModel(modelRow);
+    const modelProperties = await db.all('SELECT * FROM properties WHERE model_id = ? ORDER BY orderIndex ASC', modelRow.id);
+    const model = mapDbModelToClientModel({ ...modelRow, properties: modelProperties });
 
-
-    let object: DataObject | undefined = undefined;
-
-    // 4. If it's a view or update link, fetch the associated object
+    // 4. Fetch the object if it's a view or update link
+    let objectData: DataObject | undefined = undefined;
     if ((link.link_type === 'view' || link.link_type === 'update') && link.data_object_id) {
-      const objectRow = await db.get('SELECT * FROM data_objects WHERE id = ?', link.data_object_id);
+      const objectRow = await db.get('SELECT * FROM data_objects WHERE id = ? AND model_id = ? AND (isDeleted = 0 OR isDeleted IS NULL)', link.data_object_id, link.model_id);
       if (!objectRow) {
-        return NextResponse.json({ error: 'Associated data object not found.' }, { status: 404 });
+        return NextResponse.json({ error: 'The data object associated with this link is not available.' }, { status: 404 });
       }
-      if (objectRow.isDeleted) {
-        return NextResponse.json({ error: 'The shared object has been deleted.' }, { status: 410 });
-      }
-      object = {
+      objectData = {
         id: objectRow.id,
         currentStateId: objectRow.currentStateId,
         ownerId: objectRow.ownerId,
-        isDeleted: !!objectRow.isDeleted,
-        deletedAt: objectRow.deletedAt,
         ...JSON.parse(objectRow.data),
       };
     } else if ((link.link_type === 'view' || link.link_type === 'update') && !link.data_object_id) {
-        return NextResponse.json({ error: 'Link is for a specific object, but no object ID was provided.' }, { status: 500 });
+       return NextResponse.json({ error: 'This share link is misconfigured and does not point to a valid object.' }, { status: 500 });
     }
-    
+
+
     const responsePayload: PublicShareData = {
-      link: link,
-      model: model,
-      object: object,
+      link,
+      model,
+      object: objectData,
     };
 
     return NextResponse.json(responsePayload);
 
   } catch (error: any) {
-    console.error(`[API /public/share/${linkId}] Error fetching shared data:`, error);
-    return NextResponse.json({ error: 'Failed to fetch shared data', details: error.message }, { status: 500 });
+    console.error(`[API PUBLIC] Failed to fetch share link ${linkId}:`, error);
+    // Be careful not to leak detailed error messages to the public
+    return NextResponse.json({ error: 'An unexpected error occurred while trying to load the shared content.' }, { status: 500 });
   }
 }
