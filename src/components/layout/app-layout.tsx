@@ -2,7 +2,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { useState, useEffect } from 'react';
+import * as React from 'react';
 import {
   SidebarProvider,
   Sidebar,
@@ -29,14 +29,14 @@ interface AppLayoutProps {
 
 export default function AppLayout({ children }: AppLayoutProps) {
   const { user, logout, isLoading: authIsLoading } = useAuth();
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [isClient, setIsClient] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = React.useState(false);
+  const [isClient, setIsClient] = React.useState(false);
 
-  useEffect(() => {
+  React.useEffect(() => {
     setIsClient(true);
   }, []);
 
-  useEffect(() => {
+  React.useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault()
@@ -50,14 +50,10 @@ export default function AppLayout({ children }: AppLayoutProps) {
   if (!isClient) {
     return (
       <div className="flex min-h-screen w-full">
-        <div className="hidden md:flex flex-col border-r w-[16rem] p-2 bg-muted/30">
-          <div className="flex flex-col gap-2">
-            <SidebarMenuSkeleton showIcon />
-            <SidebarMenuSkeleton showIcon />
-            <SidebarMenuSkeleton showIcon />
-          </div>
-        </div>
-        <div className="flex-1 flex flex-col">
+        {/* Skeleton for the sidebar */}
+        <div className="hidden md:flex flex-col border-r w-[16rem] p-2 bg-muted/30" />
+        {/* Skeleton for the main content area (must match SidebarInset) */}
+        <main className="flex-1 flex flex-col">
           <header className="sticky top-0 z-10 flex items-center h-14 px-4 border-b bg-background/80 backdrop-blur-sm">
             <div className="flex flex-1 items-center" />
             <div className="flex flex-1 items-center justify-center">
@@ -67,10 +63,11 @@ export default function AppLayout({ children }: AppLayoutProps) {
               <Skeleton className="h-8 w-24" />
             </div>
           </header>
-          <main className="flex-1 flex items-center justify-center p-6 overflow-auto">
+          {/* This inner wrapper must be a div to match the client-side one */}
+          <div className="flex-1 flex items-center justify-center p-6 overflow-auto">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          </main>
-        </div>
+          </div>
+        </main>
       </div>
     );
   }
@@ -170,7 +167,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
               )}
             </div>
           </header>
-          <main className="flex-1 p-6 overflow-auto">
+          {/* This is the main content area for pages */}
+          <div className="flex-1 p-6 overflow-auto">
             {authIsLoading && !user ? (
                  <div className="flex justify-center items-center h-full">
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -178,7 +176,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
             ) : (
                 children
             )}
-          </main>
+          </div>
         </SidebarInset>
       </div>
     </SidebarProvider>
