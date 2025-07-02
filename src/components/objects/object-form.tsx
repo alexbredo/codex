@@ -26,7 +26,7 @@ interface ObjectFormProps {
   onCancel: () => void;
   isLoading?: boolean;
   existingObject?: DataObject;
-  formObjectId?: string | null; 
+  formObjectId?: string | null;
   currentWorkflow?: WorkflowWithDetails | null;
   allUsers?: User[];
   currentUser?: User | null;
@@ -191,7 +191,7 @@ export default function ObjectForm({
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-6">
+      <form id={formObjectId || "object-data-form"} onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-6">
         <ScrollArea className="max-h-[60vh] pr-3">
             <div className="space-y-4 ">
                 {formContext === 'edit' && currentWorkflow && existingObject && (

@@ -229,7 +229,17 @@ function RunWizardPageInternal() {
                     <p className="text-sm text-muted-foreground">{currentStep?.instructions || `Please fill out the fields for the ${modelForStep.name}.`}</p>
                 </div>
                 {currentStep?.stepType === 'create' ? (
-                    <ObjectForm key={currentStepIndex} form={form} model={modelForStep} onSubmit={handleNextStep} onCancel={() => {}} isLoading={stepMutation.isPending} propertyIdsToShow={currentStep?.propertyIds} hideFooter={true} />
+                    <ObjectForm 
+                        key={currentStepIndex} 
+                        form={form} 
+                        model={modelForStep} 
+                        onSubmit={handleNextStep} 
+                        formObjectId={`wizard-step-form-${currentStepIndex}`}
+                        onCancel={() => {}} 
+                        isLoading={stepMutation.isPending} 
+                        propertyIdsToShow={currentStep?.propertyIds} 
+                        hideFooter={true} 
+                    />
                 ) : (
                     <div className="space-y-4">
                         <Popover open={isLookupPopoverOpen} onOpenChange={setIsLookupPopoverOpen}>
@@ -253,10 +263,17 @@ function RunWizardPageInternal() {
             </CardContent>
             <CardFooter className="flex justify-between">
                 <Button variant="outline" onClick={() => setCurrentStepIndex(p => p - 1)} disabled={currentStepIndex === 0 || stepMutation.isPending}>Back</Button>
-                <Button onClick={currentStep?.stepType === 'create' ? form.handleSubmit(handleNextStep) : () => handleNextStep({})} disabled={stepMutation.isPending}>
+                {currentStep?.stepType === 'create' ? (
+                  <Button type="submit" form={`wizard-step-form-${currentStepIndex}`} disabled={stepMutation.isPending}>
                     {stepMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
                     {isFinalStep ? 'Finish' : 'Next'} <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
+                  </Button>
+                ) : (
+                  <Button onClick={() => handleNextStep({})} disabled={stepMutation.isPending}>
+                    {stepMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                    {isFinalStep ? 'Finish' : 'Next'} <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                )}
             </CardFooter>
         </Card>
     </div>
