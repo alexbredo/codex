@@ -1,5 +1,4 @@
 
-
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getCurrentUserFromCookie } from '@/lib/auth';
@@ -47,4 +46,3 @@ export async function POST(request: Request, { params }: Params) {
     return NextResponse.json({ error: 'Failed to start wizard run', details: error.message }, { status: 500 });
   }
 }
-
