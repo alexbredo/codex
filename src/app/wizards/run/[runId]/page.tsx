@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -82,19 +83,24 @@ function RunWizardPageInternal() {
   const [selectedLookupId, setSelectedLookupId] = React.useState<string>('');
   const [isLookupPopoverOpen, setIsLookupPopoverOpen] = React.useState(false);
 
-  const { data: runState, isLoading, error } = useQuery<WizardRunState>({
+  const { data: runState, isLoading, error, refetch } = useQuery<WizardRunState>({
     queryKey: ['wizardRun', runId],
     queryFn: () => fetchWizardRunState(runId),
-    enabled: !!runId && dataContextIsReady,
+    enabled: !!runId && dataContextIsReady && !isFinishing, // Re-enable fetching until finishing
   });
 
   const stepMutation = useMutation({
     mutationFn: submitWizardStep,
-    onSuccess: (data) => {
-      // Always invalidate to refetch the latest run state from the server
-      queryClient.invalidateQueries({ queryKey: ['wizardRun', runId] });
+    onSuccess: async (data) => {
       if (data.isFinalStep) {
+        // Now that the final step is submitted and data is committed,
+        // refetch the final state before setting isFinishing to true.
+        await queryClient.invalidateQueries({ queryKey: ['wizardRun', runId] });
+        await refetch();
         setIsFinishing(true);
+      } else {
+        // For intermediate steps, just invalidate to get the new state.
+        queryClient.invalidateQueries({ queryKey: ['wizardRun', runId] });
       }
     },
     onError: (err: Error) => {
@@ -103,16 +109,9 @@ function RunWizardPageInternal() {
     }
   });
 
-  // Derive the current step index directly from the fetched server state
   const currentStepIndex = React.useMemo(() => {
     if (!runState || runState.status === 'COMPLETED') return -1;
     return runState.currentStepIndex + 1;
-  }, [runState]);
-
-  React.useEffect(() => {
-    if (runState && (runState.status === 'COMPLETED')) {
-      setIsFinishing(true);
-    }
   }, [runState]);
   
   const currentStep = runState?.wizard.steps[currentStepIndex];
@@ -205,7 +204,7 @@ function RunWizardPageInternal() {
 
   const { wizard, stepData: finalStepData } = runState;
   
-  if (isFinishing) {
+  if (isFinishing || runState.status === 'COMPLETED') {
     return (
         <div className="container mx-auto max-w-2xl py-12">
             <Card>
@@ -221,18 +220,47 @@ function RunWizardPageInternal() {
                         const dataForStep = finalStepData[index];
                         if (!model || !dataForStep) return null;
 
+                        let summaryContent: React.ReactNode;
+                        if (dataForStep.stepType === 'lookup' && dataForStep.objectId) {
+                            const lookedUpObject = getObjectsByModelId(step.modelId).find(o => o.id === dataForStep.objectId);
+                            summaryContent = (
+                                <p className="text-sm">
+                                    Selected: <span className="font-semibold text-primary">{getObjectDisplayValue(lookedUpObject, model, allModels, allDbObjects)}</span>
+                                </p>
+                            );
+                        } else {
+                            summaryContent = (
+                                <div className="mt-2 space-y-1 text-sm">
+                                    {Object.entries(dataForStep.formData || {}).map(([key, value]) => {
+                                        const propDef = model.properties.find(p => p.name === key);
+                                        let displayValue = String(value);
+
+                                        if (propDef && propDef.type === 'relationship' && propDef.relatedModelId) {
+                                            const relatedModel = getModelById(propDef.relatedModelId);
+                                            if (relatedModel) {
+                                                if (propDef.relationshipType === 'many' && Array.isArray(value)) {
+                                                    displayValue = value.map(id => getObjectDisplayValue(getObjectsByModelId(propDef!.relatedModelId!).find(o => o.id === id), relatedModel, allModels, allDbObjects)).join(', ');
+                                                } else if (typeof value === 'string') {
+                                                    displayValue = getObjectDisplayValue(getObjectsByModelId(propDef.relatedModelId).find(o => o.id === value), relatedModel, allModels, allDbObjects);
+                                                }
+                                            }
+                                        }
+                                        
+                                        return (
+                                            <div key={key} className="grid grid-cols-3 gap-2">
+                                                <span className="font-medium text-muted-foreground col-span-1">{key}</span>
+                                                <span className="col-span-2">{displayValue}</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            );
+                        }
+
                         return (
                             <div key={step.id} className="border p-4 rounded-lg bg-muted/50">
-                                <h4 className="font-bold text-primary">{model.name} <span className="text-sm text-muted-foreground font-normal">({step.stepType})</span></h4>
-                                <div className="mt-2 space-y-1 text-sm">
-                                    {Object.entries(dataForStep.formData || {}).map(([key, value]) => (
-                                        <div key={key} className="grid grid-cols-3 gap-2">
-                                            <span className="font-medium text-muted-foreground col-span-1">{key}</span>
-                                            <span className="col-span-2">{String(value)}</span>
-                                        </div>
-                                    ))}
-                                    {step.stepType === 'lookup' && !dataForStep.formData && <p className="italic text-muted-foreground">Details for looked-up item not available.</p>}
-                                </div>
+                            <h4 className="font-bold text-primary">{model.name} <span className="text-sm text-muted-foreground font-normal">({dataForStep.stepType})</span></h4>
+                            {summaryContent}
                             </div>
                         );
                     })}
@@ -261,18 +289,18 @@ function RunWizardPageInternal() {
   return (
     <div className="container mx-auto py-8">
         <Button variant="outline" onClick={() => router.push('/admin/wizards')} className="mb-6"><ArrowLeft className="mr-2 h-4 w-4" /> Exit Wizard</Button>
-        <form onSubmit={form.handleSubmit(handleNextStep, onInvalid)}>
-            <Card className="max-w-2xl mx-auto">
-                <CardHeader>
-                    <CardTitle className="text-2xl">{wizard.name}</CardTitle>
-                    <CardDescription>Please follow the steps to complete the process.</CardDescription>
-                    <div className="pt-4">
-                        <WizardStepper 
-                            steps={wizard.steps.map(s => ({name: getModelById(s.modelId)?.name || `Step ${s.orderIndex + 1}`}))} 
-                            currentStepIndex={currentStepIndex} 
-                        />
-                    </div>
-                </CardHeader>
+        <Card className="max-w-2xl mx-auto">
+            <CardHeader>
+                <CardTitle className="text-2xl">{wizard.name}</CardTitle>
+                <CardDescription>Please follow the steps to complete the process.</CardDescription>
+                <div className="pt-4">
+                    <WizardStepper 
+                        steps={wizard.steps.map(s => ({name: getModelById(s.modelId)?.name || `Step ${s.orderIndex + 1}`}))} 
+                        currentStepIndex={currentStepIndex} 
+                    />
+                </div>
+            </CardHeader>
+            <form onSubmit={form.handleSubmit(handleNextStep, onInvalid)}>
                 <CardContent>
                     <div className="p-4 mb-4 bg-muted/70 border rounded-lg">
                         <h4 className="font-semibold text-lg mb-1">{modelForStep.name}</h4>
@@ -315,13 +343,14 @@ function RunWizardPageInternal() {
                     <Button
                         type="submit"
                         disabled={stepMutation.isPending}
+                        onClick={currentStep.stepType === 'lookup' ? () => handleNextStep() : form.handleSubmit(handleNextStep, onInvalid)}
                     >
                         {stepMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
                         {isFinalStep ? 'Finish' : 'Next'} <ArrowRight className="ml-2 h-4 w-4" />
                     </Button>
                 </CardFooter>
-            </Card>
-        </form>
+            </form>
+        </Card>
     </div>
   );
 }

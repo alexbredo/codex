@@ -22,6 +22,7 @@ import { PlusCircle, Edit, Trash2, Search, Loader2, Wand2, StepForward, PlayCirc
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 import { formatDistanceToNow } from 'date-fns';
+import { getObjectDisplayValue } from '@/lib/utils'; // Import the utility
 
 async function fetchActiveRuns(): Promise<WizardRunSummary[]> {
   const response = await fetch('/api/codex-structure/wizards/runs');
@@ -39,7 +40,7 @@ async function abandonRun(runId: string) {
 
 
 function WizardsAdminPageInternal() {
-  const { wizards, deleteWizard, isReady: dataIsReady, fetchData, formatApiError } = useData();
+  const { wizards, deleteWizard, isReady: dataIsReady, fetchData, formatApiError, getModelById, getObjectsByModelId, allModels, getAllObjects } = useData();
   const { toast } = useToast();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -52,6 +53,8 @@ function WizardsAdminPageInternal() {
     queryFn: fetchActiveRuns,
     enabled: dataIsReady,
   });
+
+  const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects, dataIsReady]);
 
   const abandonMutation = useMutation({
     mutationFn: abandonRun,
@@ -214,13 +217,22 @@ function WizardsAdminPageInternal() {
                                         try {
                                             const parsedData = JSON.parse(run.stepData);
                                             const lastEnteredStepIndex = run.currentStepIndex;
-                                            if (lastEnteredStepIndex >= 0 && parsedData[lastEnteredStepIndex]?.formData) {
-                                                const formData = parsedData[lastEnteredStepIndex].formData;
-                                                const entries = Object.entries(formData).slice(0, 2);
-                                                if (entries.length > 0) {
-                                                    stepDataPreview = entries
-                                                        .map(([key, value]) => `${key}: ${String(value).substring(0, 20)}...`)
-                                                        .join('; ');
+                                            const lastStepData = parsedData[lastEnteredStepIndex];
+
+                                            if (lastEnteredStepIndex >= 0 && lastStepData) {
+                                                if (lastStepData.stepType === 'lookup' && lastStepData.objectId) {
+                                                    const stepDef = wizard.steps.find(s => s.orderIndex === lastEnteredStepIndex);
+                                                    const modelForStep = stepDef ? getModelById(stepDef.modelId) : null;
+                                                    const lookedUpObject = modelForStep ? getObjectsByModelId(modelForStep.id).find(o => o.id === lastStepData.objectId) : null;
+                                                    stepDataPreview = `Selected: ${getObjectDisplayValue(lookedUpObject, modelForStep, allModels, allDbObjects)}`;
+                                                } else if (lastStepData.stepType === 'create' && lastStepData.formData) {
+                                                    const formData = lastStepData.formData;
+                                                    const entries = Object.entries(formData).slice(0, 2);
+                                                    if (entries.length > 0) {
+                                                        stepDataPreview = entries
+                                                            .map(([key, value]) => `${key}: ${String(value).substring(0, 20)}...`)
+                                                            .join('; ');
+                                                    }
                                                 }
                                             }
                                         } catch (e) {
