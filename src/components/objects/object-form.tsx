@@ -23,9 +23,9 @@ interface ObjectFormProps {
   form: UseFormReturn<Record<string, any>>;
   model: Model;
   onCancel: () => void;
+  onSubmit: (values: Record<string, any>) => Promise<void>;
   isLoading?: boolean;
   existingObject?: DataObject;
-  formObjectId?: string | null;
   currentWorkflow?: WorkflowWithDetails | null;
   allUsers?: User[];
   currentUser?: User | null;
@@ -41,9 +41,9 @@ export default function ObjectForm({
   form,
   model,
   onCancel,
+  onSubmit,
   isLoading,
   existingObject,
-  formObjectId,
   currentWorkflow,
   allUsers = [],
   currentUser,
@@ -99,120 +99,121 @@ export default function ObjectForm({
   const isAdmin = currentUser?.roles.some(r => r.name.toLowerCase() === 'administrator');
 
   return (
-    <div className="space-y-4">
-        <ScrollArea className="max-h-[60vh] pr-3">
-            <div className="space-y-4 ">
-                {formContext === 'edit' && currentWorkflow && existingObject && (
-                  <FormField
-                    control={form.control}
-                    name="currentStateId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>State</FormLabel>
-                        <Select
-                          onValueChange={(value) => {
-                            field.onChange(value === INTERNAL_NO_STATE_CHANGE ? (existingObject?.currentStateId || null) : value)
-                          }}
-                          value={field.value ? String(field.value) : (existingObject?.currentStateId ? String(existingObject.currentStateId) : INTERNAL_NO_STATE_CHANGE) }
-                          disabled={isUploadingFiles}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select state" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {availableStatesForSelect.map(stateOption => (
-                              <SelectItem key={stateOption.value} value={stateOption.value}>
-                                {stateOption.label}
-                              </SelectItem>
-                            ))}
-                             {availableStatesForSelect.length === 0 && existingObject?.currentStateId && (
-                                 <SelectItem value={existingObject.currentStateId} disabled>
-                                    {currentStateName || `Current State (ID: ${existingObject.currentStateId.substring(0,8)}...)`}
+    <Form {...form}>
+      <div className="space-y-4">
+          <ScrollArea className="max-h-[60vh] pr-3">
+              <div className="space-y-4 ">
+                  {formContext === 'edit' && currentWorkflow && existingObject && (
+                    <FormField
+                      control={form.control}
+                      name="currentStateId"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>State</FormLabel>
+                          <Select
+                            onValueChange={(value) => {
+                              field.onChange(value === INTERNAL_NO_STATE_CHANGE ? (existingObject?.currentStateId || null) : value)
+                            }}
+                            value={field.value ? String(field.value) : (existingObject?.currentStateId ? String(existingObject.currentStateId) : INTERNAL_NO_STATE_CHANGE) }
+                            disabled={isUploadingFiles}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select state" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {availableStatesForSelect.map(stateOption => (
+                                <SelectItem key={stateOption.value} value={stateOption.value}>
+                                  {stateOption.label}
                                 </SelectItem>
-                            )}
-                            {availableStatesForSelect.length === 0 && !existingObject?.currentStateId && (
-                                 <SelectItem value={INTERNAL_NO_STATE_CHANGE} disabled>
-                                    (No Current State)
+                              ))}
+                              {availableStatesForSelect.length === 0 && existingObject?.currentStateId && (
+                                  <SelectItem value={existingObject.currentStateId} disabled>
+                                      {currentStateName || `Current State (ID: ${existingObject.currentStateId.substring(0,8)}...)`}
+                                  </SelectItem>
+                              )}
+                              {availableStatesForSelect.length === 0 && !existingObject?.currentStateId && (
+                                  <SelectItem value={INTERNAL_NO_STATE_CHANGE} disabled>
+                                      (No Current State)
+                                  </SelectItem>
+                              )}
+                            </SelectContent>
+                          </Select>
+                          <FormDescription>
+                            Current state: {currentStateName || "Not set"}. Change to a valid next state.
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
+
+                  {formContext === 'edit' && isAdmin && (
+                    <FormField
+                      control={form.control}
+                      name="ownerId"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Owner</FormLabel>
+                          <Select
+                            onValueChange={(value) => field.onChange(value === INTERNAL_NO_OWNER_SELECTED ? null : value)}
+                            value={field.value || INTERNAL_NO_OWNER_SELECTED}
+                            disabled={isUploadingFiles}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select an owner" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value={INTERNAL_NO_OWNER_SELECTED}>-- No Owner / Unassigned --</SelectItem>
+                              {allUsers.map(user => (
+                                <SelectItem key={user.id} value={user.id}>
+                                  {user.username} ({user.roles.map(r => r.name).join(', ')})
                                 </SelectItem>
-                            )}
-                          </SelectContent>
-                        </Select>
-                        <FormDescription>
-                          Current state: {currentStateName || "Not set"}. Change to a valid next state.
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                )}
-
-                {formContext === 'edit' && isAdmin && (
-                  <FormField
-                    control={form.control}
-                    name="ownerId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Owner</FormLabel>
-                        <Select
-                          onValueChange={(value) => field.onChange(value === INTERNAL_NO_OWNER_SELECTED ? null : value)}
-                          value={field.value || INTERNAL_NO_OWNER_SELECTED}
-                          disabled={isUploadingFiles}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select an owner" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value={INTERNAL_NO_OWNER_SELECTED}>-- No Owner / Unassigned --</SelectItem>
-                            {allUsers.map(user => (
-                              <SelectItem key={user.id} value={user.id}>
-                                {user.username} ({user.roles.map(r => r.name).join(', ')})
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormDescription>
-                          Assign or change the owner of this record. (Admin only)
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                )}
-
-                {visibleProperties.map((property) => (
-                  <div key={property.id}>
-                    <AdaptiveFormField
-                      form={form}
-                      property={property}
-                      formContext={formContext}
-                      modelId={model.id}
-                      objectId={formObjectId || existingObject?.id}
-                      isUploading={isUploadingFiles}
-                      uploadProgress={uploadProgress[property.name]}
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormDescription>
+                            Assign or change the owner of this record. (Admin only)
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
                     />
-                  </div>
-                ))}
-                 {/* Render hidden fields for mapped properties */}
-                {hiddenMappedProperties.map(property => (
-                    <Controller
-                        key={property.id}
-                        name={property.name as any}
-                        control={form.control}
-                        render={({ field }) => (
-                            <input
-                                type="hidden"
-                                {...field}
-                                value={field.value ?? ''} // Ensure value is never undefined
-                            />
-                        )}
-                    />
-                ))}
-            </div>
-        </ScrollArea>
-    </div>
+                  )}
+
+                  {visibleProperties.map((property) => (
+                    <div key={property.id}>
+                      <AdaptiveFormField
+                        form={form}
+                        property={property}
+                        formContext={formContext}
+                        modelId={model.id}
+                        objectId={existingObject?.id}
+                        isUploading={isUploadingFiles}
+                        uploadProgress={uploadProgress[property.name]}
+                      />
+                    </div>
+                  ))}
+                  {hiddenMappedProperties.map(property => (
+                      <Controller
+                          key={property.id}
+                          name={property.name as any}
+                          control={form.control}
+                          render={({ field }) => (
+                              <input
+                                  type="hidden"
+                                  {...field}
+                                  value={field.value ?? ''}
+                              />
+                          )}
+                      />
+                  ))}
+              </div>
+          </ScrollArea>
+      </div>
+    </Form>
   );
 }
