@@ -234,7 +234,6 @@ function RunWizardPageInternal() {
                         form={form} 
                         model={modelForStep} 
                         onSubmit={handleNextStep} 
-                        formObjectId={`wizard-step-form-${currentStepIndex}`}
                         onCancel={() => {}} 
                         isLoading={stepMutation.isPending} 
                         propertyIdsToShow={currentStep?.propertyIds} 
@@ -264,7 +263,7 @@ function RunWizardPageInternal() {
             <CardFooter className="flex justify-between">
                 <Button variant="outline" onClick={() => setCurrentStepIndex(p => p - 1)} disabled={currentStepIndex === 0 || stepMutation.isPending}>Back</Button>
                 {currentStep?.stepType === 'create' ? (
-                  <Button type="submit" form={`wizard-step-form-${currentStepIndex}`} disabled={stepMutation.isPending}>
+                  <Button type="button" onClick={form.handleSubmit(handleNextStep)} disabled={stepMutation.isPending}>
                     {stepMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
                     {isFinalStep ? 'Finish' : 'Next'} <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>

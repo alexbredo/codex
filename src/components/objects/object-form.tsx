@@ -191,7 +191,7 @@ export default function ObjectForm({
 
   return (
     <Form {...form}>
-      <form id={formObjectId || "object-data-form"} onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-6">
+      <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-6">
         <ScrollArea className="max-h-[60vh] pr-3">
             <div className="space-y-4 ">
                 {formContext === 'edit' && currentWorkflow && existingObject && (
