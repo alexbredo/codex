@@ -106,21 +106,8 @@ function RunWizardPageInternal() {
       toast({ variant: 'destructive', title: `Error on Step ${currentStepIndex + 1}`, description: err.message });
     }
   });
-
-  const currentStep = runState?.wizard.steps[currentStepIndex];
-  const modelForStep = currentStep ? getModelById(currentStep.modelId) : null;
-  const allDbObjects = React.useMemo(() => getAllObjects(), [getAllObjects, dataContextIsReady]);
-
-
-  const dynamicSchema = React.useMemo(() => {
-    if (modelForStep && currentStep?.stepType === 'create') {
-      return createObjectFormSchema(modelForStep, validationRulesets, currentStep.propertyIds);
-    }
-    return z.object({});
-  }, [modelForStep, validationRulesets, currentStep]);
-
-  const form = useForm<Record<string, any>>({ resolver: zodResolver(dynamicSchema), defaultValues: {} });
   
+  // Effects to synchronize component state with fetched runState
   React.useEffect(() => {
     if (runState) {
         const lastCompletedStep = runState.currentStepIndex;
@@ -132,7 +119,20 @@ function RunWizardPageInternal() {
         }
     }
   }, [runState]);
+  
+  const currentStep = runState?.wizard.steps[currentStepIndex];
+  const modelForStep = currentStep ? getModelById(currentStep.modelId) : null;
+  const allDbObjects = React.useMemo(() => getAllObjects(), [getAllObjects, dataContextIsReady]);
 
+  const dynamicSchema = React.useMemo(() => {
+    if (modelForStep && currentStep?.stepType === 'create') {
+      return createObjectFormSchema(modelForStep, validationRulesets, currentStep.propertyIds);
+    }
+    return z.object({});
+  }, [modelForStep, validationRulesets, currentStep]);
+
+  const form = useForm<Record<string, any>>({ resolver: zodResolver(dynamicSchema), defaultValues: {} });
+  
   React.useEffect(() => {
     form.reset({});
     if (runState && currentStep) {
@@ -160,6 +160,28 @@ function RunWizardPageInternal() {
     }
   };
 
+  // --- Guard Clauses & Loading/Error States ---
+  if (isLoading || !dataContextIsReady) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="mt-4 text-muted-foreground">Loading wizard state...</p>
+      </div>
+    );
+  }
+
+  if (error || !runState) {
+    return (
+       <div className="container mx-auto py-8 text-center">
+          <ShieldAlert className="h-12 w-12 text-destructive mx-auto mb-4" />
+          <h2 className="text-2xl font-semibold text-destructive mb-2">Could Not Load Wizard Run</h2>
+          <p className="text-muted-foreground mb-4">{error?.message || "The wizard run data could not be found."}</p>
+        </div>
+    );
+  }
+
+  // --- Main Component Logic (runState is guaranteed to exist now) ---
+  const { wizard } = runState;
   const isFinalStep = currentStepIndex === wizard.steps.length - 1;
 
   if (isFinishing || runState.status === 'COMPLETED') {
@@ -177,51 +199,68 @@ function RunWizardPageInternal() {
     );
   }
   
-  if (!modelForStep) return <div className="container mx-auto py-8 text-center"><ShieldAlert className="h-12 w-12 text-destructive mx-auto mb-4" /><h2 className="text-2xl font-semibold text-destructive mb-2">Configuration Error</h2><p className="text-muted-foreground mb-4">The model for the current step could not be found.</p></div>;
+  if (!modelForStep) {
+    return (
+        <div className="container mx-auto py-8 text-center">
+            <ShieldAlert className="h-12 w-12 text-destructive mx-auto mb-4" />
+            <h2 className="text-2xl font-semibold text-destructive mb-2">Configuration Error</h2>
+            <p className="text-muted-foreground mb-4">The model for the current step could not be found.</p>
+        </div>
+    );
+  }
   
   return (
     <div className="container mx-auto py-8">
         <Button variant="outline" onClick={() => router.push('/wizards/runs')} className="mb-6"><ArrowLeft className="mr-2 h-4 w-4" /> Exit Wizard</Button>
-        <Card className="max-w-2xl mx-auto"><CardHeader>
-            <CardTitle className="text-2xl">{wizard.name}</CardTitle>
-            <CardDescription>Please follow the steps to complete the process.</CardDescription>
-            <div className="pt-4"><WizardStepper steps={wizard.steps.map(s => ({name: getModelById(s.modelId)?.name || `Step ${s.orderIndex + 1}`}))} currentStepIndex={currentStepIndex} /></div>
-        </CardHeader><CardContent>
-            <div className="p-4 mb-4 bg-muted/70 border rounded-lg">
-                <h4 className="font-semibold text-lg mb-1">{modelForStep.name}</h4>
-                <p className="text-sm text-muted-foreground">{currentStep?.instructions || `Please fill out the fields for the ${modelForStep.name}.`}</p>
-            </div>
-            {currentStep?.stepType === 'create' ? (
-                <ObjectForm key={currentStepIndex} form={form} model={modelForStep} onSubmit={handleNextStep} onCancel={() => {}} isLoading={stepMutation.isPending} propertyIdsToShow={currentStep?.propertyIds} hideFooter={true} />
-            ) : (
-                <div className="space-y-4">
-                    <Popover open={isLookupPopoverOpen} onOpenChange={setIsLookupPopoverOpen}>
-                        <PopoverTrigger asChild>
-                            <Button variant="outline" role="combobox" aria-expanded={isLookupPopoverOpen} className="w-full justify-between">
-                                <span className="truncate">{selectedLookupId ? getObjectDisplayValue(getObjectsByModelId(modelForStep.id).find(o=>o.id === selectedLookupId), modelForStep, allModels, allDbObjects) : `Select a ${modelForStep.name}...`}</span>
-                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                            </Button>
-                        </PopoverTrigger><PopoverContent className="w-[--radix-popover-trigger-width] p-0"><Command>
-                            <CommandInput placeholder={`Search ${modelForStep.name}...`} /><CommandEmpty>No {modelForStep.name.toLowerCase()} found.</CommandEmpty><CommandGroup><CommandList>
-                                {getObjectsByModelId(modelForStep.id).map(obj => (
-                                    <CommandItem key={obj.id} value={getObjectDisplayValue(obj, modelForStep, allModels, allDbObjects)} onSelect={() => { setSelectedLookupId(obj.id); setIsLookupPopoverOpen(false); }}>
-                                        <CheckCircle className={`mr-2 h-4 w-4 ${selectedLookupId === obj.id ? "opacity-100" : "opacity-0"}`} />
-                                        {getObjectDisplayValue(obj, modelForStep, allModels, allDbObjects)}
-                                    </CommandItem>
-                                ))}
-                            </CommandList></CommandGroup></Command>
-                    </PopoverContent></Popover>
+        <Card className="max-w-2xl mx-auto">
+            <CardHeader>
+                <CardTitle className="text-2xl">{wizard.name}</CardTitle>
+                <CardDescription>Please follow the steps to complete the process.</CardDescription>
+                <div className="pt-4">
+                    <WizardStepper 
+                        steps={wizard.steps.map(s => ({name: getModelById(s.modelId)?.name || `Step ${s.orderIndex + 1}`}))} 
+                        currentStepIndex={currentStepIndex} 
+                    />
                 </div>
-            )}
-        </CardContent><CardFooter className="flex justify-between">
-            <Button variant="outline" onClick={() => setCurrentStepIndex(p => p - 1)} disabled={currentStepIndex === 0 || stepMutation.isPending}>Back</Button>
-            <Button onClick={currentStep?.stepType === 'create' ? form.handleSubmit(handleNextStep) : () => handleNextStep({})} disabled={stepMutation.isPending}>
-                {stepMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                {isFinalStep ? 'Finish' : 'Next'} <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
-        </CardFooter></Card>
+            </CardHeader>
+            <CardContent>
+                <div className="p-4 mb-4 bg-muted/70 border rounded-lg">
+                    <h4 className="font-semibold text-lg mb-1">{modelForStep.name}</h4>
+                    <p className="text-sm text-muted-foreground">{currentStep?.instructions || `Please fill out the fields for the ${modelForStep.name}.`}</p>
+                </div>
+                {currentStep?.stepType === 'create' ? (
+                    <ObjectForm key={currentStepIndex} form={form} model={modelForStep} onSubmit={handleNextStep} onCancel={() => {}} isLoading={stepMutation.isPending} propertyIdsToShow={currentStep?.propertyIds} hideFooter={true} />
+                ) : (
+                    <div className="space-y-4">
+                        <Popover open={isLookupPopoverOpen} onOpenChange={setIsLookupPopoverOpen}>
+                            <PopoverTrigger asChild>
+                                <Button variant="outline" role="combobox" aria-expanded={isLookupPopoverOpen} className="w-full justify-between">
+                                    <span className="truncate">{selectedLookupId ? getObjectDisplayValue(getObjectsByModelId(modelForStep.id).find(o=>o.id === selectedLookupId), modelForStep, allModels, allDbObjects) : `Select a ${modelForStep.name}...`}</span>
+                                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                </Button>
+                            </PopoverTrigger><PopoverContent className="w-[--radix-popover-trigger-width] p-0"><Command>
+                                <CommandInput placeholder={`Search ${modelForStep.name}...`} /><CommandEmpty>No {modelForStep.name.toLowerCase()} found.</CommandEmpty><CommandGroup><CommandList>
+                                    {getObjectsByModelId(modelForStep.id).map(obj => (
+                                        <CommandItem key={obj.id} value={getObjectDisplayValue(obj, modelForStep, allModels, allDbObjects)} onSelect={() => { setSelectedLookupId(obj.id); setIsLookupPopoverOpen(false); }}>
+                                            <CheckCircle className={`mr-2 h-4 w-4 ${selectedLookupId === obj.id ? "opacity-100" : "opacity-0"}`} />
+                                            {getObjectDisplayValue(obj, modelForStep, allModels, allDbObjects)}
+                                        </CommandItem>
+                                    ))}
+                                </CommandList></CommandGroup></Command>
+                        </PopoverContent></Popover>
+                    </div>
+                )}
+            </CardContent>
+            <CardFooter className="flex justify-between">
+                <Button variant="outline" onClick={() => setCurrentStepIndex(p => p - 1)} disabled={currentStepIndex === 0 || stepMutation.isPending}>Back</Button>
+                <Button onClick={currentStep?.stepType === 'create' ? form.handleSubmit(handleNextStep) : () => handleNextStep({})} disabled={stepMutation.isPending}>
+                    {stepMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                    {isFinalStep ? 'Finish' : 'Next'} <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+            </CardFooter>
+        </Card>
     </div>
   );
 }
 
-export default withAuth(RunWizardPageInternal, 'any');
+export default withAuth(RunWizardPageInternal);
