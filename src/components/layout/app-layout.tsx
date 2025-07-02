@@ -28,6 +28,11 @@ interface AppLayoutProps {
 export default function AppLayout({ children }: AppLayoutProps) {
   const { user, logout, isLoading: authIsLoading } = useAuth();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -96,7 +101,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
           <header className="sticky top-0 z-10 flex items-center h-14 px-4 border-b bg-background/80 backdrop-blur-sm">
             {/* Left Section */}
             <div className="flex flex-1 items-center">
-              <SidebarTrigger className="md:hidden" />
+              {isClient && <SidebarTrigger className="md:hidden" />}
             </div>
 
             {/* Center Section */}

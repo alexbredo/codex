@@ -52,11 +52,11 @@ function ConditionalLayout({ children }: { children: ReactNode }) {
           <header className="sticky top-0 z-10 flex items-center h-14 px-4 border-b bg-background/80 backdrop-blur-sm">
             {/* Left Section (placeholder for SidebarTrigger) */}
             <div className="flex flex-1 items-center">
-              <div className="md:hidden" />
+              {/* This is intentionally empty to match the server render of AppLayout which also renders nothing here */}
             </div>
             {/* Center Section (Search skeleton) */}
             <div className="flex flex-1 items-center justify-center">
-              <Skeleton className="w-64 h-9" />
+              <Skeleton className="w-40 sm:w-64 md:w-80 h-9" />
             </div>
             {/* Right Section (User skeleton) */}
             <div className="flex flex-1 items-center justify-end gap-2">
