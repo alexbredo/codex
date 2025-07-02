@@ -37,17 +37,7 @@ import DataObjectsPageHeader, { type GroupablePropertyOption, type ColumnToggleO
 import DataObjectsTable, { type SortConfig, type IncomingRelationColumn } from '@/components/objects/data-objects-table';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel as UiSelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/contexts/auth-context';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import DeleteObjectDialog from '@/components/objects/delete-object-dialog';
 
 
 export type ViewMode = 'table' | 'gallery' | 'kanban';
@@ -82,8 +72,7 @@ export default function DataObjectsPage() {
     deletedObjects: deletedObjectsFromContext,
     getModelById,
     getObjectsByModelId,
-    deleteObject,
-    batchDeleteObjects, // Added this
+    batchDeleteAcrossModels, // Changed this
     restoreObject,
     updateObject,
     getAllObjects,
@@ -118,6 +107,9 @@ export default function DataObjectsPage() {
   const [groupingPropertyKey, setGroupingPropertyKey] = useState<string | null>(null);
   const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
   const [viewingRecycleBin, setViewingRecycleBin] = useState(false);
+  
+  const [objectToDelete, setObjectToDelete] = useState<DataObject | null>(null);
+
 
   const ITEMS_PER_PAGE = viewMode === 'gallery' ? 12 : 10;
 
@@ -572,38 +564,18 @@ export default function DataObjectsPage() {
     router.push(`/data/${currentModel.id}/view/${obj.id}`);
   }, [currentModel, router]);
 
-  const handleDeleteObject = useCallback(async (objectId: string, objectName: string) => {
-    if (!currentModel) return;
-    try {
-        await deleteObject(currentModel.id, objectId);
-        setSelectedObjectIds(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(objectId);
-          return newSet;
-        });
-        toast({ title: `${currentModel.name} Deleted`, description: `"${objectName}" has been moved to the recycle bin.` });
-    } catch (error: any) {
-        toast({ variant: "destructive", title: "Error Deleting Object", description: error.message || "An unexpected error occurred." });
-    }
-  }, [currentModel, deleteObject, toast]);
+  const handleDeleteRequest = useCallback((obj: DataObject) => {
+    setObjectToDelete(obj);
+  }, []);
 
-  const handleBatchDelete = async () => {
-    if (!currentModel || selectedObjectIds.size === 0) return;
-    try {
-      await batchDeleteObjects(currentModel.id, Array.from(selectedObjectIds));
-      toast({
-        title: "Batch Delete Successful",
-        description: `${selectedObjectIds.size} items have been moved to the recycle bin.`,
-      });
-      setSelectedObjectIds(new Set()); // Clear selection after successful deletion
-    } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Batch Delete Failed",
-        description: error.message || "An unexpected error occurred.",
-      });
-    }
-  };
+  const handleDeletionSuccess = useCallback(() => {
+    toast({
+      title: "Deletion Successful",
+      description: "The selected object(s) have been moved to the recycle bin.",
+    });
+    fetchData("After successful deletion");
+    setSelectedObjectIds(new Set()); // Clear selection after successful deletion
+  }, [toast, fetchData]);
 
   const handleRestoreObject = useCallback(async (objectId: string, objectName: string) => {
     if (!currentModel) return;
@@ -1224,8 +1196,7 @@ export default function DataObjectsPage() {
   };
 
   const canCreate = hasPermission('objects:create') || hasPermission(`model:create:${modelIdFromUrl}`);
-  const canDelete = hasPermission(`model:delete:${modelIdFromUrl}`);
-
+  
   if (!dataContextIsReady || !currentModel) {
     return (
       <div className="flex justify-center items-center h-screen">
@@ -1237,6 +1208,12 @@ export default function DataObjectsPage() {
 
   return (
     <div className="container mx-auto py-8">
+      <DeleteObjectDialog
+        objectToDelete={objectToDelete}
+        model={currentModel}
+        onClose={() => setObjectToDelete(null)}
+        onSuccess={handleDeletionSuccess}
+      />
       <DataObjectsPageHeader
         currentModel={currentModel}
         currentWorkflow={currentWorkflow}
@@ -1445,28 +1422,9 @@ export default function DataObjectsPage() {
                     </DialogContent>
                 </Dialog>
             )}
-            {canDelete && (
-                <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                        <Button variant="destructive" size="sm">
-                            <Trash2 className="mr-2 h-4 w-4" /> Batch Delete
-                        </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                        <AlertDialogHeader>
-                            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                                This will move {selectedObjectIds.size} selected item(s) to the recycle bin.
-                                This action can be undone by restoring them individually from the recycle bin.
-                            </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={handleBatchDelete} className="bg-destructive hover:bg-destructive/90">Delete Items</AlertDialogAction>
-                        </AlertDialogFooter>
-                    </AlertDialogContent>
-                </AlertDialog>
-            )}
+            <Button variant="destructive" size="sm" onClick={() => setObjectToDelete({id: Array.from(selectedObjectIds).join(','), name: `${selectedObjectIds.size} items`} as any)}>
+                <Trash2 className="mr-2 h-4 w-4" /> Batch Delete
+            </Button>
             <Button variant="outline" size="sm" onClick={() => setSelectedObjectIds(new Set())} className="ml-auto">Clear Selection</Button>
         </div>
       )}
@@ -1532,7 +1490,7 @@ export default function DataObjectsPage() {
                     handleRowSelect={handleRowSelect}
                     handleView={handleView}
                     handleEdit={handleEdit}
-                    handleDeleteObject={handleDeleteObject}
+                    handleDeleteRequest={handleDeleteRequest}
                     handleRestoreObject={handleRestoreObject}
                     getWorkflowStateName={getWorkflowStateName}
                     getOwnerUsername={getOwnerUsername}
@@ -1565,7 +1523,7 @@ export default function DataObjectsPage() {
               handleRowSelect={handleRowSelect}
               handleView={handleView}
               handleEdit={handleEdit}
-              handleDeleteObject={handleDeleteObject}
+              handleDeleteRequest={handleDeleteRequest}
               handleRestoreObject={handleRestoreObject}
               getWorkflowStateName={getWorkflowStateName}
               getOwnerUsername={getOwnerUsername}
@@ -1575,7 +1533,7 @@ export default function DataObjectsPage() {
         </>
       ) : viewMode === 'gallery' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-           {(paginatedDataToRender as DataObject[]).map((obj) => ( <GalleryCard key={obj.id} obj={obj} model={currentModel!} allModels={allModels} allObjects={allDbObjects} currentWorkflow={currentWorkflow} getWorkflowStateName={getWorkflowStateName} onView={handleView} onEdit={handleEdit} onDelete={handleDeleteObject} viewingRecycleBin={viewingRecycleBin} onRestore={handleRestoreObject} lastChangedInfo={lastChangedInfo} /> ))}
+           {(paginatedDataToRender as DataObject[]).map((obj) => ( <GalleryCard key={obj.id} obj={obj} model={currentModel!} allModels={allModels} allObjects={allDbObjects} currentWorkflow={currentWorkflow} getWorkflowStateName={getWorkflowStateName} onView={handleView} onEdit={handleEdit} onDeleteRequest={handleDeleteRequest} viewingRecycleBin={viewingRecycleBin} onRestore={handleRestoreObject} lastChangedInfo={lastChangedInfo} /> ))}
         </div>
       ) : viewMode === 'kanban' && currentWorkflow && !viewingRecycleBin ? ( 
         <KanbanBoard
@@ -1587,7 +1545,7 @@ export default function DataObjectsPage() {
           onObjectUpdate={handleStateChangeViaDrag}
           onViewObject={handleView}
           onEditObject={handleEdit}
-          onDeleteObject={(objId) => handleDeleteObject(objId, getObjectDisplayValue(sortedObjects.find(o => o.id === objId), currentModel, allModels, allDbObjects))}
+          onDeleteObjectRequest={(obj) => handleDeleteRequest(obj)}
         />
       ) : viewMode === 'kanban' && viewingRecycleBin ? (
         <Card className="text-center py-12"> <CardContent> <ArchiveX size={48} className="mx-auto text-muted-foreground mb-4" /> <h3 className="text-xl font-semibold">Kanban View Not Available</h3> <p className="text-muted-foreground mb-4"> The Kanban board is not available for items in the recycle bin. </p> <Button onClick={() => setViewingRecycleBin(false)} variant="default"> View Active Items </Button> </CardContent> </Card>
@@ -1602,3 +1560,4 @@ export default function DataObjectsPage() {
     </div>
   );
 }
+

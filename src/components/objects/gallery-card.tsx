@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react'; // Import React
@@ -18,17 +19,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+
 
 interface GalleryCardProps {
   obj: DataObject;
@@ -39,13 +30,12 @@ interface GalleryCardProps {
   getWorkflowStateName: (stateId: string | null | undefined) => string;
   onView: (obj: DataObject) => void;
   onEdit: (obj: DataObject) => void;
-  onDelete: (objId: string) => void;
-  onRestore?: (objId: string) => void; // New prop for restoring
-  viewingRecycleBin?: boolean; // New prop to indicate if card is in recycle bin context
+  onDeleteRequest: (obj: DataObject) => void; // Changed from onDelete
+  onRestore?: (objId: string, objName: string) => void; // Changed signature
+  viewingRecycleBin?: boolean;
   lastChangedInfo?: { modelId: string, objectId: string, changeType: 'added' | 'updated' | 'deleted' | 'restored' } | null;
 }
 
-// Wrap with React.memo
 const GalleryCard = React.memo(function GalleryCard({
   obj,
   model,
@@ -55,7 +45,7 @@ const GalleryCard = React.memo(function GalleryCard({
   getWorkflowStateName,
   onView,
   onEdit,
-  onDelete,
+  onDeleteRequest,
   onRestore,
   viewingRecycleBin,
   lastChangedInfo,
@@ -234,7 +224,7 @@ const GalleryCard = React.memo(function GalleryCard({
             {displayPropertyValue(prop, obj[prop.name])}
           </div>
         ))}
-        {displayProperties.length === 0 && !displayImage && (
+        {displayProperties.length === 0 && (!displayImage || !imageUrl) && (
             <p className="text-xs text-muted-foreground italic">No additional details to display.</p>
         )}
         {obj.deletedAt && viewingRecycleBin && (
@@ -245,7 +235,7 @@ const GalleryCard = React.memo(function GalleryCard({
       </CardContent>
       <CardFooter className="p-3 border-t bg-muted/50 flex justify-end space-x-2">
         {viewingRecycleBin && onRestore ? (
-          <Button variant="outline" size="sm" onClick={() => onRestore(obj.id)} title="Restore Object">
+          <Button variant="outline" size="sm" onClick={() => onRestore(obj.id, displayName)} title="Restore Object">
             <ArchiveRestore className="h-4 w-4 mr-1" /> Restore
           </Button>
         ) : (
@@ -256,27 +246,9 @@ const GalleryCard = React.memo(function GalleryCard({
             <Button variant="ghost" size="icon" onClick={() => onEdit(obj)} title="Edit Object">
               <Edit className="h-4 w-4" />
             </Button>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="ghost" size="icon" className="hover:text-destructive" title="Delete Object">
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This action will {viewingRecycleBin ? 'permanently delete' : 'move to recycle bin'} the object "{displayName}".
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={() => onDelete(obj.id)}>
-                    Delete
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+            <Button variant="ghost" size="icon" className="hover:text-destructive" title="Delete Object" onClick={() => onDeleteRequest(obj)}>
+                <Trash2 className="h-4 w-4" />
+            </Button>
           </>
         )}
       </CardFooter>

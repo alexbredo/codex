@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import type { DataObject, Model, Property, WorkflowStateWithSuccessors } from '@/lib/types'; // Added WorkflowStateWithSuccessors
@@ -14,17 +15,6 @@ import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { StarDisplay } from '@/components/ui/star-display';
 import * as React from 'react';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 
 interface KanbanCardProps {
   object: DataObject;
@@ -33,7 +23,7 @@ interface KanbanCardProps {
   allObjects: Record<string, DataObject[]>;
   onViewObject: (object: DataObject) => void;
   onEditObject: (object: DataObject) => void;
-  onDeleteObject: (objectId: string) => void;
+  onDeleteObject: (object: DataObject) => void;
   className?: string;
   dragHandleListeners?: ReturnType<typeof useSortable>['listeners'];
   stateColor?: string | null; // Added stateColor
@@ -191,27 +181,9 @@ export function KanbanCard({
         <Button variant="ghost" size="xs" onClick={() => onEditObject(object)} title="Edit Object">
           <Edit className="h-3 w-3 mr-1" /> Edit
         </Button>
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button variant="ghost" size="xs" className="hover:text-destructive" title="Delete Object">
-              <Trash2 className="h-3 w-3 mr-1" /> Delete
-            </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-              <AlertDialogDescription>
-                This action cannot be undone. This will permanently delete the object "{displayName}".
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={() => onDeleteObject(object.id)}>
-                Delete
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+        <Button variant="ghost" size="xs" className="hover:text-destructive" title="Delete Object" onClick={() => onDeleteObject(object)}>
+            <Trash2 className="h-3 w-3 mr-1" /> Delete
+        </Button>
       </div>
     </Card>
   );

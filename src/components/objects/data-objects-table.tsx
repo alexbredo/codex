@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -22,17 +23,6 @@ import ColumnFilterPopover, { type ColumnFilterValue } from '@/components/object
 import { StarDisplay } from '@/components/ui/star-display';
 import { Progress } from '@/components/ui/progress';
 import { Tooltip, TooltipProvider, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 import {
   Dialog,
   DialogContent,
@@ -91,7 +81,7 @@ interface DataObjectsTableProps {
   handleRowSelect: (objectId: string, checked: boolean) => void;
   handleView: (obj: DataObject) => void;
   handleEdit: (obj: DataObject) => void;
-  handleDeleteObject: (objectId: string, objectName: string) => void;
+  handleDeleteRequest: (obj: DataObject) => void;
   handleRestoreObject: (objectId: string, objectName: string) => void;
   getWorkflowStateName: (stateId: string | null | undefined) => string;
   getOwnerUsername: (ownerId: string | null | undefined) => string;
@@ -117,7 +107,7 @@ export default function DataObjectsTable({
   handleRowSelect,
   handleView,
   handleEdit,
-  handleDeleteObject,
+  handleDeleteRequest,
   handleRestoreObject,
   getWorkflowStateName,
   getOwnerUsername,
@@ -417,25 +407,9 @@ export default function DataObjectsTable({
                         <Button variant="ghost" size="sm" onClick={() => handleEdit(obj)} className="px-2 mr-1 hover:text-primary">
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="sm" className="px-2 hover:text-destructive">
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                This action will move this {model.name.toLowerCase()} object to the recycle bin.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => handleDeleteObject(obj.id, getObjectDisplayValue(obj, model, allModels, allDbObjects))}>Delete</AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
+                        <Button variant="ghost" size="sm" className="px-2 hover:text-destructive" onClick={() => handleDeleteRequest(obj)}>
+                            <Trash2 className="h-4 w-4" />
+                        </Button>
                       </>
                     )}
                   </TableCell>

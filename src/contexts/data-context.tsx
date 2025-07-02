@@ -33,7 +33,7 @@ export interface DataContextType {
   addObject: (modelId: string, objectData: Omit<DataObject, 'id' | 'currentStateId' | 'ownerId'> & {currentStateId?: string | null, ownerId?: string | null}, objectId?: string) => Promise<DataObject>;
   updateObject: (modelId: string, objectId: string, updates: Partial<Omit<DataObject, 'id'>>) => Promise<DataObject | undefined>;
   deleteObject: (modelId: string, objectId: string) => Promise<void>; // This will now soft delete
-  batchDeleteObjects: (modelId: string, objectIds: string[]) => Promise<void>;
+  batchDeleteAcrossModels: (objectIds: string[]) => Promise<void>;
   restoreObject: (modelId: string, objectId: string) => Promise<DataObject | undefined>; // New restore function
   getObjectsByModelId: (modelId: string, includeDeleted?: boolean) => DataObject[]; // Added includeDeleted flag
   getAllObjects: (includeDeleted?: boolean) => Record<string, DataObject[]>; // Added includeDeleted flag
@@ -400,8 +400,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     highlightTimeoutRef.current = setTimeout(() => setLastChangedInfo(null), HIGHLIGHT_DURATION_MS);
   }, [fetchData]);
 
-  const batchDeleteObjects = useCallback(async (modelId: string, objectIds: string[]) => {
-    const response = await fetch(`/api/codex-structure/models/${modelId}/objects/batch-delete`, {
+  const batchDeleteAcrossModels = useCallback(async (objectIds: string[]) => {
+    const response = await fetch('/api/codex-structure/objects/batch-delete', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ objectIds }),
@@ -409,7 +409,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!response.ok) {
       throw new Error(await formatApiError(response, 'Failed to batch delete objects'));
     }
-    // Refetch all data to update the UI correctly
     await fetchData('After Batch Delete');
   }, [fetchData]);
 
@@ -564,7 +563,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const contextValue: DataContextType = {
     models, objects, deletedObjects, modelGroups, workflows, wizards, validationRulesets, allUsers, lastChangedInfo,
     addModel, updateModel, deleteModel, getModelById, getModelByName,
-    addObject, updateObject, deleteObject, batchDeleteObjects, restoreObject, getObjectsByModelId, getAllObjects,
+    addObject, updateObject, deleteObject, batchDeleteAcrossModels, restoreObject, getObjectsByModelId, getAllObjects,
     addModelGroup, updateModelGroup, deleteModelGroup, getModelGroupById, getModelGroupByName, getAllModelGroups,
     addWorkflow, updateWorkflow, deleteWorkflow, getWorkflowById, 
     addWizard, updateWizard, deleteWizard, getWizardById, getWizardByName,

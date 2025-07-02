@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -21,7 +22,7 @@ interface KanbanBoardProps {
   onObjectUpdate: (objectId: string, newStateId: string) => Promise<void>;
   onViewObject: (object: DataObject) => void;
   onEditObject: (object: DataObject) => void;
-  onDeleteObject: (objectId: string) => void;
+  onDeleteObjectRequest: (object: DataObject) => void;
 }
 
 interface KanbanColumn {
@@ -31,7 +32,7 @@ interface KanbanColumn {
   objects: DataObject[];
 }
 
-export default function KanbanBoard({ model, workflow, objects, allModels, allObjects, onObjectUpdate, onViewObject, onEditObject, onDeleteObject }: KanbanBoardProps) {
+export default function KanbanBoard({ model, workflow, objects, allModels, allObjects, onObjectUpdate, onViewObject, onEditObject, onDeleteObjectRequest }: KanbanBoardProps) {
   const [activeId, setActiveId] = React.useState<UniqueIdentifier | null>(null);
   const [columns, setColumns] = React.useState<KanbanColumn[]>([]);
   const [isLoading, setIsLoading] = React.useState(false);
@@ -250,7 +251,7 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
                         allObjects={allObjects}
                         onViewObject={onViewObject}
                         onEditObject={onEditObject}
-                        onDeleteObject={onDeleteObject}
+                        onDeleteObject={() => onDeleteObjectRequest(object)}
                         workflowStates={workflow.states}
                       />
                     ))
@@ -282,3 +283,4 @@ export default function KanbanBoard({ model, workflow, objects, allModels, allOb
     </DndContext>
   );
 }
+
