@@ -48,15 +48,15 @@ function ConditionalLayout({ children }: { children: ReactNode }) {
           </div>
         </div>
         <main className="flex-1 flex flex-col">
-          <header className="sticky top-0 z-10 flex items-center h-14 px-4 border-b">
+          <header className="sticky top-0 z-10 flex items-center h-14 px-4 border-b bg-background/80 backdrop-blur-sm">
              {/* Left Section (placeholder) */}
-            <div className="flex flex-1"></div>
+            <div className="flex flex-1 items-center"></div>
             {/* Center Section (Search skeleton) */}
-            <div className="flex flex-1 justify-center">
+            <div className="flex flex-1 items-center justify-center">
               <Skeleton className="w-64 h-9" />
             </div>
             {/* Right Section (User skeleton) */}
-            <div className="flex flex-1 justify-end">
+            <div className="flex flex-1 items-center justify-end gap-2">
               <Skeleton className="h-8 w-24" />
             </div>
           </header>
