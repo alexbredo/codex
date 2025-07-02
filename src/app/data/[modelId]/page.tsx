@@ -49,6 +49,7 @@ import DataObjectsTable, { type SortConfig, type IncomingRelationColumn } from '
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel as UiSelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/contexts/auth-context';
 import DeleteObjectDialog from '@/components/objects/delete-object-dialog';
+import BatchUpdateConfirmationDialog from '@/components/objects/batch-update-confirmation-dialog';
 
 
 export type ViewMode = 'table' | 'gallery' | 'kanban';
@@ -120,6 +121,14 @@ export default function DataObjectsPage() {
   const [viewingRecycleBin, setViewingRecycleBin] = useState(false);
   
   const [objectToDelete, setObjectToDelete] = useState<DataObject | null>(null);
+  
+  const [isBatchUpdateConfirmOpen, setIsBatchUpdateConfirmOpen] = useState(false);
+  const [batchUpdatePreviewData, setBatchUpdatePreviewData] = useState<{
+    selectedObjects: DataObject[];
+    propertyBeingUpdated: (Property & { type: 'workflow_state' | Property['type'] }) | undefined;
+    newValue: any;
+  } | null>(null);
+
 
 
   const ITEMS_PER_PAGE = viewMode === 'gallery' ? 12 : 10;
@@ -957,94 +966,91 @@ export default function DataObjectsPage() {
     }
   }, [paginatedDataToRender, selectedObjectIds, groupedDataForRender]);
 
-
-  const handleBatchUpdate = async () => {
+  const prepareBatchUpdateForConfirmation = () => {
     if (!currentModel || !selectedBatchPropertyDetails || selectedObjectIds.size === 0) {
-        toast({ variant: "destructive", title: "Batch Update Error", description: "Please select a property and at least one record." });
-        return;
+      toast({ variant: "destructive", title: "Batch Update Error", description: "Please select a property and at least one record." });
+      return;
     }
     if (viewingRecycleBin) {
       toast({ variant: "destructive", title: "Action Denied", description: "Batch update is not allowed for items in the recycle bin." });
       return;
     }
 
+    const objectsToUpdate = sortedObjects.filter(obj => selectedObjectIds.has(obj.id));
+    
+    let processedNewValue = batchUpdateValue;
+    if (selectedBatchPropertyDetails.type === 'date') {
+      processedNewValue = batchUpdateDate ? batchUpdateDate.toISOString() : null;
+    } else if (selectedBatchPropertyDetails.type === 'relationship' && selectedBatchPropertyDetails.relationshipType === 'one') {
+      processedNewValue = batchUpdateValue === INTERNAL_CLEAR_RELATIONSHIP_VALUE ? null : batchUpdateValue;
+    }
+    
+    setBatchUpdatePreviewData({
+      selectedObjects: objectsToUpdate,
+      propertyBeingUpdated: selectedBatchPropertyDetails as any,
+      newValue: processedNewValue,
+    });
+    setIsBatchUpdateDialogOpen(false); // Close first dialog
+    setIsBatchUpdateConfirmOpen(true); // Open confirmation dialog
+  };
+
+  const executeBatchUpdate = async () => {
+    if (!currentModel || !batchUpdatePreviewData) return;
+
     setIsBatchUpdating(true);
     try {
-        let processedNewValue = batchUpdateValue;
-        let payloadPropertyName = selectedBatchPropertyDetails.name;
-        let payloadPropertyType = selectedBatchPropertyDetails.type;
+      let processedNewValue = batchUpdatePreviewData.newValue;
+      let payloadPropertyName = batchUpdatePreviewData.propertyBeingUpdated!.name;
+      let payloadPropertyType = batchUpdatePreviewData.propertyBeingUpdated!.type;
 
-        if (selectedBatchPropertyDetails.name === INTERNAL_WORKFLOW_STATE_UPDATE_KEY) {
-            payloadPropertyType = 'workflow_state';
-            processedNewValue = batchUpdateValue;
-        } else if (selectedBatchPropertyDetails.type === 'boolean') {
-            processedNewValue = Boolean(batchUpdateValue);
-        } else if (selectedBatchPropertyDetails.type === 'number') {
-            processedNewValue = parseFloat(String(batchUpdateValue));
-            if (isNaN(processedNewValue)) {
-                throw new Error(`Invalid number provided for batch update of ${selectedBatchPropertyDetails.type}.`);
-            }
-        } else if (selectedBatchPropertyDetails.type === 'rating') {
-            processedNewValue = Number(batchUpdateValue);
-            if (isNaN(processedNewValue) || processedNewValue < 0 || processedNewValue > 5 || !Number.isInteger(processedNewValue)) {
-                throw new Error("Rating must be an integer between 0 and 5.");
-            }
-        } else if (selectedBatchPropertyDetails.type === 'date') {
-            if (batchUpdateDate && isDateValidFn(batchUpdateDate)) {
-                processedNewValue = batchUpdateDate.toISOString();
-            } else if (!batchUpdateDate && batchUpdateValue === ''){
-                processedNewValue = null;
-            }
-             else {
-                throw new Error("Invalid date provided for batch update.");
-            }
-        } else if (selectedBatchPropertyDetails.type === 'relationship') {
-            if (selectedBatchPropertyDetails.relationshipType === 'one') {
-                processedNewValue = batchUpdateValue === INTERNAL_CLEAR_RELATIONSHIP_VALUE ? null : batchUpdateValue;
-            } else {
-                processedNewValue = Array.isArray(batchUpdateValue) ? batchUpdateValue : [];
-            }
+      if (payloadPropertyName === INTERNAL_WORKFLOW_STATE_UPDATE_KEY) {
+        payloadPropertyType = 'workflow_state';
+      } else if (batchUpdatePreviewData.propertyBeingUpdated!.type === 'boolean') {
+        processedNewValue = Boolean(processedNewValue);
+      } else if (batchUpdatePreviewData.propertyBeingUpdated!.type === 'number') {
+        processedNewValue = parseFloat(String(processedNewValue));
+        if (isNaN(processedNewValue)) {
+          throw new Error(`Invalid number provided.`);
         }
-
-        const payload = {
-            objectIds: Array.from(selectedObjectIds),
-            propertyName: payloadPropertyName,
-            propertyType: payloadPropertyType,
-            newValue: processedNewValue,
-        };
-
-        const response = await fetch(`/api/codex-structure/models/${currentModel.id}/objects/batch-update`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        });
-
-        const responseData = await response.json();
-
-        if (!response.ok) {
-            throw new Error(responseData.error || responseData.message || "Batch update failed at API level");
+      } else if (batchUpdatePreviewData.propertyBeingUpdated!.type === 'rating') {
+        processedNewValue = Number(processedNewValue);
+        if (isNaN(processedNewValue) || processedNewValue < 0 || processedNewValue > 5 || !Number.isInteger(processedNewValue)) {
+            throw new Error("Rating must be an integer between 0 and 5.");
         }
+      }
 
-        if (responseData.errors && responseData.errors.length > 0) {
-            toast({
-                variant: "warning",
-                title: "Batch Update Partially Successful",
-                description: `${responseData.message}. Errors: ${responseData.errors.map((e: any) => e.message || String(e)).join(', ')}`
-            });
-        } else {
-            toast({ title: "Batch Update Successful", description: responseData.message || `${selectedObjectIds.size} records updated.` });
-        }
+      const payload = {
+        objectIds: batchUpdatePreviewData.selectedObjects.map(o => o.id),
+        propertyName: payloadPropertyName,
+        propertyType: payloadPropertyType,
+        newValue: processedNewValue,
+      };
 
-        await fetchData('Batch Update');
-        setIsBatchUpdateDialogOpen(false);
-        setSelectedObjectIds(new Set());
-        setBatchUpdateProperty('');
+      const response = await fetch(`/api/codex-structure/models/${currentModel.id}/objects/batch-update`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+      });
+
+      const responseData = await response.json();
+      if (!response.ok) {
+        throw new Error(responseData.error || responseData.message || "Batch update failed at API level");
+      }
+
+      toast({ title: "Batch Update Successful", description: responseData.message || `${payload.objectIds.length} records updated.` });
+
+      await fetchData('Batch Update');
+      setSelectedObjectIds(new Set());
+      setBatchUpdateProperty('');
     } catch (error: any) {
-        toast({ variant: "destructive", title: "Batch Update Failed", description: error.message });
+      toast({ variant: "destructive", title: "Batch Update Failed", description: error.message });
     } finally {
-        setIsBatchUpdating(false);
+      setIsBatchUpdateConfirmOpen(false);
+      setBatchUpdatePreviewData(null);
+      setIsBatchUpdating(false);
     }
   };
+
 
 
   const handleExportCSV = () => {
@@ -1224,6 +1230,17 @@ export default function DataObjectsPage() {
         model={currentModel}
         onClose={() => setObjectToDelete(null)}
         onSuccess={handleDeletionSuccess}
+      />
+       <BatchUpdateConfirmationDialog
+        isOpen={isBatchUpdateConfirmOpen}
+        onClose={() => setIsBatchUpdateConfirmOpen(false)}
+        onConfirm={executeBatchUpdate}
+        isConfirming={isBatchUpdating}
+        model={currentModel}
+        selectedObjects={batchUpdatePreviewData?.selectedObjects || []}
+        propertyBeingUpdated={batchUpdatePreviewData?.propertyBeingUpdated}
+        newValue={batchUpdatePreviewData?.newValue}
+        currentWorkflow={currentWorkflow}
       />
       <DataObjectsPageHeader
         currentModel={currentModel}
@@ -1426,7 +1443,7 @@ export default function DataObjectsPage() {
                         </div>
                         <BatchUpdateDialogFooter>
                             <Button variant="outline" onClick={() => setIsBatchUpdateDialogOpen(false)} disabled={isBatchUpdating}>Cancel</Button>
-                            <Button onClick={handleBatchUpdate} disabled={!selectedBatchPropertyDetails || isBatchUpdating} className="bg-primary hover:bg-primary/90">
+                            <Button onClick={prepareBatchUpdateForConfirmation} disabled={!selectedBatchPropertyDetails || isBatchUpdating} className="bg-primary hover:bg-primary/90">
                                 {isBatchUpdating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Update Items"}
                             </Button>
                         </BatchUpdateDialogFooter>
@@ -1602,5 +1619,6 @@ export default function DataObjectsPage() {
     </div>
   );
 }
+
 
 
