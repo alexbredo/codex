@@ -16,7 +16,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, AlertTriangle, Trash2, ArrowRight } from 'lucide-react';
+import { Loader2, AlertTriangle, Trash2 } from 'lucide-react';
 import { useData } from '@/contexts/data-context';
 import type { DataObject, Model } from '@/lib/types';
 import type { DependencyCheckResult } from '@/app/api/codex-structure/objects/[objectId]/dependencies/route';
@@ -119,7 +119,7 @@ export default function DeleteObjectDialog({ objectToDelete, model, onClose, onS
                 
                 {hasIncomingRelations && (
                     <div>
-                        <h4 className="font-semibold mb-2">Warning: Objects linking to this item</h4>
+                        <h4 className="font-semibold mb-2">Warning: Objects linking TO this item</h4>
                         <p className="text-sm text-muted-foreground mb-3">The following objects link to the item you are deleting. Deleting it will break these relationships. You can choose to delete these related objects as well.</p>
                         <ScrollArea className="max-h-40 border rounded-md p-2">
                            <div className="space-y-2">
@@ -148,14 +148,18 @@ export default function DeleteObjectDialog({ objectToDelete, model, onClose, onS
 
                 {hasOutgoingRelations && (
                     <div>
-                        <h4 className="font-semibold mb-2">Informational: This item links to others</h4>
-                        <p className="text-sm text-muted-foreground mb-3">Deleting this object will remove its links to the following items. These items will NOT be deleted.</p>
+                        <h4 className="font-semibold mb-2">Warning: This item links TO other objects</h4>
+                        <p className="text-sm text-muted-foreground mb-3">This object links to the following items. Deleting it will break these relationships. You can choose to delete these related objects as well.</p>
                          <ScrollArea className="max-h-40 border rounded-md p-2">
                            <div className="space-y-2">
                              {dependencies.outgoing.map(rel => (
-                                <div key={rel.objectId} className="flex items-center space-x-3 p-2 rounded">
-                                    <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                                    <div className="text-sm w-full">
+                                <div key={rel.objectId} className="flex items-center space-x-3 p-2 rounded hover:bg-muted">
+                                    <Checkbox
+                                        id={`delete-${rel.objectId}`}
+                                        onCheckedChange={(checked) => handleCheckboxChange(rel.objectId, !!checked)}
+                                        checked={selectedToDelete.has(rel.objectId)}
+                                    />
+                                    <label htmlFor={`delete-${rel.objectId}`} className="text-sm w-full">
                                         <div className="flex justify-between items-center">
                                             <span className="font-medium truncate" title={rel.objectDisplayValue}>{rel.objectDisplayValue}</span>
                                             <Badge variant="outline" className="text-xs">{rel.modelName}</Badge>
@@ -163,7 +167,7 @@ export default function DeleteObjectDialog({ objectToDelete, model, onClose, onS
                                          <p className="text-xs text-muted-foreground">
                                             (via property: <span className="font-mono">{rel.viaPropertyName}</span>)
                                         </p>
-                                    </div>
+                                    </label>
                                 </div>
                              ))}
                            </div>
