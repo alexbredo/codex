@@ -4,7 +4,7 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getCurrentUserFromCookie } from '@/lib/auth';
-import type { WizardRun, Wizard, DataObject, ChangelogEventData, PropertyMapping } from '@/lib/types';
+import type { WizardRun, Wizard, ChangelogEventData, PropertyMapping } from '@/lib/types';
 import { z } from 'zod';
 
 interface Params {
@@ -60,7 +60,7 @@ export async function POST(request: Request, { params }: Params) {
         await db.run('ROLLBACK');
         return NextResponse.json({ error: 'Wizard definition not found' }, { status: 500 });
     }
-    wizard.steps = await db.all('SELECT * FROM wizard_steps WHERE wizardId = ? ORDER BY orderIndex ASC', wizard.id);
+    wizard.steps = await db.all('SELECT *, step_type as stepType FROM wizard_steps WHERE wizardId = ? ORDER BY orderIndex ASC', wizard.id);
     wizard.steps.forEach(step => {
         step.propertyIds = JSON.parse(step.propertyIds || '[]');
         step.propertyMappings = JSON.parse(step.propertyMappings || '[]');
@@ -83,52 +83,70 @@ export async function POST(request: Request, { params }: Params) {
     const isFinalStep = stepIndex === wizard.steps.length - 1;
 
     if (isFinalStep) {
-        // --- FINAL COMMIT LOGIC ---
+        // --- REFACTORED FINAL COMMIT LOGIC ---
         const createdObjectIds: Record<number, string> = {}; // { stepIndex: objectId }
-        
-        // First, resolve all data from lookup steps so it's available for mapping
         const resolvedStepData = { ...stepData };
+
+        // 1. Pre-fetch data for all 'lookup' steps
         for (let i = 0; i < wizard.steps.length; i++) {
+            const stepToResolve = wizard.steps[i];
             const dataForStep = resolvedStepData[i];
             if (dataForStep.stepType === 'lookup' && dataForStep.objectId) {
-                const objectFromDb = await db.get('SELECT data FROM data_objects WHERE id = ?', dataForStep.objectId);
+                const objectFromDb = await db.get('SELECT data FROM data_objects WHERE id = ? AND model_id = ?', dataForStep.objectId, stepToResolve.modelId);
                 if (objectFromDb) {
-                    // We store the *parsed* data from the looked-up object to use for mapping.
                     resolvedStepData[i].formData = JSON.parse(objectFromDb.data);
+                } else {
+                    throw new Error(`Looked up object with ID ${dataForStep.objectId} not found for step ${i + 1}.`);
                 }
             }
         }
         
+        // 2. Sequentially process all steps to handle creation and mapping
         for (let i = 0; i < wizard.steps.length; i++) {
             const stepToProcess = wizard.steps[i];
             const dataForStep = resolvedStepData[i];
             
             if (dataForStep.stepType === 'lookup') {
                 createdObjectIds[i] = dataForStep.objectId;
-                continue;
+                continue; // Nothing to create, move to next step
             }
 
+            // It's a 'create' step
             const modelForStep: any = await db.get('SELECT * FROM models WHERE id = ?', stepToProcess.modelId);
-            if (!modelForStep) throw new Error(`Model ${stepToProcess.modelId} not found for step ${i+1}`);
+            if (!modelForStep) throw new Error(`Model ${stepToProcess.modelId} not found for step ${i + 1}`);
             
             const newObjectId = crypto.randomUUID();
             createdObjectIds[i] = newObjectId;
             const newObjectData = { ...(dataForStep.formData || {}) };
 
+            // Process mappings for the current step
             const mappings: PropertyMapping[] = stepToProcess.propertyMappings || [];
             for (const mapping of mappings) {
-                const sourceStepData = resolvedStepData[mapping.sourceStepIndex]; // Use resolved data
-                if (sourceStepData) {
-                    const sourceObjectId = createdObjectIds[mapping.sourceStepIndex];
-                    const sourcePropertyDef = (await db.get('SELECT name FROM properties WHERE id = ?', mapping.sourcePropertyId));
-                    const targetPropertyDef = (await db.get('SELECT name FROM properties WHERE id = ?', mapping.targetPropertyId));
+                const sourceStepData = resolvedStepData[mapping.sourceStepIndex];
+                if (!sourceStepData) continue; // Should not happen if wizard is well-formed
+                
+                const sourceObjectId = createdObjectIds[mapping.sourceStepIndex];
+                const targetPropertyDef = await db.get('SELECT name FROM properties WHERE id = ?', mapping.targetPropertyId);
 
-                    if (sourceObjectId && mapping.sourcePropertyId === INTERNAL_MAPPING_OBJECT_ID_KEY && targetPropertyDef) {
-                        newObjectData[targetPropertyDef.name] = sourceObjectId;
-                    } else if (sourceStepData.formData && sourcePropertyDef && targetPropertyDef) { // Now formData exists for lookup steps too
-                        newObjectData[targetPropertyDef.name] = sourceStepData.formData[sourcePropertyDef.name];
+                if (!targetPropertyDef) {
+                     console.warn(`Mapping failed: Target property with ID ${mapping.targetPropertyId} not found.`);
+                     continue;
+                }
+                
+                let valueToMap: any = null;
+
+                if (mapping.sourcePropertyId === INTERNAL_MAPPING_OBJECT_ID_KEY) {
+                    valueToMap = sourceObjectId;
+                } else if (sourceStepData.formData) {
+                    const sourcePropertyDef = await db.get('SELECT name FROM properties WHERE id = ?', mapping.sourcePropertyId);
+                    if (sourcePropertyDef) {
+                        valueToMap = sourceStepData.formData[sourcePropertyDef.name];
+                    } else {
+                         console.warn(`Mapping failed: Source property with ID ${mapping.sourcePropertyId} not found.`);
                     }
                 }
+                
+                newObjectData[targetPropertyDef.name] = valueToMap;
             }
             
             const currentTimestamp = new Date().toISOString();
@@ -140,7 +158,7 @@ export async function POST(request: Request, { params }: Params) {
                 finalCurrentStateId = initialState?.id || null;
             }
 
-            await db.run('INSERT INTO data_objects (id, model_id, data, currentStateId, ownerId) VALUES (?, ?, ?, ?, ?)',
+            await db.run('INSERT INTO data_objects (id, model_id, data, currentStateId, ownerId, isDeleted) VALUES (?, ?, ?, ?, ?, 0)',
                 newObjectId, stepToProcess.modelId, JSON.stringify(finalObjectData), finalCurrentStateId, currentUser.id);
         }
         
