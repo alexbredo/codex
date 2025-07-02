@@ -1,16 +1,17 @@
 
+
 'use client';
 
 import * as React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useRouter } from 'next/navigation';
-import { useForm, type FieldErrors } from 'react-hook-form';
+import { useForm, type FieldErrors, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useToast } from '@/hooks/use-toast';
 import { useData } from '@/contexts/data-context';
-import type { WizardRunState, WizardStepFormValues, Model } from '@/lib/types';
+import type { WizardRunState, Model } from '@/lib/types';
 import { createObjectFormSchema } from '@/components/objects/object-form-schema';
-import ObjectForm from '@/components/objects/object-form';
+import AdaptiveFormField from '@/components/objects/adaptive-form-field';
 import { getObjectDisplayValue } from '@/lib/utils';
 import { withAuth } from '@/contexts/auth-context';
 
@@ -89,11 +90,6 @@ function RunWizardPageInternal() {
     enabled: !!runId && dataContextIsReady,
   });
 
-  const currentStepIndex = React.useMemo(() => {
-    if (!runState) return 0; // Default to 0 while loading or if no state
-    return runState.currentStepIndex + 1;
-  }, [runState]);
-
   const stepMutation = useMutation({
     mutationFn: submitWizardStep,
     onSuccess: (data) => {
@@ -104,18 +100,18 @@ function RunWizardPageInternal() {
       }
     },
     onError: (err: Error) => {
-      toast({ variant: 'destructive', title: `Error on Step ${currentStepIndex + 1}`, description: err.message });
+        const currentStepIndex = runState ? runState.currentStepIndex + 1 : 0;
+        toast({ variant: 'destructive', title: `Error on Step ${currentStepIndex + 1}`, description: err.message });
     }
   });
-  
+
+  const currentStepIndex = React.useMemo(() => runState?.currentStepIndex !== undefined ? runState.currentStepIndex + 1 : 0, [runState]);
+
   React.useEffect(() => {
-    if (runState) {
-        const nextStep = runState.currentStepIndex + 1;
-        if (runState.status === 'COMPLETED' || nextStep >= runState.wizard.steps.length) {
-            setIsFinishing(true);
-        }
+    if (runState && (runState.status === 'COMPLETED' || currentStepIndex >= runState.wizard.steps.length)) {
+      setIsFinishing(true);
     }
-  }, [runState]);
+  }, [runState, currentStepIndex]);
   
   const currentStep = runState?.wizard.steps[currentStepIndex];
   const modelForStep = currentStep ? getModelById(currentStep.modelId) : null;
@@ -145,18 +141,6 @@ function RunWizardPageInternal() {
   
   React.useEffect(() => { form.resolver = zodResolver(dynamicSchema) as any; }, [dynamicSchema, form]);
 
-  const handleNextStep = async (values: Record<string, any>) => {
-    if (currentStep?.stepType === 'create') {
-        await stepMutation.mutateAsync({ runId, stepIndex: currentStepIndex, stepType: 'create', formData: values });
-    } else if (currentStep?.stepType === 'lookup') {
-        if (!selectedLookupId) {
-             toast({ title: "Selection Required", description: "Please select an item to continue.", variant: "destructive" });
-             return;
-        }
-        await stepMutation.mutateAsync({ runId, stepIndex: currentStepIndex, stepType: 'lookup', lookupObjectId: selectedLookupId });
-    }
-  };
-  
   const onInvalid = (errors: FieldErrors<Record<string, any>>) => {
     const errorMessages = Object.entries(errors).map(([fieldName, error]) => {
         const message = (error as any)?.message;
@@ -171,7 +155,24 @@ function RunWizardPageInternal() {
     });
   };
   
-  if (isLoading || !dataContextIsReady) {
+  const handleNextStep = async (values?: Record<string, any>) => {
+    if (currentStep?.stepType === 'create' && values) {
+        await stepMutation.mutateAsync({ runId, stepIndex: currentStepIndex, stepType: 'create', formData: values });
+    } else if (currentStep?.stepType === 'lookup') {
+        if (!selectedLookupId) {
+             toast({ title: "Selection Required", description: "Please select an item to continue.", variant: "destructive" });
+             return;
+        }
+        await stepMutation.mutateAsync({ runId, stepIndex: currentStepIndex, stepType: 'lookup', lookupObjectId: selectedLookupId });
+    }
+  };
+
+  const hiddenPropertyIds = React.useMemo(() => {
+    if (!currentStep?.propertyMappings) return [];
+    return currentStep.propertyMappings.map(m => m.targetPropertyId);
+  }, [currentStep]);
+
+  if (isLoading || !dataContextIsReady || !runState) {
     return (
       <div className="container mx-auto py-8 flex flex-col items-center justify-center h-full">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -180,7 +181,7 @@ function RunWizardPageInternal() {
     );
   }
 
-  if (error || !runState) {
+  if (error) {
     return (
        <div className="container mx-auto py-8 text-center">
           <ShieldAlert className="h-12 w-12 text-destructive mx-auto mb-4" />
@@ -190,25 +191,49 @@ function RunWizardPageInternal() {
     );
   }
   
-  const { wizard } = runState;
-  const isFinalStep = currentStepIndex === wizard.steps.length - 1;
-
+  const { wizard, stepData: finalStepData } = runState;
+  
   if (isFinishing) {
     return (
         <div className="container mx-auto max-w-2xl py-12">
-            <Card><CardHeader className="text-center">
-                <div className="mx-auto bg-green-100 rounded-full p-4 w-fit"><Wand2 className="h-12 w-12 text-green-600" /></div>
-                <CardTitle className="text-3xl mt-4">Wizard Completed!</CardTitle>
-                <CardDescription>All data has been successfully created.</CardDescription>
-            </CardHeader><CardFooter className="flex justify-center gap-4">
-                <Button onClick={() => router.push('/')}><Home className="mr-2 h-4 w-4"/> Go to Dashboard</Button>
-                <Button variant="secondary" onClick={() => router.push('/admin/wizards')}><ListOrdered className="mr-2 h-4 w-4"/> Back to Wizards</Button>
-            </CardFooter></Card>
+            <Card>
+                <CardHeader className="text-center">
+                    <div className="mx-auto bg-green-100 rounded-full p-4 w-fit"><Wand2 className="h-12 w-12 text-green-600" /></div>
+                    <CardTitle className="text-3xl mt-4">Wizard Completed!</CardTitle>
+                    <CardDescription>All data has been successfully created.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <h3 className="text-lg font-semibold text-center">Summary of Created Data</h3>
+                    {wizard.steps.map((step, index) => {
+                        const model = getModelById(step.modelId);
+                        const dataForStep = finalStepData[index];
+                        if (!model || !dataForStep) return null;
+
+                        return (
+                            <div key={step.id} className="border p-4 rounded-lg bg-muted/50">
+                                <h4 className="font-bold text-primary">{model.name}</h4>
+                                <div className="mt-2 space-y-1 text-sm">
+                                    {Object.entries(dataForStep.formData || {}).map(([key, value]) => (
+                                        <div key={key} className="grid grid-cols-3 gap-2">
+                                            <span className="font-medium text-muted-foreground col-span-1">{key}</span>
+                                            <span className="col-span-2">{String(value)}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </CardContent>
+                <CardFooter className="flex justify-center gap-4">
+                    <Button onClick={() => router.push('/')}><Home className="mr-2 h-4 w-4"/> Go to Dashboard</Button>
+                    <Button variant="secondary" onClick={() => router.push('/admin/wizards')}><ListOrdered className="mr-2 h-4 w-4"/> Back to Wizards</Button>
+                </CardFooter>
+            </Card>
         </div>
     );
   }
   
-  if (!modelForStep) {
+  if (!modelForStep || !currentStep) {
     return (
         <div className="container mx-auto py-8 text-center">
             <ShieldAlert className="h-12 w-12 text-destructive mx-auto mb-4" />
@@ -217,6 +242,8 @@ function RunWizardPageInternal() {
         </div>
     );
   }
+  
+  const isFinalStep = currentStepIndex === wizard.steps.length - 1;
   
   return (
     <div className="container mx-auto py-8">
@@ -237,23 +264,40 @@ function RunWizardPageInternal() {
                     <CardContent>
                         <div className="p-4 mb-4 bg-muted/70 border rounded-lg">
                             <h4 className="font-semibold text-lg mb-1">{modelForStep.name}</h4>
-                            <p className="text-sm text-muted-foreground">{currentStep?.instructions || `Please fill out the fields for the ${modelForStep.name}.`}</p>
+                            <p className="text-sm text-muted-foreground">{currentStep.instructions || `Please fill out the fields for the ${modelForStep.name}.`}</p>
                         </div>
-                        {currentStep?.stepType === 'create' ? (
-                            <ObjectForm 
-                                key={currentStepIndex} 
-                                form={form} 
-                                model={modelForStep}
-                                onSubmit={() => {}}
-                                onCancel={() => {}}
-                                isLoading={stepMutation.isPending} 
-                                propertyIdsToShow={currentStep?.propertyIds} 
-                            />
+                        {currentStep.stepType === 'create' ? (
+                             <div className="space-y-4">
+                                {modelForStep.properties
+                                    .filter(p => (currentStep.propertyIds || []).includes(p.id) && !hiddenPropertyIds.includes(p.id))
+                                    .sort((a, b) => a.orderIndex - b.orderIndex)
+                                    .map(prop => (
+                                        <AdaptiveFormField
+                                            key={prop.id}
+                                            form={form}
+                                            property={prop}
+                                            formContext="create"
+                                            modelId={modelForStep.id}
+                                        />
+                                ))}
+                                {hiddenPropertyIds.map(hiddenPropId => {
+                                     const prop = modelForStep.properties.find(p => p.id === hiddenPropId);
+                                     if (!prop) return null;
+                                     return (
+                                        <Controller
+                                            key={prop.id}
+                                            name={prop.name as any}
+                                            control={form.control}
+                                            render={({ field }) => <input type="hidden" {...field} value={field.value ?? ''} />}
+                                        />
+                                     );
+                                })}
+                            </div>
                         ) : (
                             <div className="space-y-4">
                                 <Popover open={isLookupPopoverOpen} onOpenChange={setIsLookupPopoverOpen}>
                                     <PopoverTrigger asChild>
-                                        <Button variant="outline" role="combobox" aria-expanded={isLookupPopoverOpen} className="w-full justify-between">
+                                        <Button type="button" variant="outline" role="combobox" aria-expanded={isLookupPopoverOpen} className="w-full justify-between">
                                             <span className="truncate">{selectedLookupId ? getObjectDisplayValue(getObjectsByModelId(modelForStep.id).find(o=>o.id === selectedLookupId), modelForStep, allModels, allDbObjects) : `Select a ${modelForStep.name}...`}</span>
                                             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                         </Button>
@@ -272,17 +316,7 @@ function RunWizardPageInternal() {
                     </CardContent>
                     <CardFooter className="flex justify-between">
                         <Button type="button" variant="outline" onClick={() => {
-                            // This is a simple back navigation for the UI state.
-                            // The actual form state is managed by the main runState.
-                            const previousStep = currentStepIndex - 1;
-                            // In a real scenario, you might want to confirm if they want to lose current step's data.
-                            // For now, we just go back. The data isn't saved until 'Next' is hit.
-                            if (previousStep >= 0) {
-                                // To "go back", we don't change server state, we just re-render with a different index.
-                                // However, this component is driven by `runState`. To go back properly,
-                                // we'd need a more complex state management. For now, this button is disabled.
-                            }
-                        }} disabled={true /* Back button logic is complex and not implemented */}>Back</Button>
+                        }} disabled={true}>Back</Button>
                         <Button
                           type="submit"
                           disabled={stepMutation.isPending}

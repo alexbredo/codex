@@ -338,6 +338,37 @@ export interface Wizard {
     steps: WizardStep[];
 }
 
+export interface WizardRun {
+    id: string;
+    wizardId: string;
+    userId: string;
+    status: 'IN_PROGRESS' | 'COMPLETED' | 'ABANDONED';
+    currentStepIndex: number;
+    stepData: string; // JSON string
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface WizardRunSummary {
+    id: string;
+    wizardId: string;
+    wizardName: string;
+    status: 'IN_PROGRESS' | 'COMPLETED' | 'ABANDONED';
+    currentStepIndex: number;
+    updatedAt: string;
+    stepData?: string; // Add this field
+}
+
+export interface WizardStepFormValues {
+    formData?: Record<string, any>;
+    lookupObjectId?: string;
+}
+
+export interface WizardRunState extends WizardRun {
+    stepData: Record<number, { stepType: 'create' | 'lookup', formData?: Record<string, any>, objectId?: string }>; // Parsed JSON
+    wizard: Wizard;
+}
+
 export interface ModelGroupFormValues {
     name: string;
     description?: string;

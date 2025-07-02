@@ -20,7 +20,8 @@ export async function GET(request: Request) {
         w.name as wizardName,
         wr.status,
         wr.currentStepIndex,
-        wr.updatedAt
+        wr.updatedAt,
+        wr.stepData
       FROM wizard_runs wr
       JOIN wizards w ON wr.wizardId = w.id
       WHERE wr.userId = ? AND wr.status = 'IN_PROGRESS'
@@ -33,4 +34,3 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Failed to fetch active wizard runs', details: error.message }, { status: 500 });
   }
 }
-

@@ -1,24 +1,16 @@
 
+
 'use client';
 
-import type { UseFormReturn, ControllerRenderProps, FieldValues, FieldPath } from 'react-hook-form';
-import { Controller } from 'react-hook-form';
+import type { UseFormReturn, Controller } from 'react-hook-form';
 import { Button } from '@/components/ui/button';
-import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage, FormDescription } from '@/components/ui/form';
-import type { Model, DataObject, WorkflowWithDetails, Property, WorkflowStateWithSuccessors } from '@/lib/types';
+import { Form } from '@/components/ui/form';
+import type { Model, DataObject, WorkflowWithDetails, User } from '@/lib/types';
 import AdaptiveFormField from './adaptive-form-field';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/contexts/auth-context';
-import { useState } from 'react';
-import { useToast } from "@/hooks/use-toast";
-import { Loader2 } from 'lucide-react';
 
-interface User {
-  id: string;
-  username: string;
-  roles: { id: string; name: string; }[];
-}
 interface ObjectFormProps {
   form: UseFormReturn<Record<string, any>>;
   model: Model;
@@ -52,9 +44,6 @@ export default function ObjectForm({
 }: ObjectFormProps) {
   const formContext = existingObject ? 'edit' : 'create';
 
-  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
-  const [isUploadingFiles, setIsUploadingFiles] = useState(false);
-
   const allPropertiesSorted = model.properties.sort((a, b) => a.orderIndex - b.orderIndex);
 
   const visibleProperties = allPropertiesSorted.filter(property => {
@@ -63,7 +52,7 @@ export default function ObjectForm({
     return isVisibleInStep && !isMappedAndHidden;
   });
 
-  const hiddenMappedProperties = allPropertiesSorted.filter(property =>
+  const propertiesToRenderAsHidden = allPropertiesSorted.filter(property =>
     hiddenPropertyIds.includes(property.id)
   );
 
@@ -115,7 +104,6 @@ export default function ObjectForm({
                               field.onChange(value === INTERNAL_NO_STATE_CHANGE ? (existingObject?.currentStateId || null) : value)
                             }}
                             value={field.value ? String(field.value) : (existingObject?.currentStateId ? String(existingObject.currentStateId) : INTERNAL_NO_STATE_CHANGE) }
-                            disabled={isUploadingFiles}
                           >
                             <FormControl>
                               <SelectTrigger>
@@ -159,7 +147,6 @@ export default function ObjectForm({
                           <Select
                             onValueChange={(value) => field.onChange(value === INTERNAL_NO_OWNER_SELECTED ? null : value)}
                             value={field.value || INTERNAL_NO_OWNER_SELECTED}
-                            disabled={isUploadingFiles}
                           >
                             <FormControl>
                               <SelectTrigger>
@@ -192,12 +179,10 @@ export default function ObjectForm({
                         formContext={formContext}
                         modelId={model.id}
                         objectId={existingObject?.id}
-                        isUploading={isUploadingFiles}
-                        uploadProgress={uploadProgress[property.name]}
                       />
                     </div>
                   ))}
-                  {hiddenMappedProperties.map(property => (
+                  {propertiesToRenderAsHidden.map(property => (
                       <Controller
                           key={property.id}
                           name={property.name as any}

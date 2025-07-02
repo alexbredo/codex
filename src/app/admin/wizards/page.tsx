@@ -208,31 +208,54 @@ function WizardsAdminPageInternal() {
                         <div className="bg-muted/50 border rounded-lg p-3">
                             <h4 className="font-semibold text-sm mb-2">In-Progress Runs</h4>
                             <div className="space-y-2">
-                                {runsForThisWizard.map(run => (
-                                    <div key={run.id} className="flex justify-between items-center bg-background p-2 rounded-md">
-                                        <div>
-                                            <p className="text-sm">Step {run.currentStepIndex + 2} of {wizard.steps.length}</p>
-                                            <p className="text-xs text-muted-foreground">Last updated: {formatDistanceToNow(new Date(run.updatedAt), { addSuffix: true })}</p>
+                                {runsForThisWizard.map(run => {
+                                    let stepDataPreview = 'No data entered yet.';
+                                    if (run.stepData) {
+                                        try {
+                                            const parsedData = JSON.parse(run.stepData);
+                                            const lastEnteredStepIndex = run.currentStepIndex;
+                                            if (lastEnteredStepIndex >= 0 && parsedData[lastEnteredStepIndex]?.formData) {
+                                                const formData = parsedData[lastEnteredStepIndex].formData;
+                                                const entries = Object.entries(formData).slice(0, 2);
+                                                if (entries.length > 0) {
+                                                    stepDataPreview = entries
+                                                        .map(([key, value]) => `${key}: ${String(value).substring(0, 20)}...`)
+                                                        .join('; ');
+                                                }
+                                            }
+                                        } catch (e) {
+                                            stepDataPreview = 'Could not parse preview.';
+                                        }
+                                    }
+                                    return (
+                                        <div key={run.id} className="flex justify-between items-center bg-background p-2 rounded-md">
+                                            <div>
+                                                <p className="text-sm">Step {run.currentStepIndex + 2} of {wizard.steps.length}</p>
+                                                <p className="text-xs text-muted-foreground">Last updated: {formatDistanceToNow(new Date(run.updatedAt), { addSuffix: true })}</p>
+                                                <p className="text-xs text-muted-foreground truncate" title={stepDataPreview}>
+                                                    Preview: {stepDataPreview}
+                                                </p>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <Button size="sm" variant="secondary" onClick={() => router.push(`/wizards/run/${run.id}`)}>
+                                                    <Redo className="h-4 w-4 mr-2"/> Resume
+                                                </Button>
+                                                <AlertDialog>
+                                                    <AlertDialogTrigger asChild>
+                                                        <Button variant="destructive" size="sm" disabled={abandonMutation.isPending}>
+                                                            {abandonMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin"/> : <Eraser className="h-4 w-4 mr-2"/>}
+                                                            Abandon
+                                                        </Button>
+                                                    </AlertDialogTrigger>
+                                                    <AlertDialogContent>
+                                                        <AlertDialogHeader><AlertDialogTitle>Abandon this run?</AlertDialogTitle><AlertDialogDescription>This will delete this in-progress run and any data entered. This cannot be undone.</AlertDialogDescription></AlertDialogHeader>
+                                                        <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => abandonMutation.mutate(run.id)}>Abandon Run</AlertDialogAction></AlertDialogFooter>
+                                                    </AlertDialogContent>
+                                                </AlertDialog>
+                                            </div>
                                         </div>
-                                        <div className="flex items-center gap-2">
-                                            <Button size="sm" variant="secondary" onClick={() => router.push(`/wizards/run/${run.id}`)}>
-                                                <Redo className="h-4 w-4 mr-2"/> Resume
-                                            </Button>
-                                             <AlertDialog>
-                                                <AlertDialogTrigger asChild>
-                                                    <Button variant="destructive" size="sm" disabled={abandonMutation.isPending}>
-                                                        {abandonMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin"/> : <Eraser className="h-4 w-4 mr-2"/>}
-                                                         Abandon
-                                                    </Button>
-                                                </AlertDialogTrigger>
-                                                <AlertDialogContent>
-                                                    <AlertDialogHeader><AlertDialogTitle>Abandon this run?</AlertDialogTitle><AlertDialogDescription>This will delete this in-progress run and any data entered. This cannot be undone.</AlertDialogDescription></AlertDialogHeader>
-                                                    <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => abandonMutation.mutate(run.id)}>Abandon Run</AlertDialogAction></AlertDialogFooter>
-                                                </AlertDialogContent>
-                                            </AlertDialog>
-                                        </div>
-                                    </div>
-                                ))}
+                                    )
+                                })}
                             </div>
                         </div>
                     </CardContent>
@@ -247,4 +270,3 @@ function WizardsAdminPageInternal() {
 }
 
 export default withAuth(WizardsAdminPageInternal, 'admin:manage_wizards');
-
