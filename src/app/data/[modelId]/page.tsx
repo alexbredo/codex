@@ -15,6 +15,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+// AlertDialog is no longer needed for batch delete, but still used for single delete
 import {
   AlertDialog,
   AlertDialogAction,
@@ -50,6 +51,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel as UiSelect
 import { useAuth } from '@/contexts/auth-context';
 import DeleteObjectDialog from '@/components/objects/delete-object-dialog';
 import BatchUpdateConfirmationDialog from '@/components/objects/batch-update-confirmation-dialog';
+import BatchDeleteConfirmationDialog from '@/components/objects/batch-delete-confirmation-dialog'; // New Import
 
 
 export type ViewMode = 'table' | 'gallery' | 'kanban';
@@ -120,7 +122,8 @@ export default function DataObjectsPage() {
   const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
   const [viewingRecycleBin, setViewingRecycleBin] = useState(false);
   
-  const [objectToDelete, setObjectToDelete] = useState<DataObject | null>(null);
+  const [singleObjectToDelete, setSingleObjectToDelete] = useState<DataObject | null>(null); // Renamed from objectToDelete
+  const [batchObjectsToDelete, setBatchObjectsToDelete] = useState<DataObject[]>([]); // New state for batch delete
   
   const [isBatchUpdateConfirmOpen, setIsBatchUpdateConfirmOpen] = useState(false);
   const [batchUpdatePreviewData, setBatchUpdatePreviewData] = useState<{
@@ -584,9 +587,19 @@ export default function DataObjectsPage() {
     router.push(`/data/${currentModel.id}/view/${obj.id}`);
   }, [currentModel, router]);
 
-  const handleDeleteRequest = useCallback((obj: DataObject) => {
-    setObjectToDelete(obj);
+  const handleSingleDeleteRequest = useCallback((obj: DataObject) => {
+    setSingleObjectToDelete(obj);
   }, []);
+  
+  const handleBatchDeleteRequest = useCallback(() => {
+    if (selectedObjectIds.size === 0) {
+      toast({ variant: 'destructive', title: 'No Items Selected', description: 'Please select one or more items to delete.' });
+      return;
+    }
+    const objectsToBatchDelete = localObjects.filter(obj => selectedObjectIds.has(obj.id));
+    setBatchObjectsToDelete(objectsToBatchDelete);
+  }, [selectedObjectIds, localObjects, toast]);
+
 
   const handleDeletionSuccess = useCallback(() => {
     toast({
@@ -1226,11 +1239,19 @@ export default function DataObjectsPage() {
   return (
     <div className="container mx-auto py-8">
       <DeleteObjectDialog
-        objectToDelete={objectToDelete}
+        objectToDelete={singleObjectToDelete}
         model={currentModel}
-        onClose={() => setObjectToDelete(null)}
+        onClose={() => setSingleObjectToDelete(null)}
         onSuccess={handleDeletionSuccess}
       />
+      <BatchDeleteConfirmationDialog
+        objectsToDelete={batchObjectsToDelete}
+        onClose={() => setBatchObjectsToDelete([])}
+        onSuccess={() => {
+          setBatchObjectsToDelete([]); // Close dialog
+          handleDeletionSuccess(); // Show toast
+        }}
+       />
        <BatchUpdateConfirmationDialog
         isOpen={isBatchUpdateConfirmOpen}
         onClose={() => setIsBatchUpdateConfirmOpen(false)}
@@ -1450,40 +1471,9 @@ export default function DataObjectsPage() {
                     </DialogContent>
                 </Dialog>
             )}
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive" size="sm">
-                  <Trash2 className="mr-2 h-4 w-4" /> Batch Delete
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This will move {selectedObjectIds.size} item(s) to the recycle bin. Any relationships pointing to these items will be broken. This action cannot be easily undone.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={async () => {
-                        try {
-                            await batchDeleteAcrossModels(Array.from(selectedObjectIds));
-                            handleDeletionSuccess();
-                        } catch (err: any) {
-                            toast({
-                                variant: 'destructive',
-                                title: 'Batch Deletion Failed',
-                                description: err.message || "An unknown error occurred.",
-                            });
-                        }
-                    }}
-                  >
-                    Delete {selectedObjectIds.size} items
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+            <Button variant="destructive" size="sm" onClick={handleBatchDeleteRequest}>
+                <Trash2 className="mr-2 h-4 w-4" /> Batch Delete
+            </Button>
             <Button variant="outline" size="sm" onClick={() => setSelectedObjectIds(new Set())} className="ml-auto">Clear Selection</Button>
         </div>
       )}
@@ -1549,7 +1539,7 @@ export default function DataObjectsPage() {
                     handleRowSelect={handleRowSelect}
                     handleView={handleView}
                     handleEdit={handleEdit}
-                    handleDeleteRequest={handleDeleteRequest}
+                    handleDeleteRequest={handleSingleDeleteRequest}
                     handleRestoreObject={handleRestoreObject}
                     getWorkflowStateName={getWorkflowStateName}
                     getOwnerUsername={getOwnerUsername}
@@ -1582,7 +1572,7 @@ export default function DataObjectsPage() {
               handleRowSelect={handleRowSelect}
               handleView={handleView}
               handleEdit={handleEdit}
-              handleDeleteRequest={handleDeleteRequest}
+              handleDeleteRequest={handleSingleDeleteRequest}
               handleRestoreObject={handleRestoreObject}
               getWorkflowStateName={getWorkflowStateName}
               getOwnerUsername={getOwnerUsername}
@@ -1592,7 +1582,7 @@ export default function DataObjectsPage() {
         </>
       ) : viewMode === 'gallery' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-           {(paginatedDataToRender as DataObject[]).map((obj) => ( <GalleryCard key={obj.id} obj={obj} model={currentModel!} allModels={allModels} allObjects={allDbObjects} currentWorkflow={currentWorkflow} getWorkflowStateName={getWorkflowStateName} onView={handleView} onEdit={handleEdit} onDeleteRequest={handleDeleteRequest} viewingRecycleBin={viewingRecycleBin} onRestore={handleRestoreObject} lastChangedInfo={lastChangedInfo} /> ))}
+           {(paginatedDataToRender as DataObject[]).map((obj) => ( <GalleryCard key={obj.id} obj={obj} model={currentModel!} allModels={allModels} allObjects={allDbObjects} currentWorkflow={currentWorkflow} getWorkflowStateName={getWorkflowStateName} onView={handleView} onEdit={handleEdit} onDeleteRequest={handleSingleDeleteRequest} viewingRecycleBin={viewingRecycleBin} onRestore={handleRestoreObject} lastChangedInfo={lastChangedInfo} /> ))}
         </div>
       ) : viewMode === 'kanban' && currentWorkflow && !viewingRecycleBin ? ( 
         <KanbanBoard
@@ -1604,7 +1594,7 @@ export default function DataObjectsPage() {
           onObjectUpdate={handleStateChangeViaDrag}
           onViewObject={handleView}
           onEditObject={handleEdit}
-          onDeleteObjectRequest={(obj) => handleDeleteRequest(obj)}
+          onDeleteObjectRequest={(obj) => handleSingleDeleteRequest(obj)}
         />
       ) : viewMode === 'kanban' && viewingRecycleBin ? (
         <Card className="text-center py-12"> <CardContent> <ArchiveX size={48} className="mx-auto text-muted-foreground mb-4" /> <h3 className="text-xl font-semibold">Kanban View Not Available</h3> <p className="text-muted-foreground mb-4"> The Kanban board is not available for items in the recycle bin. </p> <Button onClick={() => setViewingRecycleBin(false)} variant="default"> View Active Items </Button> </CardContent> </Card>
@@ -1619,6 +1609,3 @@ export default function DataObjectsPage() {
     </div>
   );
 }
-
-
-
