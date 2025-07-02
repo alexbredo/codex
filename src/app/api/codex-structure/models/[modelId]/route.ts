@@ -124,14 +124,6 @@ export async function PUT(request: Request, { params }: Params) {
     }
     const oldPropertiesFromDb = await db.all('SELECT * FROM properties WHERE model_id = ? ORDER BY orderIndex ASC', modelId);
     
-    // ================================================================
-    // Step 1: Prepare final values for database update
-    // ================================================================
-    const finalName = body.name ?? oldModelRow.name;
-    const finalDescription = 'description' in body ? body.description : oldModelRow.description;
-    const finalDisplayPropertyNames = 'displayPropertyNames' in body ? JSON.stringify(body.displayPropertyNames || []) : oldModelRow.displayPropertyNames;
-    const finalWorkflowId = 'workflowId' in body ? body.workflowId : oldModelRow.workflowId;
-    
     // --- Model Group Logic ---
     let finalModelGroupIdToSave: string | null = oldModelRow.model_group_id; // Start with the existing value
     if (Object.prototype.hasOwnProperty.call(body, 'modelGroupId')) {
@@ -140,6 +132,15 @@ export async function PUT(request: Request, { params }: Params) {
         finalModelGroupIdToSave = (body.modelGroupId === null || body.modelGroupId === undefined) ? defaultGroupId : body.modelGroupId;
     }
     // --- End Model Group Logic ---
+    
+    // ================================================================
+    // Step 1: Prepare final values for database update
+    // ================================================================
+    const finalName = body.name ?? oldModelRow.name;
+    const finalDescription = 'description' in body ? body.description : oldModelRow.description;
+    const finalDisplayPropertyNames = 'displayPropertyNames' in body ? JSON.stringify(body.displayPropertyNames || []) : oldModelRow.displayPropertyNames;
+    const finalWorkflowId = 'workflowId' in body ? body.workflowId : oldModelRow.workflowId;
+    
 
     // ================================================================
     // Step 2: Update core model metadata in the database

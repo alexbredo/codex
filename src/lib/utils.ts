@@ -156,7 +156,7 @@ export const mapDbModelToClientModel = (dbModel: any): Model => {
     id: dbModel.id,
     name: dbModel.name,
     description: dbModel.description,
-    modelGroupId: dbModel.modelGroupId ?? null,
+    modelGroupId: dbModel.modelGroupId ?? dbModel.model_group_id ?? null,
     displayPropertyNames: parsedDisplayPropertyNames,
     workflowId: dbModel.workflowId === undefined ? null : dbModel.workflowId,
     properties: (dbModel.properties || []).map((p: any) => ({
