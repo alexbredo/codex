@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form';
+import { useForm, type FieldErrors } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useToast } from '@/hooks/use-toast';
 import { useData } from '@/contexts/data-context';
@@ -21,6 +21,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Loader2, ShieldAlert, CheckCircle, ListOrdered, Home, Wand2, ArrowLeft, ArrowRight, ChevronsUpDown } from 'lucide-react';
 import { z } from 'zod';
 import Link from 'next/link';
+import { Form } from '@/components/ui/form';
 
 async function fetchWizardRunState(runId: string): Promise<WizardRunState> {
   const response = await fetch(`/api/codex-structure/wizards/run/${runId}`);
@@ -159,6 +160,20 @@ function RunWizardPageInternal() {
         await stepMutation.mutateAsync({ runId, stepIndex: currentStepIndex, stepType: 'lookup', lookupObjectId: selectedLookupId });
     }
   };
+  
+  const onInvalid = (errors: FieldErrors<Record<string, any>>) => {
+    const errorMessages = Object.entries(errors).map(([fieldName, error]) => {
+        const message = (error as any)?.message;
+        if (message) return `${fieldName}: ${message}`;
+        return null;
+    }).filter(Boolean).join('; ');
+    
+    toast({
+        variant: 'destructive',
+        title: 'Validation Error',
+        description: `Please fix the following errors: ${errorMessages.substring(0, 150)}`
+    });
+  };
 
   // --- Guard Clauses & Loading/Error States ---
   if (isLoading || !dataContextIsReady) {
@@ -212,69 +227,71 @@ function RunWizardPageInternal() {
   return (
     <div className="container mx-auto py-8">
         <Button variant="outline" onClick={() => router.push('/wizards/runs')} className="mb-6"><ArrowLeft className="mr-2 h-4 w-4" /> Exit Wizard</Button>
-        <Card className="max-w-2xl mx-auto">
-            <CardHeader>
-                <CardTitle className="text-2xl">{wizard.name}</CardTitle>
-                <CardDescription>Please follow the steps to complete the process.</CardDescription>
-                <div className="pt-4">
-                    <WizardStepper 
-                        steps={wizard.steps.map(s => ({name: getModelById(s.modelId)?.name || `Step ${s.orderIndex + 1}`}))} 
-                        currentStepIndex={currentStepIndex} 
-                    />
-                </div>
-            </CardHeader>
-            <CardContent>
-                <div className="p-4 mb-4 bg-muted/70 border rounded-lg">
-                    <h4 className="font-semibold text-lg mb-1">{modelForStep.name}</h4>
-                    <p className="text-sm text-muted-foreground">{currentStep?.instructions || `Please fill out the fields for the ${modelForStep.name}.`}</p>
-                </div>
-                {currentStep?.stepType === 'create' ? (
-                    <ObjectForm 
-                        key={currentStepIndex} 
-                        form={form} 
-                        model={modelForStep} 
-                        onSubmit={handleNextStep} 
-                        onCancel={() => {}} 
-                        isLoading={stepMutation.isPending} 
-                        propertyIdsToShow={currentStep?.propertyIds} 
-                        hideFooter={true} 
-                    />
-                ) : (
-                    <div className="space-y-4">
-                        <Popover open={isLookupPopoverOpen} onOpenChange={setIsLookupPopoverOpen}>
-                            <PopoverTrigger asChild>
-                                <Button variant="outline" role="combobox" aria-expanded={isLookupPopoverOpen} className="w-full justify-between">
-                                    <span className="truncate">{selectedLookupId ? getObjectDisplayValue(getObjectsByModelId(modelForStep.id).find(o=>o.id === selectedLookupId), modelForStep, allModels, allDbObjects) : `Select a ${modelForStep.name}...`}</span>
-                                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                </Button>
-                            </PopoverTrigger><PopoverContent className="w-[--radix-popover-trigger-width] p-0"><Command>
-                                <CommandInput placeholder={`Search ${modelForStep.name}...`} /><CommandEmpty>No {modelForStep.name.toLowerCase()} found.</CommandEmpty><CommandGroup><CommandList>
-                                    {getObjectsByModelId(modelForStep.id).map(obj => (
-                                        <CommandItem key={obj.id} value={getObjectDisplayValue(obj, modelForStep, allModels, allDbObjects)} onSelect={() => { setSelectedLookupId(obj.id); setIsLookupPopoverOpen(false); }}>
-                                            <CheckCircle className={`mr-2 h-4 w-4 ${selectedLookupId === obj.id ? "opacity-100" : "opacity-0"}`} />
-                                            {getObjectDisplayValue(obj, modelForStep, allModels, allDbObjects)}
-                                        </CommandItem>
-                                    ))}
-                                </CommandList></CommandGroup></Command>
-                        </PopoverContent></Popover>
-                    </div>
-                )}
-            </CardContent>
-            <CardFooter className="flex justify-between">
-                <Button variant="outline" onClick={() => setCurrentStepIndex(p => p - 1)} disabled={currentStepIndex === 0 || stepMutation.isPending}>Back</Button>
-                {currentStep?.stepType === 'create' ? (
-                  <Button type="button" onClick={form.handleSubmit(handleNextStep)} disabled={stepMutation.isPending}>
-                    {stepMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                    {isFinalStep ? 'Finish' : 'Next'} <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                ) : (
-                  <Button onClick={() => handleNextStep({})} disabled={stepMutation.isPending}>
-                    {stepMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                    {isFinalStep ? 'Finish' : 'Next'} <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                )}
-            </CardFooter>
-        </Card>
+        <Form {...form}>
+            <form onSubmit={form.handleSubmit(handleNextStep, onInvalid)}>
+                <Card className="max-w-2xl mx-auto">
+                    <CardHeader>
+                        <CardTitle className="text-2xl">{wizard.name}</CardTitle>
+                        <CardDescription>Please follow the steps to complete the process.</CardDescription>
+                        <div className="pt-4">
+                            <WizardStepper 
+                                steps={wizard.steps.map(s => ({name: getModelById(s.modelId)?.name || `Step ${s.orderIndex + 1}`}))} 
+                                currentStepIndex={currentStepIndex} 
+                            />
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="p-4 mb-4 bg-muted/70 border rounded-lg">
+                            <h4 className="font-semibold text-lg mb-1">{modelForStep.name}</h4>
+                            <p className="text-sm text-muted-foreground">{currentStep?.instructions || `Please fill out the fields for the ${modelForStep.name}.`}</p>
+                        </div>
+                        {currentStep?.stepType === 'create' ? (
+                            <ObjectForm 
+                                key={currentStepIndex} 
+                                form={form} 
+                                model={modelForStep} 
+                                onCancel={() => {}} 
+                                isLoading={stepMutation.isPending} 
+                                propertyIdsToShow={currentStep?.propertyIds} 
+                            />
+                        ) : (
+                            <div className="space-y-4">
+                                <Popover open={isLookupPopoverOpen} onOpenChange={setIsLookupPopoverOpen}>
+                                    <PopoverTrigger asChild>
+                                        <Button variant="outline" role="combobox" aria-expanded={isLookupPopoverOpen} className="w-full justify-between">
+                                            <span className="truncate">{selectedLookupId ? getObjectDisplayValue(getObjectsByModelId(modelForStep.id).find(o=>o.id === selectedLookupId), modelForStep, allModels, allDbObjects) : `Select a ${modelForStep.name}...`}</span>
+                                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                        </Button>
+                                    </PopoverTrigger><PopoverContent className="w-[--radix-popover-trigger-width] p-0"><Command>
+                                        <CommandInput placeholder={`Search ${modelForStep.name}...`} /><CommandEmpty>No {modelForStep.name.toLowerCase()} found.</CommandEmpty><CommandGroup><CommandList>
+                                            {getObjectsByModelId(modelForStep.id).map(obj => (
+                                                <CommandItem key={obj.id} value={getObjectDisplayValue(obj, modelForStep, allModels, allDbObjects)} onSelect={() => { setSelectedLookupId(obj.id); setIsLookupPopoverOpen(false); }}>
+                                                    <CheckCircle className={`mr-2 h-4 w-4 ${selectedLookupId === obj.id ? "opacity-100" : "opacity-0"}`} />
+                                                    {getObjectDisplayValue(obj, modelForStep, allModels, allDbObjects)}
+                                                </CommandItem>
+                                            ))}
+                                        </CommandList></CommandGroup></Command>
+                                </PopoverContent></Popover>
+                            </div>
+                        )}
+                    </CardContent>
+                    <CardFooter className="flex justify-between">
+                        <Button type="button" variant="outline" onClick={() => setCurrentStepIndex(p => p - 1)} disabled={currentStepIndex === 0 || stepMutation.isPending}>Back</Button>
+                        {currentStep?.stepType === 'create' ? (
+                          <Button type="submit" disabled={stepMutation.isPending}>
+                            {stepMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                            {isFinalStep ? 'Finish' : 'Next'} <ArrowRight className="ml-2 h-4 w-4" />
+                          </Button>
+                        ) : (
+                          <Button type="button" onClick={() => handleNextStep({})} disabled={stepMutation.isPending}>
+                            {stepMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                            {isFinalStep ? 'Finish' : 'Next'} <ArrowRight className="ml-2 h-4 w-4" />
+                          </Button>
+                        )}
+                    </CardFooter>
+                </Card>
+            </form>
+        </Form>
     </div>
   );
 }

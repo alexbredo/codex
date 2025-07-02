@@ -22,7 +22,6 @@ interface User {
 interface ObjectFormProps {
   form: UseFormReturn<Record<string, any>>;
   model: Model;
-  onSubmit: (values: Record<string, any>) => Promise<void>;
   onCancel: () => void;
   isLoading?: boolean;
   existingObject?: DataObject;
@@ -32,7 +31,6 @@ interface ObjectFormProps {
   currentUser?: User | null;
   propertyIdsToShow?: string[];
   hiddenPropertyIds?: string[];
-  hideFooter?: boolean;
 }
 
 const INTERNAL_NO_STATE_CHANGE = "__NO_STATE_CHANGE__";
@@ -42,7 +40,6 @@ const INTERNAL_NO_OWNER_SELECTED = "__NO_OWNER_SELECTED__";
 export default function ObjectForm({
   form,
   model,
-  onSubmit,
   onCancel,
   isLoading,
   existingObject,
@@ -52,10 +49,8 @@ export default function ObjectForm({
   currentUser,
   propertyIdsToShow,
   hiddenPropertyIds = [],
-  hideFooter = false,
 }: ObjectFormProps) {
   const formContext = existingObject ? 'edit' : 'create';
-  const { toast } = useToast();
 
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
@@ -103,95 +98,8 @@ export default function ObjectForm({
 
   const isAdmin = currentUser?.roles.some(r => r.name.toLowerCase() === 'administrator');
 
-  const handleFormSubmit = async (values: Record<string, any>) => {
-    setIsUploadingFiles(true);
-    setUploadProgress({});
-    const updatedValues = { ...values };
-    const fileUploadPromises: Promise<void>[] = [];
-
-    const uploadFileWithProgress = (file: File, property: Property) => {
-      return new Promise<void>((resolve, reject) => {
-        const endpoint = property.type === 'image' ? '/api/codex-structure/upload-image' : '/api/codex-structure/upload-file';
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('modelId', model.id);
-        const idForUpload = formObjectId || existingObject?.id;
-        if (idForUpload) {
-          formData.append('objectId', idForUpload);
-        } else {
-          toast({ title: "Error", description: "Cannot upload file without a unique object identifier.", variant: "destructive" });
-          reject(new Error("Cannot upload file without an object identifier."));
-          return;
-        }
-        formData.append('propertyName', property.name);
-
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', endpoint, true);
-
-        xhr.upload.onprogress = (event) => {
-          if (event.lengthComputable) {
-            const percentComplete = (event.loaded / event.total) * 100;
-            setUploadProgress(prev => ({ ...prev, [property.name]: percentComplete }));
-          }
-        };
-
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            setUploadProgress(prev => ({ ...prev, [property.name]: 100 }));
-            const result = JSON.parse(xhr.responseText);
-            if (property.type === 'image') {
-              updatedValues[property.name] = result.url;
-            } else if (property.type === 'fileAttachment') {
-              updatedValues[property.name] = { url: result.url, name: result.name };
-            }
-            resolve();
-          } else {
-            setUploadProgress(prev => ({ ...prev, [property.name]: -1 }));
-            try {
-              const errorResponse = JSON.parse(xhr.responseText);
-              reject(new Error(errorResponse.error || `Upload for ${property.name} failed: ${xhr.statusText}`));
-            } catch {
-              reject(new Error(`Upload for ${property.name} failed with status: ${xhr.status}`));
-            }
-          }
-        };
-
-        xhr.onerror = () => {
-          setUploadProgress(prev => ({ ...prev, [property.name]: -1 }));
-          reject(new Error(`Upload for ${property.name} failed due to a network error.`));
-        };
-
-        xhr.send(formData);
-      });
-    };
-
-    for (const property of model.properties) {
-      const fieldValue = values[property.name];
-      if ((property.type === 'image' || property.type === 'fileAttachment') && fieldValue instanceof File) {
-        fileUploadPromises.push(uploadFileWithProgress(fieldValue, property));
-      }
-    }
-
-    try {
-      if (fileUploadPromises.length > 0) {
-        await Promise.all(fileUploadPromises);
-      }
-      await onSubmit(updatedValues);
-    } catch (error: any) {
-      console.error("Error during file upload or form submission:", error);
-      toast({
-        title: "Submission Failed",
-        description: error.message || "An unexpected error occurred during file processing.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsUploadingFiles(false);
-    }
-  };
-
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-6">
+    <div className="space-y-4">
         <ScrollArea className="max-h-[60vh] pr-3">
             <div className="space-y-4 ">
                 {formContext === 'edit' && currentWorkflow && existingObject && (
@@ -305,19 +213,6 @@ export default function ObjectForm({
                 ))}
             </div>
         </ScrollArea>
-        {!hideFooter && (
-            <div className="flex justify-end space-x-2 pt-4 border-t">
-            <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading || isUploadingFiles}>
-                Cancel
-            </Button>
-            <Button type="submit" disabled={isLoading || form.formState.isSubmitting || isUploadingFiles} className="bg-primary hover:bg-primary/90">
-                {isUploadingFiles ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Uploading...</>
-                : (isLoading || form.formState.isSubmitting) ? 'Saving...' 
-                : (existingObject ? `Update ${model.name}` : `Create ${model.name}`)}
-            </Button>
-            </div>
-        )}
-      </form>
-    </Form>
+    </div>
   );
 }
