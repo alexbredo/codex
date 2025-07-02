@@ -23,6 +23,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 import { formatDistanceToNow } from 'date-fns';
 import { getObjectDisplayValue } from '@/lib/utils'; // Import the utility
+import * as React from 'react';
 
 async function fetchActiveRuns(): Promise<WizardRunSummary[]> {
   const response = await fetch('/api/codex-structure/wizards/runs');
@@ -212,44 +213,67 @@ function WizardsAdminPageInternal() {
                             <h4 className="font-semibold text-sm mb-2">In-Progress Runs</h4>
                             <div className="space-y-2">
                                 {runsForThisWizard.map(run => {
-                                    let stepDataPreview = 'No data entered yet.';
-                                    if (run.stepData) {
+                                    const stepDataPreviewNode = (() => {
+                                        if (!run.stepData) return <span className="italic">No data entered yet.</span>;
                                         try {
                                             const parsedData = JSON.parse(run.stepData);
-                                            const lastEnteredStepIndex = run.currentStepIndex;
-                                            const lastStepData = parsedData[lastEnteredStepIndex];
+                                            const completedStepsCount = run.currentStepIndex + 1;
+                                            if (completedStepsCount === 0) return <span className="italic">No data entered yet.</span>;
 
-                                            if (lastEnteredStepIndex >= 0 && lastStepData) {
-                                                const stepDef = wizard.steps.find(s => s.orderIndex === lastEnteredStepIndex);
-                                                const modelForStep = stepDef ? getModelById(stepDef.modelId) : null;
-                                                
-                                                if (lastStepData.stepType === 'lookup' && lastStepData.objectId && lastStepData.formData) {
-                                                    const tempLookedUpObject = { id: lastStepData.objectId, ...lastStepData.formData };
-                                                    stepDataPreview = `Selected: ${getObjectDisplayValue(tempLookedUpObject, modelForStep, allModels, allDbObjects)}`;
-                                                } else if (lastStepData.stepType === 'create' && lastStepData.formData) {
-                                                    const formData = lastStepData.formData;
-                                                    const entries = Object.entries(formData).slice(0, 2);
-                                                    if (entries.length > 0) {
-                                                        stepDataPreview = entries
-                                                            .map(([key, value]) => `${key}: ${String(value).substring(0, 20)}...`)
-                                                            .join('; ');
-                                                    }
+                                            const previews: React.ReactNode[] = [];
+                                            for (let i = 0; i < completedStepsCount; i++) {
+                                                const stepData = parsedData[i];
+                                                const stepDef = wizard.steps.find(s => s.orderIndex === i);
+                                                const model = stepDef ? getModelById(stepDef.modelId) : null;
+                                                if (!stepData || !stepDef || !model) continue;
+
+                                                let previewText: string = '';
+                                                let key = model.name;
+
+                                                if (stepData.stepType === 'lookup' && stepData.formData) {
+                                                    const lookedUpObject = { id: stepData.objectId, ...stepData.formData };
+                                                    key = `Selected ${model.name}`;
+                                                    previewText = getObjectDisplayValue(lookedUpObject, model, allModels, allDbObjects);
+                                                } else if (stepData.stepType === 'create' && stepData.formData) {
+                                                    const tempCreatedObject = { id: '', ...stepData.formData };
+                                                    key = `New ${model.name}`;
+                                                    previewText = getObjectDisplayValue(tempCreatedObject, model, allModels, allDbObjects);
+                                                }
+
+                                                if (previewText) {
+                                                    previews.push(<span key={i} className="font-medium">{key}: <span className="text-primary">{previewText}</span></span>);
                                                 }
                                             }
+                                            
+                                            if (previews.length === 0) return <span className="italic">No preview available.</span>;
+
+                                            return (
+                                                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                                    {previews.map((preview, idx) => (
+                                                        <React.Fragment key={idx}>
+                                                            {preview}
+                                                            {idx < previews.length - 1 && <span className="text-muted-foreground text-xs">&bull;</span>}
+                                                        </React.Fragment>
+                                                    ))}
+                                                </div>
+                                            );
                                         } catch (e) {
-                                            stepDataPreview = 'Could not parse preview.';
+                                            console.error("Error parsing wizard run preview:", e);
+                                            return <span className="italic text-destructive">Could not parse preview.</span>;
                                         }
-                                    }
+                                    })();
                                     return (
                                         <div key={run.id} className="flex justify-between items-center bg-background p-2 rounded-md">
-                                            <div>
-                                                <p className="text-sm">Step {run.currentStepIndex + 2} of {wizard.steps.length}</p>
-                                                <p className="text-xs text-muted-foreground">Last updated: {formatDistanceToNow(new Date(run.updatedAt), { addSuffix: true })}</p>
-                                                <p className="text-xs text-muted-foreground truncate" title={stepDataPreview}>
-                                                    Preview: {stepDataPreview}
-                                                </p>
+                                            <div className="flex flex-col gap-1 flex-grow min-w-0">
+                                                <div className="flex justify-between items-center">
+                                                    <p className="text-sm">Step {run.currentStepIndex + 2} of {wizard.steps.length}</p>
+                                                    <p className="text-xs text-muted-foreground">Last updated: {formatDistanceToNow(new Date(run.updatedAt), { addSuffix: true })}</p>
+                                                </div>
+                                                <div className="text-xs text-muted-foreground">
+                                                    {stepDataPreviewNode}
+                                                </div>
                                             </div>
-                                            <div className="flex items-center gap-2">
+                                            <div className="flex items-center gap-2 flex-shrink-0 ml-4">
                                                 <Button size="sm" variant="secondary" onClick={() => router.push(`/wizards/run/${run.id}`)}>
                                                     <Redo className="h-4 w-4 mr-2"/> Resume
                                                 </Button>
