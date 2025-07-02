@@ -149,6 +149,9 @@ export async function POST(request: Request, { params }: Params) {
                 newObjectData[targetPropertyDef.name] = valueToMap;
             }
             
+            // Save the complete, resolved data back for the summary page
+            resolvedStepData[i].formData = newObjectData;
+
             const currentTimestamp = new Date().toISOString();
             const finalObjectData = { ...newObjectData, createdAt: currentTimestamp, updatedAt: currentTimestamp };
             
@@ -178,3 +181,4 @@ export async function POST(request: Request, { params }: Params) {
     return NextResponse.json({ error: 'Failed to process wizard step', details: error.message }, { status: 500 });
   }
 }
+
