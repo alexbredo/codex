@@ -39,7 +39,7 @@ function ConditionalLayout({ children }: { children: ReactNode }) {
   // to prevent hydration errors from client-side hooks like useIsMobile.
   if (!isClient) {
     return (
-       <div className="flex min-h-screen">
+       <div className="flex min-h-screen w-full">
         <div className="hidden md:flex flex-col border-r w-[16rem] p-2 bg-muted/30">
           <div className="flex flex-col gap-2">
             <SidebarMenuSkeleton showIcon />
@@ -48,8 +48,17 @@ function ConditionalLayout({ children }: { children: ReactNode }) {
           </div>
         </div>
         <main className="flex-1 flex flex-col">
-          <header className="sticky top-0 z-10 flex items-center h-14 px-4 border-b justify-end">
-             <Skeleton className="w-64 h-9" />
+          <header className="sticky top-0 z-10 flex items-center h-14 px-4 border-b">
+             {/* Left Section (placeholder) */}
+            <div className="flex flex-1"></div>
+            {/* Center Section (Search skeleton) */}
+            <div className="flex flex-1 justify-center">
+              <Skeleton className="w-64 h-9" />
+            </div>
+            {/* Right Section (User skeleton) */}
+            <div className="flex flex-1 justify-end">
+              <Skeleton className="h-8 w-24" />
+            </div>
           </header>
           <div className="flex-1 flex items-center justify-center">
              <Loader2 className="h-8 w-8 animate-spin text-primary" />
