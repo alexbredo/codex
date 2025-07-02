@@ -89,7 +89,6 @@ function RunWizardPageInternal() {
     queryKey: ['wizardRun', runId],
     queryFn: () => fetchWizardRunState(runId),
     enabled: !!runId && dataContextIsReady,
-    staleTime: Infinity,
   });
   
   const stepMutation = useMutation({
@@ -99,7 +98,6 @@ function RunWizardPageInternal() {
         setIsFinishing(true);
       } else {
         queryClient.invalidateQueries({ queryKey: ['wizardRun', runId] });
-        setCurrentStepIndex(prev => prev + 1);
       }
     },
     onError: (err: Error) => {
@@ -222,7 +220,7 @@ function RunWizardPageInternal() {
   
   return (
     <div className="container mx-auto py-8">
-        <Button variant="outline" onClick={() => router.push('/wizards/runs')} className="mb-6"><ArrowLeft className="mr-2 h-4 w-4" /> Exit Wizard</Button>
+        <Button variant="outline" onClick={() => router.push('/admin/wizards')} className="mb-6"><ArrowLeft className="mr-2 h-4 w-4" /> Exit Wizard</Button>
         <Form {...form}>
             <form onSubmit={form.handleSubmit(handleNextStep, onInvalid)}>
                 <Card className="max-w-2xl mx-auto">
@@ -246,6 +244,7 @@ function RunWizardPageInternal() {
                                 key={currentStepIndex} 
                                 form={form} 
                                 model={modelForStep}
+                                onSubmit={() => {}}
                                 onCancel={() => {}}
                                 isLoading={stepMutation.isPending} 
                                 propertyIdsToShow={currentStep?.propertyIds} 
