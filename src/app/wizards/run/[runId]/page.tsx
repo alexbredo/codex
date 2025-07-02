@@ -98,8 +98,8 @@ function RunWizardPageInternal() {
       if (data.isFinalStep) {
         setIsFinishing(true);
       } else {
-        setCurrentStepIndex(prev => prev + 1);
         queryClient.invalidateQueries({ queryKey: ['wizardRun', runId] });
+        setCurrentStepIndex(prev => prev + 1);
       }
     },
     onError: (err: Error) => {
@@ -148,15 +148,15 @@ function RunWizardPageInternal() {
   
   React.useEffect(() => { form.resolver = zodResolver(dynamicSchema) as any; }, [dynamicSchema, form]);
 
-  const handleNextStep = (values: Record<string, any>) => {
+  const handleNextStep = async (values: Record<string, any>) => {
     if (currentStep?.stepType === 'create') {
-        stepMutation.mutate({ runId, stepIndex: currentStepIndex, stepType: 'create', formData: values });
+        await stepMutation.mutateAsync({ runId, stepIndex: currentStepIndex, stepType: 'create', formData: values });
     } else if (currentStep?.stepType === 'lookup') {
         if (!selectedLookupId) {
              toast({ title: "Selection Required", description: "Please select an item to continue.", variant: "destructive" });
              return;
         }
-        stepMutation.mutate({ runId, stepIndex: currentStepIndex, stepType: 'lookup', lookupObjectId: selectedLookupId });
+        await stepMutation.mutateAsync({ runId, stepIndex: currentStepIndex, stepType: 'lookup', lookupObjectId: selectedLookupId });
     }
   };
 
