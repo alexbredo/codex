@@ -140,6 +140,7 @@ export async function POST(request: Request) {
 
       let dashboardId: string;
       let createdAt: string;
+      let actionType: 'DASHBOARD_CREATE' | 'DASHBOARD_UPDATE' = 'DASHBOARD_UPDATE';
 
       if (existingDashboard) {
         dashboardId = existingDashboard.id;
@@ -156,6 +157,7 @@ export async function POST(request: Request) {
       } else {
         dashboardId = crypto.randomUUID();
         createdAt = currentTimestamp;
+        actionType = 'DASHBOARD_CREATE';
 
         await db.run(
           'INSERT INTO dashboards (id, userId, name, widgets, isDefault, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
@@ -168,6 +170,20 @@ export async function POST(request: Request) {
           currentTimestamp
         );
       }
+      
+      // Log security event for dashboard save
+      await db.run(
+        'INSERT INTO security_log (id, timestamp, userId, username, action, targetEntityType, targetEntityId, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        crypto.randomUUID(),
+        currentTimestamp,
+        currentUser.id,
+        currentUser.username,
+        actionType,
+        'Dashboard',
+        dashboardId,
+        JSON.stringify({ dashboardName: name, widgetCount: widgets.length })
+      );
+
 
       // Commit transaction
       await db.exec('COMMIT');

@@ -87,12 +87,31 @@ export async function POST(request: Request) {
     }
 
     const { link_type, model_id, data_object_id, expires_at, expires_on_submit } = validation.data;
-    
-    if ((link_type === 'view' || link_type === 'update') && !data_object_id) {
-        return NextResponse.json({ error: 'data_object_id is required for view and update links.' }, { status: 400 });
-    }
-    
     const db = await getDb();
+
+    // --- Permission Check ---
+    if (link_type === 'create') {
+        if (!currentUser.permissionIds.includes('*') && !currentUser.permissionIds.includes(`model:create:${model_id}`)) {
+            return NextResponse.json({ error: 'Forbidden: You do not have permission to create objects for this model.' }, { status: 403 });
+        }
+    } else { // 'view' or 'update'
+        if (!data_object_id) {
+            return NextResponse.json({ error: 'data_object_id is required for view and update links.' }, { status: 400 });
+        }
+        const objectForPermCheck = await db.get('SELECT ownerId FROM data_objects WHERE id = ? AND model_id = ?', data_object_id, model_id);
+        if (!objectForPermCheck) {
+            return NextResponse.json({ error: 'Object not found.' }, { status: 404 });
+        }
+        const isOwner = objectForPermCheck.ownerId === currentUser.id;
+        const requiredPerm = link_type === 'update' ? `model:edit:${model_id}` : `model:view:${model_id}`;
+        const requiredOwnPerm = link_type === 'update' ? 'objects:edit_own' : 'objects:view_own'; // Assuming view_own exists or is implied by view
+
+        if (!currentUser.permissionIds.includes('*') && !currentUser.permissionIds.includes(requiredPerm) && !(currentUser.permissionIds.includes(requiredOwnPerm) && isOwner)) {
+            return NextResponse.json({ error: `Forbidden: You do not have permission to create a "${link_type}" link for this object.` }, { status: 403 });
+        }
+    }
+    // --- End Permission Check ---
+
     const linkId = randomUUID();
     const createdAt = new Date().toISOString();
 
@@ -102,6 +121,19 @@ export async function POST(request: Request) {
     await db.run(
       'INSERT INTO shared_object_links (id, link_type, model_id, data_object_id, created_by_user_id, created_at, expires_at, expires_on_submit) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       linkId, link_type, model_id, dataObjectIdToInsert, currentUser.id, createdAt, expiresAtToInsert, expires_on_submit ? 1 : 0
+    );
+
+    // Log security event for share link creation
+    await db.run(
+      'INSERT INTO security_log (id, timestamp, userId, username, action, targetEntityType, targetEntityId, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      crypto.randomUUID(),
+      createdAt,
+      currentUser.id,
+      currentUser.username,
+      'SHARE_LINK_CREATE',
+      'ShareLink',
+      linkId,
+      JSON.stringify({ linkType: link_type, modelId: model_id, objectId: dataObjectIdToInsert })
     );
 
     const newLink: SharedObjectLink = {

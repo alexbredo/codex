@@ -1,7 +1,7 @@
 
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import type { Wizard, WizardStep, PropertyMapping } from '@/lib/types';
+import type { Wizard, WizardStep, PropertyMapping, StructuralChangeDetail } from '@/lib/types';
 import { getCurrentUserFromCookie } from '@/lib/auth';
 
 // GET all wizards
@@ -48,6 +48,7 @@ export async function POST(request: Request) {
   try {
     const { name, description, steps }: Omit<Wizard, 'id'> = await request.json();
     const wizardId = crypto.randomUUID();
+    const currentTimestamp = new Date().toISOString();
 
     if (!name || name.trim() === '') {
         await db.run('ROLLBACK');
@@ -63,6 +64,24 @@ export async function POST(request: Request) {
             stepId, wizardId, step.modelId, step.stepType || 'create', step.orderIndex, step.instructions, JSON.stringify(step.propertyIds), JSON.stringify(step.propertyMappings || [])
         );
     }
+    
+    // Log creation
+    const changelogDetails: StructuralChangeDetail[] = [
+      { field: 'name', newValue: name.trim() },
+      { field: 'description', newValue: description },
+      { field: 'steps', newValue: steps.map(s => ({ modelId: s.modelId, order: s.orderIndex })) },
+    ];
+    await db.run(
+        'INSERT INTO structural_changelog (id, timestamp, userId, entityType, entityId, entityName, action, changes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        crypto.randomUUID(),
+        currentTimestamp,
+        currentUser.id,
+        'Wizard',
+        wizardId,
+        name.trim(),
+        'CREATE',
+        JSON.stringify(changelogDetails)
+    );
     
     await db.run('COMMIT');
 

@@ -62,10 +62,25 @@ export async function POST(request: Request, { params }: { params: { userId: str
       tokenId, userId, tokenValue, name, createdAt
     );
 
+    // Log security event for token creation
+    const userForToken = await db.get('SELECT username FROM users WHERE id = ?', userId);
+    await db.run(
+        'INSERT INTO security_log (id, timestamp, userId, username, action, targetEntityType, targetEntityId, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        crypto.randomUUID(),
+        createdAt,
+        currentUser.id,
+        currentUser.username,
+        'API_TOKEN_CREATE',
+        'User',
+        userId,
+        JSON.stringify({ tokenName: name, targetUsername: userForToken?.username || userId })
+    );
+
     // Return the full token value ONCE. It is not stored in a retrievable way.
     return NextResponse.json({ id: tokenId, name, createdAt, token: tokenValue }, { status: 201 });
 
-  } catch (error: any) {
+  } catch (error: any)
+  {
     console.error(`API Error (POST /users/${userId}/tokens):`, error);
     if (error.message.includes('UNIQUE constraint failed')) {
         return NextResponse.json({ error: 'Failed to create token due to a database conflict. Please try again.' }, { status: 500 });

@@ -1,7 +1,7 @@
 
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import type { Wizard, WizardStep, PropertyMapping } from '@/lib/types';
+import type { Wizard, WizardStep, PropertyMapping, StructuralChangeDetail } from '@/lib/types';
 import { getCurrentUserFromCookie } from '@/lib/auth';
 
 interface Params {
@@ -51,8 +51,9 @@ export async function PUT(request: Request, { params }: Params) {
     try {
         const { name, description, steps }: Omit<Wizard, 'id'> & { steps: Array<Omit<WizardStep, 'wizardId' | 'stepType'> & {id?: string; stepType: 'create' | 'lookup'}> } = await request.json();
         const { wizardId } = params;
+        const currentTimestamp = new Date().toISOString();
 
-        const existingWizard = await db.get('SELECT id FROM wizards WHERE id = ?', wizardId);
+        const existingWizard = await db.get('SELECT * FROM wizards WHERE id = ?', wizardId);
         if (!existingWizard) {
             await db.run('ROLLBACK');
             return NextResponse.json({ error: 'Wizard not found' }, { status: 404 });
@@ -73,6 +74,24 @@ export async function PUT(request: Request, { params }: Params) {
             insertedSteps.push({ ...step, id: stepId, wizardId });
         }
         
+        // Log structural change for wizard update
+        const changes: StructuralChangeDetail[] = [];
+        if (name.trim() !== existingWizard.name) changes.push({ field: 'name', oldValue: existingWizard.name, newValue: name.trim() });
+        if (description !== existingWizard.description) changes.push({ field: 'description', oldValue: existingWizard.description, newValue: description });
+        changes.push({ field: 'steps', oldValue: 'complex_change', newValue: 'complex_change' }); // Indicate steps were modified
+        
+        await db.run(
+            'INSERT INTO structural_changelog (id, timestamp, userId, entityType, entityId, entityName, action, changes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            crypto.randomUUID(),
+            currentTimestamp,
+            currentUser.id,
+            'Wizard',
+            wizardId,
+            name.trim(),
+            'UPDATE',
+            JSON.stringify(changes)
+        );
+
         await db.run('COMMIT');
 
         const updatedWizard: Wizard = { id: wizardId, name: name.trim(), description, steps: insertedSteps };
@@ -100,6 +119,14 @@ export async function DELETE(request: Request, { params }: Params) {
 
     try {
         const { wizardId } = params;
+        const currentTimestamp = new Date().toISOString();
+
+        const wizardToDelete = await db.get('SELECT * FROM wizards WHERE id = ?', wizardId);
+        if (!wizardToDelete) {
+            await db.run('ROLLBACK');
+            return NextResponse.json({ error: 'Wizard not found' }, { status: 404 });
+        }
+
         // CASCADE delete will handle steps
         const result = await db.run('DELETE FROM wizards WHERE id = ?', wizardId);
 
@@ -107,6 +134,19 @@ export async function DELETE(request: Request, { params }: Params) {
             await db.run('ROLLBACK');
             return NextResponse.json({ error: 'Wizard not found' }, { status: 404 });
         }
+
+        // Log deletion
+        await db.run(
+            'INSERT INTO structural_changelog (id, timestamp, userId, entityType, entityId, entityName, action, changes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            crypto.randomUUID(),
+            currentTimestamp,
+            currentUser.id,
+            'Wizard',
+            wizardId,
+            wizardToDelete.name,
+            'DELETE',
+            JSON.stringify({ snapshot: wizardToDelete })
+        );
         
         await db.run('COMMIT');
         return NextResponse.json({ message: 'Wizard deleted successfully' });

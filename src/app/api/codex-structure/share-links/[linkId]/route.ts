@@ -19,8 +19,7 @@ export async function DELETE(request: Request, { params }: Params) {
   try {
     const db = await getDb();
     
-    // Optional: Check if the current user is the one who created the link or an admin
-    const linkToDelete = await db.get('SELECT created_by_user_id FROM shared_object_links WHERE id = ?', linkId);
+    const linkToDelete = await db.get('SELECT created_by_user_id, link_type, model_id, data_object_id FROM shared_object_links WHERE id = ?', linkId);
     if (!linkToDelete) {
       return NextResponse.json({ error: 'Link not found' }, { status: 404 });
     }
@@ -33,6 +32,19 @@ export async function DELETE(request: Request, { params }: Params) {
     if (result.changes === 0) {
       return NextResponse.json({ error: 'Link not found or already deleted' }, { status: 404 });
     }
+
+    // Log security event for share link revocation
+    await db.run(
+      'INSERT INTO security_log (id, timestamp, userId, username, action, targetEntityType, targetEntityId, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      crypto.randomUUID(),
+      new Date().toISOString(),
+      currentUser.id,
+      currentUser.username,
+      'SHARE_LINK_DELETE',
+      'ShareLink',
+      linkId,
+      JSON.stringify({ linkType: linkToDelete.link_type, modelId: linkToDelete.model_id, objectId: linkToDelete.data_object_id })
+    );
 
     return NextResponse.json({ message: 'Share link revoked successfully.' }, { status: 200 });
   } catch (error: any) {
