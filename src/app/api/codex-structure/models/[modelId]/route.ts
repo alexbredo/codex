@@ -123,21 +123,24 @@ export async function PUT(request: Request, { params }: Params) {
     const oldPropertiesFromDb = await db.all('SELECT * FROM properties WHERE model_id = ? ORDER BY orderIndex ASC', params.modelId);
     
     // ================================================================
-    // Step 1: Update core model metadata (name, description, group, etc.)
+    // Step 1: Prepare final values for database update
     // ================================================================
     const finalName = body.name ?? oldModelRow.name;
     const finalDescription = 'description' in body ? body.description : oldModelRow.description;
     const finalDisplayPropertyNames = 'displayPropertyNames' in body ? JSON.stringify(body.displayPropertyNames || []) : oldModelRow.displayPropertyNames;
     const finalWorkflowId = 'workflowId' in body ? body.workflowId : oldModelRow.workflowId;
-
-    // --- Robust handling for modelGroupId ---
+    
     const defaultGroupId = "00000000-0000-0000-0000-000000000001";
     const normalizedOldGroupId = oldModelRow.model_group_id ?? defaultGroupId;
     
-    const finalModelGroupId = 'modelGroupId' in body
-      ? (body.modelGroupId === null || body.modelGroupId === undefined ? defaultGroupId : body.modelGroupId)
-      : normalizedOldGroupId;
-    
+    let finalModelGroupId = normalizedOldGroupId;
+    if ('modelGroupId' in body) {
+        finalModelGroupId = (body.modelGroupId === null || body.modelGroupId === undefined) ? defaultGroupId : body.modelGroupId;
+    }
+
+    // ================================================================
+    // Step 2: Update core model metadata in the database
+    // ================================================================
     await db.run(
         'UPDATE models SET name = ?, description = ?, model_group_id = ?, displayPropertyNames = ?, workflowId = ? WHERE id = ?',
         finalName,
@@ -170,7 +173,7 @@ export async function PUT(request: Request, { params }: Params) {
     // --- End permission update ---
 
     // ================================================================
-    // Step 2: Handle properties update
+    // Step 3: Handle properties update
     // ================================================================
     let newProcessedProperties: Property[] = oldPropertiesFromDb.map(prop => ({ ...prop, required: !!prop.required, autoSetOnCreate: !!prop.autoSetOnCreate, autoSetOnUpdate: !!prop.autoSetOnUpdate, isUnique: !!prop.isUnique } as Property));
     
@@ -202,7 +205,7 @@ export async function PUT(request: Request, { params }: Params) {
     }
     
     // ================================================================
-    // Step 3: Handle workflow side-effects (if workflow changed)
+    // Step 4: Handle workflow side-effects (if workflow changed)
     // ================================================================
     if ('workflowId' in body && body.workflowId !== oldModelRow.workflowId) {
       if (body.workflowId) { 
@@ -220,7 +223,7 @@ export async function PUT(request: Request, { params }: Params) {
     }
     
     // ================================================================
-    // Step 4: Log the changes
+    // Step 5: Log the changes
     // ================================================================
     const changelogDetails: StructuralChangeDetail[] = [];
     if (finalName !== oldModelRow.name) changelogDetails.push({ field: 'name', oldValue: oldModelRow.name, newValue: finalName });
