@@ -95,13 +95,13 @@ function RunWizardPageInternal() {
   
   const stepMutation = useMutation({
     mutationFn: submitWizardStep,
-    onSuccess: () => {
-      if (currentStepIndex === (runState?.wizard.steps.length ?? 0) - 1) {
+    onSuccess: (data) => {
+      if (data.isFinalStep) {
         setIsFinishing(true);
       } else {
         setCurrentStepIndex(prev => prev + 1);
+        queryClient.invalidateQueries({ queryKey: ['wizardRun', runId] });
       }
-      queryClient.invalidateQueries({ queryKey: ['wizardRun', runId] });
     },
     onError: (err: Error) => {
       toast({ variant: 'destructive', title: `Error on Step ${currentStepIndex + 1}`, description: err.message });
@@ -232,4 +232,3 @@ function RunWizardPageInternal() {
 }
 
 export default withAuth(RunWizardPageInternal, 'any');
-

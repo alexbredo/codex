@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -145,7 +144,6 @@ export default function Navigation() {
                 <SidebarMenuItem key={wizard.id}>
                     <Link href={`/wizards/run-start-handler?wizardId=${wizard.id}`} passHref legacyBehavior>
                         <SidebarMenuButton
-                            isActive={pathname.startsWith(`/wizards/run/${wizard.id}`)}
                             tooltip={{ children: `Run: ${wizard.name}`, side: 'right', align: 'center' }}
                             aria-label={wizard.name}
                         >
@@ -193,4 +191,3 @@ export default function Navigation() {
     </SidebarMenu>
   );
 }
-
