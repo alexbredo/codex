@@ -220,11 +220,12 @@ function WizardsAdminPageInternal() {
                                             const lastStepData = parsedData[lastEnteredStepIndex];
 
                                             if (lastEnteredStepIndex >= 0 && lastStepData) {
-                                                if (lastStepData.stepType === 'lookup' && lastStepData.objectId) {
-                                                    const stepDef = wizard.steps.find(s => s.orderIndex === lastEnteredStepIndex);
-                                                    const modelForStep = stepDef ? getModelById(stepDef.modelId) : null;
-                                                    const lookedUpObject = modelForStep ? getObjectsByModelId(modelForStep.id).find(o => o.id === lastStepData.objectId) : null;
-                                                    stepDataPreview = `Selected: ${getObjectDisplayValue(lookedUpObject, modelForStep, allModels, allDbObjects)}`;
+                                                const stepDef = wizard.steps.find(s => s.orderIndex === lastEnteredStepIndex);
+                                                const modelForStep = stepDef ? getModelById(stepDef.modelId) : null;
+                                                
+                                                if (lastStepData.stepType === 'lookup' && lastStepData.objectId && lastStepData.formData) {
+                                                    const tempLookedUpObject = { id: lastStepData.objectId, ...lastStepData.formData };
+                                                    stepDataPreview = `Selected: ${getObjectDisplayValue(tempLookedUpObject, modelForStep, allModels, allDbObjects)}`;
                                                 } else if (lastStepData.stepType === 'create' && lastStepData.formData) {
                                                     const formData = lastStepData.formData;
                                                     const entries = Object.entries(formData).slice(0, 2);

@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -77,7 +76,7 @@ function RunWizardPageInternal() {
   const runId = params.runId as string;
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { getModelById, validationRulesets, getObjectsByModelId, models: allModels, getAllObjects, isReady: dataContextIsReady } = useData();
+  const { getModelById, validationRulesets, getObjectsByModelId, models: allModels, getAllObjects, isReady: dataContextIsReady, fetchData: refreshDataContext } = useData();
   
   const [isFinishing, setIsFinishing] = React.useState(false);
   const [selectedLookupId, setSelectedLookupId] = React.useState<string>('');
@@ -86,7 +85,7 @@ function RunWizardPageInternal() {
   const { data: runState, isLoading, error, refetch } = useQuery<WizardRunState>({
     queryKey: ['wizardRun', runId],
     queryFn: () => fetchWizardRunState(runId),
-    enabled: !!runId && dataContextIsReady && !isFinishing,
+    enabled: !!runId && dataContextIsReady,
   });
 
   const stepMutation = useMutation({
@@ -129,20 +128,6 @@ function RunWizardPageInternal() {
   }, [currentStepIndex, runState, form, currentStep]);
   
   React.useEffect(() => { form.resolver = zodResolver(dynamicSchema) as any; }, [dynamicSchema, form]);
-
-  const onInvalid = (errors: FieldErrors<Record<string, any>>) => {
-    const errorMessages = Object.entries(errors).map(([fieldName, error]) => {
-        const message = (error as any)?.message;
-        if (message) return `${fieldName}: ${message}`;
-        return null;
-    }).filter(Boolean).join('; ');
-    
-    toast({
-        variant: 'destructive',
-        title: 'Validation Error',
-        description: `Please fix the following errors: ${errorMessages.substring(0, 150)}`
-    });
-  };
   
   const handleNextStep = async (values?: Record<string, any>) => {
     const stepType = currentStep?.stepType;
@@ -163,15 +148,14 @@ function RunWizardPageInternal() {
     try {
         const result = await stepMutation.mutateAsync(payload);
         
-        // After mutation succeeds, force a refetch of the wizard state and wait for it.
-        // This is the critical step to prevent stale state on the next action.
-        await refetch();
-        
         if (result.isFinalStep) {
+            await refreshDataContext('Wizard Completed');
+            await refetch();
             setIsFinishing(true);
+        } else {
+            await refetch();
         }
     } catch (e) {
-        // The onError handler in useMutation will show the toast.
         console.error("Step submission failed:", e);
     }
   };
@@ -315,16 +299,14 @@ function RunWizardPageInternal() {
                     <p className="text-sm text-muted-foreground">{currentStep.instructions || `Please fill out the fields for the ${modelForStep.name}.`}</p>
                 </div>
                 {currentStep.stepType === 'create' ? (
-                     <form id={`step-form-${currentStepIndex}`}>
-                        <ObjectForm
-                            form={form}
-                            model={modelForStep}
-                            onCancel={() => {}} 
-                            onSubmit={async () => {}} 
-                            propertyIdsToShow={currentStep.propertyIds}
-                            hiddenPropertyIds={hiddenPropertyIds}
-                        />
-                    </form>
+                     <ObjectForm
+                        form={form}
+                        model={modelForStep}
+                        onCancel={() => {}} 
+                        onSubmit={async () => {}} 
+                        propertyIdsToShow={currentStep.propertyIds}
+                        hiddenPropertyIds={hiddenPropertyIds}
+                    />
                 ) : (
                     <div className="space-y-4">
                         <Popover open={isLookupPopoverOpen} onOpenChange={setIsLookupPopoverOpen}>
@@ -350,13 +332,14 @@ function RunWizardPageInternal() {
                 <Button type="button" variant="outline" onClick={() => {
                 }} disabled={true}>Back</Button>
                 <Button
-                    type="button"
+                    type="submit"
+                    form={`step-form-${currentStepIndex}`}
                     disabled={stepMutation.isPending}
                     onClick={() => {
                         if (currentStep.stepType === 'lookup') {
                             handleNextStep();
                         } else {
-                            form.handleSubmit(handleNextStep, onInvalid)();
+                            form.handleSubmit(handleNextStep)();
                         }
                     }}
                 >
