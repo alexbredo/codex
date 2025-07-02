@@ -5,7 +5,7 @@
 import * as React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useRouter } from 'next/navigation';
-import { useForm, type FieldErrors, Controller } from 'react-hook-form';
+import { useForm, type FieldErrors, type UseFormReturn } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useToast } from '@/hooks/use-toast';
 import { useData } from '@/contexts/data-context';
@@ -86,26 +86,14 @@ function RunWizardPageInternal() {
   const { data: runState, isLoading, error, refetch } = useQuery<WizardRunState>({
     queryKey: ['wizardRun', runId],
     queryFn: () => fetchWizardRunState(runId),
-    enabled: !!runId && dataContextIsReady && !isFinishing, // Re-enable fetching until finishing
+    enabled: !!runId && dataContextIsReady && !isFinishing,
   });
 
   const stepMutation = useMutation({
     mutationFn: submitWizardStep,
-    onSuccess: async (data) => {
-      if (data.isFinalStep) {
-        // Now that the final step is submitted and data is committed,
-        // refetch the final state before setting isFinishing to true.
-        await queryClient.invalidateQueries({ queryKey: ['wizardRun', runId] });
-        await refetch();
-        setIsFinishing(true);
-      } else {
-        // For intermediate steps, just invalidate to get the new state.
-        queryClient.invalidateQueries({ queryKey: ['wizardRun', runId] });
-      }
-    },
     onError: (err: Error) => {
-        const currentStepIndex = runState ? runState.currentStepIndex + 1 : 0;
-        toast({ variant: 'destructive', title: `Error on Step ${currentStepIndex + 1}`, description: err.message });
+        const currentStepIndexOnError = runState ? runState.currentStepIndex + 1 : 0;
+        toast({ variant: 'destructive', title: `Error on Step ${currentStepIndexOnError + 1}`, description: err.message });
     }
   });
 
@@ -125,7 +113,7 @@ function RunWizardPageInternal() {
     return z.object({});
   }, [modelForStep, validationRulesets, currentStep]);
 
-  const form = useForm<Record<string, any>>({ resolver: zodResolver(dynamicSchema), defaultValues: {} });
+  const form: UseFormReturn<Record<string, any>> = useForm<Record<string, any>>({ resolver: zodResolver(dynamicSchema), defaultValues: {} });
   
   React.useEffect(() => {
     form.reset({});
@@ -157,16 +145,37 @@ function RunWizardPageInternal() {
   };
   
   const handleNextStep = async (values?: Record<string, any>) => {
-    if (currentStep?.stepType === 'create' && values) {
-        await stepMutation.mutateAsync({ runId, stepIndex: currentStepIndex, stepType: 'create', formData: values });
-    } else if (currentStep?.stepType === 'lookup') {
+    const stepType = currentStep?.stepType;
+    let payload: Parameters<typeof submitWizardStep>[0];
+
+    if (stepType === 'create' && values) {
+        payload = { runId, stepIndex: currentStepIndex, stepType: 'create', formData: values };
+    } else if (stepType === 'lookup') {
         if (!selectedLookupId) {
              toast({ title: "Selection Required", description: "Please select an item to continue.", variant: "destructive" });
              return;
         }
-        await stepMutation.mutateAsync({ runId, stepIndex: currentStepIndex, stepType: 'lookup', lookupObjectId: selectedLookupId });
+        payload = { runId, stepIndex: currentStepIndex, stepType: 'lookup', lookupObjectId: selectedLookupId };
+    } else {
+        return; // Should not happen
+    }
+
+    try {
+        const result = await stepMutation.mutateAsync(payload);
+        
+        // After mutation succeeds, force a refetch of the wizard state and wait for it.
+        // This is the critical step to prevent stale state on the next action.
+        await refetch();
+        
+        if (result.isFinalStep) {
+            setIsFinishing(true);
+        }
+    } catch (e) {
+        // The onError handler in useMutation will show the toast.
+        console.error("Step submission failed:", e);
     }
   };
+
 
   const hiddenPropertyIds = React.useMemo(() => {
     if (!currentStep?.propertyMappings) return [];
@@ -300,56 +309,61 @@ function RunWizardPageInternal() {
                     />
                 </div>
             </CardHeader>
-            <form onSubmit={form.handleSubmit(handleNextStep, onInvalid)}>
-                <CardContent>
-                    <div className="p-4 mb-4 bg-muted/70 border rounded-lg">
-                        <h4 className="font-semibold text-lg mb-1">{modelForStep.name}</h4>
-                        <p className="text-sm text-muted-foreground">{currentStep.instructions || `Please fill out the fields for the ${modelForStep.name}.`}</p>
-                    </div>
-                    {currentStep.stepType === 'create' ? (
+            <CardContent>
+                <div className="p-4 mb-4 bg-muted/70 border rounded-lg">
+                    <h4 className="font-semibold text-lg mb-1">{modelForStep.name}</h4>
+                    <p className="text-sm text-muted-foreground">{currentStep.instructions || `Please fill out the fields for the ${modelForStep.name}.`}</p>
+                </div>
+                {currentStep.stepType === 'create' ? (
+                     <form id={`step-form-${currentStepIndex}`}>
                         <ObjectForm
                             form={form}
                             model={modelForStep}
                             onCancel={() => {}} 
                             onSubmit={async () => {}} 
-                            formContext="create"
                             propertyIdsToShow={currentStep.propertyIds}
                             hiddenPropertyIds={hiddenPropertyIds}
                         />
-                    ) : (
-                        <div className="space-y-4">
-                            <Popover open={isLookupPopoverOpen} onOpenChange={setIsLookupPopoverOpen}>
-                                <PopoverTrigger asChild>
-                                    <Button type="button" variant="outline" role="combobox" aria-expanded={isLookupPopoverOpen} className="w-full justify-between">
-                                        <span className="truncate">{selectedLookupId ? getObjectDisplayValue(getObjectsByModelId(modelForStep.id).find(o=>o.id === selectedLookupId), modelForStep, allModels, allDbObjects) : `Select a ${modelForStep.name}...`}</span>
-                                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                    </Button>
-                                </PopoverTrigger><PopoverContent className="w-[--radix-popover-trigger-width] p-0"><Command>
-                                    <CommandInput placeholder={`Search ${modelForStep.name}...`} /><CommandEmpty>No {modelForStep.name.toLowerCase()} found.</CommandEmpty><CommandGroup><CommandList>
-                                        {getObjectsByModelId(modelForStep.id).map(obj => (
-                                            <CommandItem key={obj.id} value={getObjectDisplayValue(obj, modelForStep, allModels, allDbObjects)} onSelect={() => { setSelectedLookupId(obj.id); setIsLookupPopoverOpen(false); }}>
-                                                <CheckCircle className={`mr-2 h-4 w-4 ${selectedLookupId === obj.id ? "opacity-100" : "opacity-0"}`} />
-                                                {getObjectDisplayValue(obj, modelForStep, allModels, allDbObjects)}
-                                            </CommandItem>
-                                        ))}
-                                    </CommandList></CommandGroup></Command>
-                            </PopoverContent></Popover>
-                        </div>
-                    )}
-                </CardContent>
-                <CardFooter className="flex justify-between">
-                    <Button type="button" variant="outline" onClick={() => {
-                    }} disabled={true}>Back</Button>
-                    <Button
-                        type="submit"
-                        disabled={stepMutation.isPending}
-                        onClick={currentStep.stepType === 'lookup' ? () => handleNextStep() : form.handleSubmit(handleNextStep, onInvalid)}
-                    >
-                        {stepMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                        {isFinalStep ? 'Finish' : 'Next'} <ArrowRight className="ml-2 h-4 w-4" />
-                    </Button>
-                </CardFooter>
-            </form>
+                    </form>
+                ) : (
+                    <div className="space-y-4">
+                        <Popover open={isLookupPopoverOpen} onOpenChange={setIsLookupPopoverOpen}>
+                            <PopoverTrigger asChild>
+                                <Button type="button" variant="outline" role="combobox" aria-expanded={isLookupPopoverOpen} className="w-full justify-between">
+                                    <span className="truncate">{selectedLookupId ? getObjectDisplayValue(getObjectsByModelId(modelForStep.id).find(o=>o.id === selectedLookupId), modelForStep, allModels, allDbObjects) : `Select a ${modelForStep.name}...`}</span>
+                                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                </Button>
+                            </PopoverTrigger><PopoverContent className="w-[--radix-popover-trigger-width] p-0"><Command>
+                                <CommandInput placeholder={`Search ${modelForStep.name}...`} /><CommandEmpty>No {modelForStep.name.toLowerCase()} found.</CommandEmpty><CommandGroup><CommandList>
+                                    {getObjectsByModelId(modelForStep.id).map(obj => (
+                                        <CommandItem key={obj.id} value={getObjectDisplayValue(obj, modelForStep, allModels, allDbObjects)} onSelect={() => { setSelectedLookupId(obj.id); setIsLookupPopoverOpen(false); }}>
+                                            <CheckCircle className={`mr-2 h-4 w-4 ${selectedLookupId === obj.id ? "opacity-100" : "opacity-0"}`} />
+                                            {getObjectDisplayValue(obj, modelForStep, allModels, allDbObjects)}
+                                        </CommandItem>
+                                    ))}
+                                </CommandList></CommandGroup></Command>
+                        </PopoverContent></Popover>
+                    </div>
+                )}
+            </CardContent>
+            <CardFooter className="flex justify-between">
+                <Button type="button" variant="outline" onClick={() => {
+                }} disabled={true}>Back</Button>
+                <Button
+                    type="button"
+                    disabled={stepMutation.isPending}
+                    onClick={() => {
+                        if (currentStep.stepType === 'lookup') {
+                            handleNextStep();
+                        } else {
+                            form.handleSubmit(handleNextStep, onInvalid)();
+                        }
+                    }}
+                >
+                    {stepMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                    {isFinalStep ? 'Finish' : 'Next'} <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+            </CardFooter>
         </Card>
     </div>
   );
