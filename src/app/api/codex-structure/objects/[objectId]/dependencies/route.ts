@@ -45,6 +45,12 @@ export async function GET(request: Request, { params }: { params: { objectId: st
     // --- Pre-fetch all necessary data for efficient lookup ---
     const allModels: Model[] = await db.all('SELECT id, name, displayPropertyNames FROM models');
     for (const model of allModels) {
+        try {
+            // FIX: Ensure displayPropertyNames is an array. It comes from DB as a JSON string.
+            model.displayPropertyNames = model.displayPropertyNames ? JSON.parse(model.displayPropertyNames as any) : [];
+        } catch {
+            model.displayPropertyNames = [];
+        }
         model.properties = await db.all('SELECT * FROM properties WHERE model_id = ?', model.id);
     }
     const allObjectsRaw = await db.all('SELECT id, model_id, data FROM data_objects WHERE isDeleted = 0 OR isDeleted IS NULL');
