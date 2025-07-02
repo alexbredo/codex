@@ -340,6 +340,23 @@ async function initializeDb(): Promise<Database> {
     );
   `);
 
+  // New Wizard Runs table
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS wizard_runs (
+      id TEXT PRIMARY KEY,
+      wizardId TEXT NOT NULL,
+      userId TEXT NOT NULL,
+      status TEXT NOT NULL, -- 'IN_PROGRESS', 'COMPLETED', 'ABANDONED'
+      currentStepIndex INTEGER NOT NULL,
+      stepData TEXT, -- JSON object holding step form data
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      FOREIGN KEY (wizardId) REFERENCES wizards(id) ON DELETE CASCADE,
+      FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+    );
+  `);
+  await db.exec('CREATE INDEX IF NOT EXISTS idx_wizard_runs_userId_status ON wizard_runs (userId, status);');
+
   // Data Object Changelog Table
   await db.exec(`
     CREATE TABLE IF NOT EXISTS data_object_changelog (
