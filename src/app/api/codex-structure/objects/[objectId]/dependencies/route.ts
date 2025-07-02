@@ -46,7 +46,6 @@ export async function GET(request: Request, { params }: { params: { objectId: st
     const allModels: Model[] = await db.all('SELECT id, name, displayPropertyNames FROM models');
     for (const model of allModels) {
         try {
-            // FIX: Ensure displayPropertyNames is an array. It comes from DB as a JSON string.
             model.displayPropertyNames = model.displayPropertyNames ? JSON.parse(model.displayPropertyNames as any) : [];
         } catch {
             model.displayPropertyNames = [];

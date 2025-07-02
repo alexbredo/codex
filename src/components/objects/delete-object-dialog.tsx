@@ -80,6 +80,7 @@ export default function DeleteObjectDialog({ objectToDelete, model, onClose, onS
   };
 
   const hasIncomingRelations = dependencies && dependencies.incoming.length > 0;
+  const hasOutgoingRelations = dependencies && dependencies.outgoing.length > 0;
 
   return (
     <Dialog open={!!objectToDelete} onOpenChange={(open) => !open && onClose()}>
@@ -118,9 +119,9 @@ export default function DeleteObjectDialog({ objectToDelete, model, onClose, onS
                 
                 {hasIncomingRelations && (
                     <div>
-                        <h4 className="font-semibold mb-2">Warning: Found Related Objects</h4>
+                        <h4 className="font-semibold mb-2">Warning: Objects linking to this item</h4>
                         <p className="text-sm text-muted-foreground mb-3">The following objects link to the item you are deleting. Deleting it will break these relationships. You can choose to delete these related objects as well.</p>
-                        <ScrollArea className="max-h-60 border rounded-md p-2">
+                        <ScrollArea className="max-h-40 border rounded-md p-2">
                            <div className="space-y-2">
                              {dependencies.incoming.map(rel => (
                                 <div key={rel.objectId} className="flex items-center space-x-3 p-2 rounded hover:bg-muted">
@@ -145,9 +146,34 @@ export default function DeleteObjectDialog({ objectToDelete, model, onClose, onS
                     </div>
                 )}
 
-                {!hasIncomingRelations && (
+                {hasOutgoingRelations && (
+                    <div>
+                        <h4 className="font-semibold mb-2">Informational: This item links to others</h4>
+                        <p className="text-sm text-muted-foreground mb-3">Deleting this object will remove its links to the following items. These items will NOT be deleted.</p>
+                         <ScrollArea className="max-h-40 border rounded-md p-2">
+                           <div className="space-y-2">
+                             {dependencies.outgoing.map(rel => (
+                                <div key={rel.objectId} className="flex items-center space-x-3 p-2 rounded">
+                                    <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                    <div className="text-sm w-full">
+                                        <div className="flex justify-between items-center">
+                                            <span className="font-medium truncate" title={rel.objectDisplayValue}>{rel.objectDisplayValue}</span>
+                                            <Badge variant="outline" className="text-xs">{rel.modelName}</Badge>
+                                        </div>
+                                         <p className="text-xs text-muted-foreground">
+                                            (via property: <span className="font-mono">{rel.viaPropertyName}</span>)
+                                        </p>
+                                    </div>
+                                </div>
+                             ))}
+                           </div>
+                        </ScrollArea>
+                    </div>
+                )}
+
+                {!hasIncomingRelations && !hasOutgoingRelations && (
                     <Alert>
-                        <AlertDescription>No incoming relationships were found for this object.</AlertDescription>
+                        <AlertDescription>No incoming or outgoing relationships were found for this object.</AlertDescription>
                     </Alert>
                 )}
             </div>
@@ -164,4 +190,3 @@ export default function DeleteObjectDialog({ objectToDelete, model, onClose, onS
     </Dialog>
   );
 }
-
