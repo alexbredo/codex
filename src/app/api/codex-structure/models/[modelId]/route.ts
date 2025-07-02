@@ -113,7 +113,6 @@ export async function PUT(request: Request, { params }: Params) {
   try {
     await db.run('BEGIN TRANSACTION');
     const body: Partial<Model> & { properties?: Property[] } = await request.json();
-    console.log('[API PUT /model] Received body for update:', JSON.stringify(body, null, 2));
     const currentTimestamp = new Date().toISOString();
     
     const oldModelRow = await db.get('SELECT * FROM models WHERE id = ?', params.modelId);
@@ -131,20 +130,13 @@ export async function PUT(request: Request, { params }: Params) {
     const finalDisplayPropertyNames = 'displayPropertyNames' in body ? JSON.stringify(body.displayPropertyNames || []) : oldModelRow.displayPropertyNames;
     const finalWorkflowId = 'workflowId' in body ? body.workflowId : oldModelRow.workflowId;
 
-    // --- Correct handling for modelGroupId ---
+    // --- Robust handling for modelGroupId ---
     const defaultGroupId = "00000000-0000-0000-0000-000000000001";
-    let finalModelGroupId = oldModelRow.model_group_id; // Default to old value
-    console.log('[API PUT /model] Initial finalModelGroupId (from DB):', finalModelGroupId);
-
-    if (Object.prototype.hasOwnProperty.call(body, 'modelGroupId')) {
-        console.log('[API PUT /model] modelGroupId found in request body:', body.modelGroupId);
-        // If the client sent the key, determine the value.
-        // A null/undefined value from the client signifies the "Default" group.
-        finalModelGroupId = (body.modelGroupId === null || body.modelGroupId === undefined)
-            ? defaultGroupId
-            : body.modelGroupId;
-        console.log('[API PUT /model] Calculated finalModelGroupId:', finalModelGroupId);
-    }
+    const normalizedOldGroupId = oldModelRow.model_group_id ?? defaultGroupId;
+    
+    const finalModelGroupId = 'modelGroupId' in body
+      ? (body.modelGroupId === null || body.modelGroupId === undefined ? defaultGroupId : body.modelGroupId)
+      : normalizedOldGroupId;
     
     await db.run(
         'UPDATE models SET name = ?, description = ?, model_group_id = ?, displayPropertyNames = ?, workflowId = ? WHERE id = ?',
@@ -234,11 +226,8 @@ export async function PUT(request: Request, { params }: Params) {
     if (finalName !== oldModelRow.name) changelogDetails.push({ field: 'name', oldValue: oldModelRow.name, newValue: finalName });
     if (finalDescription !== oldModelRow.description) changelogDetails.push({ field: 'description', oldValue: oldModelRow.description, newValue: finalDescription });
     
-    console.log(`[API PUT /model] Comparing finalModelGroupId ('${finalModelGroupId}') with old DB value ('${oldModelRow.model_group_id}').`);
-    console.log('[API PUT /model] Are they different?', finalModelGroupId !== oldModelRow.model_group_id);
-    if (finalModelGroupId !== oldModelRow.model_group_id) {
-        console.log('[API PUT /model] Change detected for modelGroupId, adding to changelog.');
-        changelogDetails.push({ field: 'modelGroupId', oldValue: oldModelRow.model_group_id, newValue: finalModelGroupId });
+    if (finalModelGroupId !== normalizedOldGroupId) {
+        changelogDetails.push({ field: 'modelGroupId', oldValue: normalizedOldGroupId, newValue: finalModelGroupId });
     }
     
     const safeJsonParse = (jsonString: string | null | undefined, defaultValue: any = []) => {
@@ -261,7 +250,6 @@ export async function PUT(request: Request, { params }: Params) {
         changelogDetails.push({ field: 'properties', oldValue: oldPropsForLog, newValue: newPropsForLog });
     }
     
-    console.log('[API PUT /model] Final changelogDetails array:', changelogDetails);
     if (changelogDetails.length > 0) {
         const changelogId = crypto.randomUUID();
         await db.run(
@@ -377,5 +365,3 @@ export async function DELETE(request: Request, { params }: Params) {
     return NextResponse.json({ error: 'Failed to delete model', details: errorMessage }, { status: 500 });
   }
 }
-
-    
