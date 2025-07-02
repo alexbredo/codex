@@ -112,15 +112,17 @@ export async function PUT(request: Request, { params }: Params) {
   
   try {
     await db.run('BEGIN TRANSACTION');
+    const { modelId } = params;
     const body: Partial<Model> & { properties?: Property[] } = await request.json();
     const currentTimestamp = new Date().toISOString();
+    const defaultGroupId = "00000000-0000-0000-0000-000000000001";
     
-    const oldModelRow = await db.get('SELECT * FROM models WHERE id = ?', params.modelId);
+    const oldModelRow = await db.get('SELECT * FROM models WHERE id = ?', modelId);
     if (!oldModelRow) {
       await db.run('ROLLBACK');
       return NextResponse.json({ error: 'Model not found' }, { status: 404 });
     }
-    const oldPropertiesFromDb = await db.all('SELECT * FROM properties WHERE model_id = ? ORDER BY orderIndex ASC', params.modelId);
+    const oldPropertiesFromDb = await db.all('SELECT * FROM properties WHERE model_id = ? ORDER BY orderIndex ASC', modelId);
     
     // ================================================================
     // Step 1: Prepare final values for database update
@@ -130,18 +132,14 @@ export async function PUT(request: Request, { params }: Params) {
     const finalDisplayPropertyNames = 'displayPropertyNames' in body ? JSON.stringify(body.displayPropertyNames || []) : oldModelRow.displayPropertyNames;
     const finalWorkflowId = 'workflowId' in body ? body.workflowId : oldModelRow.workflowId;
     
-    // --- Start of Corrected Model Group Logic ---
-    let finalModelGroupIdToSave: string | null;
-    const defaultGroupId = "00000000-0000-0000-0000-000000000001";
-    
+    // --- Model Group Logic ---
+    let finalModelGroupIdToSave: string | null = oldModelRow.model_group_id; // Start with the existing value
     if (Object.prototype.hasOwnProperty.call(body, 'modelGroupId')) {
-        // If the key is present, use its value. Map `null` to the actual default group ID for saving.
+        // If the key is present in the request body, update our value.
+        // Map `null` or `undefined` from the client to the actual Default Group ID for saving.
         finalModelGroupIdToSave = (body.modelGroupId === null || body.modelGroupId === undefined) ? defaultGroupId : body.modelGroupId;
-    } else {
-        // If the key is not in the request, keep the existing value.
-        finalModelGroupIdToSave = oldModelRow.model_group_id;
     }
-    // --- End of Corrected Model Group Logic ---
+    // --- End Model Group Logic ---
 
     // ================================================================
     // Step 2: Update core model metadata in the database
@@ -153,14 +151,14 @@ export async function PUT(request: Request, { params }: Params) {
         finalModelGroupIdToSave, // Use the correctly determined ID
         finalDisplayPropertyNames,
         finalWorkflowId,
-        params.modelId
+        modelId
     );
 
     // --- Update model-specific permissions if name changed ---
     if (body.name && body.name !== oldModelRow.name) {
       const actions = ['view', 'create', 'edit', 'delete', 'edit_own', 'delete_own', 'manage'];
       for (const action of actions) {
-        const permId = `model:${action}:${params.modelId}`;
+        const permId = `model:${action}:${modelId}`;
         let permName = '';
         if (action === 'create') permName = `Create ${body.name} Objects`;
         else if (action === 'edit_own') permName = `Edit Own ${body.name} Objects`;
@@ -183,7 +181,7 @@ export async function PUT(request: Request, { params }: Params) {
     let newProcessedProperties: Property[] = oldPropertiesFromDb.map(prop => ({ ...prop, required: !!prop.required, autoSetOnCreate: !!prop.autoSetOnCreate, autoSetOnUpdate: !!prop.autoSetOnUpdate, isUnique: !!prop.isUnique } as Property));
     
     if (body.properties) {
-      await db.run('DELETE FROM properties WHERE model_id = ?', params.modelId);
+      await db.run('DELETE FROM properties WHERE model_id = ?', modelId);
       
       newProcessedProperties = [];
       for (const prop of body.properties) {
@@ -193,7 +191,7 @@ export async function PUT(request: Request, { params }: Params) {
         
         await db.run(
           'INSERT INTO properties (id, model_id, name, type, relatedModelId, required, relationshipType, unit, precision, autoSetOnCreate, autoSetOnUpdate, isUnique, orderIndex, defaultValue, validationRulesetId, minValue, maxValue) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          propertyId, params.modelId, prop.name, prop.type, prop.relatedModelId,
+          propertyId, modelId, prop.name, prop.type, prop.relatedModelId,
           prop.required ? 1 : 0, prop.relationshipType, prop.unit, prop.precision,
           prop.autoSetOnCreate ? 1 : 0, prop.autoSetOnUpdate ? 1 : 0,
           prop.isUnique ? 1 : 0, prop.orderIndex, prop.defaultValue ?? null,
@@ -202,7 +200,7 @@ export async function PUT(request: Request, { params }: Params) {
           propMaxValueForDb
         );
         newProcessedProperties.push({
-            ...prop, id: propertyId, model_id: params.modelId, 
+            ...prop, id: propertyId, model_id: modelId, 
             required: !!prop.required, autoSetOnCreate: !!prop.autoSetOnCreate, autoSetOnUpdate: !!prop.autoSetOnUpdate, isUnique: !!prop.isUnique,
             defaultValue: prop.defaultValue, validationRulesetId: prop.validationRulesetId ?? null, minValue: propMinValueForDb, maxValue: propMaxValueForDb
         } as Property);
@@ -218,12 +216,12 @@ export async function PUT(request: Request, { params }: Params) {
         if (workflowForUpdate) {
           const statesForUpdate: WorkflowState[] = await db.all('SELECT id, isInitial FROM workflow_states WHERE workflowId = ?', body.workflowId);
           const initialStateForUpdate = statesForUpdate.find(s => s.isInitial === 1 || s.isInitial === true);
-          await db.run("UPDATE data_objects SET currentStateId = ? WHERE model_id = ?", initialStateForUpdate?.id || null, params.modelId);
+          await db.run("UPDATE data_objects SET currentStateId = ? WHERE model_id = ?", initialStateForUpdate?.id || null, modelId);
         } else {
-          await db.run("UPDATE data_objects SET currentStateId = NULL WHERE model_id = ?", params.modelId);
+          await db.run("UPDATE data_objects SET currentStateId = NULL WHERE model_id = ?", modelId);
         }
       } else { 
-        await db.run("UPDATE data_objects SET currentStateId = NULL WHERE model_id = ?", params.modelId);
+        await db.run("UPDATE data_objects SET currentStateId = NULL WHERE model_id = ?", modelId);
       }
     }
     
@@ -234,12 +232,12 @@ export async function PUT(request: Request, { params }: Params) {
     if (finalName !== oldModelRow.name) changelogDetails.push({ field: 'name', oldValue: oldModelRow.name, newValue: finalName });
     if (finalDescription !== oldModelRow.description) changelogDetails.push({ field: 'description', oldValue: oldModelRow.description, newValue: finalDescription });
     
-    // Normalize old and new for logging comparison
-    const oldGroupIdForLog = oldModelRow.model_group_id ?? defaultGroupId;
-    const newGroupIdForLog = (body.modelGroupId === null || body.modelGroupId === undefined) ? defaultGroupId : body.modelGroupId;
+    // Normalize old and new model group IDs for accurate comparison
+    const oldGroupIdForLog = oldModelRow.model_group_id || defaultGroupId;
+    const newGroupIdForLog = finalModelGroupIdToSave || defaultGroupId;
 
-    if (Object.prototype.hasOwnProperty.call(body, 'modelGroupId') && newGroupIdForLog !== oldGroupIdForLog) {
-        changelogDetails.push({ field: 'modelGroupId', oldValue: oldGroupIdForLog, newValue: newGroupIdForLog });
+    if (newGroupIdForLog !== oldGroupIdForLog) {
+        changelogDetails.push({ field: 'modelGroupId', oldValue: oldModelRow.model_group_id, newValue: body.modelGroupId });
     }
     
     const safeJsonParse = (jsonString: string | null | undefined, defaultValue: any = []) => {
@@ -266,14 +264,14 @@ export async function PUT(request: Request, { params }: Params) {
         const changelogId = crypto.randomUUID();
         await db.run(
           'INSERT INTO structural_changelog (id, timestamp, userId, entityType, entityId, entityName, action, changes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-          changelogId, currentTimestamp, currentUser.id, 'Model', params.modelId, finalName, 'UPDATE', JSON.stringify(changelogDetails)
+          changelogId, currentTimestamp, currentUser.id, 'Model', modelId, finalName, 'UPDATE', JSON.stringify(changelogDetails)
         );
     }
 
     await db.run('COMMIT');
 
-    const refreshedModelRow = await db.get('SELECT * FROM models WHERE id = ?', params.modelId);
-    const refreshedPropertiesFromDb = await db.all('SELECT * FROM properties WHERE model_id = ? ORDER BY orderIndex ASC', params.modelId);
+    const refreshedModelRow = await db.get('SELECT * FROM models WHERE id = ?', modelId);
+    const refreshedPropertiesFromDb = await db.all('SELECT * FROM properties WHERE model_id = ? ORDER BY orderIndex ASC', modelId);
 
     let refreshedParsedDpn: string[] = [];
     if (refreshedModelRow.displayPropertyNames && typeof refreshedModelRow.displayPropertyNames === 'string') {
@@ -307,7 +305,7 @@ export async function PUT(request: Request, { params }: Params) {
 
   } catch (error: any) {
     await db.run('ROLLBACK').catch(rbError => console.error("API Error (PUT /models/[modelId]): Rollback failed.", rbError));
-    console.error(`API Error (PUT /models/${params.modelId}): Failed to update model.`, error);
+    console.error(`API Error (PUT /models/${modelId}): Failed to update model.`, error);
     return NextResponse.json({ error: 'Failed to update model due to a server error.', details: error.message }, { status: 500 });
   }
 }
