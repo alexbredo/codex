@@ -87,7 +87,7 @@ export async function POST(request: Request, { params }: Params) {
         const createdObjectIds: Record<number, string> = {}; // { stepIndex: objectId }
         const resolvedStepData = { ...stepData };
 
-        // 1. Pre-fetch data for all 'lookup' steps
+        // 1. Pre-fetch and enrich data for all 'lookup' steps first
         for (let i = 0; i < wizard.steps.length; i++) {
             const stepToResolve = wizard.steps[i];
             const dataForStep = resolvedStepData[i];
@@ -169,6 +169,16 @@ export async function POST(request: Request, { params }: Params) {
         
     } else {
         // --- INTERMEDIATE STEP SAVE ---
+        if (stepType === 'lookup' && lookupObjectId) {
+            const modelForStep = await db.get('SELECT id FROM models WHERE id = ?', currentStep.modelId);
+            if (modelForStep) {
+                const objectFromDb = await db.get('SELECT data FROM data_objects WHERE id = ? AND model_id = ?', lookupObjectId, modelForStep.id);
+                if (objectFromDb) {
+                    // Enrich the step data with the formData for the preview on the admin page
+                    stepData[stepIndex].formData = JSON.parse(objectFromDb.data);
+                }
+            }
+        }
         await db.run('UPDATE wizard_runs SET currentStepIndex = ?, stepData = ?, updatedAt = ? WHERE id = ?', stepIndex, JSON.stringify(stepData), new Date().toISOString(), runId);
     }
     
@@ -181,4 +191,3 @@ export async function POST(request: Request, { params }: Params) {
     return NextResponse.json({ error: 'Failed to process wizard step', details: error.message }, { status: 500 });
   }
 }
-
