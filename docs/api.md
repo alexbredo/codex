@@ -188,6 +188,11 @@ These endpoints manage the core data structures of the application.
 - **`GET /{wizardId}`**: Get a single wizard. (Requires `admin:manage_wizards` permission).
 - **`PUT /{wizardId}`**: Update a wizard. (Requires `admin:manage_wizards` permission).
 - **`DELETE /{wizardId}`**: Delete a wizard. (Requires `admin:manage_wizards` permission).
+- **`POST /{wizardId}/start`**: Initiates a new transactional wizard run. Returns a unique `runId`. (Authenticated).
+- **`GET /run/{runId}`**: Retrieves the current state of a wizard run, including the wizard definition and data for completed steps. (Owner only).
+- **`POST /run/{runId}`**: Submits data for the current step of a wizard run. Handles the final transactional commit on the last step. (Owner only).
+- **`DELETE /run/{runId}`**: Abandons an in-progress wizard run, rolling back any temporary data. (Owner only).
+- **`GET /runs`**: Retrieves a list of the current user's in-progress wizard runs.
 
 ---
 

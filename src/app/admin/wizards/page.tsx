@@ -23,11 +23,12 @@ import { Badge } from '@/components/ui/badge';
 
 
 function WizardsAdminPageInternal() {
-  const { wizards, deleteWizard, isReady: dataIsReady, fetchData } = useData();
+  const { wizards, deleteWizard, isReady: dataIsReady, fetchData, formatApiError } = useData();
   const { toast } = useToast();
   const router = useRouter();
   
   const [searchTerm, setSearchTerm] = useState('');
+  const [isStartingWizard, setIsStartingWizard] = useState<string | null>(null);
 
   useEffect(() => {
     fetchData('Navigated to Wizard Admin');
@@ -57,8 +58,21 @@ function WizardsAdminPageInternal() {
     }
   };
   
-  const handleRunWizard = (wizardId: string) => {
-    router.push(`/wizards/run/${wizardId}`);
+  const handleRunWizard = async (wizardId: string) => {
+    setIsStartingWizard(wizardId);
+    try {
+      const response = await fetch(`/api/codex-structure/wizards/${wizardId}/start`, { method: 'POST' });
+      if (!response.ok) {
+        const errorMsg = await formatApiError(response, 'Failed to start wizard run.');
+        throw new Error(errorMsg);
+      }
+      const { runId } = await response.json();
+      router.push(`/wizards/run/${runId}`);
+    } catch (error: any) {
+      toast({ variant: 'destructive', title: 'Error Starting Wizard', description: error.message });
+    } finally {
+      setIsStartingWizard(null);
+    }
   };
 
   if (!dataIsReady) {
@@ -134,8 +148,9 @@ function WizardsAdminPageInternal() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right space-x-1">
-                     <Button variant="outline" size="sm" onClick={() => handleRunWizard(w.id)}>
-                        <PlayCircle className="h-4 w-4 mr-2"/> Run
+                     <Button variant="outline" size="sm" onClick={() => handleRunWizard(w.id)} disabled={isStartingWizard === w.id}>
+                        {isStartingWizard === w.id ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <PlayCircle className="h-4 w-4 mr-2"/>}
+                        Run
                     </Button>
                     <Button variant="ghost" size="icon" onClick={() => handleEdit(w.id)} className="hover:text-primary">
                       <Edit className="h-4 w-4" />
@@ -171,3 +186,4 @@ function WizardsAdminPageInternal() {
 }
 
 export default withAuth(WizardsAdminPageInternal, 'admin:manage_wizards');
+

@@ -14,7 +14,7 @@ import {
   SidebarGroupLabel,
   SidebarMenuSkeleton,
 } from '@/components/ui/sidebar';
-import { LayoutDashboard, DatabaseZap, ListChecks, FolderOpen, FolderKanban, Users, Workflow as WorkflowIcon, ShieldCheck, History, KeyRound, Wand2, PlayCircle } from 'lucide-react';
+import { LayoutDashboard, DatabaseZap, ListChecks, FolderOpen, FolderKanban, Users, Workflow as WorkflowIcon, ShieldCheck, History, KeyRound, Wand2, PlayCircle, NotebookText } from 'lucide-react';
 import { useData } from '@/contexts/data-context';
 import { useAuth } from '@/contexts/auth-context';
 import type { Model } from '@/lib/types';
@@ -126,18 +126,30 @@ export default function Navigation() {
           <>
             <SidebarSeparator className="my-2 mx-2 !w-auto" />
             <SidebarGroupLabel className="px-2 text-xs text-sidebar-foreground/70 group-data-[collapsible=icon]:justify-center">
-                <PlayCircle size={16} className="mr-2 group-data-[collapsible=icon]:mr-0" />
-                <span className="group-data-[collapsible=icon]:hidden">Run Wizards</span>
+                <Wand2 size={16} className="mr-2 group-data-[collapsible=icon]:mr-0" />
+                <span className="group-data-[collapsible=icon]:hidden">Wizards</span>
             </SidebarGroupLabel>
+            <SidebarMenuItem>
+                <Link href="/wizards/runs" passHref legacyBehavior>
+                    <SidebarMenuButton
+                        isActive={pathname.startsWith('/wizards/runs')}
+                        tooltip={{ children: "My In-Progress Runs", side: 'right', align: 'center' }}
+                        aria-label="My In-Progress Runs"
+                    >
+                        <NotebookText size={18} />
+                        <span className="truncate">My Active Runs</span>
+                    </SidebarMenuButton>
+                </Link>
+            </SidebarMenuItem>
             {wizards.map((wizard) => (
                 <SidebarMenuItem key={wizard.id}>
-                    <Link href={`/wizards/run/${wizard.id}`} passHref legacyBehavior>
+                    <Link href={`/wizards/run-start-handler?wizardId=${wizard.id}`} passHref legacyBehavior>
                         <SidebarMenuButton
                             isActive={pathname.startsWith(`/wizards/run/${wizard.id}`)}
                             tooltip={{ children: `Run: ${wizard.name}`, side: 'right', align: 'center' }}
                             aria-label={wizard.name}
                         >
-                            <Wand2 size={18} />
+                            <PlayCircle size={18} />
                             <span className="truncate">{wizard.name}</span>
                         </SidebarMenuButton>
                     </Link>
@@ -181,3 +193,4 @@ export default function Navigation() {
     </SidebarMenu>
   );
 }
+
