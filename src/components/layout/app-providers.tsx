@@ -48,9 +48,12 @@ function ConditionalLayout({ children }: { children: ReactNode }) {
           </div>
         </div>
         <main className="flex-1 flex flex-col">
+          {/* This header structure MUST exactly mirror the one in app-layout.tsx */}
           <header className="sticky top-0 z-10 flex items-center h-14 px-4 border-b bg-background/80 backdrop-blur-sm">
-             {/* Left Section (placeholder) */}
-            <div className="flex flex-1 items-center"></div>
+            {/* Left Section (placeholder for SidebarTrigger) */}
+            <div className="flex flex-1 items-center">
+              <div className="md:hidden" />
+            </div>
             {/* Center Section (Search skeleton) */}
             <div className="flex flex-1 items-center justify-center">
               <Skeleton className="w-64 h-9" />
