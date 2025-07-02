@@ -15,6 +15,17 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -1422,9 +1433,40 @@ export default function DataObjectsPage() {
                     </DialogContent>
                 </Dialog>
             )}
-            <Button variant="destructive" size="sm" onClick={() => setObjectToDelete({id: Array.from(selectedObjectIds).join(','), name: `${selectedObjectIds.size} items`} as any)}>
-                <Trash2 className="mr-2 h-4 w-4" /> Batch Delete
-            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" size="sm">
+                  <Trash2 className="mr-2 h-4 w-4" /> Batch Delete
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will move {selectedObjectIds.size} item(s) to the recycle bin. Any relationships pointing to these items will be broken. This action cannot be easily undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={async () => {
+                        try {
+                            await batchDeleteAcrossModels(Array.from(selectedObjectIds));
+                            handleDeletionSuccess();
+                        } catch (err: any) {
+                            toast({
+                                variant: 'destructive',
+                                title: 'Batch Deletion Failed',
+                                description: err.message || "An unknown error occurred.",
+                            });
+                        }
+                    }}
+                  >
+                    Delete {selectedObjectIds.size} items
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
             <Button variant="outline" size="sm" onClick={() => setSelectedObjectIds(new Set())} className="ml-auto">Clear Selection</Button>
         </div>
       )}
@@ -1560,4 +1602,5 @@ export default function DataObjectsPage() {
     </div>
   );
 }
+
 
