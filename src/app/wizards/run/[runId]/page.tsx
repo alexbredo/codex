@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -79,12 +78,12 @@ function RunWizardPageInternal() {
   const queryClient = useQueryClient();
   const { getModelById, validationRulesets, getObjectsByModelId, models: allModels, getAllObjects, isReady: dataContextIsReady } = useData();
   
-  const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const [currentStepIndex, setCurrentStepIndex] = React.useState(0);
   const [isFinishing, setIsFinishing] = React.useState(false);
   
   // State for lookup steps
-  const [selectedLookupId, setSelectedLookupId] = useState<string>('');
-  const [isLookupPopoverOpen, setIsLookupPopoverOpen] = useState(false);
+  const [selectedLookupId, setSelectedLookupId] = React.useState<string>('');
+  const [isLookupPopoverOpen, setIsLookupPopoverOpen] = React.useState(false);
 
   const { data: runState, isLoading, error } = useQuery<WizardRunState>({
     queryKey: ['wizardRun', runId],
@@ -149,12 +148,6 @@ function RunWizardPageInternal() {
   
   React.useEffect(() => { form.resolver = zodResolver(dynamicSchema) as any; }, [dynamicSchema, form]);
 
-  if (isLoading || !dataContextIsReady) return <div className="flex flex-col justify-center items-center h-screen"><Loader2 className="h-8 w-8 animate-spin text-primary" /><p className="mt-4 text-muted-foreground">Loading Wizard...</p></div>;
-  if (error) return <div className="container mx-auto py-8 text-center"><ShieldAlert className="h-12 w-12 text-destructive mx-auto mb-4" /><h2 className="text-2xl font-semibold text-destructive mb-2">Error Loading Wizard</h2><p className="text-muted-foreground mb-4">{error.message}</p></div>;
-  if (!runState) return <div className="container mx-auto py-8 text-center"><p>No wizard run data found.</p></div>
-
-  const { wizard } = runState;
-  
   const handleNextStep = (values: Record<string, any>) => {
     if (currentStep?.stepType === 'create') {
         stepMutation.mutate({ runId, stepIndex: currentStepIndex, stepType: 'create', formData: values });
