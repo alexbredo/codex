@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getCurrentUserFromCookie } from '@/lib/auth';
@@ -32,7 +33,7 @@ export async function GET(request: Request, { params }: Params) {
       return NextResponse.json({ error: 'Associated wizard definition not found' }, { status: 404 });
     }
     
-    wizard.steps = await db.all('SELECT * FROM wizard_steps WHERE wizardId = ? ORDER BY orderIndex ASC', wizard.id);
+    wizard.steps = await db.all('SELECT *, step_type as stepType FROM wizard_steps WHERE wizardId = ? ORDER BY orderIndex ASC', wizard.id);
     wizard.steps.forEach(step => {
         step.propertyIds = JSON.parse(step.propertyIds || '[]');
         step.propertyMappings = JSON.parse(step.propertyMappings || '[]');
@@ -78,4 +79,5 @@ export async function DELETE(request: Request, { params }: Params) {
         return NextResponse.json({ error: 'Failed to abandon wizard run', details: error.message }, { status: 500 });
     }
 }
+
 

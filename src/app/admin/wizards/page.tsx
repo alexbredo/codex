@@ -4,6 +4,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import {
@@ -16,19 +17,53 @@ import {
 import { Input } from '@/components/ui/input';
 import { useData } from '@/contexts/data-context';
 import { withAuth } from '@/contexts/auth-context';
-import type { Wizard } from '@/lib/types';
-import { PlusCircle, Edit, Trash2, Search, Loader2, Wand2, StepForward, PlayCircle } from 'lucide-react';
+import type { Wizard, WizardRunSummary } from '@/lib/types';
+import { PlusCircle, Edit, Trash2, Search, Loader2, Wand2, StepForward, PlayCircle, Redo, Eraser } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
+import { formatDistanceToNow } from 'date-fns';
+
+async function fetchActiveRuns(): Promise<WizardRunSummary[]> {
+  const response = await fetch('/api/codex-structure/wizards/runs');
+  if (!response.ok) throw new Error('Failed to fetch active wizard runs.');
+  return response.json();
+}
+
+async function abandonRun(runId: string) {
+  const response = await fetch(`/api/codex-structure/wizards/run/${runId}`, { method: 'DELETE' });
+  if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to abandon wizard run.');
+  }
+}
 
 
 function WizardsAdminPageInternal() {
   const { wizards, deleteWizard, isReady: dataIsReady, fetchData, formatApiError } = useData();
   const { toast } = useToast();
   const router = useRouter();
+  const queryClient = useQueryClient();
   
   const [searchTerm, setSearchTerm] = useState('');
   const [isStartingWizard, setIsStartingWizard] = useState<string | null>(null);
+
+  const { data: activeRuns = [] } = useQuery<WizardRunSummary[]>({
+    queryKey: ['activeWizardRuns'],
+    queryFn: fetchActiveRuns,
+    enabled: dataIsReady,
+  });
+
+  const abandonMutation = useMutation({
+    mutationFn: abandonRun,
+    onSuccess: () => {
+        toast({ title: 'Wizard Run Abandoned', description: 'The in-progress run has been deleted.' });
+        queryClient.invalidateQueries({ queryKey: ['activeWizardRuns'] });
+    },
+    onError: (err: Error) => {
+        toast({ variant: 'destructive', title: 'Error', description: err.message });
+    }
+  });
+
 
   useEffect(() => {
     fetchData('Navigated to Wizard Admin');
@@ -58,7 +93,7 @@ function WizardsAdminPageInternal() {
     }
   };
   
-  const handleRunWizard = async (wizardId: string) => {
+  const handleStartNewWizardRun = async (wizardId: string) => {
     setIsStartingWizard(wizardId);
     try {
       const response = await fetch(`/api/codex-structure/wizards/${wizardId}/start`, { method: 'POST' });
@@ -126,60 +161,86 @@ function WizardsAdminPageInternal() {
           </CardContent>
         </Card>
       ) : (
-        <Card className="shadow-lg">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Steps</TableHead>
-                <TableHead className="text-right w-[200px]">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredWizards.map((w) => (
-                <TableRow key={w.id}>
-                  <TableCell className="font-medium">{w.name}</TableCell>
-                  <TableCell className="text-muted-foreground truncate max-w-xs">{w.description || 'N/A'}</TableCell>
-                  <TableCell>
-                    <Badge variant="secondary" className="flex items-center gap-1.5 w-16 justify-center">
-                        <StepForward className="h-3 w-3" />
-                        {w.steps.length}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right space-x-1">
-                     <Button variant="outline" size="sm" onClick={() => handleRunWizard(w.id)} disabled={isStartingWizard === w.id}>
-                        {isStartingWizard === w.id ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <PlayCircle className="h-4 w-4 mr-2"/>}
-                        Run
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => handleEdit(w.id)} className="hover:text-primary">
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon" className="hover:text-destructive">
-                          <Trash2 className="h-4 w-4" />
+        <div className="space-y-6">
+          {filteredWizards.map((wizard) => {
+            const runsForThisWizard = activeRuns.filter(r => r.wizardId === wizard.id);
+            return (
+              <Card key={wizard.id} className="shadow-lg">
+                <CardHeader className="flex flex-row justify-between items-start">
+                    <div>
+                        <CardTitle>{wizard.name}</CardTitle>
+                        <CardDescription className="max-w-prose">{wizard.description || 'No description provided.'}</CardDescription>
+                         <div className="text-xs text-muted-foreground pt-1 flex items-center">
+                            <StepForward className="mr-1.5 h-3 w-3" /> {wizard.steps.length} {wizard.steps.length === 1 ? 'Step' : 'Steps'}
+                        </div>
+                    </div>
+                    <div className="flex-shrink-0 flex items-center gap-2">
+                        <Button variant="ghost" size="sm" onClick={() => handleEdit(wizard.id)} className="hover:text-primary">
+                            <Edit className="h-4 w-4 mr-1" /> Edit
                         </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            This action cannot be undone. This will permanently delete the wizard "{w.name}".
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => handleDelete(w.id, w.name)}>Delete</AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Card>
+                        <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                                <Button variant="ghost" size="sm" className="hover:text-destructive">
+                                <Trash2 className="h-4 w-4 mr-1" /> Delete
+                                </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                    This action cannot be undone. This will permanently delete the wizard "{wizard.name}".
+                                </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleDelete(wizard.id, wizard.name)}>Delete</AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
+                         <Button variant="outline" size="sm" onClick={() => handleStartNewWizardRun(wizard.id)} disabled={isStartingWizard === wizard.id}>
+                            {isStartingWizard === wizard.id ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <PlayCircle className="h-4 w-4 mr-2"/>}
+                            Run Wizard
+                        </Button>
+                    </div>
+                </CardHeader>
+                {runsForThisWizard.length > 0 && (
+                    <CardContent>
+                        <div className="bg-muted/50 border rounded-lg p-3">
+                            <h4 className="font-semibold text-sm mb-2">In-Progress Runs</h4>
+                            <div className="space-y-2">
+                                {runsForThisWizard.map(run => (
+                                    <div key={run.id} className="flex justify-between items-center bg-background p-2 rounded-md">
+                                        <div>
+                                            <p className="text-sm">Step {run.currentStepIndex + 2} of {wizard.steps.length}</p>
+                                            <p className="text-xs text-muted-foreground">Last updated: {formatDistanceToNow(new Date(run.updatedAt), { addSuffix: true })}</p>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <Button size="sm" variant="secondary" onClick={() => router.push(`/wizards/run/${run.id}`)}>
+                                                <Redo className="h-4 w-4 mr-2"/> Resume
+                                            </Button>
+                                             <AlertDialog>
+                                                <AlertDialogTrigger asChild>
+                                                    <Button variant="destructive" size="sm" disabled={abandonMutation.isPending}>
+                                                        {abandonMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin"/> : <Eraser className="h-4 w-4 mr-2"/>}
+                                                         Abandon
+                                                    </Button>
+                                                </AlertDialogTrigger>
+                                                <AlertDialogContent>
+                                                    <AlertDialogHeader><AlertDialogTitle>Abandon this run?</AlertDialogTitle><AlertDialogDescription>This will delete this in-progress run and any data entered. This cannot be undone.</AlertDialogDescription></AlertDialogHeader>
+                                                    <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => abandonMutation.mutate(run.id)}>Abandon Run</AlertDialogAction></AlertDialogFooter>
+                                                </AlertDialogContent>
+                                            </AlertDialog>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </CardContent>
+                )}
+              </Card>
+            );
+          })}
+        </div>
       )}
     </div>
   );
