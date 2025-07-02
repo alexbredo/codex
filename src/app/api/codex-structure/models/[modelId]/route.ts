@@ -130,13 +130,18 @@ export async function PUT(request: Request, { params }: Params) {
     const finalDisplayPropertyNames = 'displayPropertyNames' in body ? JSON.stringify(body.displayPropertyNames || []) : oldModelRow.displayPropertyNames;
     const finalWorkflowId = 'workflowId' in body ? body.workflowId : oldModelRow.workflowId;
     
+    // --- Start of Corrected Model Group Logic ---
+    let finalModelGroupIdToSave: string | null;
     const defaultGroupId = "00000000-0000-0000-0000-000000000001";
-    const normalizedOldGroupId = oldModelRow.model_group_id ?? defaultGroupId;
     
-    let finalModelGroupId = normalizedOldGroupId;
-    if ('modelGroupId' in body) {
-        finalModelGroupId = (body.modelGroupId === null || body.modelGroupId === undefined) ? defaultGroupId : body.modelGroupId;
+    if (Object.prototype.hasOwnProperty.call(body, 'modelGroupId')) {
+        // If the key is present, use its value. Map `null` to the actual default group ID for saving.
+        finalModelGroupIdToSave = (body.modelGroupId === null || body.modelGroupId === undefined) ? defaultGroupId : body.modelGroupId;
+    } else {
+        // If the key is not in the request, keep the existing value.
+        finalModelGroupIdToSave = oldModelRow.model_group_id;
     }
+    // --- End of Corrected Model Group Logic ---
 
     // ================================================================
     // Step 2: Update core model metadata in the database
@@ -145,7 +150,7 @@ export async function PUT(request: Request, { params }: Params) {
         'UPDATE models SET name = ?, description = ?, model_group_id = ?, displayPropertyNames = ?, workflowId = ? WHERE id = ?',
         finalName,
         finalDescription,
-        finalModelGroupId,
+        finalModelGroupIdToSave, // Use the correctly determined ID
         finalDisplayPropertyNames,
         finalWorkflowId,
         params.modelId
@@ -229,8 +234,12 @@ export async function PUT(request: Request, { params }: Params) {
     if (finalName !== oldModelRow.name) changelogDetails.push({ field: 'name', oldValue: oldModelRow.name, newValue: finalName });
     if (finalDescription !== oldModelRow.description) changelogDetails.push({ field: 'description', oldValue: oldModelRow.description, newValue: finalDescription });
     
-    if (finalModelGroupId !== normalizedOldGroupId) {
-        changelogDetails.push({ field: 'modelGroupId', oldValue: normalizedOldGroupId, newValue: finalModelGroupId });
+    // Normalize old and new for logging comparison
+    const oldGroupIdForLog = oldModelRow.model_group_id ?? defaultGroupId;
+    const newGroupIdForLog = (body.modelGroupId === null || body.modelGroupId === undefined) ? defaultGroupId : body.modelGroupId;
+
+    if (Object.prototype.hasOwnProperty.call(body, 'modelGroupId') && newGroupIdForLog !== oldGroupIdForLog) {
+        changelogDetails.push({ field: 'modelGroupId', oldValue: oldGroupIdForLog, newValue: newGroupIdForLog });
     }
     
     const safeJsonParse = (jsonString: string | null | undefined, defaultValue: any = []) => {

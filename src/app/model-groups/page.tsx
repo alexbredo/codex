@@ -199,18 +199,22 @@ function ModelGroupsPageInternal() {
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead className="w-[150px] text-center">Models Count</TableHead>
-                <TableHead className="text-right w-[150px]">Actions</TableHead>
+                <TableHead className="hidden md:table-cell">Description</TableHead>
+                <TableHead className="hidden lg:table-cell">ID</TableHead>
+                <TableHead className="w-[120px] text-center">Models</TableHead>
+                <TableHead className="text-right w-[120px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredGroups.map((group) => (
                 <TableRow key={group.id}>
                   <TableCell className="font-medium">{group.name}</TableCell>
-                  <TableCell className="text-muted-foreground truncate max-w-xs">{group.description || 'N/A'}</TableCell>
+                  <TableCell className="hidden md:table-cell text-muted-foreground truncate max-w-xs">{group.description || 'N/A'}</TableCell>
+                  <TableCell className="hidden lg:table-cell">
+                     <Badge variant="outline" className="font-mono text-xs">{group.id}</Badge>
+                  </TableCell>
                   <TableCell className="text-center">
-                    <Badge variant={getModelCountForGroup(group.id) === 0 ? "outline" : "secondary"} className="flex items-center justify-center gap-1.5 w-20 mx-auto">
+                    <Badge variant={getModelCountForGroup(group.id) === 0 ? "outline" : "secondary"} className="flex items-center justify-center gap-1.5 w-16 mx-auto">
                       <DatabaseZap className="h-3.5 w-3.5" />
                       {getModelCountForGroup(group.id)}
                     </Badge>
