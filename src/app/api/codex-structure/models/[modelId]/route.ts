@@ -113,6 +113,7 @@ export async function PUT(request: Request, { params }: Params) {
   try {
     await db.run('BEGIN TRANSACTION');
     const body: Partial<Model> & { properties?: Property[] } = await request.json();
+    console.log('[API PUT /model] Received body for update:', JSON.stringify(body, null, 2));
     const currentTimestamp = new Date().toISOString();
     
     const oldModelRow = await db.get('SELECT * FROM models WHERE id = ?', params.modelId);
@@ -133,15 +134,18 @@ export async function PUT(request: Request, { params }: Params) {
     // --- Correct handling for modelGroupId ---
     const defaultGroupId = "00000000-0000-0000-0000-000000000001";
     let finalModelGroupId = oldModelRow.model_group_id; // Default to old value
+    console.log('[API PUT /model] Initial finalModelGroupId (from DB):', finalModelGroupId);
 
     if (Object.prototype.hasOwnProperty.call(body, 'modelGroupId')) {
+        console.log('[API PUT /model] modelGroupId found in request body:', body.modelGroupId);
         // If the client sent the key, determine the value.
         // A null/undefined value from the client signifies the "Default" group.
         finalModelGroupId = (body.modelGroupId === null || body.modelGroupId === undefined)
             ? defaultGroupId
             : body.modelGroupId;
+        console.log('[API PUT /model] Calculated finalModelGroupId:', finalModelGroupId);
     }
-
+    
     await db.run(
         'UPDATE models SET name = ?, description = ?, model_group_id = ?, displayPropertyNames = ?, workflowId = ? WHERE id = ?',
         finalName,
@@ -230,7 +234,10 @@ export async function PUT(request: Request, { params }: Params) {
     if (finalName !== oldModelRow.name) changelogDetails.push({ field: 'name', oldValue: oldModelRow.name, newValue: finalName });
     if (finalDescription !== oldModelRow.description) changelogDetails.push({ field: 'description', oldValue: oldModelRow.description, newValue: finalDescription });
     
+    console.log(`[API PUT /model] Comparing finalModelGroupId ('${finalModelGroupId}') with old DB value ('${oldModelRow.model_group_id}').`);
+    console.log('[API PUT /model] Are they different?', finalModelGroupId !== oldModelRow.model_group_id);
     if (finalModelGroupId !== oldModelRow.model_group_id) {
+        console.log('[API PUT /model] Change detected for modelGroupId, adding to changelog.');
         changelogDetails.push({ field: 'modelGroupId', oldValue: oldModelRow.model_group_id, newValue: finalModelGroupId });
     }
     
@@ -253,7 +260,8 @@ export async function PUT(request: Request, { params }: Params) {
     if(JSON.stringify(oldPropsForLog) !== JSON.stringify(newPropsForLog)){
         changelogDetails.push({ field: 'properties', oldValue: oldPropsForLog, newValue: newPropsForLog });
     }
-
+    
+    console.log('[API PUT /model] Final changelogDetails array:', changelogDetails);
     if (changelogDetails.length > 0) {
         const changelogId = crypto.randomUUID();
         await db.run(
@@ -369,3 +377,5 @@ export async function DELETE(request: Request, { params }: Params) {
     return NextResponse.json({ error: 'Failed to delete model', details: errorMessage }, { status: 500 });
   }
 }
+
+    
