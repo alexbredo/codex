@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState } from 'react';
@@ -65,8 +64,8 @@ export default function CreateShareLinkDialog({ modelId, modelName, objectId, ob
     onSuccess: (data) => {
       const shareUrl = `${window.location.origin}/share/${data.id}`;
       setGeneratedLink(shareUrl);
-      queryClient.invalidateQueries({ queryKey: ['shareLinks', objectId] });
-      queryClient.invalidateQueries({ queryKey: ['shareLinksForModel', modelId] });
+      const queryKey = objectId ? ['shareLinks', objectId] : ['shareLinksForModel', modelId];
+      queryClient.invalidateQueries({ queryKey: queryKey });
     },
     onError: (error: Error) => {
       toast({
@@ -140,9 +139,9 @@ export default function CreateShareLinkDialog({ modelId, modelName, objectId, ob
       </DialogTrigger>
       <DialogContent className="sm:max-w-2xl flex flex-col max-h-[90vh]">
         <DialogHeader>
-          <DialogTitle>Share {objectName ? `"${objectName}"` : (modelName ? `${modelName} Form` : 'Form')}</DialogTitle>
+          <DialogTitle>Share {objectName ? `"${objectName}"` : (modelName ? `${modelName} Form` : 'Item')}</DialogTitle>
           <DialogDescription>
-            Generate a public link to {isCreateMode ? 'allow others to create new entries.' : 'share or allow edits to this object.'}
+            {isCreateMode ? 'Generate a public link to allow others to create new entries.' : 'Manage public links to share or allow edits to this object.'}
           </DialogDescription>
         </DialogHeader>
         
@@ -165,6 +164,7 @@ export default function CreateShareLinkDialog({ modelId, modelName, objectId, ob
             </div>
           ) : (
             <div className="space-y-4">
+              <h4 className="font-medium text-foreground">Create New Link</h4>
               {!isCreateMode && (
                 <div className="grid grid-cols-4 items-center gap-4">
                   <Label htmlFor="link-type" className="text-right">Link Type</Label>
@@ -208,31 +208,33 @@ export default function CreateShareLinkDialog({ modelId, modelName, objectId, ob
                       </Label>
                   </div>
               </div>
+               <div className="grid grid-cols-4 items-center gap-4">
+                  <div />
+                  <div className="col-span-3">
+                     <Button onClick={handleSubmit} disabled={mutation.isPending}>
+                        {mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        Generate Link
+                      </Button>
+                  </div>
+              </div>
             </div>
           )}
         </div>
         
-        {isCreateMode && !generatedLink && (
+        {!generatedLink && (
             <div className="flex-grow overflow-y-auto -mx-6 px-6 pt-4 border-t space-y-4">
                 <div className="space-y-2">
-                    <h4 className="font-medium text-foreground">Existing Form Links</h4>
-                    <p className="text-xs text-muted-foreground">Manage existing public links for creating new "{modelName || 'items'}".</p>
+                    <h4 className="font-medium text-foreground">Existing Links</h4>
+                    <p className="text-xs text-muted-foreground">Manage existing public links for this {objectId ? 'object' : 'form'}.</p>
                 </div>
-                <div className="mt-4">
-                    <ShareLinkManager modelId={modelId} />
+                <div className="mt-4 -mx-4">
+                    <ShareLinkManager modelId={modelId} objectId={objectId} />
                 </div>
             </div>
         )}
         
         <DialogFooter className="flex-shrink-0 pt-4 border-t">
-          {generatedLink ? (
-             <Button onClick={() => setOpen(false)}>Done</Button>
-          ) : (
-            <Button onClick={handleSubmit} disabled={mutation.isPending}>
-              {mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Generate Link
-            </Button>
-          )}
+           <Button variant="outline" onClick={() => setOpen(false)}>Close</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
