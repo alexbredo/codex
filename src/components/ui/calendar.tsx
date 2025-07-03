@@ -3,7 +3,7 @@
 
 import * as React from "react"
 import { ChevronLeft, ChevronRight } from "lucide-react"
-import { DayPicker, useDayPicker, type CaptionProps } from "react-day-picker"
+import { DayPicker, useDayPicker, useNavigation, type CaptionProps } from "react-day-picker"
 
 import { cn } from "@/lib/utils"
 import { buttonVariants } from "@/components/ui/button"
@@ -19,7 +19,8 @@ import { ScrollArea } from "./scroll-area"
 export type CalendarProps = React.ComponentProps<typeof DayPicker>
 
 function CalendarCaption({ displayMonth }: CaptionProps) {
-  const { goToMonth, fromYear, toYear, fromDate, toDate } = useDayPicker()
+  const { goToMonth } = useNavigation()
+  const { fromYear, toYear, fromDate, toDate } = useDayPicker()
 
   const handleMonthChange = (value: string) => {
     const newMonth = new Date(displayMonth)
