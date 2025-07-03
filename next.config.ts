@@ -19,6 +19,10 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  env: {
+    NEXT_PUBLIC_GIT_COMMIT_SHA: process.env.GIT_COMMIT_SHA || 'development',
+    NEXT_PUBLIC_GIT_COMMIT_DATE: process.env.GIT_COMMIT_DATE || new Date().toISOString(),
+  },
 };
 
 export default nextConfig;

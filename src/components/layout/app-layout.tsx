@@ -21,7 +21,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { cn } from '@/lib/utils';
 import { GlobalSearch } from '@/components/dashboard/GlobalSearch';
 import { Skeleton } from '@/components/ui/skeleton';
-
+import { format } from 'date-fns';
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -31,6 +31,12 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const { user, logout, isLoading: authIsLoading } = useAuth();
   const [isSearchOpen, setIsSearchOpen] = React.useState(false);
   const [isClient, setIsClient] = React.useState(false);
+
+  // Version info from environment variables
+  const commitSha = process.env.NEXT_PUBLIC_GIT_COMMIT_SHA;
+  const commitDate = process.env.NEXT_PUBLIC_GIT_COMMIT_DATE;
+  const formattedDate = commitDate ? format(new Date(commitDate), 'yyyy-MM-dd HH:mm') : 'N/A';
+
 
   React.useEffect(() => {
     setIsClient(true);
@@ -96,31 +102,12 @@ export default function AppLayout({ children }: AppLayoutProps) {
           <SidebarContent>
             <Navigation />
           </SidebarContent>
-          <SidebarFooter className="group-data-[collapsible=icon]:hidden">
-            {user ? (
-              <>
-                <div className="px-2 py-1 text-sm text-sidebar-foreground/80">
-                  <UserCircle size={16} className="inline mr-2" />
-                  {user.username} ({userRoleDisplay})
-                </div>
-                <Button variant="ghost" className="justify-start gap-2 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={logout}>
-                  <LogOut size={20} /> Logout
-                </Button>
-              </>
-            ) : (
-              <>
-                <Link href="/login" passHref legacyBehavior>
-                  <Button variant="ghost" className="justify-start gap-2 w-full">
-                    <LogIn size={20} /> Login
-                  </Button>
-                </Link>
-                <Link href="/register" passHref legacyBehavior>
-                  <Button variant="ghost" className="justify-start gap-2 w-full">
-                    <UserPlus size={20} /> Register
-                  </Button>
-                </Link>
-              </>
-            )}
+          <SidebarFooter className="group-data-[collapsible=icon]:hidden text-xs text-sidebar-foreground/60 p-2 space-y-1">
+            <p className="font-semibold text-sidebar-foreground/80">Version</p>
+            <div className="font-mono">
+              <p title={commitSha}>SHA: {commitSha?.substring(0, 7)}</p>
+              <p title={commitDate}>Date: {formattedDate}</p>
+            </div>
           </SidebarFooter>
         </Sidebar>
         
