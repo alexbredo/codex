@@ -22,6 +22,7 @@ export type ViewMode = 'table' | 'gallery' | 'kanban';
 export default function DataObjectsPage() {
   const params = useParams();
   const modelIdFromUrl = params.modelId as string;
+  const router = useRouter();
 
   const {
     // Component State
@@ -100,12 +101,13 @@ export default function DataObjectsPage() {
     isRefreshing,
     handleRefreshData,
     handleEditModelStructure,
-    handleCreateNew,
+    onCreateNew,
     handleDeletionSuccess,
     handleRestoreObject,
     handleStateChangeViaDrag,
     handleView,
     handleEdit,
+    handleSingleDeleteRequest,
     
     // Context-derived data & helpers
     allModels,
@@ -192,9 +194,8 @@ export default function DataObjectsPage() {
         isRefreshing={isRefreshing}
         onRefreshData={handleRefreshData}
         onEditModelStructure={handleEditModelStructure}
-        onExportCSV={handleExportCSV}
-        onCreateNew={handleCreateNew}
-        onNavigateBack={() => useRouter().push('/models')}
+        onCreateNew={onCreateNew}
+        onNavigateBack={() => router.push('/models')}
         viewingRecycleBin={viewingRecycleBin}
         createShareStatus={createShareStatus}
       />
@@ -211,7 +212,7 @@ export default function DataObjectsPage() {
       )}
       
       {localObjects.length === 0 && !searchTerm && !hasActiveColumnFilters ? (
-        <Card className="text-center py-12"> <CardContent> <ListChecks size={48} className="mx-auto text-muted-foreground mb-4" /> <h3 className="text-xl font-semibold">No {viewingRecycleBin ? 'Deleted' : 'Active'} Objects Found</h3> <p className="text-muted-foreground mb-4"> There are no {viewingRecycleBin ? 'deleted' : 'active'} data objects for the model "{currentModel.name}" yet. </p> {!viewingRecycleBin && hasPermission('objects:create') && <Button onClick={handleCreateNew} variant="default"> <PlusCircle className="mr-2 h-4 w-4" /> Create First Object </Button>} </CardContent> </Card>
+        <Card className="text-center py-12"> <CardContent> <ListChecks size={48} className="mx-auto text-muted-foreground mb-4" /> <h3 className="text-xl font-semibold">No {viewingRecycleBin ? 'Deleted' : 'Active'} Objects Found</h3> <p className="text-muted-foreground mb-4"> There are no {viewingRecycleBin ? 'deleted' : 'active'} data objects for the model "{currentModel.name}" yet. </p> {!viewingRecycleBin && hasPermission('objects:create') && <Button onClick={onCreateNew} variant="default"> <PlusCircle className="mr-2 h-4 w-4" /> Create First Object </Button>} </CardContent> </Card>
       ) : localObjects.length === 0 && (searchTerm || hasActiveColumnFilters) ? (
          <Card className="text-center py-12"> <CardContent> <SearchIconLucide size={48} className="mx-auto text-muted-foreground mb-4" /> <h3 className="text-xl font-semibold">No Results Found</h3> <p className="text-muted-foreground mb-4"> Your {searchTerm && hasActiveColumnFilters ? "search and column filters" : searchTerm ? "search" : "column filters"} did not match any {viewingRecycleBin ? 'deleted' : 'active'} {currentModel.name.toLowerCase()}s. </p> </CardContent> </Card>
       ) : viewMode === 'table' ? (

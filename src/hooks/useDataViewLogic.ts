@@ -206,13 +206,6 @@ export function useDataViewLogic(modelIdFromUrl: string) {
         if (!modelIdFromUrl) return;
         router.push(`/data/${modelIdFromUrl}/new`);
     }, [router, modelIdFromUrl]);
-
-    const handleExportCSV = useCallback(() => {
-        toast({
-            title: "Export Not Implemented",
-            description: "CSV export functionality is not yet available.",
-        });
-    }, [toast]);
     
     // Other handlers (simplified)
     const handleColumnFilterChange = useCallback((key: string, filter: ColumnFilterValue | null) => setColumnFilters(prev => ({ ...prev, [key]: filter })), []);
@@ -329,7 +322,6 @@ export function useDataViewLogic(modelIdFromUrl: string) {
         handleRefreshData,
         handleEditModelStructure,
         onCreateNew: handleCreateNew,
-        handleExportCSV,
         handleView,
         handleEdit,
         handleSingleDeleteRequest,

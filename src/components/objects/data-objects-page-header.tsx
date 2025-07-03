@@ -29,7 +29,6 @@ import {
   Kanban as KanbanIcon,
   Columns as ColumnsIcon,
   Rows,
-  Download,
   Settings as SettingsIcon,
   RefreshCw,
   Loader2,
@@ -78,7 +77,6 @@ interface DataObjectsPageHeaderProps {
   isRefreshing: boolean;
   onRefreshData: () => void;
   onEditModelStructure: () => void;
-  onExportCSV: () => void;
   onCreateNew: () => void;
   onNavigateBack: () => void;
   viewingRecycleBin: boolean;
@@ -101,7 +99,6 @@ export default function DataObjectsPageHeader({
   isRefreshing,
   onRefreshData,
   onEditModelStructure,
-  onExportCSV,
   onCreateNew,
   onNavigateBack,
   viewingRecycleBin,
@@ -188,7 +185,6 @@ export default function DataObjectsPageHeader({
             {isRefreshing ? "Refreshing..." : "Refresh"}
           </Button>
           <Button onClick={onEditModelStructure} variant="outline" size="sm"><SettingsIcon className="mr-2 h-4 w-4" /> Edit Model</Button>
-          <Button onClick={onExportCSV} variant="outline" size="sm"><Download className="mr-2 h-4 w-4" /> Export CSV</Button>
           <CreateShareLinkDialog
             modelId={currentModel.id}
             modelName={currentModel.name}
