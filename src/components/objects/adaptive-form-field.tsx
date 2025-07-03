@@ -20,7 +20,7 @@ import { Button } from '@/components/ui/button';
 import { CalendarIcon, ShieldCheck, ChevronsUpDown, Check, Search as SearchIcon, Paperclip, UploadCloud, Loader2 } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { cn, getObjectDisplayValue } from '@/lib/utils';
-import { format } from 'date-fns';
+import { format, isValid } from 'date-fns';
 import { MultiSelectAutocomplete, type MultiSelectOption } from '@/components/ui/multi-select-autocomplete';
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { StarRatingInput } from '@/components/ui/star-rating-input';
@@ -289,14 +289,21 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
         );
       case 'boolean':
         return <Switch checked={controllerField.value ?? false} onCheckedChange={controllerField.onChange} disabled={fieldIsDisabled} />;
-      case 'date':
-        let dateButtonText: React.ReactNode;
-        if (controllerField.value) {
-          try {
-            dateButtonText = format(new Date(controllerField.value), "PPP");
-          } catch (e) {
-            dateButtonText = "Invalid Date";
+      case 'date': {
+        const handleDateSelect = (date: Date | undefined) => {
+          if (!date) {
+            controllerField.onChange(null);
+            return;
           }
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          controllerField.onChange(`${year}-${month}-${day}`);
+        };
+        const displayDate = controllerField.value ? new Date(`${controllerField.value}T00:00:00`) : undefined;
+        let dateButtonText: React.ReactNode;
+        if (displayDate && isValid(displayDate)) {
+          dateButtonText = format(displayDate, "PPP");
         } else {
           if (fieldIsDisabled) {
             dateButtonText = "Auto-set by system";
@@ -304,7 +311,6 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
             dateButtonText = <span>Pick a date</span>;
           }
         }
-
         return (
           <Popover>
             <PopoverTrigger asChild>
@@ -322,14 +328,15 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
               <PopoverContent className="w-auto p-0">
                 <Calendar
                   mode="single"
-                  selected={controllerField.value ? new Date(controllerField.value) : undefined}
-                  onSelect={(date) => controllerField.onChange(date ? date.toISOString().split('T')[0] : null)}
+                  selected={displayDate}
+                  onSelect={handleDateSelect}
                   initialFocus
                 />
               </PopoverContent>
             )}
           </Popover>
         );
+      }
       case 'time':
         return <Input type="time" {...controllerField} value={controllerField.value ?? ''} disabled={fieldIsDisabled} />;
       case 'datetime':
