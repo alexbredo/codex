@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -86,6 +85,11 @@ export default function BatchDeleteConfirmationDialog({ objectsToDelete, onClose
     });
   };
 
+  const allRelations = React.useMemo(() => {
+    if (!data?.relations) return [];
+    return [...data.relations].sort((a, b) => a.objectDisplayValue.localeCompare(b.objectDisplayValue));
+  }, [data]);
+  
   const hasRelations = data?.relations && data.relations.length > 0;
   const totalItemsToDelete = objectsToDelete.length + additionalIdsToDelete.size;
 
@@ -131,13 +135,13 @@ export default function BatchDeleteConfirmationDialog({ objectsToDelete, onClose
 
           {hasRelations && (
             <div>
-              <h4 className="font-semibold mb-2">Suggestion: Delete Orphaned Objects</h4>
+              <h4 className="font-semibold mb-2">Warning: Found {allRelations.length} Related Object(s)</h4>
               <p className="text-sm text-muted-foreground mb-3">
-                The following {data.relations.length} related object(s) would be orphaned (only linked to items in this deletion batch). You can choose to delete them as well to prevent orphaned data.
+                Deleting the selected items will break these relationships. You can choose to delete these related objects as well.
               </p>
               <ScrollArea className="max-h-64 border rounded-md p-2">
                 <div className="space-y-2">
-                  {data.relations.map(rel => (
+                  {allRelations.map(rel => (
                     <div key={rel.objectId} className="flex items-start space-x-3 p-2 rounded hover:bg-muted">
                       <Checkbox
                         id={`delete-${rel.objectId}`}
@@ -167,7 +171,7 @@ export default function BatchDeleteConfirmationDialog({ objectsToDelete, onClose
 
           {!isLoading && !error && !hasRelations && (
             <Alert>
-              <AlertDescription>No other objects would be orphaned by this deletion.</AlertDescription>
+              <AlertDescription>No other objects appear to be related to the items selected for deletion.</AlertDescription>
             </Alert>
           )}
         </div>

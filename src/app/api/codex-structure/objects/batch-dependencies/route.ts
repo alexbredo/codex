@@ -128,58 +128,8 @@ export async function POST(request: Request) {
       }
     }
     
-    // 2. Filter the found relations to only include orphans
-    const finalRelations: RelationInfo[] = [];
-    for (const [relatedObjectId, relationInfo] of uniqueRelationsMap.entries()) {
-        const relatedObject = allDbObjectsMap.get(relatedObjectId);
-        if (!relatedObject) continue;
-        const relatedObjectModel = allModelsMap.get(relatedObject.modelId);
-        if (!relatedObjectModel) continue;
-
-        let isOrphan = true;
-
-        // Check if `relatedObject` has any links to items NOT in the deletion batch
-        for (const prop of relatedObjectModel.properties) {
-            if (prop.type === 'relationship' && relatedObject[prop.name]) {
-                const peerIds = Array.isArray(relatedObject[prop.name]) ? relatedObject[prop.name] : [relatedObject[prop.name]];
-                for (const peerId of peerIds) {
-                    if (!batchObjectIdsSet.has(peerId)) {
-                        isOrphan = false; // It links to something outside the deletion batch
-                        break;
-                    }
-                }
-            }
-            if (!isOrphan) break;
-        }
-        if (!isOrphan) continue;
-
-        // Check if any item NOT in the deletion batch links to `relatedObject`
-        for (const otherModel of allModels) {
-            for (const otherProp of otherModel.properties) {
-                if (otherProp.type === 'relationship' && otherProp.relatedModelId === relatedObject.modelId) {
-                    for (const potentialLinker of (allObjectsMap[otherModel.id] || [])) {
-                        if (batchObjectIdsSet.has(potentialLinker.id)) {
-                            continue; // This potential linker is also being deleted, so its link doesn't save the relatedObject.
-                        }
-                        const linkedValue = potentialLinker[otherProp.name];
-                        const isLinked = Array.isArray(linkedValue) ? linkedValue.includes(relatedObject.id) : linkedValue === relatedObject.id;
-
-                        if (isLinked) {
-                            isOrphan = false; // Found a link from an object that is NOT being deleted
-                            break;
-                        }
-                    }
-                }
-                if (!isOrphan) break;
-            }
-            if (!isOrphan) break;
-        }
-
-        if (isOrphan) {
-            finalRelations.push(relationInfo);
-        }
-    }
-
+    // Convert map to array for the response, without filtering for orphans
+    const finalRelations = Array.from(uniqueRelationsMap.values());
 
     return NextResponse.json({ relations: finalRelations.sort((a,b) => a.objectDisplayValue.localeCompare(b.objectDisplayValue)) });
 
