@@ -229,7 +229,26 @@ export function useDataViewLogic(modelIdFromUrl: string) {
         router.push(`/data/${modelIdFromUrl}/new`);
     }, [router, modelIdFromUrl]);
 
-    const virtualIncomingRelationColumns: IncomingRelationColumn[] = useMemo(() => [], [currentModel, allModels]);
+    const virtualIncomingRelationColumns: IncomingRelationColumn[] = useMemo(() => {
+        if (!currentModel || !allModels.length) {
+            return [];
+        }
+        const columns: IncomingRelationColumn[] = [];
+        allModels.forEach(model => {
+            model.properties.forEach(property => {
+                if (property.type === 'relationship' && property.relatedModelId === currentModel.id) {
+                    columns.push({
+                        id: `incoming-rel-${model.id}-${property.id}`,
+                        headerLabel: `Referenced by ${model.name}`,
+                        referencingModel: model,
+                        referencingProperty: property,
+                        viaPropertyName: property.name,
+                    });
+                }
+            });
+        });
+        return columns;
+    }, [currentModel, allModels]);
     
     const batchUpdatableProperties = useMemo(() => {
         if (!currentModel) return [];
