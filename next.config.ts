@@ -1,4 +1,18 @@
 import type {NextConfig} from 'next';
+import { execSync } from 'child_process';
+
+let commitSha = 'development';
+let commitDate = new Date().toISOString();
+
+try {
+  // Use git to get the latest commit hash and date
+  commitSha = execSync('git rev-parse --short HEAD').toString().trim();
+  // Using %cI for ISO 8601 format, which is safe for new Date()
+  commitDate = execSync('git log -1 --format=%cI').toString().trim();
+} catch (e) {
+  console.log('Could not get git info, using defaults');
+}
+
 
 const nextConfig: NextConfig = {
   /* config options here */
@@ -20,8 +34,8 @@ const nextConfig: NextConfig = {
     ],
   },
   env: {
-    NEXT_PUBLIC_GIT_COMMIT_SHA: process.env.GIT_COMMIT_SHA || 'development',
-    NEXT_PUBLIC_GIT_COMMIT_DATE: process.env.GIT_COMMIT_DATE || new Date().toISOString(),
+    NEXT_PUBLIC_GIT_COMMIT_SHA: commitSha,
+    NEXT_PUBLIC_GIT_COMMIT_DATE: commitDate,
   },
 };
 
