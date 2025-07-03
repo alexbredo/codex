@@ -68,11 +68,11 @@ export default function CalendarView({ model, objects }: CalendarViewProps) {
       <div className={cn(
         "h-full flex flex-col p-1.5", 
         isOutside && "opacity-50",
-        (modifiers.saturday || modifiers.sunday) && "bg-muted/50"
+        (modifiers?.saturday || modifiers?.sunday) && "bg-muted/50"
       )}>
         <div className={cn(
           "text-right text-xs mb-1",
-          modifiers.sunday && "text-red-600 font-semibold"
+          modifiers?.sunday && "text-red-600 font-semibold"
         )}>
           {dayNumber}
         </div>
