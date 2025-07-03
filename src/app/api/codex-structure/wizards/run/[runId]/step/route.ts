@@ -88,6 +88,7 @@ export async function POST(request: Request, { params }: Params) {
         const resolvedStepData = { ...stepData };
         const validationRulesets: ValidationRuleset[] = await db.all('SELECT * FROM validation_rulesets');
 
+        // First pass: Resolve all lookups
         for (let i = 0; i < wizard.steps.length; i++) {
             const stepToResolve = wizard.steps[i];
             const dataForStep = resolvedStepData[i];
@@ -100,14 +101,15 @@ export async function POST(request: Request, { params }: Params) {
                 }
             }
         }
-
+        
+        // Second pass: Process mappings and then validate and create objects
         for (let i = 0; i < wizard.steps.length; i++) {
             const stepToProcess = wizard.steps[i];
             const dataForStep = resolvedStepData[i];
             
             if (dataForStep.stepType === 'lookup') {
                 createdObjectIds[i] = dataForStep.objectId;
-                continue;
+                continue; // Skip creation for lookup steps
             }
 
             const modelForStep: any = await db.get('SELECT * FROM models WHERE id = ?', stepToProcess.modelId);
@@ -117,6 +119,7 @@ export async function POST(request: Request, { params }: Params) {
             createdObjectIds[i] = newObjectId;
             const newObjectData = { ...(dataForStep.formData || {}) };
 
+            // Apply mappings from previous steps
             const mappings: PropertyMapping[] = stepToProcess.propertyMappings || [];
             for (const mapping of mappings) {
                 const sourceStepData = resolvedStepData[mapping.sourceStepIndex];
@@ -144,55 +147,55 @@ export async function POST(request: Request, { params }: Params) {
                 newObjectData[targetPropertyDef.name] = valueToMap;
             }
 
+            // Run full validation on the final prepared object data
             const properties: Property[] = await db.all('SELECT * FROM properties WHERE model_id = ?', stepToProcess.modelId);
             for (const prop of properties) {
-                if (newObjectData.hasOwnProperty(prop.name)) {
-                    const newValue = newObjectData[prop.name];
+                 const newValue = newObjectData[prop.name];
 
-                    if (prop.type === 'string' && prop.validationRulesetId && (newValue !== null && typeof newValue !== 'undefined' && String(newValue).trim() !== '')) {
-                        const ruleset = validationRulesets.find(rs => rs.id === prop.validationRulesetId);
-                        if (ruleset) {
-                            try {
-                                const regex = new RegExp(ruleset.regexPattern);
-                                if (!regex.test(String(newValue))) {
-                                    throw new Error(`Step ${i + 1} ('${modelForStep.name}'): Value for '${prop.name}' does not match the required format: ${ruleset.name}.`);
-                                }
-                            } catch (e: any) {
-                                console.warn(`Wizard Commit: Invalid regex pattern for ruleset ${ruleset.name}. Skipping validation.`);
+                // 1. Regex validation for strings
+                if (prop.type === 'string' && prop.validationRulesetId && (newValue !== null && typeof newValue !== 'undefined' && String(newValue).trim() !== '')) {
+                    const ruleset = validationRulesets.find(rs => rs.id === prop.validationRulesetId);
+                    if (ruleset) {
+                        try {
+                            const regex = new RegExp(ruleset.regexPattern);
+                            if (!regex.test(String(newValue))) {
+                                throw new Error(`Step ${i + 1} ('${modelForStep.name}'): Value for '${prop.name}' does not match the required format: ${ruleset.name}.`);
                             }
+                        } catch (e: any) {
+                            console.warn(`Wizard Commit: Invalid regex pattern for ruleset ${ruleset.name}. Skipping validation.`);
                         }
                     }
+                }
 
-                    if (prop.type === 'string' && prop.isUnique) {
-                        if (newValue !== null && typeof newValue !== 'undefined' && String(newValue).trim() !== '') {
-                            const conflictingObject = await db.get(
-                              `SELECT id FROM data_objects WHERE model_id = ? AND json_extract(data, '$.${prop.name}') = ? AND (isDeleted = 0 OR isDeleted IS NULL)`,
-                              stepToProcess.modelId,
-                              newValue
-                            );
-                            if (conflictingObject) {
-                              throw new Error(`Step ${i + 1} ('${modelForStep.name}'): Value '${newValue}' for property '${prop.name}' must be unique. It already exists.`);
-                            }
-                        }
+                // 2. Uniqueness check for strings
+                if (prop.type === 'string' && prop.isUnique && (newValue !== null && typeof newValue !== 'undefined' && String(newValue).trim() !== '')) {
+                    const conflictingObject = await db.get(
+                        `SELECT id FROM data_objects WHERE model_id = ? AND json_extract(data, '$.${prop.name}') = ? AND (isDeleted = 0 OR isDeleted IS NULL)`,
+                        stepToProcess.modelId, newValue
+                    );
+                    if (conflictingObject) {
+                        throw new Error(`Step ${i + 1} ('${modelForStep.name}'): Value '${newValue}' for property '${prop.name}' must be unique. It already exists.`);
                     }
+                }
 
-                    if (prop.type === 'number' && (newValue !== null && typeof newValue !== 'undefined')) {
-                        const numericValue = Number(newValue);
-                        if (isNaN(numericValue) && prop.required) {
-                            throw new Error(`Step ${i + 1} ('${modelForStep.name}'): Property '${prop.name}' requires a valid number. Received: '${newValue}'.`);
+                // 3. Min/Max check for numbers
+                if (prop.type === 'number' && (newValue !== null && typeof newValue !== 'undefined')) {
+                    const numericValue = Number(newValue);
+                    if (isNaN(numericValue) && prop.required) {
+                        throw new Error(`Step ${i + 1} ('${modelForStep.name}'): Property '${prop.name}' requires a valid number. Received: '${newValue}'.`);
+                    }
+                    if (!isNaN(numericValue)) {
+                        if (prop.minValue !== null && typeof prop.minValue === 'number' && numericValue < prop.minValue) {
+                            throw new Error(`Step ${i + 1} ('${modelForStep.name}'): Value '${numericValue}' for property '${prop.name}' is less than the minimum allowed value of ${prop.minValue}.`);
                         }
-                        if (!isNaN(numericValue)) {
-                            if (prop.minValue !== null && typeof prop.minValue === 'number' && numericValue < prop.minValue) {
-                                throw new Error(`Step ${i + 1} ('${modelForStep.name}'): Value '${numericValue}' for property '${prop.name}' is less than the minimum allowed value of ${prop.minValue}.`);
-                            }
-                            if (prop.maxValue !== null && typeof prop.maxValue === 'number' && numericValue > prop.maxValue) {
-                                throw new Error(`Step ${i + 1} ('${modelForStep.name}'): Value '${numericValue}' for property '${prop.name}' is greater than the maximum allowed value of ${prop.maxValue}.`);
-                            }
+                        if (prop.maxValue !== null && typeof prop.maxValue === 'number' && numericValue > prop.maxValue) {
+                            throw new Error(`Step ${i + 1} ('${modelForStep.name}'): Value '${numericValue}' for property '${prop.name}' is greater than the maximum allowed value of ${prop.maxValue}.`);
                         }
                     }
                 }
             }
             
+            // If all validation passes, finalize and prepare for insert
             resolvedStepData[i].formData = newObjectData;
             const currentTimestamp = new Date().toISOString();
             const finalObjectData = { ...newObjectData, createdAt: currentTimestamp, updatedAt: currentTimestamp };

@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
@@ -254,6 +255,7 @@ export default function EditObjectPage() {
             currentWorkflow={currentWorkflow}
             allUsers={allUsers} // Pass all users
             currentUser={currentUser} // Pass current authenticated user
+            validationRulesets={validationRulesets}
           />
         </CardContent>
       </Card>

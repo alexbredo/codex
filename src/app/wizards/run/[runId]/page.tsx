@@ -306,6 +306,7 @@ function RunWizardPageInternal() {
                         propertyIdsToShow={currentStep.propertyIds}
                         hiddenPropertyIds={hiddenPropertyIds}
                         showSubmitButtons={false}
+                        validationRulesets={validationRulesets}
                     />
                 ) : (
                     <div className="space-y-4">

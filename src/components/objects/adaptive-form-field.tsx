@@ -42,8 +42,7 @@ interface AdaptiveFormFieldProps<TFieldValues extends FieldValues = FieldValues>
   formContext: 'create' | 'edit';
   modelId: string;
   objectId?: string | null;
-  isUploading: boolean;
-  uploadProgress: number | undefined;
+  validationRulesets: ValidationRuleset[];
 }
 
 const INTERNAL_NONE_SELECT_VALUE = "__EMPTY_SELECTION_VALUE__";
@@ -54,10 +53,9 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
   formContext,
   modelId,
   objectId,
-  isUploading,
-  uploadProgress,
-}: AdaptiveFormFieldProps<TFieldValues>) {
-  const { models: allModels, getModelById, getObjectsByModelId, getAllObjects, validationRulesets } = useData();
+  validationRulesets,
+}: AdaptiveFormFieldProps) {
+  const { models: allModels, getModelById, getObjectsByModelId, getAllObjects } = useData();
   const fieldName = property.name as FieldPath<TFieldValues>;
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [currentImageFile, setCurrentImageFile] = useState<File | null>(null); // For image type
@@ -67,7 +65,8 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
   const [customSearchValue, setCustomSearchValue] = useState("");
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [popoverWidth, setPopoverWidth] = useState<string | number>("auto");
-
+  const [uploadProgress, setUploadProgress] = useState<number | undefined>(undefined);
+  const [isUploading, setIsUploading] = useState(false);
 
   const allDbObjects = useMemo(() => getAllObjects(), [getAllObjects]);
 

@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Controller, type UseFormReturn } from 'react-hook-form';
@@ -10,7 +11,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import type { Model, DataObject, WorkflowWithDetails, User } from '@/lib/types';
+import type { Model, DataObject, WorkflowWithDetails, User, ValidationRuleset } from '@/lib/types';
 import AdaptiveFormField from './adaptive-form-field';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -31,6 +32,8 @@ interface ObjectFormProps {
   propertyIdsToShow?: string[];
   hiddenPropertyIds?: string[];
   showSubmitButtons?: boolean;
+  validationRulesets: ValidationRuleset[];
+  formObjectId?: string | null;
 }
 
 const INTERNAL_NO_STATE_CHANGE = "__NO_STATE_CHANGE__";
@@ -50,6 +53,8 @@ export default function ObjectForm({
   propertyIdsToShow,
   hiddenPropertyIds = [],
   showSubmitButtons = true,
+  validationRulesets,
+  formObjectId,
 }: ObjectFormProps) {
   const formContext = existingObject ? 'edit' : 'create';
 
@@ -187,7 +192,8 @@ export default function ObjectForm({
                         property={property}
                         formContext={formContext}
                         modelId={model.id}
-                        objectId={existingObject?.id}
+                        objectId={existingObject?.id || formObjectId}
+                        validationRulesets={validationRulesets}
                       />
                     </div>
                   ))}

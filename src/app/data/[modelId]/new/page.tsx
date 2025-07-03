@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
@@ -246,6 +247,7 @@ export default function CreateObjectPage() {
             onCancel={() => router.push(`/data/${currentModel.id}`)}
             isLoading={form.formState.isSubmitting}
             formObjectId={formObjectId}
+            validationRulesets={validationRulesets}
           />
         </CardContent>
       </Card>
