@@ -82,6 +82,7 @@ interface DataObjectsPageHeaderProps {
   canShowCalendarView: boolean;
   onConvertRequest: () => void;
   selectedObjectCount: number;
+  hasPermission: (permission: string) => boolean;
 }
 
 export default function DataObjectsPageHeader({
@@ -107,6 +108,7 @@ export default function DataObjectsPageHeader({
   canShowCalendarView,
   onConvertRequest,
   selectedObjectCount,
+  hasPermission,
 }: DataObjectsPageHeaderProps) {
   return (
     <>
@@ -201,7 +203,7 @@ export default function DataObjectsPageHeader({
             modelName={currentModel.name}
             activeLinkStatus={createShareStatus}
            />
-           {selectedObjectCount > 0 && (
+           {hasPermission('objects:convert') && selectedObjectCount > 0 && (
             <Button onClick={onConvertRequest} variant="outline" size="sm">
                 <Replace className="mr-2 h-4 w-4" /> Convert...
             </Button>

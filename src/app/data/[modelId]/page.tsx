@@ -261,6 +261,7 @@ export default function DataObjectsPage() {
         createShareStatus={createShareStatus}
         onConvertRequest={() => setIsConverterOpen(true)}
         selectedObjectCount={selectedObjectIds.size}
+        hasPermission={hasPermission}
       />
       
       <div className="flex items-center justify-between space-x-2 mb-4">
