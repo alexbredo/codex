@@ -35,6 +35,7 @@ import {
   ArrowLeft,
   Share2,
   Inbox,
+  Calendar as CalendarIcon
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -42,7 +43,7 @@ import CreateShareLinkDialog from '@/components/sharing/CreateShareLinkDialog';
 import type { ColumnToggleOption } from '@/hooks/useDataViewLogic';
 
 // Define ViewMode locally for this component. Ideally, this would be in a shared types file.
-export type ViewMode = 'table' | 'gallery' | 'kanban' | 'inbox';
+export type ViewMode = 'table' | 'gallery' | 'kanban' | 'inbox' | 'calendar';
 
 // Local constants (ideally, these would be shared or passed if they vary)
 const NO_GROUPING_VALUE = "__NO_GROUPING__";
@@ -77,6 +78,7 @@ interface DataObjectsPageHeaderProps {
   onNavigateBack: () => void;
   viewingRecycleBin: boolean;
   createShareStatus: 'create' | 'none';
+  canShowCalendarView: boolean;
 }
 
 export default function DataObjectsPageHeader({
@@ -99,6 +101,7 @@ export default function DataObjectsPageHeader({
   onNavigateBack,
   viewingRecycleBin,
   createShareStatus,
+  canShowCalendarView
 }: DataObjectsPageHeaderProps) {
   return (
     <>
@@ -126,6 +129,11 @@ export default function DataObjectsPageHeader({
             <Button variant={viewMode === 'table' ? 'secondary' : 'ghost'} size="sm" onClick={() => onViewModeChange('table')} className="rounded-r-none" aria-label="Table View"><ListIcon className="h-5 w-5" /></Button>
             <Button variant={viewMode === 'gallery' ? 'secondary' : 'ghost'} size="sm" onClick={() => onViewModeChange('gallery')} className="border-l rounded-none" aria-label="Gallery View"><LayoutGrid className="h-5 w-5" /></Button>
             <Button variant={viewMode === 'inbox' ? 'secondary' : 'ghost'} size="sm" onClick={() => onViewModeChange('inbox')} className="border-l rounded-none" aria-label="Inbox View"><Inbox className="h-5 w-5" /></Button>
+            {canShowCalendarView && (
+              <Button variant={viewMode === 'calendar' ? 'secondary' : 'ghost'} size="sm" onClick={() => onViewModeChange('calendar')} className="border-l rounded-none" aria-label="Calendar View" disabled={viewingRecycleBin}>
+                <CalendarIcon className="h-5 w-5" />
+              </Button>
+            )}
             {currentWorkflow && (
               <Button variant={viewMode === 'kanban' ? 'secondary' : 'ghost'} size="sm" onClick={() => onViewModeChange('kanban')} className="rounded-l-none border-l rounded-r-md" aria-label="Kanban View" disabled={viewingRecycleBin}><KanbanIcon className="h-5 w-5" /></Button>
             )}

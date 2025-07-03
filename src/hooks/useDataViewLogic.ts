@@ -215,6 +215,12 @@ export function useDataViewLogic(modelIdFromUrl: string) {
         const idsOnPage = (paginatedDataToRender as DataObject[]).map(obj => obj.id);
         return idsOnPage.length > 0 && idsOnPage.every(id => selectedObjectIds.has(id));
     }, [paginatedDataToRender, selectedObjectIds]);
+    
+    const canShowCalendarView = useMemo(() => {
+      if (!currentModel) return false;
+      return currentModel.properties.some(p => p.type === 'date' || p.type === 'datetime');
+    }, [currentModel]);
+
 
     const handleCreateNew = useCallback(() => {
         if (!modelIdFromUrl) return;
@@ -387,6 +393,7 @@ export function useDataViewLogic(modelIdFromUrl: string) {
         totalItemsForPagination,
         isAllPaginatedSelected,
         hasActiveColumnFilters,
+        canShowCalendarView,
         groupableProperties,
         allAvailableColumnsForToggle,
         virtualIncomingRelationColumns,
