@@ -133,7 +133,7 @@ export default function ShareLinkManager({ modelId, objectId }: ShareLinkManager
   };
   
   return (
-     <Card className="max-w-4xl mx-auto shadow-lg">
+     <Card className="max-w-4xl mx-auto shadow-lg mt-8">
         <CardHeader>
             <CardTitle className="text-2xl text-primary flex items-center">
                 <Share2 className="mr-2 h-6 w-6" /> Public Share Links
