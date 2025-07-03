@@ -18,7 +18,7 @@ const conversionPayloadSchema = z.object({
 
 export async function POST(request: Request) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || !currentUser.permissionIds.includes('objects:convert')) {
+  if (!currentUser || (!currentUser.permissionIds.includes('objects:convert') && !currentUser.permissionIds.includes('*'))) {
     return NextResponse.json({ error: 'Unauthorized: You do not have permission to convert objects.' }, { status: 403 });
   }
 
