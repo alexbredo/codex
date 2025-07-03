@@ -5,7 +5,7 @@ import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Kanban as KanbanIcon, ListChecks, ArchiveX, Search as SearchIconLucide, PlusCircle, Archive, Trash2 } from 'lucide-react';
+import { Loader2, Kanban as KanbanIcon, ListChecks, ArchiveX, Search as SearchIconLucide, PlusCircle, Archive, Trash2, Inbox } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import GalleryCard from '@/components/objects/gallery-card';
@@ -17,8 +17,9 @@ import BatchUpdateConfirmationDialog from '@/components/objects/batch-update-con
 import BatchDeleteConfirmationDialog from '@/components/objects/batch-delete-confirmation-dialog';
 import { useDataViewLogic } from '@/hooks/useDataViewLogic';
 import BatchUpdateDialog from '@/components/objects/batch-update-dialog';
+import InboxView from '@/components/objects/inbox-view';
 
-export type ViewMode = 'table' | 'gallery' | 'kanban';
+export type ViewMode = 'table' | 'gallery' | 'kanban' | 'inbox';
 
 export default function DataObjectsPage() {
   const params = useParams();
@@ -292,6 +293,8 @@ export default function DataObjectsPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
           {(paginatedDataToRender as DataObject[]).map((obj) => ( <GalleryCard key={obj.id} obj={obj} model={currentModel!} allModels={allModels} allObjects={allDbObjects} currentWorkflow={currentWorkflow} getWorkflowStateName={getWorkflowStateName} onView={handleView} onEdit={handleEdit} onDeleteRequest={handleSingleDeleteRequest} viewingRecycleBin={viewingRecycleBin} onRestore={handleRestoreObject} lastChangedInfo={lastChangedInfo} /> ))}
         </div>
+      ) : viewMode === 'inbox' ? (
+        <InboxView model={currentModel} objects={sortedObjects} />
       ) : viewMode === 'kanban' && currentWorkflow && !viewingRecycleBin ? ( 
         <KanbanBoard
           model={currentModel!}

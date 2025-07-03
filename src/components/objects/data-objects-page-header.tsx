@@ -34,6 +34,7 @@ import {
   Loader2,
   ArrowLeft,
   Share2,
+  Inbox,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -41,7 +42,7 @@ import CreateShareLinkDialog from '@/components/sharing/CreateShareLinkDialog';
 import type { ColumnToggleOption } from '@/hooks/useDataViewLogic';
 
 // Define ViewMode locally for this component. Ideally, this would be in a shared types file.
-export type ViewMode = 'table' | 'gallery' | 'kanban';
+export type ViewMode = 'table' | 'gallery' | 'kanban' | 'inbox';
 
 // Local constants (ideally, these would be shared or passed if they vary)
 const NO_GROUPING_VALUE = "__NO_GROUPING__";
@@ -123,7 +124,8 @@ export default function DataObjectsPageHeader({
           </div>
           <div className="flex items-center border rounded-md">
             <Button variant={viewMode === 'table' ? 'secondary' : 'ghost'} size="sm" onClick={() => onViewModeChange('table')} className="rounded-r-none" aria-label="Table View"><ListIcon className="h-5 w-5" /></Button>
-            <Button variant={viewMode === 'gallery' ? 'secondary' : 'ghost'} size="sm" onClick={() => onViewModeChange('gallery')} className={cn("rounded-l-none border-l", currentWorkflow ? "" : "rounded-r-md")} aria-label="Gallery View"><LayoutGrid className="h-5 w-5" /></Button>
+            <Button variant={viewMode === 'gallery' ? 'secondary' : 'ghost'} size="sm" onClick={() => onViewModeChange('gallery')} className="border-l rounded-none" aria-label="Gallery View"><LayoutGrid className="h-5 w-5" /></Button>
+            <Button variant={viewMode === 'inbox' ? 'secondary' : 'ghost'} size="sm" onClick={() => onViewModeChange('inbox')} className="border-l rounded-none" aria-label="Inbox View"><Inbox className="h-5 w-5" /></Button>
             {currentWorkflow && (
               <Button variant={viewMode === 'kanban' ? 'secondary' : 'ghost'} size="sm" onClick={() => onViewModeChange('kanban')} className="rounded-l-none border-l rounded-r-md" aria-label="Kanban View" disabled={viewingRecycleBin}><KanbanIcon className="h-5 w-5" /></Button>
             )}
