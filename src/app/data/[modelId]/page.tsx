@@ -5,7 +5,7 @@ import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, PlusCircle, Archive, Trash2, Inbox, Edit3 } from 'lucide-react';
+import { Loader2, PlusCircle, Archive, Trash2, Inbox, Edit3, Replace } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import GalleryCard from '@/components/objects/gallery-card';
@@ -259,8 +259,6 @@ export default function DataObjectsPage() {
         onNavigateBack={() => router.push('/models')}
         viewingRecycleBin={viewingRecycleBin}
         createShareStatus={createShareStatus}
-        onConvertRequest={() => setIsConverterOpen(true)}
-        selectedObjectCount={selectedObjectIds.size}
         hasPermission={hasPermission}
       />
       
@@ -287,6 +285,16 @@ export default function DataObjectsPage() {
                 <Trash2 className="mr-2 h-4 w-4" />
                 Delete Selected
               </Button>
+              {hasPermission('objects:convert') && (
+                <Button
+                  onClick={() => setIsConverterOpen(true)}
+                  variant="outline"
+                  size="sm"
+                  disabled={viewingRecycleBin}
+                >
+                  <Replace className="mr-2 h-4 w-4" /> Convert...
+                </Button>
+              )}
             </div>
           )}
         </div>
