@@ -207,6 +207,13 @@ export function useDataViewLogic(modelIdFromUrl: string) {
         router.push(`/data/${modelIdFromUrl}/new`);
     }, [router, modelIdFromUrl]);
 
+    const handleExportCSV = useCallback(() => {
+        toast({
+            title: "Export Not Implemented",
+            description: "CSV export functionality is not yet available.",
+        });
+    }, [toast]);
+
     // Other handlers (simplified)
     const handleColumnFilterChange = useCallback((key: string, filter: ColumnFilterValue | null) => setColumnFilters(prev => ({ ...prev, [key]: filter })), []);
     const handleClearAllColumnFilters = useCallback(() => setColumnFilters({}), []);
@@ -253,7 +260,6 @@ export function useDataViewLogic(modelIdFromUrl: string) {
     const toggleColumnVisibility = useCallback(() => { /* ... */ }, []);
     const getWorkflowStateName = useCallback(() => "State", []);
     const getOwnerUsername = useCallback(() => "User", []);
-    const handleExportCSV = useCallback(() => { /* placeholder */ }, []);
     const totalItemsForPagination = sortedObjects.length;
     const hasActiveColumnFilters = Object.values(columnFilters).some(v => v !== null);
 
@@ -278,7 +284,7 @@ export function useDataViewLogic(modelIdFromUrl: string) {
         // Handlers
         handleViewModeChange, requestSort, handleColumnFilterChange, handleClearAllColumnFilters,
         handleSelectAllOnPage, handleRowSelect, handleRefreshData, handleEditModelStructure,
-        onCreateNew: handleCreateNew, handleView, handleEdit, handleSingleDeleteRequest, handleBatchDeleteRequest,
+        onCreateNew, handleView, handleEdit, handleSingleDeleteRequest, handleBatchDeleteRequest,
         handleDeletionSuccess, handleRestoreObject, prepareBatchUpdateForConfirmation, executeBatchUpdate,
         handleBatchUpdateDialogInteractOutside, handleStateChangeViaDrag, toggleColumnVisibility,
 
