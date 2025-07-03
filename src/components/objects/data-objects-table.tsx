@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import * as React from 'react';
@@ -15,7 +13,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { Eye, Edit, Trash2, ArrowUp, ArrowDown, ChevronsUpDown, ArchiveRestore, Paperclip, ExternalLink } from 'lucide-react';
+import { Eye, Edit, Trash2, ArrowUp, ArrowDown, ChevronsUpDown, ArchiveRestore, Paperclip, ExternalLink, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 import { format as formatDateFns, isValid as isDateValidFn } from 'date-fns';
 import { cn, getObjectDisplayValue } from '@/lib/utils';
@@ -53,6 +51,7 @@ export interface IncomingRelationColumn {
   headerLabel: string;
   referencingModel: Model;
   referencingProperty: Property;
+  viaPropertyName: string; // Added to show in tooltip
 }
 
 interface DataObjectsTableProps {
@@ -345,9 +344,18 @@ export default function DataObjectsTable({
               !hiddenColumns.has(col.id) && (
                 <TableHead key={col.id} className="text-xs">
                   <div className="flex items-center">
-                    <Button variant="ghost" onClick={() => requestSort(col.id)} className="px-1 text-xs text-left justify-start flex-grow">
-                      {col.headerLabel} {getSortIcon(col.id)}
-                    </Button>
+                     <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button variant="ghost" onClick={() => requestSort(col.id)} className="px-1 text-xs text-left justify-start flex-grow">
+                            {col.headerLabel} {getSortIcon(col.id)}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>via property: {col.viaPropertyName}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                     <ColumnFilterPopover columnKey={col.id} columnName={col.headerLabel} currentFilter={columnFilters[col.id] || null} onFilterChange={handleColumnFilterChange} filterTypeOverride="specificIncomingReference" referencingModel={col.referencingModel} referencingProperty={col.referencingProperty} />
                   </div>
                 </TableHead>
@@ -393,19 +401,55 @@ export default function DataObjectsTable({
                     if (colDef.referencingProperty.relationshipType === 'many') return Array.isArray(linkedValue) && linkedValue.includes(obj.id);
                     return linkedValue === obj.id;
                   });
-                  if (linkedItems.length === 0) return <TableCell key={colDef.id}><span className="text-muted-foreground">N/A</span></TableCell>;
+                  const visibleLinkedItems = linkedItems.filter(item => !item.isDeleted);
+                  const deletedLinkedItemsCount = linkedItems.length - visibleLinkedItems.length;
+
+                  if (visibleLinkedItems.length === 0) {
+                     return (
+                      <TableCell key={colDef.id} className="text-muted-foreground">
+                        None
+                        {deletedLinkedItemsCount > 0 && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <AlertCircle className="h-3.5 w-3.5 ml-1.5 inline-block text-amber-500" />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>{deletedLinkedItemsCount} deleted link(s)</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+                      </TableCell>
+                    );
+                  }
+                  
+                  const itemsToDisplay = visibleLinkedItems.slice(0, 3);
+
                   return (
                     <TableCell key={colDef.id} className="space-x-1 space-y-1">
-                      {linkedItems.map(item => {
-                        const isDeleted = item.isDeleted;
-                        return (
+                      {itemsToDisplay.map(item => (
                           <Link key={item.id} href={`/data/${colDef.referencingModel.id}/view/${item.id}`} className="inline-block">
-                            <Badge variant={isDeleted ? "destructive" : "secondary"} className={cn("hover:bg-muted cursor-pointer", isDeleted && "line-through")}>
+                            <Badge variant="secondary" className="hover:bg-muted cursor-pointer">
                               {getObjectDisplayValue(item, colDef.referencingModel, allModels, allDbObjects)}
                             </Badge>
                           </Link>
-                        );
-                      })}
+                      ))}
+                      {visibleLinkedItems.length > 3 && (
+                        <Badge variant="outline" className="text-xs">+ {visibleLinkedItems.length - 3} more</Badge>
+                      )}
+                      {deletedLinkedItemsCount > 0 && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <AlertCircle className="h-3.5 w-3.5 ml-1.5 inline-block text-amber-500" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>{deletedLinkedItemsCount} deleted link(s)</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
                     </TableCell>
                   );
                 })}

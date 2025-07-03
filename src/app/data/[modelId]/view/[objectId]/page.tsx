@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -65,6 +64,7 @@ import { Progress } from '@/components/ui/progress';
 import CreateShareLinkDialog from '@/components/sharing/CreateShareLinkDialog';
 import ShareLinkManager from '@/components/sharing/ShareLinkManager';
 import { cn } from '@/lib/utils';
+import IncomingRelationshipsViewer from '@/components/objects/IncomingRelationshipsViewer'; // New Import
 
 
 // This component can now be rendered in two modes:
@@ -416,7 +416,7 @@ function ViewObjectPageInternal({ isPublicView = false, publicObjectData, public
             </div>
           );
         } else {
-          const relatedObj = (allDbObjects[property.relatedModelId] || []).find(o => o.id === value);
+          const relatedObj = (allDbObjects[property.relatedModelId] || []).find(o => o.id === value); 
           const displayVal = getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
           const isDeleted = relatedObj?.isDeleted;
           return relatedObj ? (
@@ -643,6 +643,8 @@ function ViewObjectPageInternal({ isPublicView = false, publicObjectData, public
         </CardContent>
         </TooltipProvider>
       </Card>
+      
+      {!isPublicView && <IncomingRelationshipsViewer modelId={modelId} objectId={objectId} />}
 
       {!isPublicView && (
         <ShareLinkManager

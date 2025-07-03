@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -286,9 +284,10 @@ export default function DataObjectsPage() {
         if (prop.type === 'relationship' && prop.relatedModelId === currentModel.id) {
           columns.push({
             id: `incoming-${otherModel.id}-${prop.name}`,
-            headerLabel: `Ref. by ${otherModel.name} (via ${prop.name})`,
+            headerLabel: `Ref by: ${otherModel.name}`,
             referencingModel: otherModel,
             referencingProperty: prop,
+            viaPropertyName: prop.name,
           });
         }
       });
