@@ -56,7 +56,7 @@ export default function SharedObjectPage() {
         switch (shareData.link.link_type) {
             case 'view':
                 if (shareData.object && shareData.model) {
-                    return <ViewObjectPage isPublicView={true} publicObjectData={shareData.object} publicModelData={shareData.model} />;
+                    return <ViewObjectPage isPublicView={true} viewingObject={shareData.object} model={shareData.model} />;
                 }
                 break;
             case 'create':

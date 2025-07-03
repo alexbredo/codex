@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import { useData } from '@/contexts/data-context';
 import { useAuth } from '@/contexts/auth-context';
 import type { DataObject, Model, Property, WorkflowWithDetails, ValidationRuleset, ChangelogEntry, PaginatedStructuralChangelogResponse, SharedObjectLink, PropertyChangeDetail } from '@/lib/types';
@@ -32,16 +32,103 @@ import { cn } from '@/lib/utils';
 import IncomingRelationshipsViewer from '@/components/objects/IncomingRelationshipsViewer';
 
 interface ObjectDetailViewProps {
-  model: Model;
-  viewingObject: DataObject;
+  model?: Model;
+  viewingObject?: DataObject;
   isPublicView?: boolean;
 }
 
-export default function ObjectDetailView({ model, viewingObject, isPublicView = false }: ObjectDetailViewProps) {
+export default function ObjectDetailView({ model: modelFromProps, viewingObject: objectFromProps, isPublicView = false }: ObjectDetailViewProps) {
+  const params = useParams();
+  const dataContext = useData();
+  const authContext = useAuth();
+  const router = useRouter();
+
+  const [model, setModel] = React.useState<Model | null>(modelFromProps || null);
+  const [viewingObject, setViewingObject] = React.useState<DataObject | null>(objectFromProps || null);
+  const [isLoading, setIsLoading] = React.useState(!isPublicView);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (isPublicView) {
+      if (modelFromProps && objectFromProps) {
+        setModel(modelFromProps);
+        setViewingObject(objectFromProps);
+        setIsLoading(false);
+      } else {
+        setError("Public view data was not provided correctly.");
+        setIsLoading(false);
+      }
+      return;
+    }
+    
+    if (dataContext.isReady && !authContext.isLoading) {
+      const modelId = params.modelId as string;
+      const objectId = params.objectId as string;
+
+      if (!modelId || !objectId) {
+        setError("Model or Object ID is missing from the URL.");
+        setIsLoading(false);
+        return;
+      }
+
+      const foundModel = dataContext.getModelById(modelId);
+      if (!foundModel) {
+        setError(`Model with ID ${modelId} not found.`);
+        setIsLoading(false);
+        return;
+      }
+      
+      const objects = dataContext.getObjectsByModelId(modelId, true);
+      const foundObject = objects.find(o => o.id === objectId);
+      if (!foundObject) {
+        setError(`Object with ID ${objectId} not found in model "${foundModel.name}".`);
+        setIsLoading(false);
+        return;
+      }
+      
+      setModel(foundModel);
+      setViewingObject(foundObject);
+      setIsLoading(false);
+    }
+  }, [isPublicView, modelFromProps, objectFromProps, dataContext.isReady, authContext.isLoading, params, dataContext.getModelById, dataContext.getObjectsByModelId]);
+  
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="container mx-auto py-8 text-center">
+        <AlertTriangle className="h-12 w-12 text-destructive mx-auto mb-4" />
+        <h2 className="text-2xl font-semibold text-destructive mb-2">Error</h2>
+        <p className="text-muted-foreground mb-4">{error}</p>
+        <Button onClick={() => router.back()}>Go Back</Button>
+      </div>
+    );
+  }
+
+  if (!model || !viewingObject) {
+    return (
+      <div className="container mx-auto py-8 text-center">
+        <AlertTriangle className="h-12 w-12 text-destructive mx-auto mb-4" />
+        <p>The requested object could not be loaded.</p>
+      </div>
+    );
+  }
+
+  return <ObjectDetailDisplay model={model} viewingObject={viewingObject} isPublicView={isPublicView} />;
+}
+
+// Inner display component
+function ObjectDetailDisplay({ model, viewingObject, isPublicView }: { model: Model, viewingObject: DataObject, isPublicView: boolean }) {
   const router = useRouter();
   const { toast } = useToast();
   const { user: currentUser, hasPermission } = useAuth();
-  const { getModelById, getWorkflowById, validationRulesets, getUserById, allModels, getAllObjects, formatApiError, fetchData: refreshDataContext } = useData();
+  const { getWorkflowById, validationRulesets, getUserById, allModels, getAllObjects, formatApiError, fetchData: refreshDataContext } = useData();
   
   const [changelog, setChangelog] = React.useState<ChangelogEntry[]>([]);
   const [isLoadingChangelog, setIsLoadingChangelog] = React.useState(false);
