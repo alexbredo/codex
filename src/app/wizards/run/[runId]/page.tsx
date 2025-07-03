@@ -22,6 +22,15 @@ import { Loader2, ShieldAlert, CheckCircle, ListOrdered, Home, Wand2, ArrowLeft,
 import { z } from 'zod';
 import Link from 'next/link';
 
+async function fetchWizardRunState(runId: string): Promise<WizardRunState> {
+  const response = await fetch(`/api/codex-structure/wizards/run/${runId}`);
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ error: "Failed to fetch wizard run state" }));
+    throw new Error(errorData.error || 'Failed to fetch wizard run state');
+  }
+  return response.json();
+}
+
 async function submitWizardStep({ runId, stepIndex, stepType, formData, lookupObjectId }: {
   runId: string;
   stepIndex: number;
@@ -343,3 +352,4 @@ function RunWizardPageInternal() {
 }
 
 export default withAuth(RunWizardPageInternal);
+    
