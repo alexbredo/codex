@@ -27,11 +27,11 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { ScrollArea } from '@/components/ui/scroll-area';
-import ReactJson from 'react18-json-view';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import LogDetailViewer from '@/components/admin/changelog/LogDetailViewer';
 
 const CATEGORY_TYPES = ['Structural', 'Data', 'Security'];
 const ALL_CATEGORIES_VALUE = "__ALL_CATEGORIES__";
@@ -282,16 +282,8 @@ function ActivityLogPageInternal() {
             )}
           </DialogHeader>
           {selectedEntryDetails && (
-            <ScrollArea className="max-h-[60vh] mt-4 bg-muted/50 p-4 rounded-md border">
-              <ReactJson
-                src={selectedEntryDetails.details}
-                collapsed={1}
-                displayObjectSize={false}
-                displayDataTypes={false}
-                enableClipboard={false}
-                theme="default" 
-                style={{ fontSize: '0.8rem', backgroundColor: 'transparent' }}
-              />
+            <ScrollArea className="max-h-[60vh] mt-4">
+              <LogDetailViewer details={selectedEntryDetails.details} />
             </ScrollArea>
           )}
         </DialogContent>

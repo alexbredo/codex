@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { useData } from '@/contexts/data-context';
@@ -28,6 +28,13 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
+  Dialog as DetailsDialog,
+  DialogContent as DetailsDialogContent,
+  DialogHeader as DetailsDialogHeader,
+  DialogTitle as DetailsDialogTitle,
+  DialogDescription as DetailsDialogDescription,
+} from "@/components/ui/dialog";
+import {
   Table,
   TableBody,
   TableCell,
@@ -35,13 +42,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  Dialog as DetailsDialog,
-  DialogContent as DetailsDialogContent,
-  DialogHeader as DetailsDialogHeader,
-  DialogTitle as DetailsDialogTitle,
-  DialogDescription as DetailsDialogDescription,
-} from "@/components/ui/dialog";
 import {
   Tooltip,
   TooltipContent,
@@ -54,8 +54,8 @@ import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
 import { withAuth } from '@/contexts/auth-context';
 import { format } from 'date-fns';
-import ReactJson from 'react18-json-view';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import LogDetailViewer from '@/components/admin/changelog/LogDetailViewer';
 
 function ViewModelPageInternal() {
   const router = useRouter();
@@ -73,16 +73,16 @@ function ViewModelPageInternal() {
   const { user, hasPermission, isLoading: authIsLoading } = useAuth();
   const { toast } = useToast();
 
-  const [currentModel, setCurrentModel] = useState<Model | null>(null);
-  const [workflow, setWorkflow] = useState<WorkflowWithDetails | null>(null);
-  const [isLoadingPageData, setIsLoadingPageData] = useState(true);
-  const [pageError, setPageError] = useState<string | null>(null);
+  const [currentModel, setCurrentModel] = React.useState<Model | null>(null);
+  const [workflow, setWorkflow] = React.useState<WorkflowWithDetails | null>(null);
+  const [isLoadingPageData, setIsLoadingPageData] = React.useState(true);
+  const [pageError, setPageError] = React.useState<string | null>(null);
 
   // State for model-specific changelog
-  const [selectedEntryDetails, setSelectedEntryDetails] = useState<StructuralChangelogEntry | null>(null);
-  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+  const [selectedEntryDetails, setSelectedEntryDetails] = React.useState<StructuralChangelogEntry | null>(null);
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = React.useState(false);
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (dataContextIsReady && modelId) {
       const foundModel = getModelById(modelId);
       if (foundModel) {
@@ -453,17 +453,8 @@ function ViewModelPageInternal() {
             )}
           </DetailsDialogHeader>
           {selectedEntryDetails && (
-            <ScrollArea className="max-h-[60vh] mt-4 bg-muted/50 p-4 rounded-md border">
-              <ReactJson
-                src={selectedEntryDetails.changes}
-                name={false}
-                collapsed={1}
-                displayObjectSize={false}
-                displayDataTypes={false}
-                enableClipboard={false}
-                theme="rjv-default"
-                style={{ fontSize: '0.8rem', backgroundColor: 'transparent' }}
-              />
+            <ScrollArea className="max-h-[60vh] mt-4">
+              <LogDetailViewer details={selectedEntryDetails.changes} />
             </ScrollArea>
           )}
         </DetailsDialogContent>
