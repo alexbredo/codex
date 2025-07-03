@@ -213,7 +213,7 @@ export function useDataViewLogic(modelIdFromUrl: string) {
             description: "CSV export functionality is not yet available.",
         });
     }, [toast]);
-
+    
     // Other handlers (simplified)
     const handleColumnFilterChange = useCallback((key: string, filter: ColumnFilterValue | null) => setColumnFilters(prev => ({ ...prev, [key]: filter })), []);
     const handleClearAllColumnFilters = useCallback(() => setColumnFilters({}), []);
@@ -265,31 +265,86 @@ export function useDataViewLogic(modelIdFromUrl: string) {
 
     return {
         // State
-        currentModel, currentWorkflow, isLoading, viewingRecycleBin, setViewingRecycleBin, viewMode,
-        searchTerm, setSearchTerm, currentPage, setCurrentPage, sortConfig, columnFilters,
-        selectedObjectIds, setSelectedObjectIds, isBatchUpdateDialogOpen, setIsBatchUpdateDialogOpen,
-        batchUpdateProperty, setBatchUpdateProperty, batchUpdateValue, setBatchUpdateValue,
-        batchUpdateDate, setBatchUpdateDate, groupingPropertyKey, setGroupingPropertyKey,
-        hiddenColumns, singleObjectToDelete, setSingleObjectToDelete, batchObjectsToDelete, setBatchObjectsToDelete,
-        isBatchUpdateConfirmOpen, setIsBatchUpdateConfirmOpen, batchUpdatePreviewData, isRefreshing, isBatchUpdating,
+        currentModel,
+        currentWorkflow,
+        isLoading,
+        viewingRecycleBin,
+        setViewingRecycleBin,
+        viewMode,
+        searchTerm,
+        setSearchTerm,
+        currentPage,
+        setCurrentPage,
+        sortConfig,
+        columnFilters,
+        selectedObjectIds,
+        setSelectedObjectIds,
+        isBatchUpdateDialogOpen,
+        setIsBatchUpdateDialogOpen,
+        batchUpdateProperty,
+        setBatchUpdateProperty,
+        batchUpdateValue,
+        setBatchUpdateValue,
+        batchUpdateDate,
+        setBatchUpdateDate,
+        groupingPropertyKey,
+        setGroupingPropertyKey,
+        hiddenColumns,
+        singleObjectToDelete,
+        setSingleObjectToDelete,
+        batchObjectsToDelete,
+        setBatchObjectsToDelete,
+        isBatchUpdateConfirmOpen,
+        setIsBatchUpdateConfirmOpen,
+        batchUpdatePreviewData,
+        isRefreshing,
+        isBatchUpdating,
 
         // Derived Data
-        localObjects, paginatedDataToRender, groupedDataForRender, totalPages, totalItemsForPagination,
-        isAllPaginatedSelected, hasActiveColumnFilters, groupableProperties, allAvailableColumnsForToggle,
-        virtualIncomingRelationColumns, createShareStatus,
+        localObjects,
+        paginatedDataToRender,
+        groupedDataForRender,
+        totalPages,
+        totalItemsForPagination,
+        isAllPaginatedSelected,
+        hasActiveColumnFilters,
+        groupableProperties,
+        allAvailableColumnsForToggle,
+        virtualIncomingRelationColumns,
+        createShareStatus,
 
         // Context Data
-        allModels, allDbObjects, lastChangedInfo, hasPermission,
+        allModels,
+        allDbObjects,
+        lastChangedInfo,
+        hasPermission,
 
         // Handlers
-        handleViewModeChange, requestSort, handleColumnFilterChange, handleClearAllColumnFilters,
-        handleSelectAllOnPage, handleRowSelect, handleRefreshData, handleEditModelStructure,
-        onCreateNew, handleView, handleEdit, handleSingleDeleteRequest, handleBatchDeleteRequest,
-        handleDeletionSuccess, handleRestoreObject, prepareBatchUpdateForConfirmation, executeBatchUpdate,
-        handleBatchUpdateDialogInteractOutside, handleStateChangeViaDrag, toggleColumnVisibility,
+        handleViewModeChange,
+        requestSort,
+        handleColumnFilterChange,
+        handleClearAllColumnFilters,
+        handleSelectAllOnPage,
+        handleRowSelect,
+        handleRefreshData,
+        handleEditModelStructure,
+        onCreateNew: handleCreateNew,
+        handleView,
+        handleEdit,
+        handleSingleDeleteRequest: handleSingleDeleteRequest,
+        handleBatchDeleteRequest,
+        handleDeletionSuccess,
+        handleRestoreObject,
+        prepareBatchUpdateForConfirmation,
+        executeBatchUpdate,
+        handleBatchUpdateDialogInteractOutside,
+        handleStateChangeViaDrag,
+        toggleColumnVisibility,
 
         // Helpers
-        getFilterDisplayDetails, getWorkflowStateName, getOwnerUsername,
+        getFilterDisplayDetails,
+        getWorkflowStateName,
+        getOwnerUsername,
         handleExportCSV,
     };
 }
