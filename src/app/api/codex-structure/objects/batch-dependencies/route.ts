@@ -1,4 +1,3 @@
-
 'use server';
 
 import { NextResponse } from 'next/server';
@@ -49,14 +48,16 @@ export async function POST(request: Request) {
         catch { model.displayPropertyNames = []; }
         model.properties = await db.all('SELECT * FROM properties WHERE model_id = ?', model.id);
     }
-
-    const allObjectsRaw = await db.all('SELECT id, model_id, data FROM data_objects WHERE isDeleted = 0 OR isDeleted IS NULL');
+    
+    // FIX: Fetch all objects, including deleted ones, and get the isDeleted flag.
+    const allObjectsRaw = await db.all('SELECT id, model_id, data, isDeleted FROM data_objects');
     const allObjectsMap: Record<string, DataObject[]> = {};
     const allDbObjectsMap = new Map<string, DataObject & {modelId: string}>();
 
     for(const row of allObjectsRaw) {
         if (!allObjectsMap[row.model_id]) { allObjectsMap[row.model_id] = []; }
-        const objData = { id: row.id, ...JSON.parse(row.data) };
+        // FIX: Include isDeleted when parsing the object.
+        const objData = { id: row.id, isDeleted: !!row.isDeleted, ...JSON.parse(row.data) };
         allObjectsMap[row.model_id].push(objData);
         allDbObjectsMap.set(row.id, { ...objData, modelId: row.model_id });
     }
