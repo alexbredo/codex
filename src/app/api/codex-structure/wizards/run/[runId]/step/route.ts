@@ -4,7 +4,7 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getCurrentUserFromCookie } from '@/lib/auth';
-import type { WizardRun, Wizard, ChangelogEventData, PropertyMapping } from '@/lib/types';
+import type { WizardRun, Wizard, ChangelogEventData, PropertyMapping, Property, ValidationRuleset } from '@/lib/types';
 import { z } from 'zod';
 
 interface Params {
@@ -101,6 +101,9 @@ export async function POST(request: Request, { params }: Params) {
             }
         }
         
+        // Fetch all validation rulesets once for efficiency
+        const validationRulesets: ValidationRuleset[] = await db.all('SELECT * FROM validation_rulesets');
+
         // 2. Sequentially process all steps to handle creation and mapping
         for (let i = 0; i < wizard.steps.length; i++) {
             const stepToProcess = wizard.steps[i];
@@ -148,6 +151,60 @@ export async function POST(request: Request, { params }: Params) {
                 
                 newObjectData[targetPropertyDef.name] = valueToMap;
             }
+
+            // --- START VALIDATION ---
+            const properties: Property[] = await db.all('SELECT * FROM properties WHERE model_id = ?', stepToProcess.modelId);
+            for (const prop of properties) {
+                if (newObjectData.hasOwnProperty(prop.name)) {
+                    const newValue = newObjectData[prop.name];
+
+                    // Regex validation for strings
+                    if (prop.type === 'string' && prop.validationRulesetId && (newValue !== null && typeof newValue !== 'undefined' && String(newValue).trim() !== '')) {
+                        const ruleset = validationRulesets.find(rs => rs.id === prop.validationRulesetId);
+                        if (ruleset) {
+                            try {
+                                const regex = new RegExp(ruleset.regexPattern);
+                                if (!regex.test(String(newValue))) {
+                                    throw new Error(`Step ${i + 1} ('${modelForStep.name}'): Value for '${prop.name}' does not match the required format: ${ruleset.name}.`);
+                                }
+                            } catch (e: any) {
+                                console.warn(`Wizard Commit: Invalid regex pattern for ruleset ${ruleset.name}. Skipping validation.`);
+                            }
+                        }
+                    }
+
+                    // Uniqueness check for strings
+                    if (prop.type === 'string' && prop.isUnique) {
+                        if (newValue !== null && typeof newValue !== 'undefined' && String(newValue).trim() !== '') {
+                            const conflictingObject = await db.get(
+                              `SELECT id FROM data_objects WHERE model_id = ? AND json_extract(data, '$.${prop.name}') = ? AND (isDeleted = 0 OR isDeleted IS NULL)`,
+                              stepToProcess.modelId,
+                              newValue
+                            );
+                            if (conflictingObject) {
+                              throw new Error(`Step ${i + 1} ('${modelForStep.name}'): Value '${newValue}' for property '${prop.name}' must be unique. It already exists.`);
+                            }
+                        }
+                    }
+
+                    // Min/Max check for numbers
+                    if (prop.type === 'number' && (newValue !== null && typeof newValue !== 'undefined')) {
+                        const numericValue = Number(newValue);
+                        if (isNaN(numericValue) && prop.required) {
+                            throw new Error(`Step ${i + 1} ('${modelForStep.name}'): Property '${prop.name}' requires a valid number. Received: '${newValue}'.`);
+                        }
+                        if (!isNaN(numericValue)) {
+                            if (prop.minValue !== null && typeof prop.minValue === 'number' && numericValue < prop.minValue) {
+                                throw new Error(`Step ${i + 1} ('${modelForStep.name}'): Value '${numericValue}' for property '${prop.name}' is less than the minimum allowed value of ${prop.minValue}.`);
+                            }
+                            if (prop.maxValue !== null && typeof prop.maxValue === 'number' && numericValue > prop.maxValue) {
+                                throw new Error(`Step ${i + 1} ('${modelForStep.name}'): Value '${numericValue}' for property '${prop.name}' is greater than the maximum allowed value of ${prop.maxValue}.`);
+                            }
+                        }
+                    }
+                }
+            }
+            // --- END VALIDATION ---
             
             // Save the complete, resolved data back for the summary page
             resolvedStepData[i].formData = newObjectData;
