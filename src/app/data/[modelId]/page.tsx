@@ -124,6 +124,10 @@ export default function DataObjectsPage() {
     virtualIncomingRelationColumns,
     createShareStatus,
     hasPermission,
+    getModelById,
+    getObjectsByModelId,
+    getAllObjects,
+    batchUpdatableProperties,
   } = useDataViewLogic(modelIdFromUrl);
 
   const { toast } = useToast();
@@ -207,6 +211,12 @@ export default function DataObjectsPage() {
         setDate={setBatchUpdateDate}
         onConfirm={prepareBatchUpdateForConfirmation}
         onInteractOutside={handleBatchUpdateDialogInteractOutside}
+        batchUpdatableProperties={batchUpdatableProperties}
+        currentWorkflow={currentWorkflow}
+        getModelById={getModelById}
+        getObjectsByModelId={getObjectsByModelId}
+        allModels={allModels}
+        getAllObjects={getAllObjects}
       />
       
       <DataObjectsPageHeader

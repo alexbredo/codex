@@ -346,6 +346,24 @@ export function useDataViewLogic(modelIdFromUrl: string) {
     const totalItemsForPagination = sortedObjects.length;
     const hasActiveColumnFilters = Object.values(columnFilters).some(v => v !== null);
 
+    const batchUpdatableProperties = useMemo(() => {
+        if (!currentModel) return [];
+        const props: Array<{ id: string; name: string; label: string; type: Property['type']; relationshipType?: 'one' | 'many'; relatedModelId?: string; }> = [];
+
+        if (currentWorkflow) {
+            props.push({ id: WORKFLOW_STATE_DISPLAY_COLUMN_KEY, name: INTERNAL_WORKFLOW_STATE_UPDATE_KEY, label: 'Workflow State', type: 'workflow_state' });
+        }
+
+        currentModel.properties.forEach(p => {
+            if (p.type !== 'image' && p.type !== 'fileAttachment' && p.type !== 'markdown' && p.type !== 'url') {
+                props.push({ ...p, label: p.name });
+            }
+        });
+
+        return props;
+    }, [currentModel, currentWorkflow]);
+
+
     return {
         // State
         currentModel,
@@ -398,12 +416,16 @@ export function useDataViewLogic(modelIdFromUrl: string) {
         allAvailableColumnsForToggle,
         virtualIncomingRelationColumns,
         createShareStatus,
+        batchUpdatableProperties,
 
         // Context Data
         allModels,
         allDbObjects,
         lastChangedInfo,
         hasPermission,
+        getModelById,
+        getObjectsByModelId,
+        getAllObjects,
 
         // Handlers
         handleViewModeChange,

@@ -20,8 +20,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { MultiSelectAutocomplete, type MultiSelectOption } from '@/components/ui/multi-select-autocomplete';
 import { StarRatingInput } from '@/components/ui/star-rating-input';
 import { Loader2, Edit3, CalendarIcon as CalendarIconLucide } from 'lucide-react';
-import { useDataViewLogic } from '@/hooks/useDataViewLogic';
-import type { Model, Property } from '@/lib/types';
+import type { Model, Property, DataObject, WorkflowWithDetails } from '@/lib/types';
 import { getObjectDisplayValue, cn } from '@/lib/utils';
 import { format as formatDateFns } from 'date-fns';
 
@@ -37,6 +36,13 @@ interface BatchUpdateDialogProps {
   setDate: (date: Date | undefined) => void;
   onConfirm: () => void;
   onInteractOutside: (event: Event) => void;
+  // NEW PROPS
+  batchUpdatableProperties: Array<{ id: string; name: string; label: string; type: Property['type']; relationshipType?: 'one' | 'many'; relatedModelId?: string; }>;
+  currentWorkflow: WorkflowWithDetails | null;
+  getModelById: (modelId: string) => Model | undefined;
+  getObjectsByModelId: (modelId: string) => DataObject[];
+  allModels: Model[];
+  getAllObjects: (includeDeleted?: boolean) => Record<string, DataObject[]>;
 }
 
 const INTERNAL_WORKFLOW_STATE_UPDATE_KEY = "__WORKFLOW_STATE_UPDATE__";
@@ -54,14 +60,21 @@ export default function BatchUpdateDialog({
   setDate,
   onConfirm,
   onInteractOutside,
+  // DESTRUCTURE NEW PROPS
+  batchUpdatableProperties,
+  currentWorkflow,
+  getModelById,
+  getObjectsByModelId,
+  allModels,
+  getAllObjects,
 }: BatchUpdateDialogProps) {
-  const { currentModel, currentWorkflow, batchUpdatableProperties, getModelById, getObjectsByModelId, allModels, getAllObjects } = useDataViewLogic();
   const [isUpdating, setIsUpdating] = React.useState(false);
 
   const selectedBatchPropertyDetails = React.useMemo(() => {
     if (property === INTERNAL_WORKFLOW_STATE_UPDATE_KEY) {
         return { name: INTERNAL_WORKFLOW_STATE_UPDATE_KEY, type: 'workflow_state' as Property['type'], id: INTERNAL_WORKFLOW_STATE_UPDATE_KEY, label: 'Workflow State' };
     }
+    if (!batchUpdatableProperties) return undefined;
     return batchUpdatableProperties.find(p => p.name === property);
   }, [property, batchUpdatableProperties]);
 
@@ -89,7 +102,7 @@ export default function BatchUpdateDialog({
     if (relatedModelForBatchUpdate?.id) {
         const relatedObjects = getObjectsByModelId(relatedModelForBatchUpdate.id); 
         return relatedObjects.reduce((acc, obj) => {
-            const groupName = allModels.find(m => m.id === relatedModelForBatchUpdate.id)?.namespace || 'Default';
+            const groupName = allModels.find(m => m.id === relatedModelForBatchUpdate.id)?.name || 'Default';
             if (!acc[groupName]) acc[groupName] = [];
             acc[groupName].push({
                 value: obj.id,
