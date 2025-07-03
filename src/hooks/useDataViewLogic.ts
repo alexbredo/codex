@@ -201,7 +201,11 @@ export function useDataViewLogic(modelIdFromUrl: string) {
         return null;
     }, [groupingPropertyKey, sortedObjects, currentModel]);
 
-    const totalPages = useMemo(() => Math.ceil((groupedDataForRender ? groupedDataForRender.length : sortedObjects.length) / ITEMS_PER_PAGE), [groupedDataForRender, sortedObjects, ITEMS_PER_PAGE]);
+    const totalItemsForPagination = useMemo(() => {
+        return groupedDataForRender ? groupedDataForRender.length : sortedObjects.length;
+    }, [groupedDataForRender, sortedObjects]);
+
+    const totalPages = useMemo(() => Math.ceil(totalItemsForPagination / ITEMS_PER_PAGE), [totalItemsForPagination, ITEMS_PER_PAGE]);
     
     const paginatedDataToRender = useMemo(() => {
         const itemsToPaginate = groupedDataForRender || sortedObjects;
@@ -485,7 +489,7 @@ export function useDataViewLogic(modelIdFromUrl: string) {
         totalPages,
         totalItemsForPagination,
         isAllPaginatedSelected,
-        hasActiveColumnFilters,
+        hasActiveColumnFilters: Object.values(columnFilters).some(v => v !== null),
         canShowCalendarView,
         groupableProperties,
         allAvailableColumnsForToggle,
