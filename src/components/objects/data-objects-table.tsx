@@ -396,13 +396,16 @@ export default function DataObjectsTable({
                   if (linkedItems.length === 0) return <TableCell key={colDef.id}><span className="text-muted-foreground">N/A</span></TableCell>;
                   return (
                     <TableCell key={colDef.id} className="space-x-1 space-y-1">
-                      {linkedItems.map(item => (
-                        <Link key={item.id} href={`/data/${colDef.referencingModel.id}/view/${item.id}`} className="inline-block">
-                          <Badge variant="secondary" className="hover:bg-muted cursor-pointer">
-                            {getObjectDisplayValue(item, colDef.referencingModel, allModels, allDbObjects)}
-                          </Badge>
-                        </Link>
-                      ))}
+                      {linkedItems.map(item => {
+                        const isDeleted = item.isDeleted;
+                        return (
+                          <Link key={item.id} href={`/data/${colDef.referencingModel.id}/view/${item.id}`} className="inline-block">
+                            <Badge variant={isDeleted ? "destructive" : "secondary"} className={cn("hover:bg-muted cursor-pointer", isDeleted && "line-through")}>
+                              {getObjectDisplayValue(item, colDef.referencingModel, allModels, allDbObjects)}
+                            </Badge>
+                          </Link>
+                        );
+                      })}
                     </TableCell>
                   );
                 })}
