@@ -2,7 +2,7 @@
 'use client';
 
 import * as React from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Dialog,
   DialogContent,
@@ -131,8 +131,10 @@ export default function BatchDeleteConfirmationDialog({ objectsToDelete, onClose
 
           {hasRelations && (
             <div>
-              <h4 className="font-semibold mb-2">Warning: Found {data.relations.length} Related Object(s)</h4>
-              <p className="text-sm text-muted-foreground mb-3">Deleting the selected items will break these relationships. You can choose to delete these related objects as well.</p>
+              <h4 className="font-semibold mb-2">Suggestion: Delete Orphaned Objects</h4>
+              <p className="text-sm text-muted-foreground mb-3">
+                The following {data.relations.length} related object(s) would be orphaned (only linked to items in this deletion batch). You can choose to delete them as well to prevent orphaned data.
+              </p>
               <ScrollArea className="max-h-64 border rounded-md p-2">
                 <div className="space-y-2">
                   {data.relations.map(rel => (
@@ -165,7 +167,7 @@ export default function BatchDeleteConfirmationDialog({ objectsToDelete, onClose
 
           {!isLoading && !error && !hasRelations && (
             <Alert>
-              <AlertDescription>No other objects were found linking to or from the selected items.</AlertDescription>
+              <AlertDescription>No other objects would be orphaned by this deletion.</AlertDescription>
             </Alert>
           )}
         </div>

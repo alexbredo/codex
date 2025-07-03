@@ -19,7 +19,7 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2, AlertTriangle, Trash2 } from 'lucide-react';
 import { useData } from '@/contexts/data-context';
 import type { DataObject, Model } from '@/lib/types';
-import type { DependencyCheckResult } from '@/app/api/codex-structure/objects/[objectId]/dependencies/route';
+import type { DependencyCheckResult, RelationInfo } from '@/app/api/codex-structure/objects/[objectId]/dependencies/route';
 
 
 interface DeleteObjectDialogProps {
@@ -78,9 +78,14 @@ export default function DeleteObjectDialog({ objectToDelete, model, onClose, onS
         return newSet;
     });
   };
+  
+  const allRelations = React.useMemo(() => {
+    if (!dependencies) return [];
+    return [...dependencies.incoming, ...dependencies.outgoing].sort((a,b) => a.objectDisplayValue.localeCompare(b.objectDisplayValue));
+  }, [dependencies]);
 
-  const hasIncomingRelations = dependencies && dependencies.incoming.length > 0;
-  const hasOutgoingRelations = dependencies && dependencies.outgoing.length > 0;
+  const hasRelations = allRelations.length > 0;
+  const totalItemsToDelete = (objectToDelete ? 1 : 0) + selectedToDelete.size;
 
   return (
     <Dialog open={!!objectToDelete} onOpenChange={(open) => !open && onClose()}>
@@ -117,13 +122,13 @@ export default function DeleteObjectDialog({ objectToDelete, model, onClose, onS
                     <p className="text-sm text-muted-foreground">This object will be moved to the recycle bin.</p>
                 </div>
                 
-                {hasIncomingRelations && (
+                {hasRelations && (
                     <div>
-                        <h4 className="font-semibold mb-2">Warning: Objects linking TO this item</h4>
-                        <p className="text-sm text-muted-foreground mb-3">The following objects link to the item you are deleting. Deleting it will break these relationships. You can choose to delete these related objects as well.</p>
-                        <ScrollArea className="max-h-40 border rounded-md p-2">
+                        <h4 className="font-semibold mb-2">Warning: Found {allRelations.length} Related Object(s)</h4>
+                        <p className="text-sm text-muted-foreground mb-3">Deleting this item will break relationships. You can choose to delete these related objects as well.</p>
+                        <ScrollArea className="max-h-60 border rounded-md p-2">
                            <div className="space-y-2">
-                             {dependencies.incoming.map(rel => (
+                             {allRelations.map(rel => (
                                 <div key={rel.objectId} className="flex items-center space-x-3 p-2 rounded hover:bg-muted">
                                     <Checkbox
                                         id={`delete-${rel.objectId}`}
@@ -146,36 +151,7 @@ export default function DeleteObjectDialog({ objectToDelete, model, onClose, onS
                     </div>
                 )}
 
-                {hasOutgoingRelations && (
-                    <div>
-                        <h4 className="font-semibold mb-2">Warning: This item links TO other objects</h4>
-                        <p className="text-sm text-muted-foreground mb-3">This object links to the following items. Deleting it will break these relationships. You can choose to delete these related objects as well.</p>
-                         <ScrollArea className="max-h-40 border rounded-md p-2">
-                           <div className="space-y-2">
-                             {dependencies.outgoing.map(rel => (
-                                <div key={rel.objectId} className="flex items-center space-x-3 p-2 rounded hover:bg-muted">
-                                    <Checkbox
-                                        id={`delete-${rel.objectId}`}
-                                        onCheckedChange={(checked) => handleCheckboxChange(rel.objectId, !!checked)}
-                                        checked={selectedToDelete.has(rel.objectId)}
-                                    />
-                                    <label htmlFor={`delete-${rel.objectId}`} className="text-sm w-full">
-                                        <div className="flex justify-between items-center">
-                                            <span className="font-medium truncate" title={rel.objectDisplayValue}>{rel.objectDisplayValue}</span>
-                                            <Badge variant="outline" className="text-xs">{rel.modelName}</Badge>
-                                        </div>
-                                         <p className="text-xs text-muted-foreground">
-                                            (via property: <span className="font-mono">{rel.viaPropertyName}</span>)
-                                        </p>
-                                    </label>
-                                </div>
-                             ))}
-                           </div>
-                        </ScrollArea>
-                    </div>
-                )}
-
-                {!hasIncomingRelations && !hasOutgoingRelations && (
+                {!hasRelations && (
                     <Alert>
                         <AlertDescription>No incoming or outgoing relationships were found for this object.</AlertDescription>
                     </Alert>
@@ -187,7 +163,7 @@ export default function DeleteObjectDialog({ objectToDelete, model, onClose, onS
           <Button variant="outline" onClick={onClose} disabled={deleteMutation.isPending}>Cancel</Button>
           <Button variant="destructive" onClick={handleConfirmDelete} disabled={isLoading || deleteMutation.isPending}>
             {deleteMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Delete {1 + selectedToDelete.size} Item(s)
+            Delete {totalItemsToDelete} Item(s)
           </Button>
         </DialogFooter>
       </DialogContent>

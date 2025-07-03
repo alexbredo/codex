@@ -31,11 +31,12 @@ export async function GET(request: Request, { params }: { params: { objectId: st
   try {
     const db = await getDb();
     
-    const targetObject = await db.get('SELECT * FROM data_objects WHERE id = ?', objectId);
-    if (!targetObject) {
+    const targetObjectRaw = await db.get('SELECT id, model_id, data FROM data_objects WHERE id = ?', objectId);
+    if (!targetObjectRaw) {
         return NextResponse.json({ error: 'Object to check not found' }, { status: 404 });
     }
-    const targetModelId = targetObject.model_id;
+    const targetObject = { id: targetObjectRaw.id, modelId: targetObjectRaw.model_id, ...JSON.parse(targetObjectRaw.data) };
+    const targetModelId = targetObject.modelId;
 
     // --- Permission Check ---
     if (!currentUser.permissionIds.includes('*') && !currentUser.permissionIds.includes(`model:view:${targetModelId}`)) {
@@ -94,7 +95,7 @@ export async function GET(request: Request, { params }: { params: { objectId: st
     // --- Find Outgoing Relationships ---
     const targetModel = allModels.find(m => m.id === targetModelId);
     if (targetModel) {
-        const data = JSON.parse(targetObject.data);
+        const data = targetObject; // Already parsed
         for (const prop of targetModel.properties) {
             if (prop.type === 'relationship' && prop.relatedModelId && data[prop.name]) {
                 const relatedIds = Array.isArray(data[prop.name]) ? data[prop.name] : [data[prop.name]];
