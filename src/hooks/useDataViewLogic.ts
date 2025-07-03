@@ -77,7 +77,24 @@ export function useDataViewLogic(modelIdFromUrl: string) {
     const [searchTerm, setSearchTerm] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
     const [sortConfig, setSortConfig] = useState<SortConfig | null>(null);
-    const [viewMode, setViewMode] = useState<ViewMode>('table');
+    
+    const [viewMode, setViewMode] = useState<ViewMode>(() => {
+        if (typeof window === 'undefined' || !modelIdFromUrl) {
+          return 'table';
+        }
+        try {
+          const storedView = localStorage.getItem(`codex-view-mode-${modelIdFromUrl}`);
+          // Ensure the stored value is a valid ViewMode before using it
+          if (storedView && ['table', 'gallery', 'kanban', 'inbox', 'calendar'].includes(storedView)) {
+            return storedView as ViewMode;
+          }
+        } catch (error) {
+          // localStorage can fail in some environments (e.g., private browsing mode)
+          console.error("Failed to read view mode from localStorage", error);
+        }
+        return 'table'; // Default value
+      });
+
     const [columnFilters, setColumnFilters] = useState<Record<string, ColumnFilterValue | null>>({});
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [groupingPropertyKey, setGroupingPropertyKey] = useState<string | null>(null);
@@ -122,6 +139,17 @@ export function useDataViewLogic(modelIdFromUrl: string) {
 
     const previousModelIdRef = useRef<string | null>(null);
     const ITEMS_PER_PAGE = viewMode === 'gallery' ? 12 : 10;
+    
+    // Persist view mode to localStorage
+    useEffect(() => {
+        if (typeof window !== 'undefined' && modelIdFromUrl) {
+        try {
+            localStorage.setItem(`codex-view-mode-${modelIdFromUrl}`, viewMode);
+        } catch (error) {
+            console.error("Failed to save view mode to localStorage", error);
+        }
+        }
+    }, [viewMode, modelIdFromUrl]);
 
     useEffect(() => {
         if (!modelIdFromUrl || !dataContextIsReady) return; 
