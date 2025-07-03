@@ -94,6 +94,35 @@ export function useDataViewLogic(modelIdFromUrl: string) {
 
     const previousModelIdRef = useRef<string | null>(null);
     const ITEMS_PER_PAGE = viewMode === 'gallery' ? 12 : 10;
+
+    // Load hidden columns from localStorage on mount/model change
+    useEffect(() => {
+        if (!modelIdFromUrl) return;
+        try {
+            const key = `codex-hidden-columns-${modelIdFromUrl}`;
+            const storedHiddenColumns = localStorage.getItem(key);
+            if (storedHiddenColumns) {
+                setHiddenColumns(new Set(JSON.parse(storedHiddenColumns)));
+            } else {
+                // If nothing is stored, reset to a default empty set
+                setHiddenColumns(new Set());
+            }
+        } catch (error) {
+            console.error("Failed to load hidden columns from localStorage", error);
+            setHiddenColumns(new Set());
+        }
+    }, [modelIdFromUrl]);
+
+    // Save hidden columns to localStorage whenever they change
+    useEffect(() => {
+        if (!modelIdFromUrl) return;
+        try {
+            const key = `codex-hidden-columns-${modelIdFromUrl}`;
+            localStorage.setItem(key, JSON.stringify(Array.from(hiddenColumns)));
+        } catch (error) {
+            console.error("Failed to save hidden columns to localStorage", error);
+        }
+    }, [hiddenColumns, modelIdFromUrl]);
     
     // Auth Check
     useEffect(() => {
@@ -183,39 +212,28 @@ export function useDataViewLogic(modelIdFromUrl: string) {
     
     const allAvailableColumnsForToggle = useMemo(() => {
         if (!currentModel) return [];
-
         const columns: ColumnToggleOption[] = [];
-
-        // Add standard columns
         columns.push({ id: SELECT_ALL_CHECKBOX_COLUMN_KEY, label: 'Selection Checkbox', type: 'action' });
         columns.push({ id: VIEW_ACTION_COLUMN_KEY, label: 'View Icon', type: 'action' });
-
-        // Add model properties
-        currentModel.properties.forEach(prop => {
-            columns.push({ id: prop.id, label: prop.name, type: 'property' });
-        });
-        
-        // Add virtual incoming relations
-        virtualIncomingRelationColumns.forEach(col => {
-            columns.push({ id: col.id, label: col.headerLabel, type: 'virtual' });
-        });
-
-        // Add workflow state if applicable
-        if (currentWorkflow) {
-            columns.push({ id: WORKFLOW_STATE_DISPLAY_COLUMN_KEY, label: 'Workflow State', type: 'workflow' });
-        }
-
-        // Add metadata columns
+        currentModel.properties.forEach(prop => columns.push({ id: prop.id, label: prop.name, type: 'property' }));
+        virtualIncomingRelationColumns.forEach(col => columns.push({ id: col.id, label: col.headerLabel, type: 'virtual' }));
+        if (currentWorkflow) columns.push({ id: WORKFLOW_STATE_DISPLAY_COLUMN_KEY, label: 'Workflow State', type: 'workflow' });
         columns.push({ id: OWNER_COLUMN_KEY, label: 'Owned By', type: 'owner' });
         columns.push({ id: CREATED_AT_COLUMN_KEY, label: 'Created At', type: 'metadata' });
         columns.push({ id: UPDATED_AT_COLUMN_KEY, label: 'Updated At', type: 'metadata' });
         columns.push({ id: DELETED_AT_COLUMN_KEY, label: 'Deleted At', type: 'metadata' });
-        
-        // Add final actions column
         columns.push({ id: ACTIONS_COLUMN_KEY, label: 'Actions Menu', type: 'action' });
-
         return columns;
     }, [currentModel, currentWorkflow, virtualIncomingRelationColumns]);
+
+    const toggleColumnVisibility = useCallback((columnId: string, hide: boolean) => {
+        setHiddenColumns(prev => {
+            const newSet = new Set(prev);
+            if (hide) newSet.add(columnId);
+            else newSet.delete(columnId);
+            return newSet;
+        });
+    }, []);
 
     // Handlers (useCallback hooks)
     const handleViewModeChange = useCallback((newMode: ViewMode) => setViewMode(newMode), []);
@@ -300,7 +318,7 @@ export function useDataViewLogic(modelIdFromUrl: string) {
     const prepareBatchUpdateForConfirmation = useCallback(() => { /* ... */ }, []);
     const executeBatchUpdate = useCallback(async () => { /* ... */ }, []);
     const handleBatchUpdateDialogInteractOutside = useCallback(() => { /* ... */ }, []);
-    const toggleColumnVisibility = useCallback(() => { /* ... */ }, []);
+    
     const getWorkflowStateName = useCallback(() => "State", []);
     const getOwnerUsername = useCallback(() => "User", []);
     const totalItemsForPagination = sortedObjects.length;

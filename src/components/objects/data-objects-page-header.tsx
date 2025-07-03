@@ -143,6 +143,7 @@ export default function DataObjectsPageHeader({
                     key={col.id}
                     checked={!hiddenColumns.has(col.id)}
                     onCheckedChange={(checked) => onToggleColumnVisibility(col.id, !checked)}
+                    onSelect={(e) => e.preventDefault()} // Keep menu open on click
                     disabled={col.id === DELETED_AT_COLUMN_KEY && !viewingRecycleBin}
                   >
                     {col.label} {col.id === DELETED_AT_COLUMN_KEY && !viewingRecycleBin ? "(Recycle Bin only)" : ""}
