@@ -22,15 +22,6 @@ import { Loader2, ShieldAlert, CheckCircle, ListOrdered, Home, Wand2, ArrowLeft,
 import { z } from 'zod';
 import Link from 'next/link';
 
-async function fetchWizardRunState(runId: string): Promise<WizardRunState> {
-  const response = await fetch(`/api/codex-structure/wizards/run/${runId}`);
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error || 'Failed to fetch wizard run state.');
-  }
-  return response.json();
-}
-
 async function submitWizardStep({ runId, stepIndex, stepType, formData, lookupObjectId }: {
   runId: string;
   stepIndex: number;
@@ -91,6 +82,15 @@ function RunWizardPageInternal() {
 
   const stepMutation = useMutation({
     mutationFn: submitWizardStep,
+    onSuccess: async (result) => {
+        if (result.isFinalStep) {
+            await refreshDataContext('Wizard Completed');
+            await refetch();
+            setIsFinishing(true);
+        } else {
+            await refetch();
+        }
+    },
     onError: (err: Error) => {
         const currentStepIndexOnError = runState ? runState.currentStepIndex + 1 : 0;
         toast({ variant: 'destructive', title: `Error on Step ${currentStepIndexOnError + 1}`, description: err.message });
@@ -130,7 +130,7 @@ function RunWizardPageInternal() {
   
   React.useEffect(() => { form.resolver = zodResolver(dynamicSchema) as any; }, [dynamicSchema, form]);
   
-  const handleNextStep = async (values?: Record<string, any>) => {
+  const handleNextStep = (values?: Record<string, any>) => {
     const stepType = currentStep?.stepType;
     let payload: Parameters<typeof submitWizardStep>[0];
 
@@ -145,20 +145,9 @@ function RunWizardPageInternal() {
     } else {
         return; // Should not happen
     }
-
-    try {
-        const result = await stepMutation.mutateAsync(payload);
-        
-        if (result.isFinalStep) {
-            await refreshDataContext('Wizard Completed');
-            await refetch();
-            setIsFinishing(true);
-        } else {
-            await refetch();
-        }
-    } catch (e) {
-        console.error("Step submission failed:", e);
-    }
+    
+    // Use the mutate function, and handle success/error via the useMutation callbacks
+    stepMutation.mutate(payload);
   };
 
 

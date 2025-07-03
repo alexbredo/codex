@@ -245,6 +245,6 @@ export async function POST(request: Request, { params }: Params) {
   } catch (error: any) {
     await db.run('ROLLBACK').catch(rbError => console.error("API Error (Wizard Step) - Rollback failed:", rbError));
     console.error(`API Error (POST /wizards/run/${runId}/step):`, error);
-    return NextResponse.json({ error: 'Failed to process wizard step', details: error.message }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to process wizard step', details: error.message }, { status: 400 });
   }
 }
