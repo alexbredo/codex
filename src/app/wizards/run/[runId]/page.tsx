@@ -45,7 +45,8 @@ async function submitWizardStep({ runId, stepIndex, stepType, formData, lookupOb
   });
   if (!response.ok) {
     const errorData = await response.json();
-    throw new Error(errorData.error || 'Failed to submit step.');
+    // Prioritize the detailed message from the backend.
+    throw new Error(errorData.details || errorData.error || 'Failed to submit step.');
   }
   return response.json();
 }
