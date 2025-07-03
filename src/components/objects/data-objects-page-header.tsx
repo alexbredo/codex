@@ -35,7 +35,8 @@ import {
   ArrowLeft,
   Share2,
   Inbox,
-  Calendar as CalendarIcon
+  Calendar as CalendarIcon,
+  Replace
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -79,6 +80,8 @@ interface DataObjectsPageHeaderProps {
   viewingRecycleBin: boolean;
   createShareStatus: 'create' | 'none';
   canShowCalendarView: boolean;
+  onConvertRequest: () => void;
+  selectedObjectCount: number;
 }
 
 export default function DataObjectsPageHeader({
@@ -101,7 +104,9 @@ export default function DataObjectsPageHeader({
   onNavigateBack,
   viewingRecycleBin,
   createShareStatus,
-  canShowCalendarView
+  canShowCalendarView,
+  onConvertRequest,
+  selectedObjectCount,
 }: DataObjectsPageHeaderProps) {
   return (
     <>
@@ -196,6 +201,11 @@ export default function DataObjectsPageHeader({
             modelName={currentModel.name}
             activeLinkStatus={createShareStatus}
            />
+           {selectedObjectCount > 0 && (
+            <Button onClick={onConvertRequest} variant="outline" size="sm">
+                <Replace className="mr-2 h-4 w-4" /> Convert...
+            </Button>
+           )}
           <Button onClick={onCreateNew} size="sm" className="bg-accent text-accent-foreground hover:bg-accent/90" disabled={viewingRecycleBin}><PlusCircle className="mr-2 h-4 w-4" /> Create New</Button>
         </div>
       </header>

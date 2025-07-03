@@ -136,6 +136,7 @@ export function useDataViewLogic(modelIdFromUrl: string) {
         newValue: any;
     } | null>(null);
     const [isBatchUpdating, setIsBatchUpdating] = useState(false);
+    const [isConverterOpen, setIsConverterOpen] = useState(false);
 
     const previousModelIdRef = useRef<string | null>(null);
     const ITEMS_PER_PAGE = viewMode === 'gallery' ? 12 : 10;
@@ -578,6 +579,8 @@ export function useDataViewLogic(modelIdFromUrl: string) {
         isRefreshing,
         isBatchUpdating,
         deletedObjectCount,
+        isConverterOpen,
+        setIsConverterOpen,
 
         // Derived Data
         localObjects,
@@ -630,5 +633,6 @@ export function useDataViewLogic(modelIdFromUrl: string) {
         getFilterDisplayDetails,
         getWorkflowStateName,
         getOwnerUsername,
+        fetchData,
     };
 }

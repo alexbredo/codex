@@ -30,6 +30,8 @@ const ALL_PERMISSIONS: Omit<Permission, 'id'>[] = [
   { name: 'Edit Own Objects (Any Model)', category: 'Objects - Global', id: 'objects:edit_own' },
   { name: 'Delete Own Objects (Any Model)', category: 'Objects - Global', id: 'objects:delete_own' },
   { name: 'Revert Object History (Admin)', category: 'Objects - Global', id: 'objects:revert' },
+  { name: 'Convert Objects (Admin)', category: 'Objects - Global', id: 'objects:convert' },
+
 
   // Administration
   { name: 'View Activity Log', category: 'Admin', id: 'admin:view_activity_log' },

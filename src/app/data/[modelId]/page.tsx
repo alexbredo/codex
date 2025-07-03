@@ -19,6 +19,7 @@ import BatchUpdateDialog from '@/components/objects/batch-update-dialog';
 import InboxView from '@/components/objects/inbox-view';
 import CalendarView from '@/components/objects/CalendarView'; // Import the new component
 import BatchDeleteConfirmationDialog from '@/components/objects/batch-delete-confirmation-dialog';
+import ObjectConverterDialog from '@/components/objects/ObjectConverterDialog';
 
 export type ViewMode = 'table' | 'gallery' | 'kanban' | 'inbox' | 'calendar';
 
@@ -44,6 +45,8 @@ export default function DataObjectsPage() {
     setIsBatchUpdateConfirmOpen,
     batchUpdatePreviewData,
     deletedObjectCount,
+    isConverterOpen,
+    setIsConverterOpen,
     
     // Search and Filter State & Handlers
     searchTerm,
@@ -128,6 +131,7 @@ export default function DataObjectsPage() {
     getObjectsByModelId,
     getAllObjects,
     batchUpdatableProperties,
+    fetchData,
   } = useDataViewLogic(modelIdFromUrl);
 
   const { toast } = useToast();
@@ -220,6 +224,19 @@ export default function DataObjectsPage() {
         allModels={allModels}
         getAllObjects={getAllObjects}
       />
+       {isConverterOpen && (
+        <ObjectConverterDialog
+            isOpen={isConverterOpen}
+            onClose={() => setIsConverterOpen(false)}
+            sourceModel={currentModel}
+            objectIdsToConvert={Array.from(selectedObjectIds)}
+            onSuccess={() => {
+                toast({ title: "Conversion Successful", description: "Objects have been converted to the new model." });
+                setSelectedObjectIds(new Set()); // Clear selection
+                fetchData("After object conversion");
+            }}
+        />
+      )}
       
       <DataObjectsPageHeader
         currentModel={currentModel}
@@ -242,6 +259,8 @@ export default function DataObjectsPage() {
         onNavigateBack={() => router.push('/models')}
         viewingRecycleBin={viewingRecycleBin}
         createShareStatus={createShareStatus}
+        onConvertRequest={() => setIsConverterOpen(true)}
+        selectedObjectCount={selectedObjectIds.size}
       />
       
       <div className="flex items-center justify-between space-x-2 mb-4">
