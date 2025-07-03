@@ -400,16 +400,17 @@ function ViewObjectPageInternal({ isPublicView = false, publicObjectData, public
               {value.map(itemId => {
                 const relatedObj = (allDbObjects[property.relatedModelId!] || []).find(o => o.id === itemId);
                 const displayVal = getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
+                const isDeleted = relatedObj?.isDeleted;
                 return relatedObj ? (
                   <Link key={itemId} href={`/data/${relatedModel.id}/view/${relatedObj.id}`} passHref legacyBehavior>
                     <a className="inline-block">
-                      <Badge variant="outline" className="hover:bg-secondary cursor-pointer">
+                      <Badge variant={isDeleted ? "destructive" : "outline"} className={cn("hover:bg-secondary cursor-pointer", isDeleted && "line-through")}>
                         {displayVal} <ExternalLink className="ml-1 h-3 w-3 opacity-70" />
                       </Badge>
                     </a>
                   </Link>
                 ) : (
-                  <Badge key={itemId} variant="outline" className="mr-1 mb-1">{displayVal}</Badge>
+                  <Badge key={itemId} variant="outline" className={cn("mr-1 mb-1", isDeleted && "line-through text-destructive")}>{displayVal}</Badge>
                 );
               })}
             </div>
@@ -417,15 +418,16 @@ function ViewObjectPageInternal({ isPublicView = false, publicObjectData, public
         } else {
           const relatedObj = (allDbObjects[property.relatedModelId] || []).find(o => o.id === value);
           const displayVal = getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
+          const isDeleted = relatedObj?.isDeleted;
           return relatedObj ? (
             <Link href={`/data/${relatedModel.id}/view/${relatedObj.id}`} passHref legacyBehavior>
               <a className="inline-block">
-                <Badge variant="outline" className="hover:bg-secondary cursor-pointer">
+                <Badge variant={isDeleted ? "destructive" : "outline"} className={cn("hover:bg-secondary cursor-pointer", isDeleted && "line-through")}>
                   {displayVal} <ExternalLink className="ml-1 h-3 w-3 opacity-70" />
                 </Badge>
               </a>
             </Link>
-          ) : <span className="text-muted-foreground italic">{displayVal}</span>;
+          ) : <span className={cn("text-muted-foreground italic", isDeleted && "line-through text-destructive")}>{displayVal}</span>;
         }
       default:
         const strValue = String(value);

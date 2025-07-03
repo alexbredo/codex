@@ -233,11 +233,21 @@ export default function DataObjectsTable({
             return { id: itemId, name: getObjectDisplayValue(relatedObj, relatedModelForCell, allModels, allDbObjects), obj: relatedObj }; 
           });
           if (relatedItems.length > 2) return <Badge variant="outline" title={relatedItems.map(i=>i.name).join(', ')}>{relatedItems.length} {relatedModelForCell.name}(s)</Badge>;
-          return relatedItems.map(item => item.obj ? ( <Link key={item.id} href={`/data/${relatedModelForCell.id}/view/${item.obj.id}`} className="inline-block"> <Badge variant="outline" className="mr-1 mb-1 hover:bg-secondary">{item.name}</Badge> </Link> ) : ( <Badge key={item.id} variant="outline" className="mr-1 mb-1">{item.name}</Badge> ));
+          return relatedItems.map(item => {
+              const isDeleted = item.obj?.isDeleted;
+              return item.obj ? (
+              <Link key={item.id} href={`/data/${relatedModelForCell.id}/view/${item.obj.id}`} className="inline-block">
+                <Badge variant={isDeleted ? "destructive" : "outline"} className={cn("mr-1 mb-1 hover:bg-secondary", isDeleted && "line-through")}>{item.name}</Badge>
+              </Link>
+            ) : (
+              <Badge key={item.id} variant="outline" className="mr-1 mb-1">{item.name}</Badge>
+            );
+          });
         } else {
           const relatedObj = (allDbObjects[property.relatedModelId] || []).find(o => o.id === value); 
           const displayVal = getObjectDisplayValue(relatedObj, relatedModelForCell, allModels, allDbObjects);
-          return relatedObj ? ( <Link href={`/data/${relatedModelForCell.id}/view/${relatedObj.id}`} className="inline-block"> <Badge variant="outline" className="hover:bg-secondary">{displayVal}</Badge> </Link> ) : <span className="text-xs font-mono" title={String(value)}>{displayVal}</span>;
+          const isDeleted = relatedObj?.isDeleted;
+          return relatedObj ? ( <Link href={`/data/${relatedModelForCell.id}/view/${relatedObj.id}`} className="inline-block"> <Badge variant={isDeleted ? "destructive" : "outline"} className={cn("hover:bg-secondary", isDeleted && "line-through")}>{displayVal}</Badge> </Link> ) : <span className="text-xs font-mono" title={String(value)}>{displayVal}</span>;
         }
       default: const strValue = String(value); return strValue.length > 50 ? <span title={strValue}>{strValue.substring(0, 47) + '...'}</span> : strValue;
     }

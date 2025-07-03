@@ -174,7 +174,26 @@ const GalleryCard = React.memo(function GalleryCard({
       case 'rating':
         return <StarDisplay rating={value as number} size="sm"/>;
       case 'relationship':
-        return <Badge variant="outline" className="text-xs">Relationship</Badge>;
+        if (!property.relatedModelId) return <span className="text-destructive text-xs">Config Err</span>;
+        const relatedModelDef = allModels.find(m => m.id === property.relatedModelId);
+        if (!relatedModelDef) return <span className="text-destructive text-xs">Model N/A</span>;
+
+        if (property.relationshipType === 'many') {
+            const ids = Array.isArray(value) ? value : [];
+            if (ids.length === 0) return <span className="text-muted-foreground italic">None</span>;
+            
+            const firstRelatedObj = (allObjects[property.relatedModelId] || []).find(o => o.id === ids[0]);
+            const isFirstDeleted = firstRelatedObj?.isDeleted;
+            const firstDisplay = getObjectDisplayValue(firstRelatedObj, relatedModelDef, allModels, allObjects);
+            const allNames = ids.map(id => getObjectDisplayValue((allObjects[property.relatedModelId!] || []).find(o => o.id === id), relatedModelDef, allModels, allObjects)).join(', ');
+
+            return <Badge variant={isFirstDeleted ? "destructive" : "outline"} className={cn("text-xs px-1 py-0", isFirstDeleted && "line-through")} title={allNames}>{firstDisplay.length > 15 ? firstDisplay.substring(0,12) + '...' : firstDisplay}{ids.length > 1 ? ` +${ids.length -1}` : ''}</Badge>;
+        } else {
+            const relatedObjSingle = (allObjects[property.relatedModelId] || []).find(o => o.id === value);
+            const displayValSingle = getObjectDisplayValue(relatedObjSingle, relatedModelDef, allModels, allObjects);
+            const isDeleted = relatedObjSingle?.isDeleted;
+            return <Badge variant={isDeleted ? "destructive" : "outline"} className={cn("text-xs px-1 py-0", isDeleted && "line-through")} title={displayValSingle}>{displayValSingle.length > 20 ? displayValSingle.substring(0,17) + '...' : displayValSingle}</Badge>;
+        }
       default:
         const strValue = String(value);
         return <span className="text-xs truncate" title={strValue}>{strValue.length > 30 ? strValue.substring(0, 27) + '...' : strValue}</span>;
