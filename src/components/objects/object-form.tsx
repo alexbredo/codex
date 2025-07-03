@@ -16,6 +16,8 @@ import AdaptiveFormField from './adaptive-form-field';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/contexts/auth-context';
+import { Button } from '@/components/ui/button';
+import { Loader2 } from 'lucide-react';
 
 interface ObjectFormProps {
   form: UseFormReturn<Record<string, any>>;
@@ -29,6 +31,7 @@ interface ObjectFormProps {
   currentUser?: User | null;
   propertyIdsToShow?: string[];
   hiddenPropertyIds?: string[];
+  showSubmitButtons?: boolean;
 }
 
 const INTERNAL_NO_STATE_CHANGE = "__NO_STATE_CHANGE__";
@@ -47,6 +50,7 @@ export default function ObjectForm({
   currentUser,
   propertyIdsToShow,
   hiddenPropertyIds = [],
+  showSubmitButtons = true,
 }: ObjectFormProps) {
   const formContext = existingObject ? 'edit' : 'create';
 
@@ -95,7 +99,7 @@ export default function ObjectForm({
 
   return (
     <Form {...form}>
-      <div className="space-y-4">
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           <ScrollArea className="max-h-[60vh] pr-3">
               <div className="space-y-4 ">
                   {formContext === 'edit' && currentWorkflow && existingObject && (
@@ -204,7 +208,19 @@ export default function ObjectForm({
                   ))}
               </div>
           </ScrollArea>
-      </div>
+
+          {showSubmitButtons && (
+            <div className="flex justify-end space-x-2 pt-4 border-t">
+              <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isLoading} className="bg-primary hover:bg-primary/90">
+                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {existingObject ? 'Update Object' : 'Create Object'}
+              </Button>
+            </div>
+          )}
+      </form>
     </Form>
   );
 }

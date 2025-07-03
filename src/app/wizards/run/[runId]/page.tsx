@@ -306,6 +306,7 @@ function RunWizardPageInternal() {
                         onSubmit={async () => {}} 
                         propertyIdsToShow={currentStep.propertyIds}
                         hiddenPropertyIds={hiddenPropertyIds}
+                        showSubmitButtons={false}
                     />
                 ) : (
                     <div className="space-y-4">
@@ -332,8 +333,7 @@ function RunWizardPageInternal() {
                 <Button type="button" variant="outline" onClick={() => {
                 }} disabled={true}>Back</Button>
                 <Button
-                    type="submit"
-                    form={`step-form-${currentStepIndex}`}
+                    type="button"
                     disabled={stepMutation.isPending}
                     onClick={() => {
                         if (currentStep.stepType === 'lookup') {
