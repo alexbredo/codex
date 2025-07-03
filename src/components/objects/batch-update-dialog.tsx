@@ -55,7 +55,7 @@ export default function BatchUpdateDialog({
   onConfirm,
   onInteractOutside,
 }: BatchUpdateDialogProps) {
-  const { currentModel, currentWorkflow, batchUpdatableProperties, getModelById, getObjectsByModelId, allModels, getAllObjects } = useDataViewLogic(); // Assuming a hook provides this context
+  const { currentModel, currentWorkflow, batchUpdatableProperties, getModelById, getObjectsByModelId, allModels, getAllObjects } = useDataViewLogic();
   const [isUpdating, setIsUpdating] = React.useState(false);
 
   const selectedBatchPropertyDetails = React.useMemo(() => {
@@ -176,9 +176,3 @@ export default function BatchUpdateDialog({
     </Dialog>
   );
 }
-
-// Dummy useDataViewLogic for component type checking. The real one is in the page.
-const useDataViewLogic = () => ({
-    currentModel: null, currentWorkflow: null, batchUpdatableProperties: [],
-    getModelById: () => undefined, getObjectsByModelId: () => [], allModels: [], getAllObjects: () => ({})
-});
