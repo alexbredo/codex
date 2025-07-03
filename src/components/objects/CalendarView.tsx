@@ -57,7 +57,7 @@ export default function CalendarView({ model, objects }: CalendarViewProps) {
   }
 
   // Custom Day component to render events
-  function CustomDay({ date, displayMonth, modifiers }: { date: Date; displayMonth: Date; modifiers: Modifiers }) {
+  function CustomDay({ date, displayMonth, activeModifiers }: { date: Date; displayMonth: Date; activeModifiers: Modifiers }) {
     const dayKey = formatDateFns(startOfDay(date), 'yyyy-MM-dd');
     const eventsForDay = eventsByDate.get(dayKey) || [];
 
@@ -68,11 +68,11 @@ export default function CalendarView({ model, objects }: CalendarViewProps) {
       <div className={cn(
         "h-full flex flex-col p-1.5", 
         isOutside && "opacity-50",
-        (modifiers?.saturday || modifiers?.sunday) && "bg-muted/50"
+        (activeModifiers?.saturday || activeModifiers?.sunday) && "bg-muted/50"
       )}>
         <div className={cn(
           "text-right text-xs mb-1",
-          modifiers?.sunday && "text-red-600 font-semibold"
+          activeModifiers?.sunday && "text-red-600 font-semibold"
         )}>
           {dayNumber}
         </div>
