@@ -7,7 +7,7 @@ import { useFieldArray } from 'react-hook-form';
 import type { ModelFormValues, PropertyFormValues } from './model-form-schema';
 import type { Model } from '@/lib/types';
 import { Button } from '@/components/ui/button';
-import { Form, FormField, FormMessage } from '@/components/ui/form';
+import { Form, FormField, FormItem, FormMessage } from '@/components/ui/form';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
