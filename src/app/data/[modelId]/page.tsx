@@ -5,7 +5,7 @@ import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, PlusCircle, Archive, Trash2, Inbox } from 'lucide-react';
+import { Loader2, PlusCircle, Archive, Trash2, Inbox, Edit3 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import GalleryCard from '@/components/objects/gallery-card';
@@ -14,7 +14,6 @@ import DataObjectsPageHeader from '@/components/objects/data-objects-page-header
 import DataObjectsTable from '@/components/objects/data-objects-table';
 import DeleteObjectDialog from '@/components/objects/delete-object-dialog';
 import BatchUpdateConfirmationDialog from '@/components/objects/batch-update-confirmation-dialog';
-import BatchDeleteConfirmationDialog from '@/components/objects/batch-delete-confirmation-dialog';
 import { useDataViewLogic } from '@/hooks/useDataViewLogic';
 import BatchUpdateDialog from '@/components/objects/batch-update-dialog';
 import InboxView from '@/components/objects/inbox-view';
@@ -195,6 +194,19 @@ export default function DataObjectsPage() {
         newValue={batchUpdatePreviewData?.newValue}
         currentWorkflow={currentWorkflow}
       />
+      <BatchUpdateDialog
+        isOpen={isBatchUpdateDialogOpen}
+        setIsOpen={setIsBatchUpdateDialogOpen}
+        selectedObjectIds={selectedObjectIds}
+        property={batchUpdateProperty}
+        setProperty={setBatchUpdateProperty}
+        value={batchUpdateValue}
+        setValue={setBatchUpdateValue}
+        date={batchUpdateDate}
+        setDate={setBatchUpdateDate}
+        onConfirm={prepareBatchUpdateForConfirmation}
+        onInteractOutside={handleBatchUpdateDialogInteractOutside}
+      />
       
       <DataObjectsPageHeader
         currentModel={currentModel}
@@ -224,19 +236,15 @@ export default function DataObjectsPage() {
           {selectedObjectIds.size > 0 && viewMode !== 'kanban' && (
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">{selectedObjectIds.size} selected</span>
-              <BatchUpdateDialog
-                isOpen={isBatchUpdateDialogOpen}
-                setIsOpen={setIsBatchUpdateDialogOpen}
-                selectedObjectIds={selectedObjectIds}
-                property={batchUpdateProperty}
-                setProperty={setBatchUpdateProperty}
-                value={batchUpdateValue}
-                setValue={setBatchUpdateValue}
-                date={batchUpdateDate}
-                setDate={setBatchUpdateDate}
-                onConfirm={prepareBatchUpdateForConfirmation}
-                onInteractOutside={handleBatchUpdateDialogInteractOutside}
-              />
+               <Button
+                variant="default"
+                size="sm"
+                className="bg-primary hover:bg-primary/90"
+                onClick={() => setIsBatchUpdateDialogOpen(true)}
+                disabled={viewingRecycleBin}
+              >
+                <Edit3 className="mr-2 h-4 w-4" /> Batch Update
+              </Button>
               <Button
                 variant="destructive"
                 size="sm"

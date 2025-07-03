@@ -9,7 +9,6 @@ import {
   DialogFooter as BatchUpdateDialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,7 +20,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { MultiSelectAutocomplete, type MultiSelectOption } from '@/components/ui/multi-select-autocomplete';
 import { StarRatingInput } from '@/components/ui/star-rating-input';
 import { Loader2, Edit3, CalendarIcon as CalendarIconLucide } from 'lucide-react';
-import { useData } from '@/contexts/data-context';
+import { useDataViewLogic } from '@/hooks/useDataViewLogic';
 import type { Model, Property } from '@/lib/types';
 import { getObjectDisplayValue, cn } from '@/lib/utils';
 import { format as formatDateFns } from 'date-fns';
@@ -102,18 +101,15 @@ export default function BatchUpdateDialog({
     return {};
   }, [relatedModelForBatchUpdate, getObjectsByModelId, allModels, allDbObjects]);
   
-  if (!isOpen) return null;
+  if (!isOpen) {
+    return null;
+  }
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => {
         setIsOpen(open);
         if (!open) setProperty('');
     }} modal={false}>
-        <DialogTrigger asChild>
-            <Button variant="default" size="sm" className="bg-primary hover:bg-primary/90">
-                <Edit3 className="mr-2 h-4 w-4" /> Batch Update
-            </Button>
-        </DialogTrigger>
         <DialogContent onInteractOutside={onInteractOutside}>
             <DialogHeader>
                 <DialogTitle>Batch Update {selectedObjectIds.size} Items</DialogTitle>
