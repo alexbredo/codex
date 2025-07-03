@@ -108,6 +108,15 @@ export default function ObjectConverterDialog({ isOpen, onClose, sourceModel, ob
     }
   };
 
+  const usedSourcePropertyIds = React.useMemo(() => {
+    return new Set(Object.values(propertyMappings).filter((id): id is string => !!id));
+  }, [propertyMappings]);
+
+  const unmappedSourceProperties = React.useMemo(() => {
+    return sourceModel.properties.filter(p => !usedSourcePropertyIds.has(p.id));
+  }, [sourceModel.properties, usedSourcePropertyIds]);
+
+
   const renderStepContent = () => {
     switch (step) {
       case 1: // Select Target Model
@@ -177,6 +186,18 @@ export default function ObjectConverterDialog({ isOpen, onClose, sourceModel, ob
                     </TableBody>
                 </Table>
             </ScrollArea>
+            {unmappedSourceProperties.length > 0 && (
+              <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Warning: Unmapped Properties</AlertTitle>
+                <AlertDescription>
+                  The following source properties are not mapped and their data will be lost during conversion:
+                  <ul className="mt-2 list-disc pl-5 space-y-1 text-xs">
+                      {unmappedSourceProperties.map(p => <li key={p.id}>{p.name}</li>)}
+                  </ul>
+                </AlertDescription>
+              </Alert>
+            )}
           </div>
         );
       case 3: // Confirmation
