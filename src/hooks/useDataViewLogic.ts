@@ -35,6 +35,13 @@ export interface ColumnToggleOption {
   type: 'action' | 'property' | 'workflow' | 'virtual' | 'owner' | 'metadata';
 }
 
+const DEFAULT_HIDDEN_COLUMNS = new Set([
+  OWNER_COLUMN_KEY,
+  CREATED_AT_COLUMN_KEY,
+  UPDATED_AT_COLUMN_KEY,
+]);
+
+
 export function useDataViewLogic(modelIdFromUrl: string) {
     const router = useRouter();
     const dataContext = useData();
@@ -77,7 +84,7 @@ export function useDataViewLogic(modelIdFromUrl: string) {
     // Use lazy initialization for useState to read from localStorage only once on mount
     const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(() => {
         if (typeof window === 'undefined' || !modelIdFromUrl) {
-            return new Set<string>();
+            return DEFAULT_HIDDEN_COLUMNS;
         }
         try {
             const key = `codex-hidden-columns-${modelIdFromUrl}`;
@@ -91,7 +98,7 @@ export function useDataViewLogic(modelIdFromUrl: string) {
         } catch (error) {
             console.error("Failed to load hidden columns from localStorage on init", error);
         }
-        return new Set<string>();
+        return DEFAULT_HIDDEN_COLUMNS;
     });
     
     // Batch Actions State
@@ -149,7 +156,7 @@ export function useDataViewLogic(modelIdFromUrl: string) {
                     // Load columns for the new model
                     const key = `codex-hidden-columns-${modelIdFromUrl}`;
                     const stored = localStorage.getItem(key);
-                    setHiddenColumns(stored ? new Set(JSON.parse(stored)) : new Set());
+                    setHiddenColumns(stored ? new Set(JSON.parse(stored)) : DEFAULT_HIDDEN_COLUMNS);
                     previousModelIdRef.current = modelIdFromUrl;
                 }
             } else {
@@ -290,11 +297,11 @@ export function useDataViewLogic(modelIdFromUrl: string) {
     const handleColumnFilterChange = useCallback((key: string, filter: ColumnFilterValue | null) => setColumnFilters(prev => ({ ...prev, [key]: filter })), []);
     const handleClearAllColumnFilters = useCallback(() => setColumnFilters({}), []);
     const handleSelectAllOnPage = useCallback((checked: boolean) => {
-        const ids = (paginatedDataToRender as DataObject[]).map(o => o.id);
+        const idsOnPage = (paginatedDataToRender as DataObject[]).map(o => o.id);
         setSelectedObjectIds(prev => {
             const newSet = new Set(prev);
-            if (checked) ids.forEach(id => newSet.add(id));
-            else ids.forEach(id => newSet.delete(id));
+            if (checked) idsOnPage.forEach(id => newSet.add(id));
+            else idsOnPage.forEach(id => newSet.delete(id));
             return newSet;
         });
     }, [paginatedDataToRender]);
