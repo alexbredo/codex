@@ -345,7 +345,6 @@ export function useDataViewLogic(modelIdFromUrl: string) {
     });
     const createShareStatus = useMemo(() => { return 'none' as 'create' | 'none' }, [shareLinks]);
     const groupableProperties = useMemo(() => { return [] }, [currentModel, currentWorkflow]);
-    const getFilterDisplayDetails = useCallback(() => { return null }, []);
     const handleEdit = useCallback((obj: DataObject) => router.push(`/data/${modelIdFromUrl}/edit/${obj.id}`), [router, modelIdFromUrl]);
     const handleEditModelStructure = useCallback(() => router.push(`/models/edit/${modelIdFromUrl}`), [router, modelIdFromUrl]);
     const handleView = useCallback((obj: DataObject) => router.push(`/data/${modelIdFromUrl}/view/${obj.id}`), [router, modelIdFromUrl]);
@@ -441,6 +440,58 @@ export function useDataViewLogic(modelIdFromUrl: string) {
     }, [
         currentModel, batchUpdatePreviewData, selectedObjectIds, toast, fetchData
     ]);
+
+    const getWorkflowStateName = useCallback((stateId: string | null | undefined): string => {
+        if (!stateId || !currentWorkflow) return 'N/A';
+        const state = currentWorkflow.states.find(s => s.id === stateId);
+        return state ? state.name : 'Unknown';
+    }, [currentWorkflow]);
+
+    const getOwnerUsername = useCallback((ownerId: string | null | undefined): string => {
+        if (!ownerId) return 'Unassigned';
+        return allUsers.find(u => u.id === ownerId)?.username || 'Unknown User';
+    }, [allUsers]);
+
+    const getFilterDisplayDetails = useCallback((columnKey: string, filter: ColumnFilterValue): { label: string; value: string } | null => {
+        if (!currentModel) return null;
+
+        let property: (Property | IncomingRelationColumn | { name: string, type: 'workflowState' | 'owner' | 'date' }) | undefined;
+        let label = '';
+        let displayValue = String(filter.value);
+
+        if (columnKey === WORKFLOW_STATE_DISPLAY_COLUMN_KEY) {
+            property = { name: 'Workflow State', type: 'workflowState' };
+            label = 'State';
+            const state = currentWorkflow?.states.find(s => s.id === filter.value);
+            displayValue = state?.name || 'Unknown State';
+        } else if (columnKey === OWNER_COLUMN_KEY) {
+            property = { name: 'Owner', type: 'owner' };
+            label = 'Owner';
+            const user = allUsers.find(u => u.id === filter.value);
+            displayValue = user?.username || 'Unknown User';
+        } else if (columnKey === CREATED_AT_COLUMN_KEY || columnKey === UPDATED_AT_COLUMN_KEY || columnKey === DELETED_AT_COLUMN_KEY) {
+            property = { name: columnKey === CREATED_AT_COLUMN_KEY ? 'Created At' : (columnKey === UPDATED_AT_COLUMN_KEY ? 'Updated At' : 'Deleted At'), type: 'date'};
+            label = property.name;
+            if (isDateValidFn(new Date(filter.value))) {
+                displayValue = formatDateFns(new Date(filter.value), 'PP');
+            }
+        } else {
+            property = [...currentModel.properties, ...virtualIncomingRelationColumns].find(p => p.id === columnKey);
+            if (!property) return null;
+            label = 'headerLabel' in property ? property.headerLabel : property.name;
+
+            if ('type' in property && property.type === 'relationship') {
+                const relatedModel = getModelById(property.relatedModelId || '');
+                if (relatedModel) {
+                    const relatedObject = (allDbObjects[property.relatedModelId!] || []).find(o => o.id === filter.value);
+                    displayValue = getObjectDisplayValue(relatedObject, relatedModel, allModels, allDbObjects);
+                }
+            }
+        }
+        
+        return { label, value: displayValue };
+
+    }, [currentModel, virtualIncomingRelationColumns, currentWorkflow, allUsers, allModels, allDbObjects, getModelById]);
 
 
     return {
