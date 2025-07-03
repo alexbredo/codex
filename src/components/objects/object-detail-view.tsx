@@ -41,7 +41,7 @@ export default function ObjectDetailView({ model, viewingObject, isPublicView = 
   const router = useRouter();
   const { toast } = useToast();
   const { user: currentUser, hasPermission } = useAuth();
-  const { getWorkflowById, validationRulesets, getUserById, allModels, getAllObjects, formatApiError, fetchData: refreshDataContext } = useData();
+  const { getModelById, getWorkflowById, validationRulesets, getUserById, allModels, getAllObjects, formatApiError, fetchData: refreshDataContext } = useData();
   
   const [changelog, setChangelog] = React.useState<ChangelogEntry[]>([]);
   const [isLoadingChangelog, setIsLoadingChangelog] = React.useState(false);
@@ -464,7 +464,9 @@ export default function ObjectDetailView({ model, viewingObject, isPublicView = 
                   {appliedRule && (
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <ShieldCheck className="h-4 w-4 ml-2 text-blue-500" />
+                        <Button type="button" variant="ghost" size="icon" className="ml-1 h-auto w-auto p-0.5 text-blue-500 hover:bg-blue-500/10">
+                            <ShieldCheck className="h-4 w-4" />
+                        </Button>
                       </TooltipTrigger>
                       <TooltipContent>
                         <p className="font-semibold">Validation Rule: {appliedRule.name}</p>
