@@ -12,6 +12,7 @@ import { format as formatDateFns, isValid as isDateValidFn, startOfDay, isSameMo
 import { getObjectDisplayValue } from '@/lib/utils';
 import { useData } from '@/contexts/data-context';
 import { cn } from '@/lib/utils';
+import { type Modifiers } from 'react-day-picker';
 
 interface CalendarViewProps {
   model: Model;
@@ -56,7 +57,7 @@ export default function CalendarView({ model, objects }: CalendarViewProps) {
   }
 
   // Custom Day component to render events
-  function DayContent({ date, displayMonth }: { date: Date, displayMonth: Date }) {
+  function CustomDay({ date, displayMonth, modifiers }: { date: Date; displayMonth: Date; modifiers: Modifiers }) {
     const dayKey = formatDateFns(startOfDay(date), 'yyyy-MM-dd');
     const eventsForDay = eventsByDate.get(dayKey) || [];
 
@@ -64,15 +65,24 @@ export default function CalendarView({ model, objects }: CalendarViewProps) {
     const dayNumber = formatDateFns(date, 'd');
 
     return (
-      <div className={cn("h-full flex flex-col p-1.5", isOutside && "opacity-50")}>
-        <div className="text-right text-xs mb-1">{dayNumber}</div>
+      <div className={cn(
+        "h-full flex flex-col p-1.5", 
+        isOutside && "opacity-50",
+        (modifiers.saturday || modifiers.sunday) && "bg-muted/50"
+      )}>
+        <div className={cn(
+          "text-right text-xs mb-1",
+          modifiers.sunday && "text-red-600 font-semibold"
+        )}>
+          {dayNumber}
+        </div>
         <div className="flex-1 overflow-y-auto -mx-1 px-1">
           {eventsForDay.length > 0 && (
             <div className="space-y-1">
               {eventsForDay.slice(0, 3).map(event => (
                 <Popover key={event.id}>
                   <PopoverTrigger asChild>
-                    <div className="text-xs bg-primary/20 text-primary-foreground p-1 rounded-sm cursor-pointer hover:bg-primary/30 truncate">
+                    <div className="text-xs bg-primary text-primary-foreground p-1 rounded-sm cursor-pointer hover:bg-primary/90 truncate">
                       {getObjectDisplayValue(event, model, allModels, allDbObjects)}
                     </div>
                   </PopoverTrigger>
@@ -107,6 +117,8 @@ export default function CalendarView({ model, objects }: CalendarViewProps) {
         selected={undefined} // No day is "selected" in the traditional sense
         month={month}
         onMonthChange={setMonth}
+        weekStartsOn={1} // Start week on Monday
+        modifiers={{ saturday: { dayOfWeek: [6] }, sunday: { dayOfWeek: [0] } }}
         className="p-0"
         classNames={{
           months: "w-full",
@@ -120,7 +132,7 @@ export default function CalendarView({ model, objects }: CalendarViewProps) {
           day: "h-full w-full p-0 font-normal focus:outline-none focus:ring-1 focus:ring-ring rounded-none",
         }}
         components={{
-          Day: DayContent,
+          Day: CustomDay,
         }}
       />
     </Card>
