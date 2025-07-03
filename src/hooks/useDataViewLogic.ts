@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -114,8 +113,8 @@ export function useDataViewLogic(modelIdFromUrl: string) {
                 previousModelIdRef.current = null;
             }
         }
-        setIsLoading(authIsLoading || !dataContextIsReady);
-    }, [modelIdFromUrl, dataContextIsReady, authIsLoading, getModelById, fetchData, toast, router]);
+        setIsLoading(isAuthLoading || !dataContextIsReady);
+    }, [modelIdFromUrl, dataContextIsReady, isAuthLoading, getModelById, fetchData, toast, router]);
     
     // Data Sync
     useEffect(() => {
@@ -229,7 +228,7 @@ export function useDataViewLogic(modelIdFromUrl: string) {
       queryFn: async () => { /* ... */ return []; },
       enabled: !!modelIdFromUrl,
     });
-    const createShareStatus = useMemo(() => { /* ... */ return 'none' }, [shareLinks]);
+    const createShareStatus = useMemo(() => { /* ... */ return 'none' as 'create' | 'none' }, [shareLinks]);
     const virtualIncomingRelationColumns = useMemo(() => { /* ... */ return [] }, [currentModel, allModels]);
     const groupableProperties = useMemo(() => { /* ... */ return [] }, [currentModel, currentWorkflow]);
     const allAvailableColumnsForToggle = useMemo(() => { /* ... */ return [] }, [currentModel, currentWorkflow]);
@@ -249,6 +248,9 @@ export function useDataViewLogic(modelIdFromUrl: string) {
     const toggleColumnVisibility = useCallback(() => { /* ... */ }, []);
     const getWorkflowStateName = useCallback(() => "State", []);
     const getOwnerUsername = useCallback(() => "User", []);
+    const handleExportCSV = useCallback(() => { /* placeholder */ }, []);
+    const totalItemsForPagination = sortedObjects.length;
+    const hasActiveColumnFilters = Object.values(columnFilters).some(v => v !== null);
 
     return {
         // State
@@ -271,11 +273,12 @@ export function useDataViewLogic(modelIdFromUrl: string) {
         // Handlers
         handleViewModeChange, requestSort, handleColumnFilterChange, handleClearAllColumnFilters,
         handleSelectAllOnPage, handleRowSelect, handleRefreshData, handleEditModelStructure,
-        handleCreateNew, handleView, handleEdit, handleSingleDeleteRequest, handleBatchDeleteRequest,
+        onCreateNew, handleView, handleEdit, handleSingleDeleteRequest, handleBatchDeleteRequest,
         handleDeletionSuccess, handleRestoreObject, prepareBatchUpdateForConfirmation, executeBatchUpdate,
         handleBatchUpdateDialogInteractOutside, handleStateChangeViaDrag, toggleColumnVisibility,
 
         // Helpers
-        getFilterDisplayDetails, getWorkflowStateName, getOwnerUsername
+        getFilterDisplayDetails, getWorkflowStateName, getOwnerUsername,
+        handleExportCSV,
     };
 }
