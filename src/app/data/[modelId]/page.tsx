@@ -1,11 +1,13 @@
+
 'use client';
 
 import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Kanban as KanbanIcon, ListChecks, ArchiveX, Search as SearchIconLucide, PlusCircle } from 'lucide-react';
+import { Loader2, Kanban as KanbanIcon, ListChecks, ArchiveX, Search as SearchIconLucide, PlusCircle, Archive, Trash2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import GalleryCard from '@/components/objects/gallery-card';
 import KanbanBoard from '@/components/objects/kanban-board';
 import DataObjectsPageHeader from '@/components/objects/data-objects-page-header';
@@ -39,6 +41,7 @@ export default function DataObjectsPage() {
     isBatchUpdateConfirmOpen,
     setIsBatchUpdateConfirmOpen,
     batchUpdatePreviewData,
+    deletedObjectCount,
     
     // Search and Filter State & Handlers
     searchTerm,
@@ -165,19 +168,6 @@ export default function DataObjectsPage() {
         newValue={batchUpdatePreviewData?.newValue}
         currentWorkflow={currentWorkflow}
       />
-      <BatchUpdateDialog
-        isOpen={isBatchUpdateDialogOpen}
-        setIsOpen={setIsBatchUpdateDialogOpen}
-        selectedObjectIds={selectedObjectIds}
-        property={batchUpdateProperty}
-        setProperty={setBatchUpdateProperty}
-        value={batchUpdateValue}
-        setValue={setBatchUpdateValue}
-        date={batchUpdateDate}
-        setDate={setBatchUpdateDate}
-        onConfirm={prepareBatchUpdateForConfirmation}
-        onInteractOutside={handleBatchUpdateDialogInteractOutside}
-      />
       
       <DataObjectsPageHeader
         currentModel={currentModel}
@@ -201,9 +191,53 @@ export default function DataObjectsPage() {
         createShareStatus={createShareStatus}
       />
       
-      {/* Dynamic content rendering based on the hook's state */}
-      <div className="flex items-center justify-end space-x-2 mb-4">
-        {/* ... Recycle bin toggle and batch action bar ... */}
+      <div className="flex items-center justify-between space-x-2 mb-4">
+        <div className="flex-grow">
+          {selectedObjectIds.size > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">{selectedObjectIds.size} selected</span>
+              <BatchUpdateDialog
+                isOpen={isBatchUpdateDialogOpen}
+                setIsOpen={setIsBatchUpdateDialogOpen}
+                selectedObjectIds={selectedObjectIds}
+                property={batchUpdateProperty}
+                setProperty={setBatchUpdateProperty}
+                value={batchUpdateValue}
+                setValue={setBatchUpdateValue}
+                date={batchUpdateDate}
+                setDate={setBatchUpdateDate}
+                onConfirm={prepareBatchUpdateForConfirmation}
+                onInteractOutside={handleBatchUpdateDialogInteractOutside}
+              />
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleBatchDeleteRequest}
+                disabled={viewingRecycleBin}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete Selected
+              </Button>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button
+            variant={viewingRecycleBin ? "default" : "outline"}
+            size="sm"
+            onClick={() => {
+              setViewingRecycleBin(!viewingRecycleBin);
+              setCurrentPage(1);
+            }}
+          >
+            <Archive className="mr-2 h-4 w-4" />
+            {viewingRecycleBin ? 'View Active' : 'Recycle Bin'}
+            {!viewingRecycleBin && deletedObjectCount > 0 && (
+              <Badge variant="destructive" className="ml-2">{deletedObjectCount}</Badge>
+            )}
+          </Button>
+        </div>
       </div>
 
       {hasActiveColumnFilters && (

@@ -126,6 +126,11 @@ export function useDataViewLogic(modelIdFromUrl: string) {
     }, [activeObjectsFromContext, deletedObjectsFromContext, currentModel, dataContextIsReady, viewingRecycleBin, getWorkflowById]);
 
     // Derived Data (useMemo hooks)
+    const deletedObjectCount = useMemo(() => {
+        if (!currentModel || !deletedObjectsFromContext) return 0;
+        return (deletedObjectsFromContext[currentModel.id] || []).length;
+    }, [currentModel, deletedObjectsFromContext]);
+
     const allDbObjects = useMemo(() => getAllObjects(true), [getAllObjects, dataContextIsReady]);
     const filteredObjects = useMemo(() => {
         if (!currentModel) return [];
@@ -279,7 +284,7 @@ export function useDataViewLogic(modelIdFromUrl: string) {
         batchUpdateValue,
         setBatchUpdateValue,
         batchUpdateDate,
-        setBatchUpdateDate,
+        setDate: setBatchUpdateDate,
         groupingPropertyKey,
         setGroupingPropertyKey,
         hiddenColumns,
@@ -292,6 +297,7 @@ export function useDataViewLogic(modelIdFromUrl: string) {
         batchUpdatePreviewData,
         isRefreshing,
         isBatchUpdating,
+        deletedObjectCount,
 
         // Derived Data
         localObjects,
