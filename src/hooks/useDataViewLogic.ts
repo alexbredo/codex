@@ -331,7 +331,7 @@ export function useDataViewLogic(modelIdFromUrl: string) {
         onCreateNew: handleCreateNew,
         handleView,
         handleEdit,
-        handleSingleDeleteRequest: handleSingleDeleteRequest,
+        handleSingleDeleteRequest,
         handleBatchDeleteRequest,
         handleDeletionSuccess,
         handleRestoreObject,
