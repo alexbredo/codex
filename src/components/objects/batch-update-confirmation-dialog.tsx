@@ -17,7 +17,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Loader2, AlertTriangle } from 'lucide-react';
 import type { DataObject, Model, Property, WorkflowWithDetails } from '@/lib/types';
 import { getObjectDisplayValue } from '@/lib/utils';
-import { useData } from '@/contexts/data-context';
 
 interface BatchUpdateConfirmationDialogProps {
   isOpen: boolean;
@@ -29,6 +28,8 @@ interface BatchUpdateConfirmationDialogProps {
   propertyBeingUpdated: (Property & { type: 'workflow_state' | Property['type'] }) | undefined;
   newValue: any;
   currentWorkflow: WorkflowWithDetails | null;
+  allModels: Model[];
+  allDbObjects: Record<string, DataObject[]>;
 }
 
 export default function BatchUpdateConfirmationDialog({
@@ -41,16 +42,14 @@ export default function BatchUpdateConfirmationDialog({
   propertyBeingUpdated,
   newValue,
   currentWorkflow,
+  allModels,
+  allDbObjects,
 }: BatchUpdateConfirmationDialogProps) {
-
-  const { allModels, getAllObjects } = useData();
 
   if (!isOpen || !model || !propertyBeingUpdated) {
     return null;
   }
   
-  const allDbObjects = getAllObjects();
-
   const getDisplayValue = (value: any, property: Property | undefined) => {
     if (value === null || typeof value === 'undefined' || String(value).trim() === '') return <span className="text-muted-foreground italic">Not Set</span>;
 

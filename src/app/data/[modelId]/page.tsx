@@ -198,6 +198,8 @@ export default function DataObjectsPage() {
         propertyBeingUpdated={batchUpdatePreviewData?.propertyBeingUpdated}
         newValue={batchUpdatePreviewData?.newValue}
         currentWorkflow={currentWorkflow}
+        allModels={allModels}
+        allDbObjects={allDbObjects}
       />
       <BatchUpdateDialog
         isOpen={isBatchUpdateDialogOpen}
