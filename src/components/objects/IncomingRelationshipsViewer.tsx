@@ -9,11 +9,21 @@ import type { DependencyCheckResult, RelationInfo } from '@/app/api/codex-struct
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, AlertTriangle, Link2, Paperclip, ExternalLink } from 'lucide-react';
+import { Loader2, AlertTriangle, Link2, Paperclip, ExternalLink, Image as ImageIcon } from 'lucide-react';
 import { getObjectDisplayValue, cn } from '@/lib/utils';
 import Link from 'next/link';
 import { StarDisplay } from '@/components/ui/star-display';
 import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader as LightboxDialogHeader,
+  DialogTitle as LightboxDialogTitle,
+  DialogDescription as LightboxDialogDescription,
+} from "@/components/ui/dialog";
+import Image from 'next/image';
+import { Button } from '@/components/ui/button';
+
 
 interface IncomingRelationshipsViewerProps {
   modelId: string;
@@ -29,9 +39,9 @@ async function fetchDependencies(objectId: string): Promise<DependencyCheckResul
   return response.json();
 }
 
-function DisplayCellContent({ obj, property }: { obj: DataObject, property: Property }) {
+function DisplayCellContent({ obj, property, onImageClick }: { obj: DataObject, property: Property, onImageClick: (url: string) => void }) {
     const { allModels, getAllObjects } = useData();
-    const allDbObjects = getAllObjects();
+    const allDbObjects = getAllObjects(true); // Include deleted for display
     const value = obj[property.name];
 
     if (value === null || typeof value === 'undefined' || String(value).trim() === '') {
@@ -43,6 +53,27 @@ function DisplayCellContent({ obj, property }: { obj: DataObject, property: Prop
         case 'date': return <span className="text-xs">{isDateValid(new Date(value)) ? formatDateFns(new Date(value), 'PP') : String(value)}</span>;
         case 'rating': return <StarDisplay rating={value as number} size="sm" />;
         case 'number': return <span className="text-xs">{String(value)}</span>;
+        case 'image':
+            const imgUrl = String(value);
+            if (!imgUrl) return <ImageIcon className="h-4 w-4 text-muted-foreground" />;
+            const placeholderImage = `https://placehold.co/100x100.png`;
+            return (
+              <Button
+                variant="ghost"
+                className="w-10 h-10 p-0 rounded-md overflow-hidden border hover:ring-2 hover:ring-primary focus:outline-none focus:ring-2 focus:ring-ring"
+                onClick={() => onImageClick(imgUrl)}
+                aria-label={`View image for ${property.name}`}
+              >
+                <Image
+                  src={imgUrl}
+                  alt={property.name}
+                  width={40}
+                  height={40}
+                  className="w-full h-full object-cover"
+                  onError={(e) => { (e.target as HTMLImageElement).src = placeholderImage; }}
+                />
+              </Button>
+            );
         case 'relationship': {
             if (!property.relatedModelId) return <span className="text-destructive text-xs">Config Err</span>;
             const relatedModel = allModels.find(m => m.id === property.relatedModelId);
@@ -66,6 +97,7 @@ function DisplayCellContent({ obj, property }: { obj: DataObject, property: Prop
 
 export default function IncomingRelationshipsViewer({ objectId, modelId }: IncomingRelationshipsViewerProps) {
   const { models: allModels, getAllObjects } = useData();
+  const [lightboxImageUrl, setLightboxImageUrl] = React.useState<string | null>(null);
 
   const { data: dependencies, isLoading, error } = useQuery<DependencyCheckResult>({
     queryKey: ['objectDependencies', objectId],
@@ -162,7 +194,7 @@ export default function IncomingRelationshipsViewer({ objectId, modelId }: Incom
                           </TableCell>
                           {propertiesToDisplay.map(prop => (
                             <TableCell key={prop.id}>
-                                <DisplayCellContent obj={sourceObject} property={prop} />
+                                <DisplayCellContent obj={sourceObject} property={prop} onImageClick={setLightboxImageUrl} />
                             </TableCell>
                           ))}
                         </TableRow>
@@ -179,11 +211,35 @@ export default function IncomingRelationshipsViewer({ objectId, modelId }: Incom
   };
   
   return (
+    <>
     <Card className="max-w-4xl mx-auto shadow-lg mt-8">
       <CardHeader>
         <CardTitle className="text-2xl text-primary flex items-center"><Link2 className="mr-2 h-6 w-6" /> Incoming Relationships</CardTitle>
       </CardHeader>
       {renderContent()}
     </Card>
+
+    <Dialog open={!!lightboxImageUrl} onOpenChange={(open) => !open && setLightboxImageUrl(null)}>
+      <DialogContent className="w-[90vw] max-w-[1600px] bg-transparent border-0 p-0 shadow-none">
+        <LightboxDialogHeader className="sr-only">
+          <LightboxDialogTitle>Image Lightbox</LightboxDialogTitle>
+          <LightboxDialogDescription>A larger view of the selected image. Click outside the image or press escape to close.</LightboxDialogDescription>
+        </LightboxDialogHeader>
+        {lightboxImageUrl && (
+          <Image
+            src={lightboxImageUrl}
+            alt="Lightbox view"
+            width={1920}
+            height={1080}
+            className="w-full h-auto object-contain max-h-[90vh] rounded-lg"
+            onError={(e) => {
+              (e.target as HTMLImageElement).src = `https://placehold.co/800x600.png`;
+              (e.target as HTMLImageElement).alt = 'Image failed to load';
+            }}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
