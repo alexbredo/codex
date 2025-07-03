@@ -209,6 +209,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
       }
       setDeletedObjects(newDeletedObjectsData); // Direct set for deleted objects
 
+      // Always try to fetch validation rulesets for any authenticated user, as they're needed for forms.
+      const newRulesetsData = await fetchValidationRulesetsInternal();
+      if (newRulesetsData) {
+          setValidationRulesets(prevRulesets => {
+              const newSortedJson = JSON.stringify([...newRulesetsData].sort((a,b) => a.id.localeCompare(b.id)));
+              const prevSortedJson = JSON.stringify([...prevRulesets].sort((a,b) => a.id.localeCompare(b.id)));
+              return newSortedJson !== prevSortedJson ? newRulesetsData : prevRulesets;
+          });
+      }
+      
       // Conditionally fetch admin-level data
       if (hasPermission('admin:manage_workflows')) {
         const newWorkflowsData = await fetchWorkflowsInternal();
@@ -234,19 +244,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
       } else {
         setWizards([]);
-      }
-
-      if (hasPermission('admin:manage_validation_rules')) {
-        const newRulesetsData = await fetchValidationRulesetsInternal();
-        if (newRulesetsData) {
-          setValidationRulesets(prevRulesets => {
-            const newSortedJson = JSON.stringify([...newRulesetsData].sort((a,b) => a.id.localeCompare(b.id)));
-            const prevSortedJson = JSON.stringify([...prevRulesets].sort((a,b) => a.id.localeCompare(b.id)));
-            return newSortedJson !== prevSortedJson ? newRulesetsData : prevRulesets;
-          });
-        }
-      } else {
-        setValidationRulesets([]);
       }
 
       if (hasPermission('users:view')) {

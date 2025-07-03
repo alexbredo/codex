@@ -1,4 +1,5 @@
 
+
 'use server';
 
 import { NextResponse } from 'next/server';
@@ -83,11 +84,10 @@ export async function POST(request: Request, { params }: Params) {
     const isFinalStep = stepIndex === wizard.steps.length - 1;
 
     if (isFinalStep) {
-        // --- REFACTORED FINAL COMMIT LOGIC ---
-        const createdObjectIds: Record<number, string> = {}; // { stepIndex: objectId }
+        const createdObjectIds: Record<number, string> = {};
         const resolvedStepData = { ...stepData };
+        const validationRulesets: ValidationRuleset[] = await db.all('SELECT * FROM validation_rulesets');
 
-        // 1. Pre-fetch and enrich data for all 'lookup' steps first
         for (let i = 0; i < wizard.steps.length; i++) {
             const stepToResolve = wizard.steps[i];
             const dataForStep = resolvedStepData[i];
@@ -100,21 +100,16 @@ export async function POST(request: Request, { params }: Params) {
                 }
             }
         }
-        
-        // Fetch all validation rulesets once for efficiency
-        const validationRulesets: ValidationRuleset[] = await db.all('SELECT * FROM validation_rulesets');
 
-        // 2. Sequentially process all steps to handle creation and mapping
         for (let i = 0; i < wizard.steps.length; i++) {
             const stepToProcess = wizard.steps[i];
             const dataForStep = resolvedStepData[i];
             
             if (dataForStep.stepType === 'lookup') {
                 createdObjectIds[i] = dataForStep.objectId;
-                continue; // Nothing to create, move to next step
+                continue;
             }
 
-            // It's a 'create' step
             const modelForStep: any = await db.get('SELECT * FROM models WHERE id = ?', stepToProcess.modelId);
             if (!modelForStep) throw new Error(`Model ${stepToProcess.modelId} not found for step ${i + 1}`);
             
@@ -122,11 +117,10 @@ export async function POST(request: Request, { params }: Params) {
             createdObjectIds[i] = newObjectId;
             const newObjectData = { ...(dataForStep.formData || {}) };
 
-            // Process mappings for the current step
             const mappings: PropertyMapping[] = stepToProcess.propertyMappings || [];
             for (const mapping of mappings) {
                 const sourceStepData = resolvedStepData[mapping.sourceStepIndex];
-                if (!sourceStepData) continue; // Should not happen if wizard is well-formed
+                if (!sourceStepData) continue;
                 
                 const sourceObjectId = createdObjectIds[mapping.sourceStepIndex];
                 const targetPropertyDef = await db.get('SELECT name FROM properties WHERE id = ?', mapping.targetPropertyId);
@@ -137,7 +131,6 @@ export async function POST(request: Request, { params }: Params) {
                 }
                 
                 let valueToMap: any = null;
-
                 if (mapping.sourcePropertyId === INTERNAL_MAPPING_OBJECT_ID_KEY) {
                     valueToMap = sourceObjectId;
                 } else if (sourceStepData.formData) {
@@ -148,17 +141,14 @@ export async function POST(request: Request, { params }: Params) {
                          console.warn(`Mapping failed: Source property with ID ${mapping.sourcePropertyId} not found.`);
                     }
                 }
-                
                 newObjectData[targetPropertyDef.name] = valueToMap;
             }
 
-            // --- START VALIDATION ---
             const properties: Property[] = await db.all('SELECT * FROM properties WHERE model_id = ?', stepToProcess.modelId);
             for (const prop of properties) {
                 if (newObjectData.hasOwnProperty(prop.name)) {
                     const newValue = newObjectData[prop.name];
 
-                    // Regex validation for strings
                     if (prop.type === 'string' && prop.validationRulesetId && (newValue !== null && typeof newValue !== 'undefined' && String(newValue).trim() !== '')) {
                         const ruleset = validationRulesets.find(rs => rs.id === prop.validationRulesetId);
                         if (ruleset) {
@@ -173,7 +163,6 @@ export async function POST(request: Request, { params }: Params) {
                         }
                     }
 
-                    // Uniqueness check for strings
                     if (prop.type === 'string' && prop.isUnique) {
                         if (newValue !== null && typeof newValue !== 'undefined' && String(newValue).trim() !== '') {
                             const conflictingObject = await db.get(
@@ -187,7 +176,6 @@ export async function POST(request: Request, { params }: Params) {
                         }
                     }
 
-                    // Min/Max check for numbers
                     if (prop.type === 'number' && (newValue !== null && typeof newValue !== 'undefined')) {
                         const numericValue = Number(newValue);
                         if (isNaN(numericValue) && prop.required) {
@@ -204,11 +192,8 @@ export async function POST(request: Request, { params }: Params) {
                     }
                 }
             }
-            // --- END VALIDATION ---
             
-            // Save the complete, resolved data back for the summary page
             resolvedStepData[i].formData = newObjectData;
-
             const currentTimestamp = new Date().toISOString();
             const finalObjectData = { ...newObjectData, createdAt: currentTimestamp, updatedAt: currentTimestamp };
             
@@ -225,13 +210,11 @@ export async function POST(request: Request, { params }: Params) {
         await db.run('UPDATE wizard_runs SET status = ?, currentStepIndex = ?, stepData = ?, updatedAt = ? WHERE id = ?', 'COMPLETED', stepIndex, JSON.stringify(resolvedStepData), new Date().toISOString(), runId);
         
     } else {
-        // --- INTERMEDIATE STEP SAVE ---
         if (stepType === 'lookup' && lookupObjectId) {
             const modelForStep = await db.get('SELECT id FROM models WHERE id = ?', currentStep.modelId);
             if (modelForStep) {
                 const objectFromDb = await db.get('SELECT data FROM data_objects WHERE id = ? AND model_id = ?', lookupObjectId, modelForStep.id);
                 if (objectFromDb) {
-                    // Enrich the step data with the formData for the preview on the admin page
                     stepData[stepIndex].formData = JSON.parse(objectFromDb.data);
                 }
             }
