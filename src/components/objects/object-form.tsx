@@ -1,4 +1,3 @@
-
 'use client';
 
 import { Controller, type UseFormReturn } from 'react-hook-form';
@@ -99,8 +98,8 @@ export default function ObjectForm({
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-          <ScrollArea className="max-h-[60vh] pr-3">
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 h-full flex flex-col">
+          <ScrollArea className="flex-grow min-h-0 pr-3">
               <div className="space-y-4 ">
                   {formContext === 'edit' && currentWorkflow && existingObject && (
                     <FormField
@@ -210,7 +209,7 @@ export default function ObjectForm({
           </ScrollArea>
 
           {showSubmitButtons && (
-            <div className="flex justify-end space-x-2 pt-4 border-t">
+            <div className="flex-shrink-0 flex justify-end space-x-2 pt-4 border-t">
               <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
                 Cancel
               </Button>

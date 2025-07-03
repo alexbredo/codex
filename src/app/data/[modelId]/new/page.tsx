@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
@@ -230,16 +229,16 @@ export default function CreateObjectPage() {
   }
 
   return (
-    <div className="container mx-auto py-8">
-      <Button variant="outline" onClick={() => router.push(`/data/${modelId}`)} className="mb-6">
+    <div className="container mx-auto py-8 flex flex-col h-full">
+      <Button variant="outline" onClick={() => router.push(`/data/${modelId}`)} className="mb-6 flex-shrink-0 self-start">
         <ArrowLeft className="mr-2 h-4 w-4" /> Back to {currentModel.name} Data
       </Button>
-      <Card className="max-w-2xl mx-auto">
-        <CardHeader>
+      <Card className="max-w-2xl mx-auto w-full flex-grow min-h-0 flex flex-col">
+        <CardHeader className="flex-shrink-0">
           <CardTitle className="text-2xl">Create New {currentModel.name}</CardTitle>
           <CardDescription>Fill in the details for the new {currentModel.name.toLowerCase()} object.</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex-grow min-h-0">
           <ObjectForm
             form={form}
             model={currentModel}
