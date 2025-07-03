@@ -380,6 +380,7 @@ export function useDataViewLogic(modelIdFromUrl: string) {
 
         // Derived Data
         localObjects,
+        sortedObjects,
         paginatedDataToRender,
         groupedDataForRender,
         totalPages,

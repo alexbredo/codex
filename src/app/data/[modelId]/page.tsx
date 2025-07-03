@@ -55,6 +55,7 @@ export default function DataObjectsPage() {
 
     // Data State & Derived Data
     localObjects,
+    sortedObjects,
     paginatedDataToRender,
     groupedDataForRender,
     totalPages,
