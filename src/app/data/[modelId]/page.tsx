@@ -1,11 +1,10 @@
-
 'use client';
 
 import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Kanban as KanbanIcon, ListChecks, ArchiveX, Search as SearchIconLucide } from 'lucide-react';
+import { Loader2, Kanban as KanbanIcon, ListChecks, ArchiveX, Search as SearchIconLucide, PlusCircle } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import GalleryCard from '@/components/objects/gallery-card';
 import KanbanBoard from '@/components/objects/kanban-board';
@@ -119,6 +118,8 @@ export default function DataObjectsPage() {
     createShareStatus,
     hasPermission,
   } = useDataViewLogic(modelIdFromUrl);
+
+  const { toast } = useToast();
 
   if (isLoading) {
     return (
