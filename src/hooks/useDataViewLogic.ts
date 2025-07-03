@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -201,6 +202,11 @@ export function useDataViewLogic(modelIdFromUrl: string) {
         }
     }, [currentModel, contextUpdateObject, currentWorkflow, toast]);
 
+    const handleCreateNew = useCallback(() => {
+        if (!modelIdFromUrl) return;
+        router.push(`/data/${modelIdFromUrl}/new`);
+    }, [router, modelIdFromUrl]);
+
     // Other handlers (simplified)
     const handleColumnFilterChange = useCallback((key: string, filter: ColumnFilterValue | null) => setColumnFilters(prev => ({ ...prev, [key]: filter })), []);
     const handleClearAllColumnFilters = useCallback(() => setColumnFilters({}), []);
@@ -233,7 +239,6 @@ export function useDataViewLogic(modelIdFromUrl: string) {
     const groupableProperties = useMemo(() => { /* ... */ return [] }, [currentModel, currentWorkflow]);
     const allAvailableColumnsForToggle = useMemo(() => { /* ... */ return [] }, [currentModel, currentWorkflow]);
     const getFilterDisplayDetails = useCallback(() => { /* ... */ return null }, []);
-    const handleCreateNew = useCallback(() => router.push(`/data/${modelIdFromUrl}/new`), [router, modelIdFromUrl]);
     const handleEdit = useCallback((obj: DataObject) => router.push(`/data/${modelIdFromUrl}/edit/${obj.id}`), [router, modelIdFromUrl]);
     const handleEditModelStructure = useCallback(() => router.push(`/models/edit/${modelIdFromUrl}`), [router, modelIdFromUrl]);
     const handleView = useCallback((obj: DataObject) => router.push(`/data/${modelIdFromUrl}/view/${obj.id}`), [router, modelIdFromUrl]);
@@ -273,7 +278,7 @@ export function useDataViewLogic(modelIdFromUrl: string) {
         // Handlers
         handleViewModeChange, requestSort, handleColumnFilterChange, handleClearAllColumnFilters,
         handleSelectAllOnPage, handleRowSelect, handleRefreshData, handleEditModelStructure,
-        onCreateNew, handleView, handleEdit, handleSingleDeleteRequest, handleBatchDeleteRequest,
+        onCreateNew: handleCreateNew, handleView, handleEdit, handleSingleDeleteRequest, handleBatchDeleteRequest,
         handleDeletionSuccess, handleRestoreObject, prepareBatchUpdateForConfirmation, executeBatchUpdate,
         handleBatchUpdateDialogInteractOutside, handleStateChangeViaDrag, toggleColumnVisibility,
 
