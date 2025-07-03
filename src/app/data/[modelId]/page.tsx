@@ -18,6 +18,7 @@ import { useDataViewLogic } from '@/hooks/useDataViewLogic';
 import BatchUpdateDialog from '@/components/objects/batch-update-dialog';
 import InboxView from '@/components/objects/inbox-view';
 import CalendarView from '@/components/objects/CalendarView'; // Import the new component
+import BatchDeleteConfirmationDialog from '@/components/objects/batch-delete-confirmation-dialog';
 
 export type ViewMode = 'table' | 'gallery' | 'kanban' | 'inbox' | 'calendar';
 
