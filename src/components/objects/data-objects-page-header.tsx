@@ -38,6 +38,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import CreateShareLinkDialog from '@/components/sharing/CreateShareLinkDialog';
+import type { ColumnToggleOption } from '@/hooks/useDataViewLogic';
 
 // Define ViewMode locally for this component. Ideally, this would be in a shared types file.
 export type ViewMode = 'table' | 'gallery' | 'kanban';
@@ -53,12 +54,6 @@ export interface GroupablePropertyOption {
   isIncomingRelation?: boolean;
   isOwnerColumn?: boolean;
   isDateColumn?: boolean;
-}
-
-export interface ColumnToggleOption {
-  id: string;
-  label: string;
-  type: 'action' | 'property' | 'workflow' | 'virtual' | 'owner' | 'metadata';
 }
 
 interface DataObjectsPageHeaderProps {

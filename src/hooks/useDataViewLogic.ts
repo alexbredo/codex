@@ -17,6 +17,9 @@ import type { ViewMode } from '@/app/data/[modelId]/page';
 
 
 // Constants
+const SELECT_ALL_CHECKBOX_COLUMN_KEY = "select-all-checkbox";
+const VIEW_ACTION_COLUMN_KEY = "view-action";
+const ACTIONS_COLUMN_KEY = "actions";
 const INTERNAL_NO_REFERENCES_VALUE = "__NO_REFERENCES__";
 const WORKFLOW_STATE_GROUPING_KEY = "__WORKFLOW_STATE_GROUPING__";
 const OWNER_COLUMN_KEY = "__OWNER_COLUMN_KEY__";
@@ -25,6 +28,12 @@ const UPDATED_AT_COLUMN_KEY = "__UPDATED_AT_COLUMN_KEY__";
 const DELETED_AT_COLUMN_KEY = "__DELETED_AT_COLUMN_KEY__";
 const WORKFLOW_STATE_DISPLAY_COLUMN_KEY = "__WORKFLOW_STATE_DISPLAY_COLUMN__";
 
+// Type Definitions
+export interface ColumnToggleOption {
+  id: string;
+  label: string;
+  type: 'action' | 'property' | 'workflow' | 'virtual' | 'owner' | 'metadata';
+}
 
 export function useDataViewLogic(modelIdFromUrl: string) {
     const router = useRouter();
@@ -165,6 +174,49 @@ export function useDataViewLogic(modelIdFromUrl: string) {
         return idsOnPage.length > 0 && idsOnPage.every(id => selectedObjectIds.has(id));
     }, [paginatedDataToRender, selectedObjectIds]);
 
+    const handleCreateNew = useCallback(() => {
+        if (!modelIdFromUrl) return;
+        router.push(`/data/${modelIdFromUrl}/new`);
+    }, [router, modelIdFromUrl]);
+
+    const virtualIncomingRelationColumns: IncomingRelationColumn[] = useMemo(() => [], [currentModel, allModels]);
+    
+    const allAvailableColumnsForToggle = useMemo(() => {
+        if (!currentModel) return [];
+
+        const columns: ColumnToggleOption[] = [];
+
+        // Add standard columns
+        columns.push({ id: SELECT_ALL_CHECKBOX_COLUMN_KEY, label: 'Selection Checkbox', type: 'action' });
+        columns.push({ id: VIEW_ACTION_COLUMN_KEY, label: 'View Icon', type: 'action' });
+
+        // Add model properties
+        currentModel.properties.forEach(prop => {
+            columns.push({ id: prop.id, label: prop.name, type: 'property' });
+        });
+        
+        // Add virtual incoming relations
+        virtualIncomingRelationColumns.forEach(col => {
+            columns.push({ id: col.id, label: col.headerLabel, type: 'virtual' });
+        });
+
+        // Add workflow state if applicable
+        if (currentWorkflow) {
+            columns.push({ id: WORKFLOW_STATE_DISPLAY_COLUMN_KEY, label: 'Workflow State', type: 'workflow' });
+        }
+
+        // Add metadata columns
+        columns.push({ id: OWNER_COLUMN_KEY, label: 'Owned By', type: 'owner' });
+        columns.push({ id: CREATED_AT_COLUMN_KEY, label: 'Created At', type: 'metadata' });
+        columns.push({ id: UPDATED_AT_COLUMN_KEY, label: 'Updated At', type: 'metadata' });
+        columns.push({ id: DELETED_AT_COLUMN_KEY, label: 'Deleted At', type: 'metadata' });
+        
+        // Add final actions column
+        columns.push({ id: ACTIONS_COLUMN_KEY, label: 'Actions Menu', type: 'action' });
+
+        return columns;
+    }, [currentModel, currentWorkflow, virtualIncomingRelationColumns]);
+
     // Handlers (useCallback hooks)
     const handleViewModeChange = useCallback((newMode: ViewMode) => setViewMode(newMode), []);
     const requestSort = useCallback((key: string) => {
@@ -206,11 +258,6 @@ export function useDataViewLogic(modelIdFromUrl: string) {
             setIsRefreshing(false);
         }
     }, [currentModel, contextUpdateObject, currentWorkflow, toast]);
-
-    const handleCreateNew = useCallback(() => {
-        if (!modelIdFromUrl) return;
-        router.push(`/data/${modelIdFromUrl}/new`);
-    }, [router, modelIdFromUrl]);
     
     // Other handlers (simplified)
     const handleColumnFilterChange = useCallback((key: string, filter: ColumnFilterValue | null) => setColumnFilters(prev => ({ ...prev, [key]: filter })), []);
@@ -240,9 +287,7 @@ export function useDataViewLogic(modelIdFromUrl: string) {
       enabled: !!modelIdFromUrl,
     });
     const createShareStatus = useMemo(() => { /* ... */ return 'none' as 'create' | 'none' }, [shareLinks]);
-    const virtualIncomingRelationColumns = useMemo(() => { /* ... */ return [] }, [currentModel, allModels]);
     const groupableProperties = useMemo(() => { /* ... */ return [] }, [currentModel, currentWorkflow]);
-    const allAvailableColumnsForToggle = useMemo(() => { /* ... */ return [] }, [currentModel, currentWorkflow]);
     const getFilterDisplayDetails = useCallback(() => { /* ... */ return null }, []);
     const handleEdit = useCallback((obj: DataObject) => router.push(`/data/${modelIdFromUrl}/edit/${obj.id}`), [router, modelIdFromUrl]);
     const handleEditModelStructure = useCallback(() => router.push(`/models/edit/${modelIdFromUrl}`), [router, modelIdFromUrl]);
