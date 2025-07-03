@@ -23,6 +23,7 @@ import { z } from 'zod';
 import Link from 'next/link';
 
 async function fetchWizardRunState(runId: string): Promise<WizardRunState> {
+  if (!runId) throw new Error("No link ID provided.");
   const response = await fetch(`/api/codex-structure/wizards/run/${runId}`);
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({ error: "Failed to fetch wizard run state" }));
@@ -30,6 +31,7 @@ async function fetchWizardRunState(runId: string): Promise<WizardRunState> {
   }
   return response.json();
 }
+
 
 async function submitWizardStep({ runId, stepIndex, stepType, formData, lookupObjectId }: {
   runId: string;

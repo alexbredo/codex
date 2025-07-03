@@ -150,8 +150,8 @@ export async function POST(request: Request, { params }: Params) {
             // Run full validation on the final prepared object data
             const properties: Property[] = await db.all('SELECT * FROM properties WHERE model_id = ?', stepToProcess.modelId);
             for (const prop of properties) {
-                 const newValue = newObjectData[prop.name];
-
+                const newValue = newObjectData[prop.name];
+                
                 // 1. Regex validation for strings
                 if (prop.type === 'string' && prop.validationRulesetId && (newValue !== null && typeof newValue !== 'undefined' && String(newValue).trim() !== '')) {
                     const ruleset = validationRulesets.find(rs => rs.id === prop.validationRulesetId);
