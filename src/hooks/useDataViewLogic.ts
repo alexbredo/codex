@@ -46,6 +46,7 @@ export function useDataViewLogic(modelIdFromUrl: string) {
         getObjectsByModelId,
         restoreObject: contextRestoreObject,
         updateObject: contextUpdateObject,
+        batchDeleteAcrossModels,
         getAllObjects,
         getWorkflowById,
         allUsers,
@@ -71,8 +72,27 @@ export function useDataViewLogic(modelIdFromUrl: string) {
     const [columnFilters, setColumnFilters] = useState<Record<string, ColumnFilterValue | null>>({});
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [groupingPropertyKey, setGroupingPropertyKey] = useState<string | null>(null);
-    const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
     const [viewingRecycleBin, setViewingRecycleBin] = useState(false);
+    
+    // Use lazy initialization for useState to read from localStorage only once on mount
+    const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(() => {
+        if (typeof window === 'undefined' || !modelIdFromUrl) {
+            return new Set<string>();
+        }
+        try {
+            const key = `codex-hidden-columns-${modelIdFromUrl}`;
+            const storedHiddenColumns = localStorage.getItem(key);
+            if (storedHiddenColumns) {
+                const parsed = JSON.parse(storedHiddenColumns);
+                if (Array.isArray(parsed)) {
+                    return new Set(parsed);
+                }
+            }
+        } catch (error) {
+            console.error("Failed to load hidden columns from localStorage on init", error);
+        }
+        return new Set<string>();
+    });
     
     // Batch Actions State
     const [selectedObjectIds, setSelectedObjectIds] = useState<Set<string>>(new Set());
@@ -95,34 +115,16 @@ export function useDataViewLogic(modelIdFromUrl: string) {
     const previousModelIdRef = useRef<string | null>(null);
     const ITEMS_PER_PAGE = viewMode === 'gallery' ? 12 : 10;
 
-    // Load hidden columns from localStorage on mount/model change
-    useEffect(() => {
-        if (!modelIdFromUrl) return;
-        try {
-            const key = `codex-hidden-columns-${modelIdFromUrl}`;
-            const storedHiddenColumns = localStorage.getItem(key);
-            if (storedHiddenColumns) {
-                setHiddenColumns(new Set(JSON.parse(storedHiddenColumns)));
-            } else {
-                // If nothing is stored, reset to a default empty set
-                setHiddenColumns(new Set());
-            }
-        } catch (error) {
-            console.error("Failed to load hidden columns from localStorage", error);
-            setHiddenColumns(new Set());
-        }
-    }, [modelIdFromUrl]);
-
     // Save hidden columns to localStorage whenever they change
     useEffect(() => {
-        if (!modelIdFromUrl) return;
+        if (!modelIdFromUrl || !dataContextIsReady) return; // Wait for context to be ready
         try {
             const key = `codex-hidden-columns-${modelIdFromUrl}`;
             localStorage.setItem(key, JSON.stringify(Array.from(hiddenColumns)));
         } catch (error) {
             console.error("Failed to save hidden columns to localStorage", error);
         }
-    }, [hiddenColumns, modelIdFromUrl]);
+    }, [hiddenColumns, modelIdFromUrl, dataContextIsReady]);
     
     // Auth Check
     useEffect(() => {
@@ -144,6 +146,10 @@ export function useDataViewLogic(modelIdFromUrl: string) {
                     fetchData(`Model ID Change to ${foundModel.name}`);
                     setSearchTerm(''); setCurrentPage(1); setSortConfig(null);
                     setColumnFilters({}); setSelectedObjectIds(new Set()); setViewingRecycleBin(false);
+                    // Load columns for the new model
+                    const key = `codex-hidden-columns-${modelIdFromUrl}`;
+                    const stored = localStorage.getItem(key);
+                    setHiddenColumns(stored ? new Set(JSON.parse(stored)) : new Set());
                     previousModelIdRef.current = modelIdFromUrl;
                 }
             } else {
@@ -229,8 +235,11 @@ export function useDataViewLogic(modelIdFromUrl: string) {
     const toggleColumnVisibility = useCallback((columnId: string, hide: boolean) => {
         setHiddenColumns(prev => {
             const newSet = new Set(prev);
-            if (hide) newSet.add(columnId);
-            else newSet.delete(columnId);
+            if (hide) {
+                newSet.add(columnId);
+            } else {
+                newSet.delete(columnId);
+            }
             return newSet;
         });
     }, []);
