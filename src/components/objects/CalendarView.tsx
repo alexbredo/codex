@@ -6,11 +6,12 @@ import { useRouter } from 'next/navigation';
 import type { DataObject, Model } from '@/lib/types';
 import { Calendar } from '@/components/ui/calendar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { format as formatDateFns, isValid as isDateValidFn, startOfDay } from 'date-fns';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { Button } from '@/components/ui/button';
+import { format as formatDateFns, isValid as isDateValidFn, startOfDay, isSameMonth } from 'date-fns';
 import { getObjectDisplayValue } from '@/lib/utils';
 import { useData } from '@/contexts/data-context';
-import { Calendar as CalendarIcon, FileText } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface CalendarViewProps {
   model: Model;
@@ -20,7 +21,7 @@ interface CalendarViewProps {
 export default function CalendarView({ model, objects }: CalendarViewProps) {
   const router = useRouter();
   const { allModels, getAllObjects } = useData();
-  const [date, setDate] = React.useState<Date | undefined>(new Date());
+  const [month, setMonth] = React.useState<Date>(new Date());
   
   const allDbObjects = React.useMemo(() => getAllObjects(), [getAllObjects]);
 
@@ -45,18 +46,6 @@ export default function CalendarView({ model, objects }: CalendarViewProps) {
     return map;
   }, [objects, dateProperty]);
 
-  const eventDays = React.useMemo(() => Array.from(eventsByDate.keys()).map(dayStr => new Date(dayStr)), [eventsByDate]);
-  
-  const selectedDayEvents = date ? eventsByDate.get(formatDateFns(startOfDay(date), 'yyyy-MM-dd')) || [] : [];
-  
-  const modifiers = {
-    events: eventDays,
-  };
-  
-  const modifiersClassNames = {
-    events: 'text-primary bg-primary/10 rounded-full',
-  };
-
   if (!dateProperty) {
     return (
       <Card>
@@ -66,60 +55,74 @@ export default function CalendarView({ model, objects }: CalendarViewProps) {
     );
   }
 
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-      <Card className="md:col-span-2">
-        <Calendar
-          mode="single"
-          selected={date}
-          onSelect={setDate}
-          className="p-0"
-          classNames={{
-            root: 'w-full',
-            months: 'w-full',
-            month: 'w-full space-y-4',
-            table: 'w-full border-collapse space-y-1',
-            head_row: 'flex justify-around',
-            row: 'flex w-full mt-2 justify-around',
-          }}
-          modifiers={modifiers}
-          modifiersClassNames={modifiersClassNames}
-        />
-      </Card>
+  // Custom Day component to render events
+  function DayContent({ date, displayMonth }: { date: Date, displayMonth: Date }) {
+    const dayKey = formatDateFns(startOfDay(date), 'yyyy-MM-dd');
+    const eventsForDay = eventsByDate.get(dayKey) || [];
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">
-            Events for {date ? formatDateFns(date, 'PPP') : 'N/A'}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ScrollArea className="h-96">
-            {selectedDayEvents.length > 0 ? (
-              <ul className="space-y-2">
-                {selectedDayEvents.map(obj => (
-                  <li key={obj.id}>
-                    <button
-                      onClick={() => router.push(`/data/${model.id}/view/${obj.id}`)}
-                      className="w-full text-left p-2 rounded-md hover:bg-accent"
+    const isOutside = !isSameMonth(date, displayMonth);
+    const dayNumber = formatDateFns(date, 'd');
+
+    return (
+      <div className={cn("h-full flex flex-col p-1.5", isOutside && "opacity-50")}>
+        <div className="text-right text-xs mb-1">{dayNumber}</div>
+        <div className="flex-1 overflow-y-auto -mx-1 px-1">
+          {eventsForDay.length > 0 && (
+            <div className="space-y-1">
+              {eventsForDay.slice(0, 3).map(event => (
+                <Popover key={event.id}>
+                  <PopoverTrigger asChild>
+                    <div className="text-xs bg-primary/20 text-primary-foreground p-1 rounded-sm cursor-pointer hover:bg-primary/30 truncate">
+                      {getObjectDisplayValue(event, model, allModels, allDbObjects)}
+                    </div>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-64 p-2" side="bottom" align="start">
+                    <div className="font-bold text-sm mb-2">{getObjectDisplayValue(event, model, allModels, allDbObjects)}</div>
+                    <p className="text-xs text-muted-foreground">{dateProperty?.name}: {formatDateFns(new Date(event[dateProperty!.name]), 'PP')}</p>
+                    <Button
+                        size="xs"
+                        variant="outline"
+                        className="w-full mt-3"
+                        onClick={() => router.push(`/data/${model.id}/view/${event.id}`)}
                     >
-                      <p className="font-semibold text-primary truncate">{getObjectDisplayValue(obj, model, allModels, allDbObjects)}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {obj.createdAt ? `Created: ${formatDateFns(new Date(obj.createdAt), 'Pp')}` : ''}
-                      </p>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="text-center py-10 text-muted-foreground">
-                <CalendarIcon className="h-12 w-12 mx-auto mb-3" />
-                <p>No events for the selected date.</p>
-              </div>
-            )}
-          </ScrollArea>
-        </CardContent>
-      </Card>
-    </div>
+                        View Details
+                    </Button>
+                  </PopoverContent>
+                </Popover>
+              ))}
+              {eventsForDay.length > 3 && (
+                <div className="text-xs text-muted-foreground mt-1">+ {eventsForDay.length - 3} more</div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <Card>
+      <Calendar
+        mode="single" // 'single' mode is required but we'll control the visual selection
+        selected={undefined} // No day is "selected" in the traditional sense
+        month={month}
+        onMonthChange={setMonth}
+        className="p-0"
+        classNames={{
+          months: "w-full",
+          month: "w-full space-y-0",
+          caption: "flex justify-center pt-4 pb-2 relative items-center text-lg font-medium",
+          table: "w-full border-collapse",
+          head_row: "flex border-b",
+          head_cell: "text-muted-foreground w-full py-2 text-sm font-normal",
+          row: 'flex w-full border-b last:border-b-0',
+          cell: "h-32 text-center text-sm p-0 relative focus-within:relative focus-within:z-20 w-full [&:not(:last-child)]:border-r",
+          day: "h-full w-full p-0 font-normal focus:outline-none focus:ring-1 focus:ring-ring rounded-none",
+        }}
+        components={{
+          Day: DayContent,
+        }}
+      />
+    </Card>
   );
 }
