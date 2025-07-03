@@ -329,6 +329,7 @@ export function useDataViewLogic(modelIdFromUrl: string) {
         handleRefreshData,
         handleEditModelStructure,
         onCreateNew: handleCreateNew,
+        handleExportCSV,
         handleView,
         handleEdit,
         handleSingleDeleteRequest,
@@ -345,6 +346,5 @@ export function useDataViewLogic(modelIdFromUrl: string) {
         getFilterDisplayDetails,
         getWorkflowStateName,
         getOwnerUsername,
-        handleExportCSV,
     };
 }
