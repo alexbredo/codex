@@ -4,7 +4,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { Button } from '@/components/ui/button';
 import { useData } from '@/contexts/data-context';
 import { useAuth } from '@/contexts/auth-context';
 import { useToast } from "@/hooks/use-toast";
@@ -27,6 +26,8 @@ const CREATED_AT_COLUMN_KEY = "__CREATED_AT_COLUMN_KEY__";
 const UPDATED_AT_COLUMN_KEY = "__UPDATED_AT_COLUMN_KEY__";
 const DELETED_AT_COLUMN_KEY = "__DELETED_AT_COLUMN_KEY__";
 const WORKFLOW_STATE_DISPLAY_COLUMN_KEY = "__WORKFLOW_STATE_DISPLAY_COLUMN__";
+const INTERNAL_WORKFLOW_STATE_UPDATE_KEY = "__WORKFLOW_STATE_UPDATE__";
+
 
 // Type Definitions
 export interface ColumnToggleOption {
@@ -61,6 +62,7 @@ export function useDataViewLogic(modelIdFromUrl: string) {
         isReady: dataContextIsReady,
         fetchData,
         lastChangedInfo,
+        formatApiError
     }: DataContextType = dataContext;
     const { toast } = useToast();
     const { user, hasPermission, isLoading: isAuthLoading } = useAuth();
@@ -81,7 +83,6 @@ export function useDataViewLogic(modelIdFromUrl: string) {
     const [groupingPropertyKey, setGroupingPropertyKey] = useState<string | null>(null);
     const [viewingRecycleBin, setViewingRecycleBin] = useState(false);
     
-    // Use lazy initialization for useState to read from localStorage only once on mount
     const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(() => {
         if (typeof window === 'undefined' || !modelIdFromUrl) {
             return DEFAULT_HIDDEN_COLUMNS;
@@ -122,9 +123,8 @@ export function useDataViewLogic(modelIdFromUrl: string) {
     const previousModelIdRef = useRef<string | null>(null);
     const ITEMS_PER_PAGE = viewMode === 'gallery' ? 12 : 10;
 
-    // Save hidden columns to localStorage whenever they change
     useEffect(() => {
-        if (!modelIdFromUrl || !dataContextIsReady) return; // Wait for context to be ready
+        if (!modelIdFromUrl || !dataContextIsReady) return; 
         try {
             const key = `codex-hidden-columns-${modelIdFromUrl}`;
             localStorage.setItem(key, JSON.stringify(Array.from(hiddenColumns)));
@@ -153,7 +153,6 @@ export function useDataViewLogic(modelIdFromUrl: string) {
                     fetchData(`Model ID Change to ${foundModel.name}`);
                     setSearchTerm(''); setCurrentPage(1); setSortConfig(null);
                     setColumnFilters({}); setSelectedObjectIds(new Set()); setViewingRecycleBin(false);
-                    // Load columns for the new model
                     const key = `codex-hidden-columns-${modelIdFromUrl}`;
                     const stored = localStorage.getItem(key);
                     setHiddenColumns(stored ? new Set(JSON.parse(stored)) : DEFAULT_HIDDEN_COLUMNS);
@@ -185,7 +184,6 @@ export function useDataViewLogic(modelIdFromUrl: string) {
     const allDbObjects = useMemo(() => getAllObjects(true), [getAllObjects, dataContextIsReady]);
     const filteredObjects = useMemo(() => {
         if (!currentModel) return [];
-        // Filtering logic... (simplified for brevity)
         return localObjects.filter(obj => JSON.stringify(obj).toLowerCase().includes(searchTerm.toLowerCase()));
     }, [localObjects, searchTerm, currentModel, columnFilters, allDbObjects, allModels]);
 
@@ -229,6 +227,23 @@ export function useDataViewLogic(modelIdFromUrl: string) {
 
     const virtualIncomingRelationColumns: IncomingRelationColumn[] = useMemo(() => [], [currentModel, allModels]);
     
+    const batchUpdatableProperties = useMemo(() => {
+        if (!currentModel) return [];
+        const props: Array<{ id: string; name: string; label: string; type: Property['type']; relationshipType?: 'one' | 'many'; relatedModelId?: string; }> = [];
+
+        if (currentWorkflow) {
+            props.push({ id: WORKFLOW_STATE_DISPLAY_COLUMN_KEY, name: INTERNAL_WORKFLOW_STATE_UPDATE_KEY, label: 'Workflow State', type: 'workflow_state' });
+        }
+
+        currentModel.properties.forEach(p => {
+            if (p.type !== 'image' && p.type !== 'fileAttachment' && p.type !== 'markdown' && p.type !== 'url') {
+                props.push({ ...p, label: p.name });
+            }
+        });
+
+        return props;
+    }, [currentModel, currentWorkflow]);
+    
     const allAvailableColumnsForToggle = useMemo(() => {
         if (!currentModel) return [];
         const columns: ColumnToggleOption[] = [];
@@ -257,7 +272,6 @@ export function useDataViewLogic(modelIdFromUrl: string) {
         });
     }, []);
 
-    // Handlers (useCallback hooks)
     const handleViewModeChange = useCallback((newMode: ViewMode) => setViewMode(newMode), []);
     const requestSort = useCallback((key: string) => {
         let direction: 'asc' | 'desc' = 'asc';
@@ -299,7 +313,6 @@ export function useDataViewLogic(modelIdFromUrl: string) {
         }
     }, [currentModel, contextUpdateObject, currentWorkflow, toast]);
     
-    // Other handlers (simplified)
     const handleColumnFilterChange = useCallback((key: string, filter: ColumnFilterValue | null) => setColumnFilters(prev => ({ ...prev, [key]: filter })), []);
     const handleClearAllColumnFilters = useCallback(() => setColumnFilters({}), []);
     const handleSelectAllOnPage = useCallback((checked: boolean) => {
@@ -323,12 +336,12 @@ export function useDataViewLogic(modelIdFromUrl: string) {
 
     const { data: shareLinks } = useQuery<SharedObjectLink[]>({
       queryKey: ['shareLinksForModel', modelIdFromUrl],
-      queryFn: async () => { /* ... */ return []; },
+      queryFn: async () => { return []; },
       enabled: !!modelIdFromUrl,
     });
-    const createShareStatus = useMemo(() => { /* ... */ return 'none' as 'create' | 'none' }, [shareLinks]);
-    const groupableProperties = useMemo(() => { /* ... */ return [] }, [currentModel, currentWorkflow]);
-    const getFilterDisplayDetails = useCallback(() => { /* ... */ return null }, []);
+    const createShareStatus = useMemo(() => { return 'none' as 'create' | 'none' }, [shareLinks]);
+    const groupableProperties = useMemo(() => { return [] }, [currentModel, currentWorkflow]);
+    const getFilterDisplayDetails = useCallback(() => { return null }, []);
     const handleEdit = useCallback((obj: DataObject) => router.push(`/data/${modelIdFromUrl}/edit/${obj.id}`), [router, modelIdFromUrl]);
     const handleEditModelStructure = useCallback(() => router.push(`/models/edit/${modelIdFromUrl}`), [router, modelIdFromUrl]);
     const handleView = useCallback((obj: DataObject) => router.push(`/data/${modelIdFromUrl}/view/${obj.id}`), [router, modelIdFromUrl]);
@@ -337,31 +350,93 @@ export function useDataViewLogic(modelIdFromUrl: string) {
         const objects = localObjects.filter(obj => selectedObjectIds.has(obj.id));
         setBatchObjectsToDelete(objects);
     }, [localObjects, selectedObjectIds]);
-    const prepareBatchUpdateForConfirmation = useCallback(() => { /* ... */ }, []);
-    const executeBatchUpdate = useCallback(async () => { /* ... */ }, []);
-    const handleBatchUpdateDialogInteractOutside = useCallback(() => { /* ... */ }, []);
     
-    const getWorkflowStateName = useCallback(() => "State", []);
-    const getOwnerUsername = useCallback(() => "User", []);
-    const totalItemsForPagination = sortedObjects.length;
-    const hasActiveColumnFilters = Object.values(columnFilters).some(v => v !== null);
+    const handleBatchUpdateDialogInteractOutside = useCallback((event: Event) => {
+        const target = event.target as HTMLElement;
+        if (target.closest('[data-radix-popper-content-wrapper]')) {
+          event.preventDefault();
+        }
+    }, []);
 
-    const batchUpdatableProperties = useMemo(() => {
-        if (!currentModel) return [];
-        const props: Array<{ id: string; name: string; label: string; type: Property['type']; relationshipType?: 'one' | 'many'; relatedModelId?: string; }> = [];
-
-        if (currentWorkflow) {
-            props.push({ id: WORKFLOW_STATE_DISPLAY_COLUMN_KEY, name: INTERNAL_WORKFLOW_STATE_UPDATE_KEY, label: 'Workflow State', type: 'workflow_state' });
+    const prepareBatchUpdateForConfirmation = useCallback(() => {
+        if (!currentModel || !batchUpdateProperty || selectedObjectIds.size === 0) {
+          toast({ variant: 'destructive', title: 'Error', description: 'Cannot prepare batch update. Missing required information.' });
+          return;
         }
 
-        currentModel.properties.forEach(p => {
-            if (p.type !== 'image' && p.type !== 'fileAttachment' && p.type !== 'markdown' && p.type !== 'url') {
-                props.push({ ...p, label: p.name });
-            }
-        });
+        const propertyDetails = batchUpdatableProperties.find(p => p.name === batchUpdateProperty);
+        if (!propertyDetails) {
+          toast({ variant: 'destructive', title: 'Error', description: `Property "${batchUpdateProperty}" not found.` });
+          return;
+        }
 
-        return props;
-    }, [currentModel, currentWorkflow]);
+        let finalValue = batchUpdateValue;
+        if (propertyDetails.type === 'date' && batchUpdateDate) {
+          finalValue = batchUpdateDate.toISOString();
+        } else if (propertyDetails.type === 'boolean') {
+          finalValue = Boolean(batchUpdateValue);
+        }
+
+        const objectsToUpdate = localObjects.filter(obj => selectedObjectIds.has(obj.id));
+
+        setBatchUpdatePreviewData({
+          selectedObjects: objectsToUpdate,
+          propertyBeingUpdated: propertyDetails,
+          newValue: finalValue,
+        });
+        
+        setIsBatchUpdateDialogOpen(false);
+        setIsBatchUpdateConfirmOpen(true);
+    }, [
+        currentModel, batchUpdateProperty, selectedObjectIds, toast, batchUpdatableProperties, 
+        batchUpdateValue, batchUpdateDate, localObjects
+    ]);
+
+    const executeBatchUpdate = useCallback(async () => {
+        if (!currentModel || !batchUpdatePreviewData) return;
+
+        setIsBatchUpdating(true);
+        try {
+          const { propertyBeingUpdated, newValue } = batchUpdatePreviewData;
+          if (!propertyBeingUpdated) throw new Error("Property to update not defined.");
+
+          const payload = {
+            objectIds: Array.from(selectedObjectIds),
+            propertyName: propertyBeingUpdated.name,
+            propertyType: propertyBeingUpdated.type,
+            newValue: newValue,
+          };
+          
+          const response = await fetch(`/api/codex-structure/models/${currentModel.id}/objects/batch-update`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+
+          const result = await response.json();
+          if (!response.ok) {
+            throw new Error(result.error || result.message || 'Batch update failed.');
+          }
+          
+          toast({ title: 'Batch Update Successful', description: result.message || `${selectedObjectIds.size} items updated.` });
+          
+          // Cleanup
+          setIsBatchUpdateConfirmOpen(false);
+          setSelectedObjectIds(new Set());
+          setBatchUpdateProperty('');
+          setBatchUpdateValue('');
+          setBatchUpdateDate(undefined);
+          
+          await fetchData('After Batch Update');
+
+        } catch (error: any) {
+          toast({ variant: 'destructive', title: 'Batch Update Failed', description: error.message });
+        } finally {
+          setIsBatchUpdating(false);
+        }
+    }, [
+        currentModel, batchUpdatePreviewData, selectedObjectIds, toast, fetchData
+    ]);
 
 
     return {
