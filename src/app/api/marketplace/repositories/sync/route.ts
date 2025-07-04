@@ -28,16 +28,13 @@ export async function POST(request: Request) {
 
     for (const repo of repositories) {
       try {
-        // FIX: Explicitly create a new Headers object to prevent any automatic
-        // header forwarding (like Cookies) by Next.js during server-to-server fetch.
-        const fetchHeaders = new Headers();
-        fetchHeaders.append('User-Agent', 'CodexStructure-Sync/1.0');
-
         // Step 1: Fetch the list of item metadata from the repository URL
-        const listResponse = await fetch(repo.url, {
-          headers: fetchHeaders,
-          cache: 'no-store', // Ensure we get fresh data
+        // Use the Request constructor for full control and to prevent automatic header forwarding.
+        const listRequest = new Request(repo.url, {
+            headers: { 'User-Agent': 'CodexStructure-Sync/1.0' },
+            cache: 'no-store',
         });
+        const listResponse = await fetch(listRequest);
 
         if (!listResponse.ok) {
           throw new Error(`Failed to fetch from ${repo.name}: Status ${listResponse.status}`);
@@ -48,10 +45,13 @@ export async function POST(request: Request) {
         for (const meta of itemsMetadata) {
           try {
             const detailUrl = repo.url.endsWith('/') ? `${repo.url}${meta.id}` : `${repo.url}/${meta.id}`;
-            const detailResponse = await fetch(detailUrl, {
-                headers: fetchHeaders, // Reuse the clean headers for this request as well
+            
+            const detailRequest = new Request(detailUrl, {
+                headers: { 'User-Agent': 'CodexStructure-Sync/1.0' },
                 cache: 'no-store',
             });
+            const detailResponse = await fetch(detailRequest);
+
             if (!detailResponse.ok) {
                 console.warn(`Could not fetch details for item ${meta.id} from ${repo.name}. Status: ${detailResponse.status}`);
                 continue; // Skip this item, but continue with the repo
@@ -60,7 +60,7 @@ export async function POST(request: Request) {
 
             const itemWithSource = {
               ...fullItem,
-              source: 'remote' as const, // Ensure literal type
+              source: 'remote' as const,
               sourceRepository: {
                 name: repo.name,
                 url: repo.url,
