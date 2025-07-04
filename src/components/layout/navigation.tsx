@@ -2,7 +2,6 @@
 'use client';
 
 import * as React from 'react';
-import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   SidebarMenu,
@@ -17,6 +16,7 @@ import { LayoutDashboard, DatabaseZap, ListChecks, FolderOpen, FolderKanban, Use
 import { useData } from '@/contexts/data-context';
 import { useAuth } from '@/contexts/auth-context';
 import type { Model } from '@/lib/types';
+import Link from 'next/link';
 
 const staticNavItemsBase = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard, permission: 'any' },
@@ -26,7 +26,6 @@ const adminNavItems = [
   { href: '/models', label: 'Model Admin', icon: DatabaseZap, permission: 'models:manage' },
   { href: '/model-groups', label: 'Group Admin', icon: FolderKanban, permission: 'admin:manage_model_groups' },
   { href: '/admin/marketplace', label: 'Marketplace', icon: Store, permission: 'marketplace:install' },
-  { href: '/admin/marketplace/repositories', label: 'Manage Repositories', icon: Rss, permission: 'marketplace:manage_repositories' },
   { href: '/admin/wizards', label: 'Wizard Admin', icon: Wand2, permission: 'admin:manage_wizards' },
   { href: '/admin/workflows', label: 'Workflow Admin', icon: WorkflowIcon, permission: 'admin:manage_workflows' },
   { href: '/admin/validation-rules', label: 'Validation Rules', icon: ShieldCheck, permission: 'admin:manage_validation_rules' },
@@ -160,5 +159,3 @@ export default function Navigation() {
     </SidebarMenu>
   );
 }
-
-    

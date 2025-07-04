@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Loader2, Rss, PlusCircle, Trash2, ArrowLeft, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Loader2, Rss, PlusCircle, Trash2, ArrowLeft, RefreshCw, AlertTriangle, Info, ClipboardCopy, Check } from 'lucide-react';
 import type { MarketplaceRepository } from '@/lib/types';
 import { formatDistanceToNow } from 'date-fns';
 import Link from 'next/link';
@@ -51,6 +51,26 @@ async function syncRepositories(): Promise<{ message: string, syncedRepos: numbe
 function ManageRepositoriesPageInternal() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  
+  const [localRepoUrl, setLocalRepoUrl] = React.useState('Loading...');
+  const [hasCopied, setHasCopied] = React.useState(false);
+
+  React.useEffect(() => {
+    // This effect runs only on the client, so `window` is available.
+    if (typeof window !== 'undefined') {
+      const url = `${window.location.origin}/api/marketplace/items`;
+      setLocalRepoUrl(url);
+    }
+  }, []);
+
+  const handleCopy = () => {
+    if (localRepoUrl && localRepoUrl !== 'Loading...') {
+      navigator.clipboard.writeText(localRepoUrl);
+      toast({ title: 'Copied!', description: 'Repository URL copied to clipboard.' });
+      setHasCopied(true);
+      setTimeout(() => setHasCopied(false), 2500);
+    }
+  };
 
   const { data: repositories, isLoading, error } = useQuery<MarketplaceRepository[]>({
     queryKey: ['marketplaceRepositories'],
@@ -99,6 +119,26 @@ function ManageRepositoriesPageInternal() {
                 Sync All Repositories
             </Button>
         </div>
+
+        <Card className="mb-8 bg-blue-500/5 border-blue-500/20">
+            <CardHeader>
+                <CardTitle className="flex items-center text-blue-800 dark:text-blue-300">
+                <Info className="mr-2 h-5 w-5"/>
+                Your Local Repository URL
+                </CardTitle>
+                <CardDescription className="text-blue-700/80 dark:text-blue-300/80">
+                Share this public URL to allow other CodexStructure instances to sync items from your local marketplace.
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                <div className="flex items-center space-x-2">
+                <Input value={localRepoUrl} readOnly className="font-mono text-sm bg-background"/>
+                <Button onClick={handleCopy} variant="outline" size="icon" disabled={localRepoUrl === 'Loading...'}>
+                    {hasCopied ? <Check className="h-4 w-4 text-green-500" /> : <ClipboardCopy className="h-4 w-4" />}
+                </Button>
+                </div>
+            </CardContent>
+        </Card>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="lg:col-span-1">
@@ -166,5 +206,3 @@ function ManageRepositoriesPageInternal() {
 }
 
 export default withAuth(ManageRepositoriesPageInternal, 'marketplace:manage_repositories');
-
-    
