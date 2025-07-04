@@ -182,6 +182,35 @@ export async function PUT(request: Request, { params }: Params) {
     let newProcessedProperties: Property[] = oldPropertiesFromDb.map(prop => ({ ...prop, required: !!prop.required, autoSetOnCreate: !!prop.autoSetOnCreate, autoSetOnUpdate: !!prop.autoSetOnUpdate, isUnique: !!prop.isUnique } as Property));
     
     if (body.properties) {
+      // --- Data Migration for Renamed Properties ---
+      const propertyIdToOldNameMap = new Map(oldPropertiesFromDb.map(p => [p.id, p.name]));
+      const renamedProperties: { oldName: string, newName: string }[] = [];
+
+      for (const newProp of body.properties) {
+          if (newProp.id) { // It's an existing property
+              const oldName = propertyIdToOldNameMap.get(newProp.id);
+              if (oldName && oldName !== newProp.name) {
+                  renamedProperties.push({ oldName, newName: newProp.name });
+              }
+          }
+      }
+
+      if (renamedProperties.length > 0) {
+          for (const renamed of renamedProperties) {
+              await db.run(
+                `UPDATE data_objects 
+                 SET data = json_set(json_remove(data, ?), ?, json_extract(data, ?))
+                 WHERE model_id = ? AND json_extract(data, ?) IS NOT NULL`,
+                `$.${renamed.oldName}`,
+                `$.${renamed.newName}`,
+                `$.${renamed.oldName}`,
+                modelId,
+                `$.${renamed.oldName}`
+            );
+          }
+      }
+      // --- End Data Migration ---
+      
       await db.run('DELETE FROM properties WHERE model_id = ?', modelId);
       
       newProcessedProperties = [];
