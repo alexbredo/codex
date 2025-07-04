@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -161,6 +160,41 @@ export function useDataViewLogic(modelIdFromUrl: string) {
             console.error("Failed to save hidden columns to localStorage", error);
         }
     }, [hiddenColumns, modelIdFromUrl, dataContextIsReady]);
+
+    // Initialize sortConfig from sessionStorage or default to first property
+    useEffect(() => {
+      if (!currentModel) return;
+      try {
+        const storedSortConfig = sessionStorage.getItem(`codex-sort-config-${currentModel.id}`);
+        if (storedSortConfig) {
+          setSortConfig(JSON.parse(storedSortConfig));
+        } else {
+          // Default sort: first property column based on orderIndex
+          const firstProperty = [...currentModel.properties].sort((a, b) => a.orderIndex - b.orderIndex)[0];
+          if (firstProperty) {
+            setSortConfig({ key: firstProperty.id, direction: 'asc' });
+          }
+        }
+      } catch (error) {
+        console.error("Failed to access sessionStorage for sort config:", error);
+        // Fallback to default sort on error
+        const firstProperty = [...currentModel.properties].sort((a, b) => a.orderIndex - b.orderIndex)[0];
+        if (firstProperty) {
+            setSortConfig({ key: firstProperty.id, direction: 'asc' });
+        }
+      }
+    }, [currentModel]);
+    
+    // Save sortConfig to sessionStorage when it changes
+    useEffect(() => {
+        if (sortConfig && currentModel) {
+            try {
+                sessionStorage.setItem(`codex-sort-config-${currentModel.id}`, JSON.stringify(sortConfig));
+            } catch (error) {
+                console.error("Failed to save sort config to sessionStorage:", error);
+            }
+        }
+    }, [sortConfig, currentModel]);
     
     // Auth Check
     useEffect(() => {
@@ -180,7 +214,7 @@ export function useDataViewLogic(modelIdFromUrl: string) {
 
                 if (isDifferentModel) {
                     fetchData(`Model ID Change to ${foundModel.name}`);
-                    setSearchTerm(''); setCurrentPage(1); setSortConfig(null);
+                    setSearchTerm(''); setCurrentPage(1); // sortConfig will be set by its own effect
                     setColumnFilters({}); setSelectedObjectIds(new Set()); setViewingRecycleBin(false);
                     const key = `codex-hidden-columns-${modelIdFromUrl}`;
                     const stored = localStorage.getItem(key);
