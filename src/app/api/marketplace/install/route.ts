@@ -106,7 +106,6 @@ export async function POST(request: Request) {
             const payload = latestVersionDetails.payload as ExportedModelGroupBundle;
             const groupToInstall = payload.group;
             
-            // Check if group exists to determine if this is an update
             const existingGroup = await db.get('SELECT id FROM model_groups WHERE id = ?', groupToInstall.id);
             if (existingGroup) {
                 // Destructive update: delete all objects from all models in this group
@@ -117,8 +116,8 @@ export async function POST(request: Request) {
             }
             
             // Insert/replace group
-            await db.run('INSERT OR REPLACE INTO model_groups (id, name, description) VALUES (?, ?, ?)',
-                groupToInstall.id, groupToInstall.name, groupToInstall.description
+            await db.run('INSERT OR REPLACE INTO model_groups (id, name, description, marketplaceVersion) VALUES (?, ?, ?, ?)',
+                groupToInstall.id, groupToInstall.name, groupToInstall.description, latestVersionDetails.version
             );
 
             for (const modelBundle of payload.models) {

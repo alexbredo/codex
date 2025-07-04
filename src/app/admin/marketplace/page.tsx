@@ -181,10 +181,23 @@ function MarketplacePageInternal() {
       if (item.type === 'model_group') {
           const payload = item.latestVersionPayload as ExportedModelGroupBundle | null;
           if (!payload?.group?.id) return InstallStatus.NotInstalled;
-          // Model groups don't have a version stored on them yet. For now, we assume if it exists, it can be updated.
+          
           const localGroup = modelGroups.find(mg => mg.id === payload.group.id);
-          if (localGroup) return InstallStatus.Installed; // Always show "Update" for now if it exists
-          return InstallStatus.NotInstalled;
+          if (!localGroup) return InstallStatus.NotInstalled;
+
+          if (!localGroup.marketplaceVersion) {
+            return InstallStatus.Installed;
+          }
+
+          try {
+            if (semver.gt(item.latestVersion, localGroup.marketplaceVersion)) {
+              return InstallStatus.Installed; // Update available
+            }
+            return InstallStatus.UpToDate; // Same or older version, considered up-to-date
+          } catch (e) {
+            console.error("semver comparison failed for model_group:", e);
+            return InstallStatus.Installed; // Fallback for invalid versions
+          }
       }
       return InstallStatus.NotInstalled;
     };

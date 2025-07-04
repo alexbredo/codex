@@ -78,9 +78,20 @@ async function initializeDb(): Promise<Database> {
     CREATE TABLE IF NOT EXISTS model_groups (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL UNIQUE,
-      description TEXT
+      description TEXT,
+      marketplaceVersion TEXT
     );
   `);
+  
+  // Migration for model_groups table to add marketplaceVersion
+  const modelGroupsTableInfo = await db.all("PRAGMA table_info(model_groups)").catch(() => []);
+  if (modelGroupsTableInfo.length > 0) {
+      if (!modelGroupsTableInfo.some(col => col.name === 'marketplaceVersion')) {
+        console.log("Migrating 'model_groups' table: adding 'marketplaceVersion' column.");
+        await db.exec('ALTER TABLE model_groups ADD COLUMN marketplaceVersion TEXT');
+      }
+  }
+
   const defaultGroupId = '00000000-0000-0000-0000-000000000001';
   await db.run(
     'INSERT OR IGNORE INTO model_groups (id, name, description) VALUES (?, ?, ?)',
