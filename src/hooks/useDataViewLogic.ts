@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -437,9 +438,9 @@ export function useDataViewLogic(modelIdFromUrl: string) {
     }, [currentModel]);
 
     const deletedObjectCount = useMemo(() => {
-        if (!deletedObjectsFromContext) return 0;
-        return Object.values(deletedObjectsFromContext).reduce((sum, arr) => sum + arr.length, 0);
-    }, [deletedObjectsFromContext]);
+        if (!deletedObjectsFromContext || !modelIdFromUrl) return 0;
+        return deletedObjectsFromContext[modelIdFromUrl]?.length || 0;
+    }, [deletedObjectsFromContext, modelIdFromUrl]);
 
     const handleCreateNew = useCallback(() => {
         if (!modelIdFromUrl) return;
