@@ -42,7 +42,7 @@ async function deleteRepository(id: string): Promise<void> {
   const res = await fetch(`/api/marketplace/repositories/${id}`, { method: 'DELETE' });
   if (!res.ok) { const data = await res.json(); throw new Error(data.error || 'Failed to delete repository.'); }
 }
-async function syncRepositories(): Promise<{ message: string, syncedRepos: number, totalItems: number }> {
+async function syncRepositories(): Promise<{ message: string, syncedRepos: number, totalItems: number, errors: { name: string, error: string }[] }> {
   const res = await fetch('/api/marketplace/repositories/sync', { method: 'POST' });
   if (!res.ok) { const data = await res.json(); throw new Error(data.error || 'Failed to sync repositories.'); }
   return res.json();
@@ -56,7 +56,6 @@ function ManageRepositoriesPageInternal() {
   const [hasCopied, setHasCopied] = React.useState(false);
 
   React.useEffect(() => {
-    // This effect runs only on the client, so `window` is available.
     if (typeof window !== 'undefined') {
       const url = `${window.location.origin}/api/marketplace/items`;
       setLocalRepoUrl(url);
@@ -101,9 +100,23 @@ function ManageRepositoriesPageInternal() {
   const syncMutation = useMutation({
     mutationFn: syncRepositories,
     onSuccess: (data) => {
-        toast({ title: 'Sync Complete', description: `${data.message} Synced ${data.syncedRepos} repositories and found ${data.totalItems} items.` });
-        queryClient.invalidateQueries({ queryKey: ['marketplaceRepositories'] }); // To update last checked time
-        queryClient.invalidateQueries({ queryKey: ['marketplaceItems'] }); // To update items on main page
+        const successMessage = `Synced ${data.syncedRepos} repositories and found ${data.totalItems} total remote items.`;
+        if (data.errors && data.errors.length > 0) {
+            const errorDetails = data.errors.map(e => `${e.name}: ${e.error}`).join('; ');
+            toast({
+                variant: "destructive",
+                title: "Sync Complete with Errors",
+                description: `${successMessage} Failed to sync ${data.errors.length} repos. Errors: ${errorDetails}`,
+                duration: 10000,
+            });
+        } else {
+            toast({
+                title: "Sync Complete",
+                description: successMessage,
+            });
+        }
+        queryClient.invalidateQueries({ queryKey: ['marketplaceRepositories'] });
+        queryClient.invalidateQueries({ queryKey: ['marketplaceItems'] });
     },
     onError: (err: Error) => toast({ variant: 'destructive', title: 'Sync Failed', description: err.message }),
   });

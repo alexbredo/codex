@@ -23,31 +23,47 @@ export async function POST(request: Request) {
     
     let allRemoteItems: MarketplaceItem[] = [];
     const errors: { name: string, error: string }[] = [];
+    let successfulRepoCount = 0;
 
     for (const repo of repositories) {
       try {
-        const response = await fetch(repo.url, {
-          signal: AbortSignal.timeout(10000), // 10-second timeout
+        // Step 1: Fetch the list of item metadata from the repository URL
+        const listResponse = await fetch(repo.url, {
+          signal: AbortSignal.timeout(10000), // 10-second timeout for the list
         });
-        if (!response.ok) {
-          throw new Error(`Failed to fetch from ${repo.name}: Status ${response.status}`);
+        if (!listResponse.ok) {
+          throw new Error(`Failed to fetch item list: Status ${listResponse.status}`);
         }
-        const items: MarketplaceItem[] = await response.json();
+        const itemsMetadata: { id: string }[] = await listResponse.json();
         
-        // Add source information to each item
-        const itemsWithSource = items.map(item => ({
-          ...item,
-          source: 'remote',
-          sourceRepository: {
-            name: repo.name,
-            url: repo.url,
-          },
-        }));
+        // Step 2: Fetch the full details for each item
+        for (const meta of itemsMetadata) {
+          try {
+            const detailUrl = `${repo.url}/${meta.id}`;
+            const detailResponse = await fetch(detailUrl, { signal: AbortSignal.timeout(10000) });
+            if (!detailResponse.ok) {
+                console.warn(`Could not fetch details for item ${meta.id} from ${repo.name}. Status: ${detailResponse.status}`);
+                continue; // Skip this item, but continue with the repo
+            }
+            const fullItem: MarketplaceItem = await detailResponse.json();
 
-        allRemoteItems.push(...itemsWithSource);
+            const itemWithSource = {
+              ...fullItem,
+              source: 'remote' as const, // Ensure literal type
+              sourceRepository: {
+                name: repo.name,
+                url: repo.url,
+              },
+            };
+            allRemoteItems.push(itemWithSource);
+          } catch (itemError: any) {
+             console.error(`Error fetching detail for item ${meta.id} from ${repo.name}:`, itemError.message);
+          }
+        }
         
-        // Update last checked time on success
+        // Step 3: Update last checked time for the repo if we successfully processed the list
         await db.run('UPDATE marketplace_repositories SET lastCheckedAt = ? WHERE id = ?', new Date().toISOString(), repo.id);
+        successfulRepoCount++;
 
       } catch (error: any) {
         console.error(`Error syncing repository ${repo.name} (${repo.url}):`, error.message);
@@ -55,15 +71,15 @@ export async function POST(request: Request) {
       }
     }
 
-    // Write aggregated items to the remote cache file
+    // Step 4: Write aggregated items to the remote cache file
     await fs.mkdir(MARKETPLACE_DIR, { recursive: true });
     await fs.writeFile(REMOTE_CACHE_FILE, JSON.stringify(allRemoteItems, null, 2));
 
-    const message = `Sync complete. Found ${allRemoteItems.length} items across ${repositories.length - errors.length} repositories.`;
+    const message = `Sync process finished.`;
     return NextResponse.json({ 
         success: true, 
         message: message,
-        syncedRepos: repositories.length - errors.length,
+        syncedRepos: successfulRepoCount,
         totalItems: allRemoteItems.length,
         errors: errors,
     });
@@ -73,5 +89,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Failed to sync repositories.', details: error.message }, { status: 500 });
   }
 }
-
-    
