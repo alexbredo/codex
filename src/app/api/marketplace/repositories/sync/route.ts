@@ -8,27 +8,19 @@ import type { MarketplaceRepository, MarketplaceItem } from '@/lib/types';
 import path from 'path';
 import fs from 'fs/promises';
 import axios from 'axios';
+import { headers } from 'next/headers'; // Import headers to access incoming request headers
 
 const MARKETPLACE_DIR = path.join(process.cwd(), 'data', 'marketplace');
 const REMOTE_CACHE_FILE = path.join(MARKETPLACE_DIR, 'remote_cache.json');
 
 export async function POST(request: Request) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || !currentUser.permissionIds.includes('*') && !currentUser.permissionIds.includes('marketplace:manage_repositories')) {
+  if (!currentUser || (!currentUser.permissionIds.includes('*') && !currentUser.permissionIds.includes('marketplace:manage_repositories'))) {
     return NextResponse.json({ error: 'Unauthorized.' }, { status: 403 });
   }
 
-  // Create a dedicated, clean axios instance for outbound requests.
-  // This prevents any implicit forwarding of headers (like cookies) from the
-  // incoming Next.js request.
-  const http = axios.create({
-    headers: {
-      'User-Agent': 'CodexStructure-Sync/1.0',
-      'Accept': 'application/json',
-    },
-    // Explicitly disable credentials to ensure anonymous requests
-    withCredentials: false,
-  });
+  const incomingHeaders = headers();
+  const cookieHeader = incomingHeaders.get('cookie'); // Get the full cookie string from the incoming request
 
   try {
     const db = await getDb();
@@ -40,6 +32,17 @@ export async function POST(request: Request) {
 
     for (const repo of repositories) {
       try {
+        const http = axios.create({
+          headers: {
+            'User-Agent': 'CodexStructure-Sync/1.0',
+            'Accept': 'application/json',
+            // Forward the cookie header from the browser's request to the remote server.
+            // This is necessary to pass through environment-level authentication proxies like Cloud Workstations.
+            'Cookie': cookieHeader || '',
+          },
+          // It's important to not forward any other sensitive headers, but Cookie is needed here.
+        });
+
         const listResponse = await http.get(repo.url);
         const itemsMetadata: { id: string }[] = listResponse.data;
         
