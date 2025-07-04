@@ -39,6 +39,8 @@ interface ImportResult {
   errors: { row: number; field: string; message: string; value: any }[];
 }
 
+const DO_NOT_IMPORT_VALUE = "__DO_NOT_IMPORT__";
+
 export function CsvImporterDialog({ isOpen, onClose, model, onSuccess }: CsvImporterDialogProps) {
   const { toast } = useToast();
   const { models: allModels } = useData();
@@ -186,12 +188,12 @@ export function CsvImporterDialog({ isOpen, onClose, model, onSuccess }: CsvImpo
                       </TableCell>
                       <TableCell>
                         <Select
-                          value={mappings[prop.id] || ''}
-                          onValueChange={(value) => setMappings(prev => ({ ...prev, [prop.id]: value }))}
+                          value={mappings[prop.id] || DO_NOT_IMPORT_VALUE}
+                          onValueChange={(value) => setMappings(prev => ({ ...prev, [prop.id]: value === DO_NOT_IMPORT_VALUE ? '' : value }))}
                         >
                           <SelectTrigger><SelectValue placeholder="Select CSV column..." /></SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="">-- Do Not Import --</SelectItem>
+                            <SelectItem value={DO_NOT_IMPORT_VALUE}>-- Do Not Import --</SelectItem>
                             {headers.map(header => <SelectItem key={header} value={header}>{header}</SelectItem>)}
                           </SelectContent>
                         </Select>
