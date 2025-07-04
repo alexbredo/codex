@@ -148,8 +148,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
                 </div>
               ) : !authIsLoading && (
                 <div className="hidden md:flex items-center gap-2">
-                  <Link href="/login" passHref legacyBehavior><Button variant="outline" size="sm">Login</Button></Link>
-                  <Link href="/register" passHref legacyBehavior><Button variant="default" size="sm">Register</Button></Link>
+                  <Button asChild variant="outline" size="sm"><Link href="/login">Login</Link></Button>
+                  <Button asChild variant="default" size="sm"><Link href="/register">Register</Link></Button>
                 </div>
               )}
             </div>

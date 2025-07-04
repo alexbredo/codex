@@ -72,11 +72,11 @@ export default function DataSummaryWidget({ config }: DataSummaryWidgetProps) {
           {description}
         </p>
         {link && buttonText && (
-          <Link href={link} passHref className="mt-4 block">
-            <Button variant="outline" size="sm" className="w-full text-xs">
+          <Button asChild variant="outline" size="sm" className="w-full text-xs mt-4">
+            <Link href={link}>
               {buttonText}
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         )}
       </CardContent>
     </Card>

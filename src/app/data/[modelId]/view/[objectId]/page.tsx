@@ -276,12 +276,10 @@ function ObjectDetailDisplay({ model, viewingObject, isPublicView }: { model: Mo
                 const displayVal = getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
                 const isDeleted = relatedObj?.isDeleted;
                 return relatedObj ? (
-                  <Link key={itemId} href={`/data/${relatedModel.id}/view/${relatedObj.id}`} passHref legacyBehavior>
-                    <a className="inline-block">
-                      <Badge variant={isDeleted ? "destructive" : "outline"} className={cn("hover:bg-secondary cursor-pointer", isDeleted && "line-through")}>
-                        {displayVal} <ExternalLink className="ml-1 h-3 w-3 opacity-70" />
-                      </Badge>
-                    </a>
+                  <Link key={itemId} href={`/data/${relatedModel.id}/view/${relatedObj.id}`} className="inline-block">
+                    <Badge variant={isDeleted ? "destructive" : "outline"} className={cn("hover:bg-secondary cursor-pointer", isDeleted && "line-through")}>
+                      {displayVal} <ExternalLink className="ml-1 h-3 w-3 opacity-70" />
+                    </Badge>
                   </Link>
                 ) : (
                   <Badge key={itemId} variant="outline" className={cn("mr-1 mb-1", isDeleted && "line-through text-destructive")}>{displayVal}</Badge>
@@ -294,12 +292,10 @@ function ObjectDetailDisplay({ model, viewingObject, isPublicView }: { model: Mo
           const displayVal = getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
           const isDeleted = relatedObj?.isDeleted;
           return relatedObj ? (
-            <Link href={`/data/${relatedModel.id}/view/${relatedObj.id}`} passHref legacyBehavior>
-              <a className="inline-block">
-                <Badge variant={isDeleted ? "destructive" : "outline"} className={cn("hover:bg-secondary cursor-pointer", isDeleted && "line-through")}>
-                  {displayVal} <ExternalLink className="ml-1 h-3 w-3 opacity-70" />
-                </Badge>
-              </a>
+            <Link href={`/data/${relatedModel.id}/view/${relatedObj.id}`} className="inline-block">
+              <Badge variant={isDeleted ? "destructive" : "outline"} className={cn("hover:bg-secondary cursor-pointer", isDeleted && "line-through")}>
+                {displayVal} <ExternalLink className="ml-1 h-3 w-3 opacity-70" />
+              </Badge>
             </Link>
           ) : <span className={cn("text-muted-foreground italic", isDeleted && "line-through text-destructive")}>{displayVal}</span>;
         }
@@ -495,6 +491,13 @@ function ObjectDetailDisplay({ model, viewingObject, isPublicView }: { model: Mo
       
       {!isPublicView && <IncomingRelationshipsViewer modelId={modelId} objectId={objectId} />}
       
+      {!isPublicView && (
+        <ShareLinkManager
+            modelId={modelId}
+            objectId={objectId}
+        />
+      )}
+
       {!isPublicView && (
          <Card className="max-w-4xl mx-auto shadow-lg mt-8">
             <CardHeader>
@@ -735,5 +738,5 @@ export default function ObjectDetailViewPageWrapper() {
     );
   }
 
-  return <ObjectDetailDisplay model={model} viewingObject={viewingObject} />;
+  return <ObjectDetailDisplay model={model} viewingObject={viewingObject} isPublicView={false} />;
 }

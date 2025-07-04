@@ -19,6 +19,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import Link from 'next/link';
 
 
 interface GalleryCardProps {
@@ -55,32 +56,34 @@ const GalleryCard = React.memo(function GalleryCard({
 
 
   let imageProp = model.properties.find(p => p.type === 'image' && obj[p.name]);
-  let imageUrl = imageProp && obj[imageProp.name] ? String(obj[imageProp.name]) : null;
-  let imageAltText = imageProp ? `${displayName} ${imageProp.name}` : `${displayName} gallery image`;
-  
-  if (!imageUrl) {
+  let imageUrlFromProp: string | null = imageProp && obj[imageProp.name] ? String(obj[imageProp.name]) : null;
+
+  if (!imageUrlFromProp) {
     const fallbackImageProp = model.properties.find(
       (p) => (p.name.toLowerCase().includes('image') ||
               p.name.toLowerCase().includes('picture') ||
               p.name.toLowerCase().includes('photo') ||
               p.name.toLowerCase().includes('url')) &&
               p.type === 'string' &&
-              obj[p.name]
+              obj[p.name] &&
+              typeof obj[p.name] === 'string' &&
+              ((obj[p.name] as string).startsWith('http') || (obj[p.name] as string).startsWith('/uploads'))
     );
-    if (fallbackImageProp && obj[fallbackImageProp.name]) {
-      imageUrl = String(obj[fallbackImageProp.name]);
-      imageAltText = `${displayName} ${fallbackImageProp.name}`;
-      imageProp = fallbackImageProp; 
+    if (fallbackImageProp && object[fallbackImageProp.name]) {
+      imageUrlFromProp = object[fallbackImageProp.name] as string;
+      imageProp = fallbackImageProp;
     }
   }
 
   const placeholderImage = `https://placehold.co/600x400.png`;
-  if (!imageUrl || typeof imageUrl !== 'string' || (!imageUrl.startsWith('http') && !imageUrl.startsWith('/uploads'))) {
-     imageUrl = placeholderImage;
+  if (!imageUrlFromProp || typeof imageUrlFromProp !== 'string' || (!imageUrlFromProp.startsWith('http') && !imageUrlFromProp.startsWith('/uploads'))) {
+     imageUrlFromProp = placeholderImage;
      imageAltText = `${displayName} placeholder image`;
   }
   
-  const displayImage = imageUrl && imageUrl !== placeholderImage;
+  const displayImage = imageUrlFromProp && imageUrlFromProp !== placeholderImage;
+  let imageAltText = imageProp ? `${displayName} ${imageProp.name}` : `${displayName} gallery image`;
+
 
   const displayProperties = model.properties
     .filter(p => p.name !== imageProp?.name && model.displayPropertyNames?.includes(p.name) === false)
@@ -215,7 +218,7 @@ const GalleryCard = React.memo(function GalleryCard({
       <CardHeader className="p-0">
         <div className="aspect-[3/2] relative w-full">
           <Image
-            src={imageUrl}
+            src={imageUrlFromProp}
             alt={imageAltText}
             layout="fill"
             objectFit="cover"
@@ -243,7 +246,7 @@ const GalleryCard = React.memo(function GalleryCard({
             {displayPropertyValue(prop, obj[prop.name])}
           </div>
         ))}
-        {displayProperties.length === 0 && (!displayImage || !imageUrl) && (
+        {displayProperties.length === 0 && (!displayImage || !imageUrlFromProp) && (
             <p className="text-xs text-muted-foreground italic">No additional details to display.</p>
         )}
         {obj.deletedAt && viewingRecycleBin && (

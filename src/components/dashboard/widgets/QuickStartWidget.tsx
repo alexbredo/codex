@@ -30,17 +30,17 @@ export default function QuickStartWidget({ config }: QuickStartWidgetProps) {
         </p>
         <div className="space-y-2">
           {isAdmin && (
-            <Link href="/models/new" passHref className="block">
-              <Button variant="default" size="sm" className="w-full bg-accent text-accent-foreground hover:bg-accent/90">
+            <Button asChild variant="default" size="sm" className="w-full bg-accent text-accent-foreground hover:bg-accent/90">
+              <Link href="/models/new">
                 <PlusCircle className="mr-2 h-4 w-4" /> Create a Model
-              </Button>
-            </Link>
-          )}
-          <Link href="/models" passHref className="block">
-            <Button variant="outline" size="sm" className="w-full">
-              <Settings className="mr-2 h-4 w-4" /> View All Models
+              </Link>
             </Button>
-          </Link>
+          )}
+          <Button asChild variant="outline" size="sm" className="w-full">
+            <Link href="/models">
+              <Settings className="mr-2 h-4 w-4" /> View All Models
+            </Link>
+          </Button>
         </div>
       </CardContent>
     </Card>

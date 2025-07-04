@@ -186,10 +186,8 @@ export default function IncomingRelationshipsViewer({ objectId, modelId }: Incom
                       return (
                         <TableRow key={rel.objectId} className={cn(isDeleted && "bg-destructive/5 hover:bg-destructive/10")}>
                           <TableCell>
-                            <Link href={`/data/${rel.modelId}/view/${rel.objectId}`} passHref legacyBehavior>
-                              <a className={cn("text-primary hover:underline", isDeleted && "text-destructive line-through")}>
-                                {rel.objectDisplayValue}
-                              </a>
+                            <Link href={`/data/${rel.modelId}/view/${rel.objectId}`} className={cn("text-primary hover:underline", isDeleted && "text-destructive line-through")}>
+                              {rel.objectDisplayValue}
                             </Link>
                           </TableCell>
                           {propertiesToDisplay.map(prop => (

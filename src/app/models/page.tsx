@@ -382,20 +382,16 @@ function ModelsPageInternal() {
                           )}
                         </CardContent>
                         <CardFooter className="grid grid-cols-2 gap-2 pt-4">
-                          <Link href={`/data/${model.id}`} passHref legacyBehavior>
-                            <a className="w-full col-span-1">
-                              <Button variant="default" size="sm" className="w-full">
-                                <Eye className="mr-1 h-3 w-3" /> View Data
-                              </Button>
-                            </a>
-                          </Link>
-                          <Link href={`/models/view/${model.id}`} passHref legacyBehavior>
-                            <a className="w-full col-span-1">
-                              <Button variant="outline" size="sm" className="w-full">
-                                <Settings2 className="mr-1 h-3 w-3" /> Manage Structure
-                              </Button>
-                            </a>
-                          </Link>
+                          <Button asChild variant="default" size="sm" className="w-full">
+                            <Link href={`/data/${model.id}`}>
+                              <Eye className="mr-1 h-3 w-3" /> View Data
+                            </Link>
+                          </Button>
+                          <Button asChild variant="outline" size="sm" className="w-full">
+                            <Link href={`/models/view/${model.id}`}>
+                              <Settings2 className="mr-1 h-3 w-3" /> Manage Structure
+                            </Link>
+                          </Button>
                         </CardFooter>
                       </Card>
                     ))}
@@ -411,5 +407,3 @@ function ModelsPageInternal() {
 }
 
 export default withAuth(ModelsPageInternal, 'models:manage');
-
-    

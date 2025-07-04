@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -109,16 +108,17 @@ export default function Navigation() {
     <SidebarMenu>
       {visibleStaticNavItems.map((item) => (
         <SidebarMenuItem key={item.label}>
-          <Link href={item.href} passHref legacyBehavior>
-            <SidebarMenuButton
-              isActive={pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href))}
-              tooltip={{ children: item.label, side: 'right', align: 'center' }}
-              aria-label={item.label}
-            >
+          <SidebarMenuButton
+            asChild
+            isActive={pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href))}
+            tooltip={{ children: item.label, side: 'right', align: 'center' }}
+            aria-label={item.label}
+          >
+            <Link href={item.href}>
               <item.icon size={20} />
               <span className="truncate">{item.label}</span>
-            </SidebarMenuButton>
-          </Link>
+            </Link>
+          </SidebarMenuButton>
         </SidebarMenuItem>
       ))}
 
@@ -137,17 +137,18 @@ export default function Navigation() {
               </SidebarGroupLabel>
               {groupedModels[groupName].map((model: Model) => (
                 <SidebarMenuItem key={model.id}>
-                  <Link href={`/data/${model.id}`} passHref legacyBehavior>
-                    <SidebarMenuButton
-                      isActive={pathname.startsWith(`/data/${model.id}`)}
-                      tooltip={{ children: `View ${model.name} Data (${groupName})`, side: 'right', align: 'center' }}
-                      aria-label={`${model.name} (${groupName})`}
-                      className="ml-2"
-                    >
+                  <SidebarMenuButton
+                    asChild
+                    isActive={pathname.startsWith(`/data/${model.id}`)}
+                    tooltip={{ children: `View ${model.name} Data (${groupName})`, side: 'right', align: 'center' }}
+                    aria-label={`${model.name} (${groupName})`}
+                    className="ml-2"
+                  >
+                    <Link href={`/data/${model.id}`}>
                       <ListChecks size={18} />
                       <span className="truncate">{model.name}</span>
-                    </SidebarMenuButton>
-                  </Link>
+                    </Link>
+                  </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
             </SidebarGroup>
