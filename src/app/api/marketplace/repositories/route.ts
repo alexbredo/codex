@@ -7,9 +7,12 @@ import { getCurrentUserFromCookie } from '@/lib/auth';
 import { z } from 'zod';
 import type { MarketplaceRepository } from '@/lib/types';
 
+export const dynamic = 'force-dynamic';
+
 const repositorySchema = z.object({
   name: z.string().min(3, "Name must be at least 3 characters."),
   url: z.string().url("Must be a valid URL."),
+  api_key: z.string().optional(),
 });
 
 // GET all repositories
@@ -43,7 +46,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid input.', details: validation.error.flatten().fieldErrors }, { status: 400 });
     }
 
-    const { name, url } = validation.data;
+    const { name, url, api_key } = validation.data;
     const db = await getDb();
 
     // Check for duplicate URL
@@ -52,17 +55,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'A repository with this URL already exists.' }, { status: 409 });
     }
 
-    const newRepo: MarketplaceRepository = {
+    const newRepo: Omit<MarketplaceRepository, 'lastCheckedAt'> = {
       id: crypto.randomUUID(),
       name,
       url,
+      api_key: api_key || undefined,
       createdAt: new Date().toISOString(),
       addedByUserId: currentUser.id,
     };
 
     await db.run(
-      'INSERT INTO marketplace_repositories (id, name, url, createdAt, addedByUserId) VALUES (?, ?, ?, ?, ?)',
-      newRepo.id, newRepo.name, newRepo.url, newRepo.createdAt, newRepo.addedByUserId
+      'INSERT INTO marketplace_repositories (id, name, url, api_key, createdAt, addedByUserId) VALUES (?, ?, ?, ?, ?, ?)',
+      newRepo.id, newRepo.name, newRepo.url, newRepo.api_key || null, newRepo.createdAt, newRepo.addedByUserId
     );
 
     return NextResponse.json(newRepo, { status: 201 });
@@ -71,5 +75,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Failed to add repository.', details: error.message }, { status: 500 });
   }
 }
-
-    
