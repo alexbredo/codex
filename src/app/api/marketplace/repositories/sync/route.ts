@@ -28,11 +28,10 @@ export async function POST(request: Request) {
 
     for (const repo of repositories) {
       try {
-        // Explicitly set headers to prevent forwarding of authentication cookies
-        const fetchHeaders = {
-          'User-Agent': 'CodexStructure-Sync/1.0',
-          'Cookie': '', // <-- This is the crucial fix
-        };
+        // FIX: Explicitly create a new Headers object to prevent any automatic
+        // header forwarding (like Cookies) by Next.js during server-to-server fetch.
+        const fetchHeaders = new Headers();
+        fetchHeaders.append('User-Agent', 'CodexStructure-Sync/1.0');
 
         // Step 1: Fetch the list of item metadata from the repository URL
         const listResponse = await fetch(repo.url, {
@@ -50,7 +49,7 @@ export async function POST(request: Request) {
           try {
             const detailUrl = repo.url.endsWith('/') ? `${repo.url}${meta.id}` : `${repo.url}/${meta.id}`;
             const detailResponse = await fetch(detailUrl, {
-                headers: fetchHeaders,
+                headers: fetchHeaders, // Reuse the clean headers for this request as well
                 cache: 'no-store',
             });
             if (!detailResponse.ok) {
