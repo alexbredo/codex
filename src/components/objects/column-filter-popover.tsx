@@ -193,6 +193,13 @@ export default function ColumnFilterPopover({
     setIsOpen(false);
   };
 
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      handleApplyFilter();
+    }
+  };
+
   const renderFilterInput = () => {
     switch (effectiveFilterType) {
       case 'string':
@@ -204,6 +211,7 @@ export default function ColumnFilterPopover({
             placeholder={`Filter ${columnName}...`}
             value={String(filterInput ?? '')}
             onChange={(e) => setFilterInput(e.target.value)}
+            onKeyDown={handleKeyDown}
             className="w-full"
           />
         );
@@ -226,6 +234,7 @@ export default function ColumnFilterPopover({
               placeholder="Value"
               value={String(filterInput ?? '')}
               onChange={(e) => setFilterInput(e.target.value === '' ? '' : parseFloat(e.target.value))}
+              onKeyDown={handleKeyDown}
               className="w-full"
             />
           </div>
