@@ -397,6 +397,11 @@ export interface MarketplaceItem {
   createdAt: string; // First publish date
   updatedAt: string; // Last publish date
   versions: MarketplaceItemVersion[];
+  source?: 'local' | 'remote';
+  sourceRepository?: {
+    name: string;
+    url: string;
+  };
 }
 
 export interface MarketplaceRepository {
@@ -404,6 +409,8 @@ export interface MarketplaceRepository {
   name: string;
   url: string; // URL to the public API endpoint of the remote marketplace
   lastCheckedAt?: string;
+  addedByUserId?: string;
+  createdAt: string;
 }
 
 export interface PublishToMarketplaceFormValues {
@@ -413,3 +420,5 @@ export interface PublishToMarketplaceFormValues {
     changelog: string;
     author: string;
 }
+
+    

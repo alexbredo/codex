@@ -9,14 +9,15 @@ import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, ShieldCheck, Store, Download, AlertTriangle, Info, CheckCircle } from 'lucide-react';
+import { Loader2, ShieldCheck, Store, Download, AlertTriangle, Info, CheckCircle, Rss, UploadCloud } from 'lucide-react';
 import type { MarketplaceItem, MarketplaceItemType, ValidationRuleset } from '@/lib/types';
-import semver from 'semver';
+import Link from 'next/link';
 
-// Define the shape of the metadata we fetch for the list view
-// It now includes the payload of the latest version for comparison.
+// It now includes the source of the item (local/remote) and the payload.
 type MarketplaceItemMetadata = Omit<MarketplaceItem, 'versions'> & {
   latestVersionPayload: any;
+  source: 'local' | 'remote';
+  sourceRepositoryName?: string;
 };
 
 // Enum for installation status
@@ -141,6 +142,9 @@ function MarketplacePageInternal() {
           </h1>
           <p className="text-muted-foreground">Install pre-built components into your instance.</p>
         </div>
+        <Link href="/admin/marketplace/repositories" passHref>
+            <Button variant="outline"><Rss className="mr-2 h-4 w-4"/> Manage Repositories</Button>
+        </Link>
       </header>
 
       {items && items.length > 0 ? (
@@ -164,14 +168,21 @@ function MarketplacePageInternal() {
                         <CardHeader>
                             <div className="flex justify-between items-start gap-4">
                                 {getIconForItemType(item.type)}
-                                <Badge variant="outline">v{item.latestVersion}</Badge>
+                                <div className="flex items-center gap-2">
+                                  {item.source === 'remote' && (
+                                    <Badge variant="outline" title={`From: ${item.sourceRepositoryName}`} className="text-xs flex items-center gap-1 border-blue-500/50 text-blue-600">
+                                      <Rss className="h-3 w-3"/> Remote
+                                    </Badge>
+                                  )}
+                                  <Badge variant="outline">v{item.latestVersion}</Badge>
+                                </div>
                             </div>
                             <CardTitle className="text-xl pt-2">{item.name}</CardTitle>
                             <CardDescription>{item.description || 'No description provided.'}</CardDescription>
                         </CardHeader>
                         <CardContent className="flex-grow">
                             <p className="text-xs text-muted-foreground">Author: {item.author || 'Unknown'}</p>
-                            <p className="text-xs text-muted-foreground">Type: {item.type.replace('_', ' ')}</p>
+                            <p className="text-xs text-muted-foreground capitalize">Type: {item.type.replace('_', ' ')}</p>
                         </CardContent>
                         <CardFooter>
                             <Button
@@ -203,3 +214,5 @@ function MarketplacePageInternal() {
 }
 
 export default withAuth(MarketplacePageInternal, 'marketplace:install');
+
+    
