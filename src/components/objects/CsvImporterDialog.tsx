@@ -21,6 +21,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2, ArrowRight, ArrowLeft, UploadCloud, AlertTriangle, FileUp, CheckCircle } from 'lucide-react';
 
 interface CsvImporterDialogProps {
@@ -48,6 +49,8 @@ export function CsvImporterDialog({ isOpen, onClose, model, onSuccess }: CsvImpo
   const [step, setStep] = React.useState<ImportStep>('upload');
   const [file, setFile] = React.useState<File | null>(null);
   const [delimiter, setDelimiter] = React.useState<string>(',');
+  const [hasHeader, setHasHeader] = React.useState<boolean>(true);
+  const [encoding, setEncoding] = React.useState<string>('auto');
   const [parsedData, setParsedData] = React.useState<CsvRow[]>([]);
   const [headers, setHeaders] = React.useState<string[]>([]);
   
@@ -70,6 +73,9 @@ export function CsvImporterDialog({ isOpen, onClose, model, onSuccess }: CsvImpo
       setRelationshipLookups({});
       setIsProcessing(false);
       setImportResult(null);
+      setHasHeader(true);
+      setEncoding('auto');
+      setDelimiter(',');
     }
   }, [isOpen]);
 
@@ -85,8 +91,9 @@ export function CsvImporterDialog({ isOpen, onClose, model, onSuccess }: CsvImpo
       return;
     }
     setIsProcessing(true);
-    Papa.parse<CsvRow>(file, {
-      header: true,
+    
+    const config: Papa.ParseConfig = {
+      header: hasHeader,
       skipEmptyLines: true,
       delimiter,
       complete: (results) => {
@@ -95,8 +102,31 @@ export function CsvImporterDialog({ isOpen, onClose, model, onSuccess }: CsvImpo
           setIsProcessing(false);
           return;
         }
-        setHeaders(results.meta.fields || []);
-        setParsedData(results.data);
+
+        let finalHeaders: string[] = [];
+        let finalData: CsvRow[] = [];
+
+        if (hasHeader) {
+          finalHeaders = results.meta.fields || [];
+          finalData = results.data as CsvRow[];
+        } else {
+          const rawData = results.data as string[][];
+          if (rawData.length > 0) {
+            // Generate generic headers like "Column 1", "Column 2"
+            finalHeaders = rawData[0].map((_, index) => `Column ${index + 1}`);
+            // Transform the array of arrays into an array of objects
+            finalData = rawData.map(row => {
+              const obj: CsvRow = {};
+              finalHeaders.forEach((header, i) => {
+                obj[header] = row[i];
+              });
+              return obj;
+            });
+          }
+        }
+        
+        setHeaders(finalHeaders);
+        setParsedData(finalData);
         setStep('mapping');
         setIsProcessing(false);
       },
@@ -104,7 +134,13 @@ export function CsvImporterDialog({ isOpen, onClose, model, onSuccess }: CsvImpo
         toast({ variant: 'destructive', title: 'CSV Parsing Failed', description: error.message });
         setIsProcessing(false);
       }
-    });
+    };
+    
+    if (encoding !== 'auto') {
+        config.encoding = encoding;
+    }
+
+    Papa.parse(file, config);
   };
 
   const handleImport = async () => {
@@ -144,21 +180,45 @@ export function CsvImporterDialog({ isOpen, onClose, model, onSuccess }: CsvImpo
     switch(step) {
       case 'upload':
         return (
-          <div className="space-y-4">
-            <div className="grid w-full max-w-sm items-center gap-1.5">
-              <Label htmlFor="csv-file">Upload CSV File</Label>
-              <Input id="csv-file" type="file" accept=".csv" onChange={handleFileChange} />
+          <div className="space-y-6">
+            <div>
+                <Label htmlFor="csv-file">Upload CSV or TXT File</Label>
+                <Input id="csv-file" type="file" accept=".csv, .txt" onChange={handleFileChange} className="mt-1" />
             </div>
-            <div className="grid w-full max-w-sm items-center gap-1.5">
-              <Label htmlFor="delimiter">Delimiter</Label>
-              <Select value={delimiter} onValueChange={setDelimiter}>
-                <SelectTrigger id="delimiter"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value=",">Comma (,)</SelectItem>
-                  <SelectItem value=";">Semicolon (;)</SelectItem>
-                  <SelectItem value="\t">Tab</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="space-y-2">
+                <Label>Parsing Options</Label>
+                <div className="p-4 border rounded-md space-y-4 bg-muted/50">
+                    <div className="flex items-center space-x-2">
+                        <Checkbox id="has-header" checked={hasHeader} onCheckedChange={(checked) => setHasHeader(!!checked)} />
+                        <Label htmlFor="has-header" className="font-normal">The first row is a header</Label>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                            <Label htmlFor="delimiter">Delimiter</Label>
+                            <Select value={delimiter} onValueChange={setDelimiter}>
+                                <SelectTrigger id="delimiter"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value=",">Comma (,)</SelectItem>
+                                    <SelectItem value=";">Semicolon (;)</SelectItem>
+                                    <SelectItem value="\t">Tab</SelectItem>
+                                    <SelectItem value="|">Pipe (|)</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-1.5">
+                            <Label htmlFor="encoding">Encoding</Label>
+                            <Select value={encoding} onValueChange={setEncoding}>
+                                <SelectTrigger id="encoding"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="auto">Auto-Detect</SelectItem>
+                                    <SelectItem value="utf-8">UTF-8</SelectItem>
+                                    <SelectItem value="iso-8859-1">ISO-8859-1 (Latin1)</SelectItem>
+                                    <SelectItem value="windows-1252">Windows-1252</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                </div>
             </div>
           </div>
         );
@@ -169,7 +229,7 @@ export function CsvImporterDialog({ isOpen, onClose, model, onSuccess }: CsvImpo
             <Alert>
               <AlertTriangle className="h-4 w-4" />
               <AlertTitle>Map Your Data</AlertTitle>
-              <AlertDescription>Match columns from your CSV to properties in the "{model.name}" model. Required fields are marked with <span className="text-destructive">*</span>.</AlertDescription>
+              <AlertDescription>Match columns from your file to properties in the "{model.name}" model. Required fields are marked with <span className="text-destructive">*</span>.</AlertDescription>
             </Alert>
             <ScrollArea className="h-72 border rounded-md">
               <Table>
@@ -300,7 +360,7 @@ export function CsvImporterDialog({ isOpen, onClose, model, onSuccess }: CsvImpo
       <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Import Data into "{model.name}"</DialogTitle>
-          <DialogDescription>Follow the steps to import data from a CSV file.</DialogDescription>
+          <DialogDescription>Follow the steps to import data from a CSV or TXT file.</DialogDescription>
         </DialogHeader>
         <div className="flex-grow overflow-y-auto py-4 pr-2">
             {renderStepContent()}
