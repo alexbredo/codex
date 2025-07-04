@@ -262,7 +262,7 @@ export function useDataViewLogic(modelIdFromUrl: string) {
                 } else if (columnKey === OWNER_COLUMN_KEY) {
                     objectValue = obj.ownerId;
                 } else if ([CREATED_AT_COLUMN_KEY, UPDATED_AT_COLUMN_KEY, DELETED_AT_COLUMN_KEY].includes(columnKey)) {
-                    objectValue = obj[columnKey];
+                    objectValue = obj[columnKey as keyof DataObject];
                 } else if (columnKey.startsWith('incoming-rel-')) {
                     const colDef = virtualIncomingRelationColumns.find(c => c.id === columnKey);
                     if (!colDef) return false;
@@ -333,8 +333,8 @@ export function useDataViewLogic(modelIdFromUrl: string) {
                             valueB = getOwnerUsername(b.ownerId);
                             break;
                         default:
-                            valueA = a[key];
-                            valueB = b[key];
+                            valueA = a[key as keyof DataObject];
+                            valueB = b[key as keyof DataObject];
                             break;
                     }
                 }
@@ -402,6 +402,10 @@ export function useDataViewLogic(modelIdFromUrl: string) {
       return currentModel.properties.some(p => p.type === 'date' || p.type === 'datetime');
     }, [currentModel]);
 
+    const deletedObjectCount = useMemo(() => {
+        if (!deletedObjectsFromContext) return 0;
+        return Object.values(deletedObjectsFromContext).reduce((sum, arr) => sum + arr.length, 0);
+    }, [deletedObjectsFromContext]);
 
     const handleCreateNew = useCallback(() => {
         if (!modelIdFromUrl) return;
@@ -525,11 +529,11 @@ export function useDataViewLogic(modelIdFromUrl: string) {
         if (!currentModel) return [];
         const properties = currentModel.properties
             .filter(p => ['string', 'boolean', 'rating', 'relationship'].includes(p.type) && p.relationshipType !== 'many')
-            .map(p => ({ id: p.id, name: p.name }));
+            .map(p => ({ id: p.id, name: p.name, isWorkflowState: false, isOwnerColumn: false, isDateColumn: false })); // Added default booleans
         if (currentWorkflow) {
-            properties.push({ id: WORKFLOW_STATE_GROUPING_KEY, name: 'Workflow State', isWorkflowState: true });
+            properties.push({ id: WORKFLOW_STATE_GROUPING_KEY, name: 'Workflow State', isWorkflowState: true, isOwnerColumn: false, isDateColumn: false });
         }
-        properties.push({ id: OWNER_COLUMN_KEY, name: 'Owner', isOwnerColumn: true });
+        properties.push({ id: OWNER_COLUMN_KEY, name: 'Owner', isOwnerColumn: true, isWorkflowState: false, isDateColumn: false });
         return properties;
     }, [currentModel, currentWorkflow]);
 
