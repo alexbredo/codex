@@ -29,9 +29,15 @@ export async function GET(request: Request, { params }: Params) {
     const db = await getDb();
     
     // 1. Find the model ID from the model name
-    const model = await db.get<Model>('SELECT * FROM models WHERE name = ?', modelName);
+    const model = await db.get<Model>('SELECT * FROM models WHERE id = ?', modelName);
     if (!model) {
-      return NextResponse.json({ error: `Model "${modelName}" not found` }, { status: 404 });
+      // If model not found by ID, try by name.
+      const modelByName = await db.get<Model>('SELECT * FROM models WHERE name = ?', modelName);
+       if (!modelByName) {
+          return NextResponse.json({ error: `Model "${modelName}" not found` }, { status: 404 });
+       }
+       model.id = modelByName.id;
+       model.name = modelByName.name;
     }
     model.properties = await db.all('SELECT * FROM properties WHERE model_id = ?', model.id);
 
@@ -40,24 +46,30 @@ export async function GET(request: Request, { params }: Params) {
         return NextResponse.json([]); // Return empty if no view permissions for this model
     }
     
-    // 2. Fetch all objects of this model. This is simpler than complex JSON queries for now.
-    // For very large datasets, a more optimized FTS5-based approach would be needed.
-    const allObjectsForModel: DataObject[] = (await db.all(
-        'SELECT id, data FROM data_objects WHERE model_id = ? AND (isDeleted = 0 OR isDeleted IS NULL)', model.id
-    )).map(row => ({ id: row.id, ...JSON.parse(row.data) }));
-
+    // --- Pre-fetch all data needed for getObjectDisplayValue ---
     const allModels = await db.all<Model>('SELECT * FROM models');
+    const allObjectsRaw = await db.all('SELECT id, model_id, data FROM data_objects WHERE isDeleted = 0 OR isDeleted IS NULL');
+    const allObjectsMap: Record<string, DataObject[]> = {};
+    for (const row of allObjectsRaw) {
+      if (!allObjectsMap[row.model_id]) {
+        allObjectsMap[row.model_id] = [];
+      }
+      allObjectsMap[row.model_id].push({ id: row.id, ...JSON.parse(row.data) });
+    }
+    // --- End pre-fetch ---
+
+    const allObjectsForModel: DataObject[] = allObjectsMap[model.id] || [];
 
     // 3. Filter in-memory
     const matchingObjects = allObjectsForModel.filter(obj => {
-        const displayValue = getObjectDisplayValue(obj, model, allModels, {});
+        const displayValue = getObjectDisplayValue(obj, model, allModels, allObjectsMap);
         return displayValue.toLowerCase().includes(searchTerm.toLowerCase());
     });
     
     // 4. Format and return results
     const results = matchingObjects.slice(0, 50).map(obj => ({
         id: obj.id,
-        displayValue: getObjectDisplayValue(obj, model, allModels, {})
+        displayValue: getObjectDisplayValue(obj, model, allModels, allObjectsMap)
     }));
 
     return NextResponse.json(results);
