@@ -2,7 +2,7 @@
 'use client';
 
 import * as React from 'react';
-import type { UseFormReturn } from 'react-hook-form';
+import type { UseFormReturn, FieldErrors } from 'react-hook-form';
 import { useFieldArray } from 'react-hook-form';
 import type { ModelFormValues, PropertyFormValues } from './model-form-schema';
 import type { Model } from '@/lib/types';
@@ -44,11 +44,13 @@ export default function ModelForm({ form, onSubmit, onCancel, isLoading, existin
     onSubmit(processedValues);
   };
 
-  const handleFormInvalid = () => {
+  const handleFormInvalid = (errors: FieldErrors<ModelFormValues>) => {
+    console.error("Model Form Validation Errors:", JSON.stringify(errors, null, 2));
     toast({
       title: "Validation Error",
-      description: "Please correct the errors highlighted in the form. Errors might be in collapsed sections.",
+      description: "Please correct the errors highlighted in the form. Errors might be in collapsed property sections. Check the browser console for details.",
       variant: "destructive",
+      duration: 10000,
     });
   };
 
