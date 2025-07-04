@@ -30,8 +30,7 @@ export async function POST(request: Request) {
         // Step 1: Fetch the list of item metadata from the repository URL
         const listResponse = await fetch(repo.url, {
           signal: AbortSignal.timeout(10000), // 10-second timeout for the list
-          cache: 'no-store',
-          headers: { 'Cookie': '' } // Prevent forwarding auth cookies
+          credentials: 'omit', // Do not send cookies or authentication headers.
         });
         if (!listResponse.ok) {
           throw new Error(`Failed to fetch from ${repo.name}: Status ${listResponse.status}`);
@@ -44,8 +43,7 @@ export async function POST(request: Request) {
             const detailUrl = repo.url.endsWith('/') ? `${repo.url}${meta.id}` : `${repo.url}/${meta.id}`;
             const detailResponse = await fetch(detailUrl, {
                 signal: AbortSignal.timeout(10000),
-                cache: 'no-store',
-                headers: { 'Cookie': '' } // Prevent forwarding auth cookies
+                credentials: 'omit', // Do not send cookies or authentication headers.
             });
             if (!detailResponse.ok) {
                 console.warn(`Could not fetch details for item ${meta.id} from ${repo.name}. Status: ${detailResponse.status}`);
