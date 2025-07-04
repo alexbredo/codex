@@ -9,7 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, ShieldCheck, Store, Download, AlertTriangle, Info, CheckCircle, Rss, UploadCloud, Workflow as WorkflowIcon, Search, X, FolderKanban } from 'lucide-react';
+import { Loader2, ShieldCheck, Store, Download, AlertTriangle, Info, CheckCircle, Rss, UploadCloud, Workflow as WorkflowIcon, Search, X, FolderKanban, MoreHorizontal, RefreshCw } from 'lucide-react';
 import type { MarketplaceItem, MarketplaceItemType, ValidationRuleset, WorkflowWithDetails, ModelGroup, ExportedModelGroupBundle } from '@/lib/types';
 import Link from 'next/link';
 import semver from 'semver';
@@ -20,6 +20,12 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 
 // It now includes the source of the item (local/remote) and the payload.
@@ -308,14 +314,9 @@ function MarketplacePageInternal() {
             {filteredItems.map(item => {
                 const status = getItemInstallStatus(item);
                 let buttonText = 'Install';
-                let buttonDisabled = false;
                 let buttonIcon = <Download className="mr-2 h-4 w-4" />;
-
-                if (status === InstallStatus.UpToDate) {
-                  buttonText = 'Installed';
-                  buttonDisabled = true;
-                  buttonIcon = <CheckCircle className="mr-2 h-4 w-4" />;
-                } else if (status === InstallStatus.Installed) {
+                
+                if (status === InstallStatus.Installed) {
                   buttonText = 'Update';
                 }
 
@@ -368,18 +369,41 @@ function MarketplacePageInternal() {
                         </Accordion>
                         
                         <CardFooter>
+                          {status === InstallStatus.UpToDate ? (
+                            <div className="flex w-full gap-2">
+                              <Button className="w-full" disabled>
+                                <CheckCircle className="mr-2 h-4 w-4" />
+                                Installed
+                              </Button>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="outline" size="icon" className="shrink-0">
+                                    <MoreHorizontal className="h-4 w-4" />
+                                    <span className="sr-only">More options</span>
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => handleInstallClick(item)} disabled={installMutation.isPending && installMutation.variables === item.id}>
+                                     {installMutation.isPending && installMutation.variables === item.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                                    Force Reinstall
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          ) : (
                             <Button
-                                className="w-full"
-                                onClick={() => handleInstallClick(item)}
-                                disabled={buttonDisabled || (installMutation.isPending && installMutation.variables === item.id)}
+                              className="w-full"
+                              onClick={() => handleInstallClick(item)}
+                              disabled={installMutation.isPending && installMutation.variables === item.id}
                             >
-                                {installMutation.isPending && installMutation.variables === item.id ? (
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                ) : (
-                                    buttonIcon
-                                )}
-                                {buttonText}
+                              {installMutation.isPending && installMutation.variables === item.id ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              ) : (
+                                buttonIcon
+                              )}
+                              {buttonText}
                             </Button>
+                          )}
                         </CardFooter>
                     </Card>
                 );
