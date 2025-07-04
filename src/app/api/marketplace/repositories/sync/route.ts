@@ -7,6 +7,7 @@ import { getCurrentUserFromCookie } from '@/lib/auth';
 import type { MarketplaceRepository, MarketplaceItem } from '@/lib/types';
 import path from 'path';
 import fs from 'fs/promises';
+import axios from 'axios';
 
 const MARKETPLACE_DIR = path.join(process.cwd(), 'data', 'marketplace');
 const REMOTE_CACHE_FILE = path.join(MARKETPLACE_DIR, 'remote_cache.json');
@@ -27,38 +28,21 @@ export async function POST(request: Request) {
 
     for (const repo of repositories) {
       try {
-        // Explicitly create new headers for the fetch request, removing any cookies or auth headers
-        // from the original request to ensure the fetch is anonymous. This is the correct way
-        // to prevent forwarding credentials in Next.js API routes.
-        const headersForFetch = new Headers();
-        headersForFetch.append('User-Agent', 'CodexStructure-Sync/1.0');
-
-        // Step 1: Fetch the list of item metadata from the repository URL
-        const listResponse = await fetch(repo.url, {
-            headers: headersForFetch,
-            cache: 'no-store', // Prevent caching of this request
+        const listResponse = await axios.get(repo.url, {
+          headers: { 'User-Agent': 'CodexStructure-Sync/1.0' },
         });
 
-        if (!listResponse.ok) {
-          throw new Error(`Failed to fetch from ${repo.name}: Status ${listResponse.status}`);
-        }
-        const itemsMetadata: { id: string }[] = await listResponse.json();
+        const itemsMetadata: { id: string }[] = listResponse.data;
         
-        // Step 2: Fetch the full details for each item
         for (const meta of itemsMetadata) {
           try {
             const detailUrl = repo.url.endsWith('/') ? `${repo.url}${meta.id}` : `${repo.url}/${meta.id}`;
             
-            const detailResponse = await fetch(detailUrl, {
-                headers: headersForFetch, // Reuse the same clean headers
-                cache: 'no-store',
+            const detailResponse = await axios.get(detailUrl, {
+                headers: { 'User-Agent': 'CodexStructure-Sync/1.0' },
             });
 
-            if (!detailResponse.ok) {
-                console.warn(`Could not fetch details for item ${meta.id} from ${repo.name}. Status: ${detailResponse.status}`);
-                continue; // Skip this item, but continue with the repo
-            }
-            const fullItem: MarketplaceItem = await detailResponse.json();
+            const fullItem: MarketplaceItem = detailResponse.data;
 
             const itemWithSource = {
               ...fullItem,
@@ -74,17 +58,19 @@ export async function POST(request: Request) {
           }
         }
         
-        // Step 3: Update last checked time for the repo if we successfully processed the list
         await db.run('UPDATE marketplace_repositories SET lastCheckedAt = ? WHERE id = ?', new Date().toISOString(), repo.id);
         successfulRepoCount++;
 
       } catch (error: any) {
-        console.error(`Error syncing repository ${repo.name} (${repo.url}):`, error.message);
-        errors.push({ name: repo.name, error: error.message });
+        let errorMessage = error.message;
+        if (axios.isAxiosError(error) && error.response) {
+            errorMessage = `Failed to fetch from ${repo.name}: Status ${error.response.status}`;
+        }
+        console.error(`Error syncing repository ${repo.name} (${repo.url}):`, errorMessage);
+        errors.push({ name: repo.name, error: errorMessage });
       }
     }
 
-    // Step 4: Write aggregated items to the remote cache file
     await fs.mkdir(MARKETPLACE_DIR, { recursive: true });
     await fs.writeFile(REMOTE_CACHE_FILE, JSON.stringify(allRemoteItems, null, 2));
 
