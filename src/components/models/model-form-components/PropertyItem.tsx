@@ -18,9 +18,12 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { StarRatingInput } from '@/components/ui/star-rating-input';
-import { CalendarIcon as CalendarIconLucide } from 'lucide-react';
+import { CalendarIcon as CalendarIconLucide, ChevronsUpDown, Check } from 'lucide-react';
 import { cn, getObjectDisplayValue } from '@/lib/utils';
 import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
+import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { useDebounce } from '@/hooks/use-debounce';
+import { useQuery } from '@tanstack/react-query';
 
 const INTERNAL_BOOLEAN_NOT_SET_VALUE = "__BOOLEAN_NOT_SET__";
 const INTERNAL_RELATIONSHIP_DEFAULT_NOT_SET_VALUE = "__RELATIONSHIP_DEFAULT_NOT_SET__";
@@ -36,6 +39,10 @@ interface PropertyItemProps {
 export default function PropertyItem({ form, index, modelsForRelationsGrouped, validationRulesetsForSelect }: PropertyItemProps) {
   const control = form.control;
   const { getModelById, getObjectsByModelId, allModels, getAllObjects } = useData();
+  
+  const [customPopoverOpen, setCustomPopoverOpen] = useState(false);
+  const [customSearchValue, setCustomSearchValue] = useState("");
+  const debouncedSearch = useDebounce(customSearchValue, 300);
 
   const propertyTypePath = `properties.${index}.type` as const;
   const relatedModelIdPath = `properties.${index}.relatedModelId` as const;
@@ -89,6 +96,20 @@ export default function PropertyItem({ form, index, modelsForRelationsGrouped, v
   
   const allDbObjects = React.useMemo(() => getAllObjects(), [getAllObjects]);
 
+   const { data: relationshipOptions, isLoading: isLoadingRelationshipOptions } = useQuery({
+    queryKey: ['relationship-search-model-form', relatedModelForDefault?.id, debouncedSearch],
+    queryFn: async (): Promise<MultiSelectOption[]> => {
+      if (!relatedModelForDefault) return [];
+      const propNameForApi = form.getValues(`properties.${index}.name`);
+      const response = await fetch(`/api/codex-structure/properties/${propNameForApi}/values?modelName=${encodeURIComponent(relatedModelForDefault.name)}&searchTerm=${encodeURIComponent(debouncedSearch)}`);
+      if (!response.ok) return [];
+      const data = await response.json();
+      return data.map((item: {id: string, displayValue: string}) => ({ value: item.id, label: item.displayValue }));
+    },
+    enabled: !!relatedModelForDefault && customPopoverOpen,
+  });
+
+
   const relatedObjectsForDefaultOptions = React.useMemo(() => {
     if (relatedModelForDefault?.id) {
       const objects = getObjectsByModelId(relatedModelForDefault.id);
@@ -115,7 +136,58 @@ export default function PropertyItem({ form, index, modelsForRelationsGrouped, v
           {(currentPropertyType === 'date' || currentPropertyType === 'datetime') && ( <> <FormField control={form.control} name={`properties.${index}.autoSetOnCreate`} render={({ field }) => ( <FormItem className="flex items-center space-x-2 border p-3 rounded-md"><FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl><FormLabel>Auto-set on Create</FormLabel></FormItem> )} /> <FormField control={form.control} name={`properties.${index}.autoSetOnUpdate`} render={({ field }) => ( <FormItem className="flex items-center space-x-2 border p-3 rounded-md"><FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl><FormLabel>Auto-set on Update</FormLabel></FormItem> )} /> </> )}
         </div>
       </div>
-      <div className="mt-4"><FormField control={control} name={`properties.${index}.defaultValue`} render={({ field }) => ( <FormItem><FormLabel>Default Value (Optional)</FormLabel><FormControl><div> {currentPropertyType === 'boolean' && ( <Select onValueChange={(v) => field.onChange(v === INTERNAL_BOOLEAN_NOT_SET_VALUE ? '' : v)} value={field.value ?? INTERNAL_BOOLEAN_NOT_SET_VALUE}><SelectTrigger><SelectValue placeholder="Select default" /></SelectTrigger><SelectContent><SelectItem value={INTERNAL_BOOLEAN_NOT_SET_VALUE}>-- Not Set --</SelectItem><SelectItem value="true">True</SelectItem><SelectItem value="false">False</SelectItem></SelectContent></Select> )} {currentPropertyType === 'date' && ( <Popover><PopoverTrigger asChild><Button type="button" variant="outline" className={cn("w-full justify-start", !field.value && "text-muted-foreground")}><CalendarIconLucide className="mr-2 h-4 w-4" />{field.value ? formatDateFns(new Date(field.value), "PPP") : "Pick a date"}</Button></PopoverTrigger><PopoverContent className="p-0"><Calendar mode="single" selected={field.value ? new Date(field.value) : undefined} onSelect={(d) => field.onChange(d ? d.toISOString().split('T')[0] : '')} /></PopoverContent></Popover> )} {currentPropertyType === 'rating' && ( <StarRatingInput value={field.value ? parseInt(field.value, 10) : 0} onChange={(v) => field.onChange(String(v))} /> )} {currentPropertyType === 'relationship' && currentRelatedModelId && ( relatedModelForDefault?.properties.length ? ( <Select onValueChange={(v) => field.onChange(v === INTERNAL_RELATIONSHIP_DEFAULT_NOT_SET_VALUE ? '' : v)} value={field.value || INTERNAL_RELATIONSHIP_DEFAULT_NOT_SET_VALUE}><SelectTrigger><SelectValue placeholder={`Select default ${relatedModelForDefault.name}`} /></SelectTrigger><SelectContent>{relatedObjectsForDefaultOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}</SelectContent></Select> ) : <MultiSelectAutocomplete options={relatedObjectsForDefaultOptions} selected={field.value || []} onChange={(v) => field.onChange(v)} placeholder={`Select default ${relatedModelForDefault.name}s`} /> )} {(!['boolean', 'date', 'rating', 'relationship'].includes(currentPropertyType)) && ( <Input type={{'number': 'number', 'time': 'time', 'datetime': 'datetime-local'}[currentPropertyType] || 'text'} placeholder="Enter default value" {...field} value={field.value ?? ''} /> )} </div></FormControl><FormMessage /></FormItem> )} /></div>
+      <div className="mt-4"><FormField control={control} name={`properties.${index}.defaultValue`} render={({ field }) => {
+        const relationshipType = form.watch(relationshipTypePath);
+
+        const renderRelationshipDefaultValue = () => {
+          if (relationshipType === 'many') {
+            return (
+              <MultiSelectAutocomplete
+                options={relatedObjectsForDefaultOptions}
+                selected={Array.isArray(field.value) ? field.value : (field.value ? [field.value] : [])}
+                onChange={(selectedIds) => field.onChange(selectedIds)}
+                placeholder={`Select default ${relatedModelForDefault?.name}(s)...`}
+              />
+            );
+          } else { // 'one'
+             const selectedLabel = field.value ? relatedObjectsForDefaultOptions.find(opt => opt.value === field.value)?.label : `Select default ${relatedModelForDefault?.name}...`;
+             return (
+               <Popover open={customPopoverOpen} onOpenChange={setCustomPopoverOpen}>
+                  <PopoverTrigger asChild>
+                    <Button type="button" variant="outline" role="combobox" className="w-full justify-between font-normal">
+                      <span className="truncate">{selectedLabel}</span>
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0 z-50">
+                    <Command>
+                      <CommandInput placeholder={`Search ${relatedModelForDefault?.name}...`} value={customSearchValue} onValueChange={setCustomSearchValue} />
+                      <CommandList>
+                        {isLoadingRelationshipOptions && <div className="p-2 text-center text-sm">Loading...</div>}
+                        <CommandEmpty>No results found.</CommandEmpty>
+                        <CommandItem value={INTERNAL_RELATIONSHIP_DEFAULT_NOT_SET_VALUE} onSelect={() => { field.onChange(""); setCustomPopoverOpen(false); }}>
+                          <Check className={cn("mr-2 h-4 w-4", !field.value ? "opacity-100" : "opacity-0")} />
+                          -- Not Set --
+                        </CommandItem>
+                        {(relationshipOptions || []).map((option) => (
+                           <CommandItem key={option.value} value={option.label} onSelect={() => { field.onChange(option.value); setCustomPopoverOpen(false); }}>
+                             <Check className={cn("mr-2 h-4 w-4", field.value === option.value ? "opacity-100" : "opacity-0")} />
+                             {option.label}
+                           </CommandItem>
+                        ))}
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+               </Popover>
+             )
+          }
+        };
+
+        return (
+          <FormItem><FormLabel>Default Value (Optional)</FormLabel><FormControl><div> {currentPropertyType === 'boolean' && ( <Select onValueChange={(v) => field.onChange(v === INTERNAL_BOOLEAN_NOT_SET_VALUE ? '' : v)} value={field.value ?? INTERNAL_BOOLEAN_NOT_SET_VALUE}><SelectTrigger><SelectValue placeholder="Select default" /></SelectTrigger><SelectContent><SelectItem value={INTERNAL_BOOLEAN_NOT_SET_VALUE}>-- Not Set --</SelectItem><SelectItem value="true">True</SelectItem><SelectItem value="false">False</SelectItem></SelectContent></Select> )} {currentPropertyType === 'date' && ( <Popover><PopoverTrigger asChild><Button type="button" variant="outline" className={cn("w-full justify-start", !field.value && "text-muted-foreground")}><CalendarIconLucide className="mr-2 h-4 w-4" />{field.value ? formatDateFns(new Date(field.value), "PPP") : "Pick a date"}</Button></PopoverTrigger><PopoverContent className="p-0"><Calendar mode="single" selected={field.value ? new Date(field.value) : undefined} onSelect={(d) => field.onChange(d ? d.toISOString().split('T')[0] : '')} /></PopoverContent></Popover> )} {currentPropertyType === 'rating' && ( <StarRatingInput value={field.value ? parseInt(field.value, 10) : 0} onChange={(v) => field.onChange(String(v))} /> )} {currentPropertyType === 'relationship' && currentRelatedModelId && relatedModelForDefault && renderRelationshipDefaultValue()} {(!['boolean', 'date', 'rating', 'relationship'].includes(currentPropertyType)) && ( <Input type={{'number': 'number', 'time': 'time', 'datetime': 'datetime-local'}[currentPropertyType] || 'text'} placeholder="Enter default value" {...field} value={field.value ?? ''} /> )} </div></FormControl><FormMessage /></FormItem>
+        );
+      }} /></div>
     </AccordionContent>
   );
 }
+

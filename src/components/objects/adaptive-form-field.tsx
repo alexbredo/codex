@@ -34,6 +34,9 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import * as React from 'react';
 import { Progress } from '@/components/ui/progress';
+import { useDebounce } from '@/hooks/use-debounce';
+import { useQuery } from '@tanstack/react-query';
+import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 
 
 interface AdaptiveFormFieldProps<TFieldValues extends FieldValues = FieldValues> {
@@ -63,6 +66,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
 
   const [customPopoverOpen, setCustomPopoverOpen] = useState(false);
   const [customSearchValue, setCustomSearchValue] = useState("");
+  const debouncedSearch = useDebounce(customSearchValue, 300);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [popoverWidth, setPopoverWidth] = useState<string | number>("auto");
   const [uploadProgress, setUploadProgress] = useState<number | undefined>(undefined);
@@ -76,6 +80,21 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
     }
     return undefined;
   }, [property.type, property.relatedModelId, getModelById]);
+  
+  const { data: relationshipOptions, isLoading: isLoadingRelationshipOptions } = useQuery({
+    queryKey: ['relationship-search', relatedModel?.id, property.name, debouncedSearch],
+    queryFn: async (): Promise<MultiSelectOption[]> => {
+      if (!relatedModel) return [];
+      const response = await fetch(`/api/codex-structure/properties/${property.name}/values?modelName=${encodeURIComponent(relatedModel.name)}&searchTerm=${encodeURIComponent(debouncedSearch)}`);
+      if (!response.ok) {
+        console.error("Failed to fetch relationship options");
+        return [];
+      }
+      const data = await response.json();
+      return data.map((item: {id: string, displayValue: string}) => ({ value: item.id, label: item.displayValue }));
+    },
+    enabled: !!relatedModel && customPopoverOpen,
+  });
 
   const flatOptionsForRelationship: MultiSelectOption[] = useMemo(() => {
     if (relatedModel && property.relatedModelId) {
@@ -89,15 +108,6 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
     }
     return [];
   }, [relatedModel, property.relatedModelId, getObjectsByModelId, allModels, allDbObjects]);
-
-  const filteredCustomOptions = useMemo(() => {
-    if (!customSearchValue) {
-      return flatOptionsForRelationship;
-    }
-    return flatOptionsForRelationship.filter(option =>
-      option.label.toLowerCase().includes(customSearchValue.toLowerCase())
-    );
-  }, [customSearchValue, flatOptionsForRelationship]);
 
 
   useEffect(() => {
@@ -378,51 +388,23 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
                 </Button>
               </PopoverTrigger>
               <PopoverContent style={{ width: popoverWidth }} className="p-0 z-50">
-                <div className="p-2 border-b">
-                  <div className="relative">
-                    <SearchIcon className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      type="text"
-                      placeholder={`Search ${relatedModel.name}...`}
-                      value={customSearchValue}
-                      onChange={(e) => setCustomSearchValue(e.target.value)}
-                      className="pl-8"
-                    />
-                  </div>
-                </div>
-                <ScrollArea className="max-h-60">
-                   <div
-                      key={INTERNAL_NONE_SELECT_VALUE}
-                      className={cn("relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground", (controllerField.value === "" || !controllerField.value) && "bg-accent text-accent-foreground")}
-                      onClick={() => {
-                        controllerField.onChange(""); 
-                        setCustomPopoverOpen(false);
-                        setCustomSearchValue("");
-                      }}
-                    >
-                      <Check className={cn("mr-2 h-4 w-4", (controllerField.value === "" || !controllerField.value) ? "opacity-100" : "opacity-0")} />
-                      -- None --
-                    </div>
-                  {filteredCustomOptions.map((option) => (
-                    <div
-                      key={option.value}
-                      className={cn("relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground", controllerField.value === option.value && "bg-accent text-accent-foreground")}
-                      onClick={() => {
-                        controllerField.onChange(option.value);
-                        setCustomPopoverOpen(false);
-                        setCustomSearchValue("");
-                      }}
-                    >
-                      <Check className={cn("mr-2 h-4 w-4", controllerField.value === option.value ? "opacity-100" : "opacity-0")} />
-                      {String(option.label ?? "")}
-                    </div>
-                  ))}
-                  {filteredCustomOptions.length === 0 && customSearchValue && (
-                    <div className="p-2 text-center text-sm text-muted-foreground">
-                      No {relatedModel.name.toLowerCase()} found for "{customSearchValue}".
-                    </div>
-                  )}
-                </ScrollArea>
+                <Command>
+                  <CommandInput placeholder={`Search ${relatedModel.name}...`} value={customSearchValue} onValueChange={setCustomSearchValue} />
+                  <CommandList>
+                    {isLoadingRelationshipOptions && <div className="p-2 text-center text-sm">Loading...</div>}
+                    <CommandEmpty>No {relatedModel.name.toLowerCase()} found.</CommandEmpty>
+                    <CommandItem value={INTERNAL_NONE_SELECT_VALUE} onSelect={() => { controllerField.onChange(""); setCustomPopoverOpen(false); setCustomSearchValue(""); }}>
+                        <Check className={cn("mr-2 h-4 w-4", (controllerField.value === "" || !controllerField.value) ? "opacity-100" : "opacity-0")} />
+                        -- None --
+                    </CommandItem>
+                    {(relationshipOptions || []).map((option) => (
+                        <CommandItem key={option.value} value={option.label} onSelect={() => { controllerField.onChange(option.value); setCustomPopoverOpen(false); setCustomSearchValue(""); }}>
+                            <Check className={cn("mr-2 h-4 w-4", controllerField.value === option.value ? "opacity-100" : "opacity-0")} />
+                            {option.label}
+                        </CommandItem>
+                    ))}
+                  </CommandList>
+                </Command>
               </PopoverContent>
             </Popover>
           );
@@ -441,7 +423,7 @@ export default function AdaptiveFormField<TFieldValues extends FieldValues = Fie
   };
 
   let defaultValueForController: any;
-  switch(property.type) {
+  switch (property.type) {
     case 'relationship':
       defaultValueForController = property.relationshipType === 'many' ? [] : '';
       break;

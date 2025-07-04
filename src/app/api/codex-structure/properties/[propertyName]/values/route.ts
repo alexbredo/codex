@@ -1,7 +1,10 @@
 
+
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getCurrentUserFromCookie } from '@/lib/auth';
+import type { Model, DataObject } from '@/lib/types';
+import { getObjectDisplayValue } from '@/lib/utils';
 
 interface Params {
   params: { propertyName: string };
@@ -16,60 +19,49 @@ export async function GET(request: Request, { params }: Params) {
   const { propertyName } = params;
   const { searchParams } = new URL(request.url);
   const modelName = searchParams.get('modelName');
+  const searchTerm = searchParams.get('searchTerm') || '';
 
-  if (!propertyName) {
-    return NextResponse.json({ error: 'Property name is required' }, { status: 400 });
+  if (!propertyName || !modelName) {
+    return NextResponse.json({ error: 'Property name and model name are required' }, { status: 400 });
   }
 
   try {
     const db = await getDb();
-    let query: string;
-    const queryParams: any[] = [];
     
-    const whereConditions = [`json_extract(data, ?) IS NOT NULL`];
-    queryParams.push(`$.${propertyName}`);
+    // 1. Find the model ID from the model name
+    const model = await db.get<Model>('SELECT * FROM models WHERE name = ?', modelName);
+    if (!model) {
+      return NextResponse.json({ error: `Model "${modelName}" not found` }, { status: 404 });
+    }
+    model.properties = await db.all('SELECT * FROM properties WHERE model_id = ?', model.id);
+
+    // --- Permission Check ---
+    if (!currentUser.permissionIds.includes('*') && !currentUser.permissionIds.includes(`model:view:${model.id}`)) {
+        return NextResponse.json([]); // Return empty if no view permissions for this model
+    }
     
-    whereConditions.push(`(isDeleted = 0 OR isDeleted IS NULL)`);
+    // 2. Fetch all objects of this model. This is simpler than complex JSON queries for now.
+    // For very large datasets, a more optimized FTS5-based approach would be needed.
+    const allObjectsForModel: DataObject[] = (await db.all(
+        'SELECT id, data FROM data_objects WHERE model_id = ? AND (isDeleted = 0 OR isDeleted IS NULL)', model.id
+    )).map(row => ({ id: row.id, ...JSON.parse(row.data) }));
 
-    if (modelName) {
-      const model = await db.get('SELECT id FROM models WHERE LOWER(name) = LOWER(?)', modelName.toLowerCase());
-      if (model) {
-        whereConditions.push('model_id = ?');
-        queryParams.push(model.id);
-      }
-    }
+    const allModels = await db.all<Model>('SELECT * FROM models');
 
-    // NEW: Add permission check to WHERE clause
-    if (!currentUser.permissionIds.includes('*')) {
-        const permittedModelIds = currentUser.permissionIds
-            .filter(p => p.startsWith('model:view:'))
-            .map(p => p.replace('model:view:', ''));
-        
-        if (permittedModelIds.length === 0) {
-            return NextResponse.json([]); // No view permissions, return empty array
-        }
-        
-        // Add IN clause for permitted model IDs
-        whereConditions.push(`model_id IN (${permittedModelIds.map(() => '?').join(',')})`);
-        queryParams.push(...permittedModelIds);
-    }
+    // 3. Filter in-memory
+    const matchingObjects = allObjectsForModel.filter(obj => {
+        const displayValue = getObjectDisplayValue(obj, model, allModels, {});
+        return displayValue.toLowerCase().includes(searchTerm.toLowerCase());
+    });
+    
+    // 4. Format and return results
+    const results = matchingObjects.slice(0, 50).map(obj => ({
+        id: obj.id,
+        displayValue: getObjectDisplayValue(obj, model, allModels, {})
+    }));
 
+    return NextResponse.json(results);
 
-    query = `
-      SELECT DISTINCT json_extract(data, ?) as value
-      FROM data_objects
-      WHERE ${whereConditions.join(' AND ')}
-      ORDER BY value ASC
-      LIMIT 25
-    `;
-
-    const rows = await db.all(query, ...queryParams);
-    const values = rows
-      .map(row => row.value)
-      .filter(value => value !== null && value !== undefined && String(value).trim() !== '')
-      .map(String);
-
-    return NextResponse.json(values);
   } catch (error: any) {
     console.error(`API Error fetching values for property ${propertyName}:`, error);
     return NextResponse.json({ error: 'Failed to fetch property values', details: error.message }, { status: 500 });

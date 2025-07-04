@@ -8,11 +8,14 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel as UiSelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
 import { StarRatingInput } from '@/components/ui/star-rating-input';
-import { Filter, XCircle, CalendarIcon as CalendarIconLucide } from 'lucide-react';
+import { Filter, XCircle, CalendarIcon as CalendarIconLucide, Check, ChevronsUpDown } from 'lucide-react';
 import type { Property, WorkflowWithDetails, Model, DataObject } from '@/lib/types';
 import { cn, getObjectDisplayValue } from '@/lib/utils';
 import { format as formatDateFns, isValid as isDateValid, startOfDay } from 'date-fns';
 import { useData } from '@/contexts/data-context';
+import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { useDebounce } from '@/hooks/use-debounce';
+import { useQuery } from '@tanstack/react-query';
 
 
 export interface ColumnFilterValue {
@@ -64,7 +67,26 @@ export default function ColumnFilterPopover({
     (currentFilter?.operator as any) || 'eq'
   );
 
+  const [customSearchValue, setCustomSearchValue] = useState("");
+  const debouncedSearch = useDebounce(customSearchValue, 300);
+
   const effectiveFilterType = filterTypeOverride || property?.type || (columnKey === 'workflowState' ? 'workflowState' : 'string');
+
+  const { data: relationshipOptions, isLoading: isLoadingRelationshipOptions } = useQuery({
+    queryKey: ['relationship-filter-search', property?.id, referencingProperty?.id, debouncedSearch],
+    queryFn: async () => {
+        const modelForSearch = property ? getModelById(property.relatedModelId || '') : referencingModel;
+        const propNameForSearch = property ? property.name : referencingProperty?.name;
+
+        if (!modelForSearch || !propNameForSearch) return [];
+
+        const response = await fetch(`/api/codex-structure/properties/${propNameForSearch}/values?modelName=${encodeURIComponent(modelForSearch.name)}&searchTerm=${encodeURIComponent(debouncedSearch)}`);
+        if (!response.ok) return [];
+        const data = await response.json();
+        return data.map((item: {id: string, displayValue: string}) => ({ value: item.id, label: item.displayValue }));
+    },
+    enabled: isOpen && (effectiveFilterType === 'relationship' || effectiveFilterType === 'specificIncomingReference'),
+  });
 
 
   useEffect(() => {
@@ -315,69 +337,29 @@ export default function ColumnFilterPopover({
           </Select>
         );
       case 'relationship':
-        if (!property?.relatedModelId) return <Input placeholder="Relationship misconfigured" disabled />;
-        const directRelatedModel = getModelById(property.relatedModelId);
-        if (!directRelatedModel) return <Input placeholder="Related model not found" disabled />;
-        
-        const directRelatedObjects = getObjectsByModelId(property.relatedModelId);
-        const allDirectDbObjects = getAllObjects();
-
-        const directOptions = directRelatedObjects
-          .map(obj => ({
-            value: obj.id,
-            label: getObjectDisplayValue(obj, directRelatedModel, allModels, allDirectDbObjects)
-          }))
-          .sort((a,b) => a.label.localeCompare(b.label));
-
-        return (
-          <Select
-             value={String(filterInput ?? INTERNAL_ANY_RELATIONSHIP_VALUE)}
-             onValueChange={(val) => setFilterInput(val)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder={`Filter by ${directRelatedModel.name}...`} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={INTERNAL_ANY_RELATIONSHIP_VALUE}>Any {directRelatedModel.name}</SelectItem>
-              {directOptions.map(opt => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        );
-      case 'specificIncomingReference':
-        if (!referencingModel || !referencingProperty) return <Input placeholder="Incoming relationship misconfigured" disabled />;
-        const referencingObjects = getObjectsByModelId(referencingModel.id);
-        const allIncomingDbObjects = getAllObjects();
-        
-        const incomingOptions = referencingObjects
-          .map(obj => ({
-            value: obj.id,
-            label: getObjectDisplayValue(obj, referencingModel, allModels, allIncomingDbObjects)
-          }))
-          .sort((a,b) => a.label.localeCompare(b.label));
+      case 'specificIncomingReference': {
+        const modelForSearch = property ? getModelById(property.relatedModelId || '') : referencingModel;
+        if (!modelForSearch) return <Input placeholder="Relationship misconfigured" disabled />;
         
         return (
-          <Select
-            value={String(filterInput ?? INTERNAL_ANY_RELATIONSHIP_VALUE)}
-            onValueChange={(val) => setFilterInput(val)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder={`Filter by ${referencingModel.name}...`} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={INTERNAL_ANY_RELATIONSHIP_VALUE}>Any {referencingModel.name}</SelectItem>
-              <SelectItem value={INTERNAL_NO_REFERENCES_VALUE}>No References</SelectItem>
-              {incomingOptions.map(opt => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Command>
+            <CommandInput placeholder={`Filter by ${modelForSearch.name}...`} value={customSearchValue} onValueChange={setCustomSearchValue} />
+            <CommandList>
+              {isLoadingRelationshipOptions && <div className="text-center text-sm p-2">Loading...</div>}
+              <CommandEmpty>No results found.</CommandEmpty>
+              <CommandGroup>
+                <CommandItem onSelect={() => setFilterInput(INTERNAL_ANY_RELATIONSHIP_VALUE)}>Any {modelForSearch.name}</CommandItem>
+                {effectiveFilterType === 'specificIncomingReference' && (
+                  <CommandItem onSelect={() => setFilterInput(INTERNAL_NO_REFERENCES_VALUE)}>No References</CommandItem>
+                )}
+                {(relationshipOptions || []).map(option => (
+                  <CommandItem key={option.value} onSelect={() => setFilterInput(option.value)}>{option.label}</CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
         );
+      }
       default:
         return <Input placeholder="Unsupported filter type" disabled />;
     }
