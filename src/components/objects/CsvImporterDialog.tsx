@@ -22,6 +22,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Loader2, ArrowRight, ArrowLeft, UploadCloud, AlertTriangle, FileUp, CheckCircle } from 'lucide-react';
 
 interface CsvImporterDialogProps {
@@ -33,6 +34,7 @@ interface CsvImporterDialogProps {
 
 type ImportStep = 'upload' | 'mapping' | 'confirm' | 'result';
 type CsvRow = Record<string, string>;
+type ErrorHandlingMode = 'stop' | 'skip';
 
 interface ImportResult {
   message?: string;
@@ -55,23 +57,22 @@ export function CsvImporterDialog({ isOpen, onClose, model, onSuccess }: CsvImpo
   const [parsedData, setParsedData] = React.useState<CsvRow[]>([]);
   const [headers, setHeaders] = React.useState<string[]>([]);
   
-  // Mapping state: targetPropId -> sourceCsvHeader
   const [mappings, setMappings] = React.useState<Record<string, string>>({});
-  // Relationship lookup mapping: targetPropId -> lookupPropertyId
   const [relationshipLookups, setRelationshipLookups] = React.useState<Record<string, string>>({});
+  const [errorMode, setErrorMode] = React.useState<ErrorHandlingMode>('stop');
   
   const [isProcessing, setIsProcessing] = React.useState(false);
   const [importResult, setImportResult] = React.useState<ImportResult | null>(null);
 
   React.useEffect(() => {
     if (isOpen) {
-      // Reset state when dialog opens
       setStep('upload');
       setFile(null);
       setParsedData([]);
       setHeaders([]);
       setMappings({});
       setRelationshipLookups({});
+      setErrorMode('stop');
       setIsProcessing(false);
       setImportResult(null);
       setHasHeader(true);
@@ -113,9 +114,7 @@ export function CsvImporterDialog({ isOpen, onClose, model, onSuccess }: CsvImpo
         } else {
           const rawData = results.data as string[][];
           if (rawData.length > 0) {
-            // Generate generic headers like "Column 1", "Column 2"
             finalHeaders = rawData[0].map((_, index) => `Column ${index + 1}`);
-            // Transform the array of arrays into an array of objects
             finalData = rawData.map(row => {
               const obj: CsvRow = {};
               finalHeaders.forEach((header, i) => {
@@ -156,23 +155,18 @@ export function CsvImporterDialog({ isOpen, onClose, model, onSuccess }: CsvImpo
           dataToImport: parsedData,
           mappings,
           relationshipLookups,
+          errorMode,
         }),
       });
 
       const result = await response.json();
       
-      if (!response.ok) {
-        // If the API returns a structured validation error (e.g., status 400),
-        // we set the result state to display the errors in the UI.
-        if (result.errors) {
-            setImportResult(result);
-            setStep('result');
-        } else {
-            // For other errors (like 500), throw to show a generic toast.
-            throw new Error(result.error || result.message || 'An unexpected server error occurred.');
-        }
+      if (!response.ok && response.status === 400) {
+        setImportResult(result);
+        setStep('result');
+      } else if (!response.ok) {
+        throw new Error(result.error || result.message || 'An unexpected server error occurred.');
       } else {
-        // This is the successful import case (200 OK)
         setImportResult(result);
         setStep('result');
         if (result.successCount > 0) {
@@ -180,7 +174,6 @@ export function CsvImporterDialog({ isOpen, onClose, model, onSuccess }: CsvImpo
         }
       }
     } catch (error: any) {
-      // This will now only catch network errors or unexpected server errors.
       toast({ variant: 'destructive', title: 'Import Failed', description: error.message });
     } finally {
       setIsProcessing(false);
@@ -310,9 +303,25 @@ export function CsvImporterDialog({ isOpen, onClose, model, onSuccess }: CsvImpo
                   <CheckCircle className="h-4 w-4" />
                   <AlertTitle>Ready to Import</AlertTitle>
                   <AlertDescription>
-                      You are about to import <strong>{parsedData.length}</strong> records into the "{model.name}" model. Please confirm to proceed. This action cannot be undone.
+                      You are about to import <strong>{parsedData.length}</strong> records into the "{model.name}" model. Please confirm to proceed.
                   </AlertDescription>
               </Alert>
+              <div className="p-4 border rounded-md">
+                <Label>Error Handling</Label>
+                <RadioGroup value={errorMode} onValueChange={(val) => setErrorMode(val as ErrorHandlingMode)} className="mt-2 space-y-2">
+                    <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="stop" id="error-stop" />
+                        <Label htmlFor="error-stop" className="font-normal">Stop import on the first error</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="skip" id="error-skip" />
+                        <Label htmlFor="error-skip" className="font-normal">Skip rows with errors and import valid rows</Label>
+                    </div>
+                </RadioGroup>
+                <p className="text-xs text-muted-foreground mt-2">
+                    "Stop" is recommended to ensure data consistency. "Skip" is useful if you know some rows might have issues.
+                </p>
+              </div>
           </div>
         );
 
