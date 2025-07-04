@@ -18,6 +18,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Unauthorized.' }, { status: 403 });
   }
 
+  // Create a dedicated, clean axios instance for outbound requests.
+  // This prevents any implicit forwarding of headers (like cookies) from the
+  // incoming Next.js request.
+  const http = axios.create({
+    headers: {
+      'User-Agent': 'CodexStructure-Sync/1.0',
+      'Accept': 'application/json',
+    },
+    // Explicitly disable credentials to ensure anonymous requests
+    withCredentials: false,
+  });
+
   try {
     const db = await getDb();
     const repositories: MarketplaceRepository[] = await db.all('SELECT * FROM marketplace_repositories');
@@ -28,19 +40,13 @@ export async function POST(request: Request) {
 
     for (const repo of repositories) {
       try {
-        const listResponse = await axios.get(repo.url, {
-          headers: { 'User-Agent': 'CodexStructure-Sync/1.0' },
-        });
-
+        const listResponse = await http.get(repo.url);
         const itemsMetadata: { id: string }[] = listResponse.data;
         
         for (const meta of itemsMetadata) {
           try {
             const detailUrl = repo.url.endsWith('/') ? `${repo.url}${meta.id}` : `${repo.url}/${meta.id}`;
-            
-            const detailResponse = await axios.get(detailUrl, {
-                headers: { 'User-Agent': 'CodexStructure-Sync/1.0' },
-            });
+            const detailResponse = await http.get(detailUrl);
 
             const fullItem: MarketplaceItem = detailResponse.data;
 
@@ -63,8 +69,8 @@ export async function POST(request: Request) {
 
       } catch (error: any) {
         let errorMessage = error.message;
-        if (axios.isAxiosError(error) && error.response) {
-            errorMessage = `Failed to fetch from ${repo.name}: Status ${error.response.status}`;
+        if (axios.isAxiosError(error)) {
+            errorMessage = `Failed to fetch from ${repo.name}: Status ${error.response?.status || 'Unknown'}`;
         }
         console.error(`Error syncing repository ${repo.name} (${repo.url}):`, errorMessage);
         errors.push({ name: repo.name, error: errorMessage });
