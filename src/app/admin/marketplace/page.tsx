@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -10,7 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, ShieldCheck, Store, Download, AlertTriangle, Info, CheckCircle, Rss, UploadCloud, Workflow as WorkflowIcon, Search, X, FolderKanban, MoreHorizontal, RefreshCw, Trash2 } from 'lucide-react';
+import { Loader2, ShieldCheck, Store, Download, AlertTriangle, Info, CheckCircle, Rss, UploadCloud, Workflow as WorkflowIcon, Search, X, FolderKanban, MoreHorizontal, RefreshCw, Trash2, HardDrive } from 'lucide-react';
 import type { MarketplaceItem, MarketplaceItemType, ValidationRuleset, WorkflowWithDetails, ModelGroup, ExportedModelGroupBundle } from '@/lib/types';
 import Link from 'next/link';
 import semver from 'semver';
@@ -381,6 +380,11 @@ function MarketplacePageInternal() {
                             <div className="flex justify-between items-start gap-4">
                                 {getIconForItemType(item.type)}
                                 <div className="flex items-center gap-2">
+                                  {item.source === 'local' && (
+                                    <Badge variant="outline" title="This item is from your local marketplace" className="text-xs flex items-center gap-1 border-green-500/50 text-green-600">
+                                      <HardDrive className="h-3 w-3" /> Local
+                                    </Badge>
+                                  )}
                                   {item.downloadCount !== undefined && item.source === 'local' && (
                                     <Badge variant="secondary" className="font-mono text-xs flex items-center gap-1">
                                       <Download className="h-3 w-3" />
@@ -388,7 +392,7 @@ function MarketplacePageInternal() {
                                     </Badge>
                                   )}
                                   {item.source === 'remote' && (
-                                    <Badge variant="outline" title={`From: ${item.sourceRepositoryName}`} className="text-xs flex items-center gap-1 border-blue-500/50 text-blue-600">
+                                    <Badge variant="outline" title={item.sourceRepositoryName ? `From: ${item.sourceRepositoryName}` : 'Remote Item'} className="text-xs flex items-center gap-1 border-blue-500/50 text-blue-600">
                                       <Rss className="h-3 w-3"/> Remote
                                     </Badge>
                                   )}
@@ -496,3 +500,4 @@ function MarketplacePageInternal() {
 }
 
 export default withAuth(MarketplacePageInternal, 'marketplace:install');
+
