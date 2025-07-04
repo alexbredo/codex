@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -33,6 +34,7 @@ type MarketplaceItemMetadata = Omit<MarketplaceItem, 'versions'> & {
   latestVersionPayload: any;
   source: 'local' | 'remote';
   sourceRepositoryName?: string;
+  downloadCount?: number;
 };
 
 // Enum for installation status
@@ -326,6 +328,12 @@ function MarketplacePageInternal() {
                             <div className="flex justify-between items-start gap-4">
                                 {getIconForItemType(item.type)}
                                 <div className="flex items-center gap-2">
+                                  {item.downloadCount !== undefined && item.source === 'local' && (
+                                    <Badge variant="secondary" className="font-mono text-xs flex items-center gap-1">
+                                      <Download className="h-3 w-3" />
+                                      {item.downloadCount}
+                                    </Badge>
+                                  )}
                                   {item.source === 'remote' && (
                                     <Badge variant="outline" title={`From: ${item.sourceRepositoryName}`} className="text-xs flex items-center gap-1 border-blue-500/50 text-blue-600">
                                       <Rss className="h-3 w-3"/> Remote

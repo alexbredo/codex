@@ -405,6 +405,7 @@ export interface MarketplaceItem {
   tags?: string[];
   createdAt: string; // First publish date
   updatedAt: string; // Last publish date
+  downloadCount?: number;
   versions: MarketplaceItemVersion[];
   source?: 'local' | 'remote';
   sourceRepository?: {

@@ -1,10 +1,15 @@
 
+
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getCurrentUserFromCookie } from '@/lib/auth';
 import type { MarketplaceItem, ValidationRuleset, WorkflowWithDetails, ExportedModelGroupBundle, Model, DataObject } from '@/lib/types';
 import crypto from 'crypto';
+import path from 'path';
+import fs from 'fs/promises';
 
+
+const MARKETPLACE_DIR = path.join(process.cwd(), 'data', 'marketplace');
 
 export async function POST(request: Request) {
   const currentUser = await getCurrentUserFromCookie();
@@ -18,6 +23,27 @@ export async function POST(request: Request) {
   
   try {
     const item: MarketplaceItem = await request.json();
+
+    // Check if the item being installed is a local item and increment its download count
+    try {
+        const itemFilePath = path.join(MARKETPLACE_DIR, `${item.id}.json`);
+        // Check if file exists. If it does, it's a local item.
+        await fs.access(itemFilePath); 
+        
+        const fileContent = await fs.readFile(itemFilePath, 'utf-8');
+        const fullItem: MarketplaceItem = JSON.parse(fileContent);
+        fullItem.downloadCount = (fullItem.downloadCount || 0) + 1;
+        await fs.writeFile(itemFilePath, JSON.stringify(fullItem, null, 2));
+
+    } catch (err: any) {
+        // If file doesn't exist (ENOENT) or any other error, it's not a local item or something went wrong.
+        // We don't fail the installation for this, just skip the count update.
+        if (err.code !== 'ENOENT') {
+            console.warn(`Could not update download count for item ${item.id}:`, err);
+        }
+    }
+
+
     const latestVersionDetails = item.versions.find(v => v.version === item.latestVersion);
 
     if (!latestVersionDetails) {
