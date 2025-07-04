@@ -55,7 +55,6 @@ export interface GroupablePropertyOption {
   id: string;
   name: string;
   isWorkflowState?: boolean;
-  isIncomingRelation?: boolean;
   isOwnerColumn?: boolean;
   isDateColumn?: boolean;
 }
