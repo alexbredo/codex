@@ -126,11 +126,11 @@ function RoleAdminPageInternal() {
                   <TableCell className="text-right">
                     {hasPermission('roles:manage') && (
                         <>
-                        <Link href={`/admin/roles/edit/${role.id}`}>
-                            <Button variant="ghost" size="icon" className="mr-2 hover:text-primary">
-                                <Edit className="h-4 w-4" />
-                            </Button>
-                        </Link>
+                        <Button variant="ghost" size="icon" className="mr-2 hover:text-primary" asChild>
+                          <Link href={`/admin/roles/edit/${role.id}`}>
+                              <Edit className="h-4 w-4" />
+                          </Link>
+                        </Button>
                         {!role.isSystemRole && (
                             <AlertDialog>
                                 <AlertDialogTrigger asChild>

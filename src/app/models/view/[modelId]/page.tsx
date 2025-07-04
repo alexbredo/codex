@@ -197,11 +197,11 @@ function ViewModelPageInternal() {
           <ArrowLeft className="mr-2 h-4 w-4" /> Back to Model Admin
         </Button>
         {canCreateObjects && (
-            <Link href={`/data/${currentModel.id}/new`} passHref legacyBehavior>
-                <Button variant="default" className="bg-accent text-accent-foreground hover:bg-accent/90">
+            <Button asChild variant="default" className="bg-accent text-accent-foreground hover:bg-accent/90">
+                <Link href={`/data/${currentModel.id}/new`}>
                     <PlusCircle className="mr-2 h-4 w-4" /> New {currentModel.name} Object
-                </Button>
-            </Link>
+                </Link>
+            </Button>
         )}
       </div>
 

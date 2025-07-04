@@ -219,9 +219,9 @@ function MarketplacePageInternal() {
             </h1>
             <p className="text-muted-foreground">Install pre-built components into your instance.</p>
           </div>
-          <Link href="/admin/marketplace/repositories" passHref>
-              <Button variant="outline"><Rss className="mr-2 h-4 w-4"/> Manage Repositories</Button>
-          </Link>
+          <Button variant="outline" asChild>
+            <Link href="/admin/marketplace/repositories"><Rss className="mr-2 h-4 w-4"/> Manage Repositories</Link>
+          </Button>
         </div>
 
         <div className="w-full flex flex-col md:flex-row gap-4 items-end p-4 border rounded-lg bg-card shadow-sm">
