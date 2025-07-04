@@ -36,7 +36,8 @@ import {
   Share2,
   Inbox,
   Calendar as CalendarIcon,
-  Replace
+  Replace,
+  UploadCloud
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -81,6 +82,7 @@ interface DataObjectsPageHeaderProps {
   createShareStatus: 'create' | 'none';
   canShowCalendarView: boolean;
   hasPermission: (permission: string) => boolean;
+  onOpenImporter: () => void; // New prop
 }
 
 export default function DataObjectsPageHeader({
@@ -105,6 +107,7 @@ export default function DataObjectsPageHeader({
   createShareStatus,
   canShowCalendarView,
   hasPermission,
+  onOpenImporter, // New prop
 }: DataObjectsPageHeaderProps) {
   return (
     <>
@@ -199,6 +202,11 @@ export default function DataObjectsPageHeader({
             modelName={currentModel.name}
             activeLinkStatus={createShareStatus}
            />
+           {hasPermission('models:import_export') && (
+            <Button onClick={onOpenImporter} variant="outline" size="sm">
+                <UploadCloud className="mr-2 h-4 w-4" /> Import CSV
+            </Button>
+           )}
           <Button onClick={onCreateNew} size="sm" className="bg-accent text-accent-foreground hover:bg-accent/90" disabled={viewingRecycleBin}><PlusCircle className="mr-2 h-4 w-4" /> Create New</Button>
         </div>
       </header>

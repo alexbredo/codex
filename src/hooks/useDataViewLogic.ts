@@ -137,6 +137,7 @@ export function useDataViewLogic(modelIdFromUrl: string) {
     } | null>(null);
     const [isBatchUpdating, setIsBatchUpdating] = useState(false);
     const [isConverterOpen, setIsConverterOpen] = useState(false);
+    const [isImporterOpen, setIsImporterOpen] = useState(false); // New state for CSV importer
 
     const previousModelIdRef = useRef<string | null>(null);
     const ITEMS_PER_PAGE = viewMode === 'gallery' ? 12 : 10;
@@ -749,6 +750,8 @@ export function useDataViewLogic(modelIdFromUrl: string) {
         deletedObjectCount,
         isConverterOpen,
         setIsConverterOpen,
+        isImporterOpen,
+        setIsImporterOpen,
 
         // Derived Data
         localObjects,

@@ -5,7 +5,7 @@ import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, PlusCircle, Archive, Trash2, Inbox, Edit3, Replace } from 'lucide-react';
+import { Loader2, PlusCircle, Archive, Trash2, Inbox, Edit3, Replace, UploadCloud } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import GalleryCard from '@/components/objects/gallery-card';
@@ -17,9 +17,11 @@ import BatchUpdateConfirmationDialog from '@/components/objects/batch-update-con
 import { useDataViewLogic } from '@/hooks/useDataViewLogic';
 import BatchUpdateDialog from '@/components/objects/batch-update-dialog';
 import InboxView from '@/components/objects/inbox-view';
-import CalendarView from '@/components/objects/CalendarView'; // Import the new component
+import CalendarView from '@/components/objects/CalendarView';
 import BatchDeleteConfirmationDialog from '@/components/objects/batch-delete-confirmation-dialog';
 import ObjectConverterDialog from '@/components/objects/ObjectConverterDialog';
+import { CsvImporterDialog } from '@/components/objects/CsvImporterDialog';
+
 
 export type ViewMode = 'table' | 'gallery' | 'kanban' | 'inbox' | 'calendar';
 
@@ -47,6 +49,8 @@ export default function DataObjectsPage() {
     deletedObjectCount,
     isConverterOpen,
     setIsConverterOpen,
+    isImporterOpen, // New state for CSV importer
+    setIsImporterOpen, // New state for CSV importer
     
     // Search and Filter State & Handlers
     searchTerm,
@@ -237,6 +241,17 @@ export default function DataObjectsPage() {
             }}
         />
       )}
+      {isImporterOpen && (
+        <CsvImporterDialog
+            isOpen={isImporterOpen}
+            onClose={() => setIsImporterOpen(false)}
+            model={currentModel}
+            onSuccess={() => {
+                toast({ title: "Import Successful", description: "Data has been imported." });
+                fetchData("After CSV import");
+            }}
+        />
+      )}
       
       <DataObjectsPageHeader
         currentModel={currentModel}
@@ -260,6 +275,7 @@ export default function DataObjectsPage() {
         viewingRecycleBin={viewingRecycleBin}
         createShareStatus={createShareStatus}
         hasPermission={hasPermission}
+        onOpenImporter={() => setIsImporterOpen(true)} // New prop
       />
       
       <div className="flex items-center justify-between space-x-2 mb-4">
