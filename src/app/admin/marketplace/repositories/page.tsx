@@ -43,7 +43,7 @@ async function deleteRepository(id: string): Promise<void> {
   if (!res.ok) { const data = await res.json(); throw new Error(data.error || 'Failed to delete repository.'); }
 }
 async function syncRepositories(): Promise<{ message: string, syncedRepos: number, totalItems: number, errors: { name: string, error: string }[] }> {
-  const res = await fetch('/api/marketplace/repositories/sync', { method: 'POST' });
+  const res = await fetch('/api/marketplace/repositories/sync', { method: 'POST', headers: { 'Cookie': '' } });
   if (!res.ok) { const data = await res.json(); throw new Error(data.error || 'Failed to sync repositories.'); }
   return res.json();
 }
@@ -76,7 +76,13 @@ function ManageRepositoriesPageInternal() {
     queryFn: fetchRepositories,
   });
 
-  const form = useForm<RepositoryFormValues>({ resolver: zodResolver(repositoryFormSchema) });
+  const form = useForm<RepositoryFormValues>({
+    resolver: zodResolver(repositoryFormSchema),
+    defaultValues: {
+      name: '',
+      url: '',
+    },
+  });
 
   const addMutation = useMutation({
     mutationFn: addRepository,
@@ -193,7 +199,7 @@ function ManageRepositoriesPageInternal() {
                                         <TableRow key={repo.id}>
                                             <TableCell className="font-medium">{repo.name}</TableCell>
                                             <TableCell className="text-xs text-muted-foreground truncate max-w-xs" title={repo.url}>{repo.url}</TableCell>
-                                            <TableCell className="text-xs text-muted-foreground">{repo.lastCheckedAt ? formatDistanceToNow(new Date(repo.lastCheckedAt), { addSuffix: true }) : 'Never'}</TableCell>
+                                            <TableCell className="text-xs text-muted-foreground">{repo.lastUsedAt ? formatDistanceToNow(new Date(repo.lastUsedAt), { addSuffix: true }) : 'Never'}</TableCell>
                                             <TableCell className="text-right">
                                                 <AlertDialog>
                                                     <AlertDialogTrigger asChild>
