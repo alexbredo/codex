@@ -204,31 +204,181 @@ export function useDataViewLogic(modelIdFromUrl: string) {
         }
     }, [activeObjectsFromContext, deletedObjectsFromContext, currentModel, dataContextIsReady, viewingRecycleBin, getWorkflowById]);
 
-    // Derived Data (useMemo hooks)
-    const deletedObjectCount = useMemo(() => {
-        if (!currentModel || !deletedObjectsFromContext) return 0;
-        return (deletedObjectsFromContext[currentModel.id] || []).length;
-    }, [currentModel, deletedObjectsFromContext]);
+    const getWorkflowStateName = useCallback((stateId: string | null | undefined): string => {
+        if (!stateId || !currentWorkflow) return 'N/A';
+        const state = currentWorkflow.states.find(s => s.id === stateId);
+        return state ? state.name : 'Unknown';
+    }, [currentWorkflow]);
+
+    const getOwnerUsername = useCallback((ownerId: string | null | undefined): string => {
+        if (!ownerId) return 'Unassigned';
+        return allUsers.find(u => u.id === ownerId)?.username || 'Unknown User';
+    }, [allUsers]);
+
+    const virtualIncomingRelationColumns: IncomingRelationColumn[] = useMemo(() => {
+        if (!currentModel || !allModels.length) return [];
+        const columns: IncomingRelationColumn[] = [];
+        allModels.forEach(model => {
+            model.properties.forEach(property => {
+                if (property.type === 'relationship' && property.relatedModelId === currentModel.id) {
+                    columns.push({
+                        id: `incoming-rel-${model.id}-${property.id}`,
+                        headerLabel: `Referenced by ${model.name}`,
+                        referencingModel: model,
+                        referencingProperty: property,
+                        viaPropertyName: property.name,
+                    });
+                }
+            });
+        });
+        return columns;
+    }, [currentModel, allModels]);
 
     const allDbObjects = useMemo(() => getAllObjects(true), [getAllObjects, dataContextIsReady]);
+
     const filteredObjects = useMemo(() => {
         if (!currentModel) return [];
-        return localObjects.filter(obj => JSON.stringify(obj).toLowerCase().includes(searchTerm.toLowerCase()));
-    }, [localObjects, searchTerm, currentModel, columnFilters, allDbObjects, allModels]);
+        
+        const activeFilters = Object.entries(columnFilters).filter(([, filterValue]) => filterValue !== null);
+
+        return localObjects.filter(obj => {
+            // 1. Apply general search term filter
+            const searchMatch = !searchTerm || JSON.stringify(obj).toLowerCase().includes(searchTerm.toLowerCase());
+            if (!searchMatch) return false;
+
+            // 2. Apply specific column filters
+            if (activeFilters.length === 0) return true;
+
+            return activeFilters.every(([columnKey, filter]) => {
+                if (!filter) return true;
+                
+                let objectValue: any;
+                let property = currentModel.properties.find(p => p.id === columnKey);
+                
+                if (property) {
+                    objectValue = obj[property.name];
+                } else if (columnKey === WORKFLOW_STATE_DISPLAY_COLUMN_KEY) {
+                    objectValue = obj.currentStateId;
+                } else if (columnKey === OWNER_COLUMN_KEY) {
+                    objectValue = obj.ownerId;
+                } else if ([CREATED_AT_COLUMN_KEY, UPDATED_AT_COLUMN_KEY, DELETED_AT_COLUMN_KEY].includes(columnKey)) {
+                    objectValue = obj[columnKey];
+                } else if (columnKey.startsWith('incoming-rel-')) {
+                    const colDef = virtualIncomingRelationColumns.find(c => c.id === columnKey);
+                    if (!colDef) return false;
+                    const referencingData = allDbObjects[colDef.referencingModel.id] || [];
+                    const linkedItems = referencingData.filter(refObj => {
+                        const linkedValue = refObj[colDef.referencingProperty.name];
+                        return colDef.referencingProperty.relationshipType === 'many' ? Array.isArray(linkedValue) && linkedValue.includes(obj.id) : linkedValue === obj.id;
+                    });
+                    if (filter.operator === 'specific_incoming_reference') {
+                         if (filter.value === INTERNAL_NO_REFERENCES_VALUE) return linkedItems.length === 0;
+                         return linkedItems.some(item => item.id === filter.value);
+                    } else { // 'incomingRelationshipCount' -> boolean filter
+                        return filter.value ? linkedItems.length > 0 : linkedItems.length === 0;
+                    }
+                } else {
+                    return true;
+                }
+                
+                switch (filter.operator) {
+                    case 'contains': return String(objectValue ?? '').toLowerCase().includes(String(filter.value).toLowerCase());
+                    case 'eq':
+                        if (property?.type === 'boolean' || typeof objectValue === 'boolean') { return Boolean(objectValue) === Boolean(filter.value); }
+                        return String(objectValue ?? '') === String(filter.value);
+                    case 'gt': return (objectValue ?? -Infinity) > filter.value;
+                    case 'lt': return (objectValue ?? Infinity) < filter.value;
+                    case 'gte': return (objectValue ?? -Infinity) >= filter.value;
+                    case 'lte': return (objectValue ?? Infinity) <= filter.value;
+                    case 'date_eq': return objectValue && isEqualDate(startOfDay(new Date(objectValue)), startOfDay(new Date(filter.value)));
+                    case 'includes': return Array.isArray(objectValue) && objectValue.includes(filter.value);
+                    default: return true;
+                }
+            });
+        });
+    }, [localObjects, searchTerm, currentModel, columnFilters, allDbObjects, virtualIncomingRelationColumns]);
 
     const sortedObjects = useMemo(() => {
         let objectsToSort = [...filteredObjects];
         if (sortConfig) {
-            // Sorting logic...
+            objectsToSort.sort((a, b) => {
+                const { key, direction } = sortConfig;
+                let valueA: any, valueB: any;
+                
+                const prop = currentModel.properties.find(p => p.id === key);
+                const virtualCol = virtualIncomingRelationColumns.find(c => c.id === key);
+
+                if (prop) {
+                    valueA = a[prop.name];
+                    valueB = b[prop.name];
+                } else if (virtualCol) {
+                    const getLinkCount = (objId: string) => {
+                        const referencingData = allDbObjects[virtualCol.referencingModel.id] || [];
+                        return referencingData.filter(refObj => {
+                            const linkedValue = refObj[virtualCol.referencingProperty.name];
+                            return virtualCol.referencingProperty.relationshipType === 'many' ? Array.isArray(linkedValue) && linkedValue.includes(objId) : linkedValue === objId;
+                        }).length;
+                    };
+                    valueA = getLinkCount(a.id);
+                    valueB = getLinkCount(b.id);
+                }
+                else {
+                    switch (key) {
+                        case WORKFLOW_STATE_DISPLAY_COLUMN_KEY:
+                            valueA = getWorkflowStateName(a.currentStateId);
+                            valueB = getWorkflowStateName(b.currentStateId);
+                            break;
+                        case OWNER_COLUMN_KEY:
+                            valueA = getOwnerUsername(a.ownerId);
+                            valueB = getOwnerUsername(b.ownerId);
+                            break;
+                        default:
+                            valueA = a[key];
+                            valueB = b[key];
+                            break;
+                    }
+                }
+                
+                if (valueA === null || valueA === undefined) return direction === 'asc' ? -1 : 1;
+                if (valueB === null || valueB === undefined) return direction === 'asc' ? 1 : -1;
+                
+                let comparison = 0;
+                if (typeof valueA === 'number' && typeof valueB === 'number') {
+                    comparison = valueA - valueB;
+                } else if (isDateValidFn(new Date(valueA)) && isDateValidFn(new Date(valueB))) {
+                    comparison = new Date(valueA).getTime() - new Date(valueB).getTime();
+                }
+                else {
+                    comparison = String(valueA).localeCompare(String(valueB));
+                }
+                return direction === 'asc' ? comparison : -comparison;
+            });
         }
         return objectsToSort;
-    }, [filteredObjects, sortConfig, currentModel]);
+    }, [filteredObjects, sortConfig, currentModel, getWorkflowStateName, getOwnerUsername, virtualIncomingRelationColumns, allDbObjects]);
 
     const groupedDataForRender = useMemo(() => {
         if (!groupingPropertyKey || !currentModel) return null;
-        // Grouping logic...
-        return null;
-    }, [groupingPropertyKey, sortedObjects, currentModel]);
+        
+        let propertyToGroup = currentModel.properties.find(p => p.id === groupingPropertyKey);
+        if (!propertyToGroup && groupingPropertyKey === WORKFLOW_STATE_GROUPING_KEY) {
+            propertyToGroup = { name: 'currentStateId' } as Property; // Mock property for workflow state
+        } else if (!propertyToGroup && groupingPropertyKey === OWNER_COLUMN_KEY) {
+            propertyToGroup = { name: 'ownerId' } as Property; // Mock property for owner
+        } else if (!propertyToGroup) return null;
+        
+        const groups = sortedObjects.reduce((acc, obj) => {
+          let groupValue = getObjectGroupValue(obj, propertyToGroup, allModels, allDbObjects);
+          if (groupingPropertyKey === WORKFLOW_STATE_GROUPING_KEY) groupValue = getWorkflowStateName(obj.currentStateId);
+          if (groupingPropertyKey === OWNER_COLUMN_KEY) groupValue = getOwnerUsername(obj.ownerId);
+
+          if (!acc[groupValue]) acc[groupValue] = [];
+          acc[groupValue].push(obj);
+          return acc;
+        }, {} as Record<string, DataObject[]>);
+        
+        return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
+    }, [groupingPropertyKey, sortedObjects, currentModel, allModels, allDbObjects, getWorkflowStateName, getOwnerUsername]);
 
     const totalItemsForPagination = useMemo(() => {
         return groupedDataForRender ? groupedDataForRender.length : sortedObjects.length;
@@ -257,27 +407,6 @@ export function useDataViewLogic(modelIdFromUrl: string) {
         if (!modelIdFromUrl) return;
         router.push(`/data/${modelIdFromUrl}/new`);
     }, [router, modelIdFromUrl]);
-
-    const virtualIncomingRelationColumns: IncomingRelationColumn[] = useMemo(() => {
-        if (!currentModel || !allModels.length) {
-            return [];
-        }
-        const columns: IncomingRelationColumn[] = [];
-        allModels.forEach(model => {
-            model.properties.forEach(property => {
-                if (property.type === 'relationship' && property.relatedModelId === currentModel.id) {
-                    columns.push({
-                        id: `incoming-rel-${model.id}-${property.id}`,
-                        headerLabel: `Referenced by ${model.name}`,
-                        referencingModel: model,
-                        referencingProperty: property,
-                        viaPropertyName: property.name,
-                    });
-                }
-            });
-        });
-        return columns;
-    }, [currentModel, allModels]);
     
     const batchUpdatableProperties = useMemo(() => {
         if (!currentModel) return [];
@@ -392,7 +521,18 @@ export function useDataViewLogic(modelIdFromUrl: string) {
       enabled: !!modelIdFromUrl,
     });
     const createShareStatus = useMemo(() => { return 'none' as 'create' | 'none' }, [shareLinks]);
-    const groupableProperties = useMemo(() => { return [] }, [currentModel, currentWorkflow]);
+    const groupableProperties = useMemo(() => {
+        if (!currentModel) return [];
+        const properties = currentModel.properties
+            .filter(p => ['string', 'boolean', 'rating', 'relationship'].includes(p.type) && p.relationshipType !== 'many')
+            .map(p => ({ id: p.id, name: p.name }));
+        if (currentWorkflow) {
+            properties.push({ id: WORKFLOW_STATE_GROUPING_KEY, name: 'Workflow State', isWorkflowState: true });
+        }
+        properties.push({ id: OWNER_COLUMN_KEY, name: 'Owner', isOwnerColumn: true });
+        return properties;
+    }, [currentModel, currentWorkflow]);
+
     const handleEdit = useCallback((obj: DataObject) => router.push(`/data/${modelIdFromUrl}/edit/${obj.id}`), [router, modelIdFromUrl]);
     const handleEditModelStructure = useCallback(() => router.push(`/models/edit/${modelIdFromUrl}`), [router, modelIdFromUrl]);
     const handleView = useCallback((obj: DataObject) => router.push(`/data/${modelIdFromUrl}/view/${obj.id}`), [router, modelIdFromUrl]);
@@ -488,17 +628,6 @@ export function useDataViewLogic(modelIdFromUrl: string) {
     }, [
         currentModel, batchUpdatePreviewData, selectedObjectIds, toast, fetchData
     ]);
-
-    const getWorkflowStateName = useCallback((stateId: string | null | undefined): string => {
-        if (!stateId || !currentWorkflow) return 'N/A';
-        const state = currentWorkflow.states.find(s => s.id === stateId);
-        return state ? state.name : 'Unknown';
-    }, [currentWorkflow]);
-
-    const getOwnerUsername = useCallback((ownerId: string | null | undefined): string => {
-        if (!ownerId) return 'Unassigned';
-        return allUsers.find(u => u.id === ownerId)?.username || 'Unknown User';
-    }, [allUsers]);
 
     const getFilterDisplayDetails = useCallback((columnKey: string, filter: ColumnFilterValue): { label: string; value: string } | null => {
         if (!currentModel) return null;
