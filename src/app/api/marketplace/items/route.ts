@@ -13,34 +13,12 @@ const REMOTE_CACHE_FILE = path.join(MARKETPLACE_DIR, 'remote_cache.json');
 export async function GET(request: Request) {
   try {
     await fs.mkdir(MARKETPLACE_DIR, { recursive: true });
-    const combinedItemsMap = new Map<string, MarketplaceItem>();
+    const itemsMap = new Map<string, MarketplaceItem>();
 
-    // 1. Read remote items first, so they can be overridden by local
-    try {
-        const remoteFileContent = await fs.readFile(REMOTE_CACHE_FILE, 'utf-8');
-        const remoteItems = JSON.parse(remoteFileContent) as MarketplaceItem[];
-        remoteItems.forEach(item => {
-            (item as any).source = 'remote';
-            combinedItemsMap.set(item.id, item);
-        });
-    } catch (error: any) {
-        if (error.code !== 'ENOENT') console.error("Error reading remote cache:", error);
-    }
+    // --- Step 1: Load all LOCAL items first to establish precedence. ---
 
-    // 2. Read legacy local items
-    try {
-      const localFileContent = await fs.readFile(LEGACY_MARKETPLACE_FILE, 'utf-8');
-      const localItems = JSON.parse(localFileContent) as MarketplaceItem[];
-      localItems.forEach(item => {
-        (item as any).source = 'local';
-        combinedItemsMap.set(item.id, item); // Will overwrite remote if ID conflicts
-      });
-    } catch (error: any) {
-      if (error.code !== 'ENOENT') console.error("Error reading local legacy marketplace:", error);
-    }
-
-    // 3. Read new individual local item files (these have highest priority)
-    const files = await fs.readdir(MARKETPLACE_DIR);
+    // Read from new individual .json files first, as they are the most current format.
+    const files = await fs.readdir(MARKETPLACE_DIR).catch(() => []);
     for (const file of files) {
         if (file.endsWith('.json') && file !== 'index.json' && file !== 'remote_cache.json') {
             try {
@@ -49,18 +27,47 @@ export async function GET(request: Request) {
                 const item = JSON.parse(fileContent) as MarketplaceItem;
                 if (item.id) {
                     (item as any).source = 'local';
-                    combinedItemsMap.set(item.id, item); // Will overwrite any previous entry
+                    itemsMap.set(item.id, item);
                 }
             } catch (e) {
                 console.error(`Failed to parse local marketplace item ${file}:`, e);
             }
         }
     }
+    
+    // Read from legacy index.json and add if not already present from individual files.
+    try {
+        const legacyContent = await fs.readFile(LEGACY_MARKETPLACE_FILE, 'utf-8');
+        const legacyItems = JSON.parse(legacyContent) as MarketplaceItem[];
+        for (const item of legacyItems) {
+            if (item.id && !itemsMap.has(item.id)) { // Only add if not already loaded from a dedicated file
+                (item as any).source = 'local';
+                itemsMap.set(item.id, item);
+            }
+        }
+    } catch (error: any) {
+        if (error.code !== 'ENOENT') {
+            console.error('Error reading legacy marketplace index:', error);
+        }
+    }
 
-
-    const finalItems = Array.from(combinedItemsMap.values());
+    // --- Step 2: Read remote items and only add them if a local version doesn't exist. ---
+    try {
+        const remoteFileContent = await fs.readFile(REMOTE_CACHE_FILE, 'utf-8');
+        const remoteItems = JSON.parse(remoteFileContent) as MarketplaceItem[];
+        remoteItems.forEach(item => {
+            if (item.id && !itemsMap.has(item.id)) { // The crucial check: Do not add if a local item with the same ID exists.
+                // The `item` from the cache should already have `source` and `sourceRepository` from the sync process.
+                itemsMap.set(item.id, item);
+            }
+        });
+    } catch (error: any) {
+        if (error.code !== 'ENOENT') console.error("Error reading remote cache:", error);
+    }
+    
+    // --- Step 3: Prepare the final list for the frontend. ---
+    const finalItems = Array.from(itemsMap.values());
     finalItems.sort((a, b) => a.name.localeCompare(b.name));
-
 
     // Return metadata and latest payload for the list view for efficiency
     const metadataWithPayload = finalItems.map(item => {
@@ -89,7 +96,7 @@ export async function GET(request: Request) {
         tags: item.tags,
         updatedAt: item.updatedAt,
         downloadCount: item.downloadCount || 0,
-        latestVersionPayload: payloadForList, // Send the potentially lighter payload
+        latestVersionPayload: payloadForList,
         source: (item as any).source,
         sourceRepositoryName: (item as any).sourceRepository?.name
       }
