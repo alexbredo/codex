@@ -9,11 +9,12 @@ import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, ShieldCheck, Store, Download, AlertTriangle, Info, CheckCircle, Rss, UploadCloud, Workflow as WorkflowIcon, Search, X } from 'lucide-react';
-import type { MarketplaceItem, MarketplaceItemType, ValidationRuleset, WorkflowWithDetails } from '@/lib/types';
+import { Loader2, ShieldCheck, Store, Download, AlertTriangle, Info, CheckCircle, Rss, UploadCloud, Workflow as WorkflowIcon, Search, X, FolderKanban } from 'lucide-react';
+import type { MarketplaceItem, MarketplaceItemType, ValidationRuleset, WorkflowWithDetails, ModelGroup, ExportedModelGroupBundle } from '@/lib/types';
 import Link from 'next/link';
 import semver from 'semver';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { format } from 'date-fns';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
@@ -65,9 +66,10 @@ async function installItem(item: MarketplaceItem): Promise<any> {
 function MarketplacePageInternal() {
     const queryClient = useQueryClient();
     const { toast } = useToast();
-    const { validationRulesets, workflows, fetchData } = useData();
+    const { validationRulesets, workflows, modelGroups, fetchData } = useData();
 
     const [expandedItemId, setExpandedItemId] = React.useState<string | null>(null);
+    const [itemToUpdate, setItemToUpdate] = React.useState<MarketplaceItemMetadata | null>(null);
 
     // Filter and search state
     const [searchTerm, setSearchTerm] = React.useState('');
@@ -99,6 +101,25 @@ function MarketplacePageInternal() {
             toast({ variant: 'destructive', title: 'Installation Failed', description: err.message });
         },
     });
+    
+    const handleInstallClick = (item: MarketplaceItemMetadata) => {
+        if (item.type === 'model_group') {
+            const localGroup = modelGroups.find(mg => mg.id === (item.latestVersionPayload as ExportedModelGroupBundle).group.id);
+            if (localGroup) {
+                setItemToUpdate(item);
+                return; // Open dialog instead of direct install
+            }
+        }
+        installMutation.mutate(item.id);
+    };
+
+    const confirmUpdate = () => {
+        if (itemToUpdate) {
+            installMutation.mutate(itemToUpdate.id);
+            setItemToUpdate(null);
+        }
+    };
+
 
     const filteredItems = React.useMemo(() => {
         if (!items) return [];
@@ -130,6 +151,7 @@ function MarketplacePageInternal() {
         switch (type) {
             case 'validation_rule': return <ShieldCheck className="h-6 w-6 text-primary" />;
             case 'workflow': return <WorkflowIcon className="h-6 w-6 text-primary" />;
+            case 'model_group': return <FolderKanban className="h-6 w-6 text-primary" />;
             default: return <Info className="h-6 w-6 text-primary" />;
         }
     };
@@ -137,49 +159,32 @@ function MarketplacePageInternal() {
     const getItemInstallStatus = (item: MarketplaceItemMetadata): InstallStatus => {
       if (item.type === 'validation_rule') {
         const marketplaceRule = item.latestVersionPayload as ValidationRuleset | null;
-        if (!marketplaceRule?.id) {
-          return InstallStatus.NotInstalled; // Cannot determine status if payload is invalid
-        }
-        
+        if (!marketplaceRule?.id) return InstallStatus.NotInstalled;
         const localRule = validationRulesets.find(vr => vr.id === marketplaceRule.id);
-        
         if (!localRule) return InstallStatus.NotInstalled;
-
         if (!localRule.marketplaceVersion) {
-            if ( localRule.name === marketplaceRule.name && localRule.description === marketplaceRule.description && localRule.regexPattern === marketplaceRule.regexPattern) return InstallStatus.UpToDate;
+            if (localRule.name === marketplaceRule.name && localRule.description === marketplaceRule.description && localRule.regexPattern === marketplaceRule.regexPattern) return InstallStatus.UpToDate;
             return InstallStatus.Installed;
         }
-
-        try {
-            if (semver.gt(item.latestVersion, localRule.marketplaceVersion)) return InstallStatus.Installed;
-            return InstallStatus.UpToDate;
-        } catch (e) {
-            console.error("semver comparison failed:", e);
-            if ( localRule.name === marketplaceRule.name && localRule.description === marketplaceRule.description && localRule.regexPattern === marketplaceRule.regexPattern) return InstallStatus.UpToDate;
-            return InstallStatus.Installed;
-        }
+        try { if (semver.gt(item.latestVersion, localRule.marketplaceVersion)) return InstallStatus.Installed; return InstallStatus.UpToDate; } 
+        catch (e) { console.error("semver comparison failed:", e); if (localRule.name === marketplaceRule.name && localRule.description === marketplaceRule.description && localRule.regexPattern === marketplaceRule.regexPattern) return InstallStatus.UpToDate; return InstallStatus.Installed; }
       }
       if (item.type === 'workflow') {
         const marketplaceWorkflow = item.latestVersionPayload as WorkflowWithDetails | null;
-        if (!marketplaceWorkflow?.id) {
-          return InstallStatus.NotInstalled;
-        }
-        
+        if (!marketplaceWorkflow?.id) return InstallStatus.NotInstalled;
         const localWorkflow = workflows.find(wf => wf.id === marketplaceWorkflow.id);
-        
         if (!localWorkflow) return InstallStatus.NotInstalled;
-
-        if (!localWorkflow.marketplaceVersion) {
-            return InstallStatus.Installed; // Workflows are complex, if there's no version, assume it's updatable.
-        }
-
-        try {
-            if (semver.gt(item.latestVersion, localWorkflow.marketplaceVersion)) return InstallStatus.Installed;
-            return InstallStatus.UpToDate;
-        } catch (e) {
-            console.error("semver comparison failed for workflow:", e);
-            return InstallStatus.Installed;
-        }
+        if (!localWorkflow.marketplaceVersion) return InstallStatus.Installed;
+        try { if (semver.gt(item.latestVersion, localWorkflow.marketplaceVersion)) return InstallStatus.Installed; return InstallStatus.UpToDate; } 
+        catch (e) { console.error("semver comparison failed for workflow:", e); return InstallStatus.Installed; }
+      }
+      if (item.type === 'model_group') {
+          const payload = item.latestVersionPayload as ExportedModelGroupBundle | null;
+          if (!payload?.group?.id) return InstallStatus.NotInstalled;
+          // Model groups don't have a version stored on them yet. For now, we assume if it exists, it can be updated.
+          const localGroup = modelGroups.find(mg => mg.id === payload.group.id);
+          if (localGroup) return InstallStatus.Installed; // Always show "Update" for now if it exists
+          return InstallStatus.NotInstalled;
       }
       return InstallStatus.NotInstalled;
     };
@@ -243,6 +248,7 @@ function MarketplacePageInternal() {
                   <SelectItem value="all">All Types</SelectItem>
                   <SelectItem value="validation_rule">Validation Rule</SelectItem>
                   <SelectItem value="workflow">Workflow</SelectItem>
+                  <SelectItem value="model_group">Model Group</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -267,6 +273,22 @@ function MarketplacePageInternal() {
         </div>
       </header>
       
+       <AlertDialog open={!!itemToUpdate} onOpenChange={(open) => !open && setItemToUpdate(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2"><AlertTriangle className="text-destructive h-6 w-6"/> Destructive Update Warning</AlertDialogTitle>
+            <AlertDialogDescription>
+              Updating the model group "{itemToUpdate?.name}" will <strong className="text-destructive-foreground">delete all existing data objects</strong> in its associated models before importing the new version.
+              This action cannot be undone. Are you sure you want to proceed?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmUpdate}>Confirm Update</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {items && items.length > 0 ? (
         filteredItems.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -335,7 +357,7 @@ function MarketplacePageInternal() {
                         <CardFooter>
                             <Button
                                 className="w-full"
-                                onClick={() => installMutation.mutate(item.id)}
+                                onClick={() => handleInstallClick(item)}
                                 disabled={buttonDisabled || (installMutation.isPending && installMutation.variables === item.id)}
                             >
                                 {installMutation.isPending && installMutation.variables === item.id ? (

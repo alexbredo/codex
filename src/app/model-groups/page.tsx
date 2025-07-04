@@ -28,10 +28,10 @@ import {
 import { Input } from '@/components/ui/input';
 import { useData } from '@/contexts/data-context';
 import { withAuth } from '@/contexts/auth-context';
-import type { ModelGroup, ModelGroupFormValues } from '@/lib/types';
+import type { ModelGroup, ModelGroupFormValues, ExportedModelGroupBundle, Model } from '@/lib/types';
 import { modelGroupFormSchema } from '@/components/model-groups/model-group-form-schema';
 import ModelGroupForm from '@/components/model-groups/model-group-form';
-import { PlusCircle, Edit, Trash2, Search, FolderKanban, Loader2, DatabaseZap } from 'lucide-react'; // Added DatabaseZap
+import { PlusCircle, Edit, Trash2, Search, FolderKanban, Loader2, DatabaseZap, UploadCloud } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
@@ -41,15 +41,17 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Badge } from '@/components/ui/badge';
+import PublishToMarketplaceDialog from '@/components/marketplace/PublishToMarketplaceDialog';
 
 
 function ModelGroupsPageInternal() {
-  const { models, modelGroups, addModelGroup, updateModelGroup, deleteModelGroup, getModelGroupByName, isReady, fetchData } = useData();
+  const { models, modelGroups, addModelGroup, updateModelGroup, deleteModelGroup, getModelGroupByName, isReady, fetchData, objects: allObjects } = useData();
   const { toast } = useToast();
   
   const [searchTerm, setSearchTerm] = useState('');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingGroup, setEditingGroup] = useState<ModelGroup | null>(null);
+  const [payloadToPublish, setPayloadToPublish] = useState<ExportedModelGroupBundle | null>(null);
 
   const form = useForm<ModelGroupFormValues>({
     resolver: zodResolver(modelGroupFormSchema),
@@ -124,6 +126,23 @@ function ModelGroupsPageInternal() {
     }
   };
 
+  const handlePreparePublish = (group: ModelGroup) => {
+    const modelsInGroup = models.filter(m => m.modelGroupId === group.id);
+    const bundle: ExportedModelGroupBundle = {
+      group: group,
+      models: modelsInGroup.map(model => ({
+        model: model,
+        dataObjects: allObjects[model.id] || [],
+      }))
+    };
+    setPayloadToPublish(bundle);
+  };
+  
+  const handlePublishSuccess = () => {
+    toast({ title: "Published", description: "The Model Group has been successfully published to your local marketplace." });
+  };
+
+
   if (!isReady) {
     return (
       <div className="flex flex-col justify-center items-center h-screen">
@@ -177,6 +196,16 @@ function ModelGroupsPageInternal() {
           />
         </DialogContent>
       </Dialog>
+      
+      {payloadToPublish && (
+        <PublishToMarketplaceDialog
+          isOpen={!!payloadToPublish}
+          onClose={() => setPayloadToPublish(null)}
+          itemType="model_group"
+          itemPayload={payloadToPublish}
+          onSuccess={handlePublishSuccess}
+        />
+      )}
 
       {filteredGroups.length === 0 ? (
         <Card className="text-center py-12">
@@ -219,14 +248,19 @@ function ModelGroupsPageInternal() {
                       {getModelCountForGroup(group.id)}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="icon" onClick={() => handleEdit(group)} className="mr-2 hover:text-primary">
+                  <TableCell className="text-right space-x-1">
+                     {group.name !== 'Default' && ( 
+                        <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-primary" title="Publish to Marketplace" onClick={() => handlePreparePublish(group)}>
+                          <UploadCloud className="h-4 w-4" />
+                        </Button>
+                      )}
+                    <Button variant="ghost" size="icon" onClick={() => handleEdit(group)} className="h-8 w-8 hover:text-primary">
                       <Edit className="h-4 w-4" />
                     </Button>
                     {group.name !== 'Default' && ( 
                         <AlertDialog>
                         <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="icon" className="hover:text-destructive">
+                            <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-destructive">
                             <Trash2 className="h-4 w-4" />
                             </Button>
                         </AlertDialogTrigger>

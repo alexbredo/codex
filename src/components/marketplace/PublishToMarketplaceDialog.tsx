@@ -7,7 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useAuth } from '@/contexts/auth-context';
 import { useToast } from '@/hooks/use-toast';
-import type { PublishToMarketplaceFormValues, MarketplaceItemType, ValidationRuleset, WorkflowWithDetails } from '@/lib/types';
+import type { PublishToMarketplaceFormValues, MarketplaceItemType, ValidationRuleset, WorkflowWithDetails, ExportedModelGroupBundle, Model } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -37,7 +37,7 @@ interface PublishToMarketplaceDialogProps {
   isOpen: boolean;
   onClose: () => void;
   itemType: MarketplaceItemType;
-  itemPayload: ValidationRuleset | WorkflowWithDetails;
+  itemPayload: ValidationRuleset | WorkflowWithDetails | ExportedModelGroupBundle | Model;
   onSuccess: () => void;
 }
 
@@ -62,8 +62,8 @@ export default function PublishToMarketplaceDialog({ isOpen, onClose, itemType, 
   const form = useForm<PublishToMarketplaceFormValues>({
     resolver: zodResolver(publishSchema),
     defaultValues: {
-      name: itemPayload.name || '',
-      description: itemPayload.description || '',
+      name: ('group' in itemPayload) ? itemPayload.group.name : itemPayload.name || '',
+      description: ('group' in itemPayload) ? itemPayload.group.description : itemPayload.description || '',
       author: user?.username || '',
       version: '1.0.0',
       changelog: 'Initial release.',
@@ -72,9 +72,11 @@ export default function PublishToMarketplaceDialog({ isOpen, onClose, itemType, 
   
   React.useEffect(() => {
     if (itemPayload) {
+        const name = ('group' in itemPayload) ? itemPayload.group.name : itemPayload.name;
+        const description = ('group' in itemPayload) ? itemPayload.group.description : itemPayload.description;
         form.reset({
-            name: itemPayload.name || '',
-            description: itemPayload.description || '',
+            name: name || '',
+            description: description || '',
             author: user?.username || '',
             version: '1.0.0',
             changelog: 'Initial release.',

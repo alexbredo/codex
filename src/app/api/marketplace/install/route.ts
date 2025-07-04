@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getCurrentUserFromCookie } from '@/lib/auth';
-import type { MarketplaceItem, ValidationRuleset, WorkflowWithDetails } from '@/lib/types';
+import type { MarketplaceItem, ValidationRuleset, WorkflowWithDetails, ExportedModelGroupBundle, Model, DataObject } from '@/lib/types';
 import crypto from 'crypto';
 
 
@@ -99,6 +99,71 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Failed to install workflow item.', details: installError.message }, { status: 500 });
         }
       }
+
+      case 'model_group': {
+        await db.run('BEGIN TRANSACTION');
+        try {
+            const payload = latestVersionDetails.payload as ExportedModelGroupBundle;
+            const groupToInstall = payload.group;
+            
+            // Check if group exists to determine if this is an update
+            const existingGroup = await db.get('SELECT id FROM model_groups WHERE id = ?', groupToInstall.id);
+            if (existingGroup) {
+                // Destructive update: delete all objects from all models in this group
+                const modelsInBundle = payload.models.map(m => m.model.id);
+                for (const modelId of modelsInBundle) {
+                    await db.run('DELETE FROM data_objects WHERE model_id = ?', modelId);
+                }
+            }
+            
+            // Insert/replace group
+            await db.run('INSERT OR REPLACE INTO model_groups (id, name, description) VALUES (?, ?, ?)',
+                groupToInstall.id, groupToInstall.name, groupToInstall.description
+            );
+
+            for (const modelBundle of payload.models) {
+                const modelToInstall = modelBundle.model;
+
+                // Delete old properties before inserting new ones to ensure clean state
+                await db.run('DELETE FROM properties WHERE model_id = ?', modelToInstall.id);
+
+                // Insert/replace model definition
+                await db.run('INSERT OR REPLACE INTO models (id, name, description, model_group_id, displayPropertyNames, workflowId) VALUES (?, ?, ?, ?, ?, ?)',
+                    modelToInstall.id, modelToInstall.name, modelToInstall.description, groupToInstall.id, 
+                    JSON.stringify(modelToInstall.displayPropertyNames || []), modelToInstall.workflowId || null
+                );
+                
+                // Insert properties
+                for (const prop of modelToInstall.properties) {
+                     await db.run(
+                        'INSERT INTO properties (id, model_id, name, type, relatedModelId, required, relationshipType, unit, precision, autoSetOnCreate, autoSetOnUpdate, isUnique, orderIndex, defaultValue, validationRulesetId, minValue, maxValue) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                        prop.id, prop.model_id, prop.name, prop.type, prop.relatedModelId,
+                        prop.required ? 1 : 0, prop.relationshipType, prop.unit, prop.precision,
+                        prop.autoSetOnCreate ? 1 : 0, prop.autoSetOnUpdate ? 1 : 0,
+                        prop.isUnique ? 1 : 0, prop.orderIndex, prop.defaultValue,
+                        prop.validationRulesetId, prop.minValue, prop.maxValue
+                      );
+                }
+
+                // Insert data objects
+                for (const obj of modelBundle.dataObjects) {
+                     await db.run(
+                        'INSERT INTO data_objects (id, model_id, data, currentStateId, ownerId, isDeleted, deletedAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                        obj.id, modelToInstall.id, JSON.stringify(obj), obj.currentStateId, obj.ownerId, 
+                        obj.isDeleted ? 1 : 0, obj.deletedAt
+                    );
+                }
+            }
+
+            await db.run('COMMIT');
+            return NextResponse.json({ success: true, message: `Successfully installed/updated model group "${groupToInstall.name}".` });
+        } catch (installError: any) {
+            await db.run('ROLLBACK');
+            console.error(`Marketplace Install API Error for model_group:`, installError);
+            return NextResponse.json({ error: 'Failed to install model group item.', details: installError.message }, { status: 500 });
+        }
+      }
+
       default:
         return NextResponse.json({ error: `Unsupported item type: ${item.type}` }, { status: 400 });
     }

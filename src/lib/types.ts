@@ -207,6 +207,12 @@ export interface ExportedModelBundle {
   dataObjects: DataObject[];
 }
 
+export interface ExportedModelGroupBundle {
+  group: ModelGroup;
+  models: ExportedModelBundle[];
+}
+
+
 // Dashboard and Widget Types
 export type WidgetType = 'dataSummary' | 'modelCountChart' | 'quickStart' | 'numericSummary' | 'recentActivity';
 
@@ -379,7 +385,7 @@ export interface ModelGroupFormValues {
 
 
 // Marketplace Types
-export type MarketplaceItemType = 'validation_rule' | 'model' | 'workflow';
+export type MarketplaceItemType = 'validation_rule' | 'workflow' | 'model_group';
 
 export interface MarketplaceItemVersion {
   version: string; // e.g., "1.0.0"
