@@ -13,6 +13,10 @@ import { Loader2, ShieldCheck, Store, Download, AlertTriangle, Info, CheckCircle
 import type { MarketplaceItem, MarketplaceItemType, ValidationRuleset, WorkflowWithDetails } from '@/lib/types';
 import Link from 'next/link';
 import semver from 'semver';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { format } from 'date-fns';
+import { ScrollArea } from '@/components/ui/scroll-area';
+
 
 // It now includes the source of the item (local/remote) and the payload.
 type MarketplaceItemMetadata = Omit<MarketplaceItem, 'versions'> & {
@@ -60,9 +64,17 @@ function MarketplacePageInternal() {
     const { toast } = useToast();
     const { validationRulesets, workflows, fetchData } = useData();
 
+    const [expandedItemId, setExpandedItemId] = React.useState<string | null>(null);
+
     const { data: items, isLoading, error } = useQuery<MarketplaceItemMetadata[]>({
         queryKey: ['marketplaceItems'],
         queryFn: fetchMarketplaceItems,
+    });
+    
+    const { data: expandedItemDetails, isLoading: isLoadingDetails } = useQuery<MarketplaceItem>({
+      queryKey: ['marketplaceItemDetails', expandedItemId],
+      queryFn: () => fetchMarketplaceItemDetails(expandedItemId!),
+      enabled: !!expandedItemId,
     });
     
     const installMutation = useMutation({
@@ -209,6 +221,33 @@ function MarketplacePageInternal() {
                             <p className="text-xs text-muted-foreground">Author: {item.author || 'Unknown'}</p>
                             <p className="text-xs text-muted-foreground capitalize">Type: {item.type.replace(/_/g, ' ')}</p>
                         </CardContent>
+
+                        <Accordion type="single" collapsible className="w-full px-2" onValueChange={setExpandedItemId}>
+                            <AccordionItem value={item.id} className="border-b-0">
+                                <AccordionTrigger className="text-sm py-2 px-4 hover:no-underline text-muted-foreground hover:text-primary">
+                                    Version History
+                                </AccordionTrigger>
+                                <AccordionContent>
+                                    {isLoadingDetails && expandedItemId === item.id && <div className="p-4 text-center"><Loader2 className="h-4 w-4 animate-spin"/></div>}
+                                    {expandedItemDetails && expandedItemId === item.id && (
+                                        <ScrollArea className="h-32 px-4">
+                                            <div className="space-y-3">
+                                                {expandedItemDetails.versions.map((version) => (
+                                                    <div key={version.version}>
+                                                        <div className="flex justify-between items-center font-semibold text-xs">
+                                                            <Badge variant="secondary">v{version.version}</Badge>
+                                                            <span className="text-muted-foreground">{format(new Date(version.publishedAt), 'PP')}</span>
+                                                        </div>
+                                                        <p className="mt-1 text-xs text-muted-foreground">{version.changelog || 'No changelog provided.'}</p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </ScrollArea>
+                                    )}
+                                </AccordionContent>
+                            </AccordionItem>
+                        </Accordion>
+                        
                         <CardFooter>
                             <Button
                                 className="w-full"
