@@ -16,10 +16,10 @@ import { Input } from '@/components/ui/input';
 import { useData } from '@/contexts/data-context';
 import { withAuth } from '@/contexts/auth-context';
 import type { WorkflowWithDetails } from '@/lib/types';
-import { PlusCircle, Edit, Trash2, Search, Workflow as WorkflowIconLucide, Loader2, Network } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, Search, Workflow as WorkflowIconLucide, Loader2, Network, UploadCloud } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
-
+import PublishToMarketplaceDialog from '@/components/marketplace/PublishToMarketplaceDialog';
 
 function WorkflowsAdminPageInternal() {
   const { workflows, deleteWorkflow, isReady: dataIsReady, fetchData } = useData();
@@ -27,6 +27,7 @@ function WorkflowsAdminPageInternal() {
   const router = useRouter();
   
   const [searchTerm, setSearchTerm] = useState('');
+  const [workflowToPublish, setWorkflowToPublish] = React.useState<WorkflowWithDetails | null>(null);
 
   useEffect(() => {
     fetchData('Navigated to Workflow Admin');
@@ -54,6 +55,10 @@ function WorkflowsAdminPageInternal() {
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error Deleting Workflow", description: error.message });
     }
+  };
+
+  const handlePublishSuccess = () => {
+    toast({ title: "Published", description: "The workflow has been successfully published to your local marketplace." });
   };
   
   if (!dataIsReady) {
@@ -91,6 +96,16 @@ function WorkflowsAdminPageInternal() {
         </div>
       </header>
 
+      {workflowToPublish && (
+        <PublishToMarketplaceDialog
+          isOpen={!!workflowToPublish}
+          onClose={() => setWorkflowToPublish(null)}
+          itemType="workflow"
+          itemPayload={workflowToPublish}
+          onSuccess={handlePublishSuccess}
+        />
+      )}
+
       {filteredWorkflows.length === 0 ? (
         <Card className="text-center py-12">
           <CardContent>
@@ -125,8 +140,11 @@ function WorkflowsAdminPageInternal() {
                   <TableCell>
                     <Badge variant="secondary">{wf.states.length}</Badge>
                   </TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="icon" onClick={() => handleEdit(wf.id)} className="mr-2 hover:text-primary">
+                  <TableCell className="text-right space-x-1">
+                    <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-primary" title="Publish to Marketplace" onClick={() => setWorkflowToPublish(wf)}>
+                      <UploadCloud className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={() => handleEdit(wf.id)} className="hover:text-primary">
                       <Edit className="h-4 w-4" />
                     </Button>
                     <AlertDialog>

@@ -7,7 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useAuth } from '@/contexts/auth-context';
 import { useToast } from '@/hooks/use-toast';
-import type { PublishToMarketplaceFormValues, MarketplaceItemType, ValidationRuleset } from '@/lib/types';
+import type { PublishToMarketplaceFormValues, MarketplaceItemType, ValidationRuleset, WorkflowWithDetails } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -37,7 +37,7 @@ interface PublishToMarketplaceDialogProps {
   isOpen: boolean;
   onClose: () => void;
   itemType: MarketplaceItemType;
-  itemPayload: ValidationRuleset; // For now, only this type
+  itemPayload: ValidationRuleset | WorkflowWithDetails;
   onSuccess: () => void;
 }
 

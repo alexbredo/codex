@@ -115,9 +115,20 @@ async function initializeDb(): Promise<Database> {
     CREATE TABLE IF NOT EXISTS workflows (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL UNIQUE,
-      description TEXT
+      description TEXT,
+      marketplaceVersion TEXT
     );
   `);
+  
+  // Migration for workflows table to add marketplaceVersion
+  const workflowsTableInfo = await db.all("PRAGMA table_info(workflows)").catch(() => []);
+  if (workflowsTableInfo.length > 0) {
+      if (!workflowsTableInfo.some(col => col.name === 'marketplaceVersion')) {
+        console.log("Migrating 'workflows' table: adding 'marketplaceVersion' column.");
+        await db.exec('ALTER TABLE workflows ADD COLUMN marketplaceVersion TEXT');
+      }
+  }
+
 
   await db.exec(`
     CREATE TABLE IF NOT EXISTS workflow_states (

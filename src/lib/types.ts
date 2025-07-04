@@ -78,6 +78,7 @@ export interface Workflow {
   id: string;
   name: string;
   description?: string;
+  marketplaceVersion?: string;
 }
 
 export interface WorkflowWithDetails extends Workflow {
@@ -384,7 +385,7 @@ export interface MarketplaceItemVersion {
   version: string; // e.g., "1.0.0"
   changelog?: string;
   publishedAt: string; // ISO Date
-  payload: any; // The actual content (e.g., a ValidationRuleset object)
+  payload: any; // The actual content (e.g., a ValidationRuleset or WorkflowWithDetails object)
 }
 
 export interface MarketplaceItem {

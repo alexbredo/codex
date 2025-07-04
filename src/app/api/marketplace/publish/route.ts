@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getCurrentUserFromCookie } from '@/lib/auth';
-import type { MarketplaceItem, PublishToMarketplaceFormValues, ValidationRuleset } from '@/lib/types';
+import type { MarketplaceItem, PublishToMarketplaceFormValues, ValidationRuleset, WorkflowWithDetails } from '@/lib/types';
 import path from 'path';
 import fs from 'fs/promises';
 import { v4 as uuidv4 } from 'uuid';
@@ -37,10 +37,10 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { itemType, itemPayload, metadata }: { itemType: 'validation_rule', itemPayload: ValidationRuleset, metadata: PublishToMarketplaceFormValues } = await request.json();
+    const { itemType, itemPayload, metadata }: { itemType: MarketplaceItemType, itemPayload: ValidationRuleset | WorkflowWithDetails, metadata: PublishToMarketplaceFormValues } = await request.json();
 
     const marketplaceItems = await getLocalMarketplace();
-    const existingItemIndex = marketplaceItems.findIndex(item => item.versions.some(v => (v.payload as ValidationRuleset).id === itemPayload.id));
+    const existingItemIndex = marketplaceItems.findIndex(item => item.versions.some(v => (v.payload as any).id === (itemPayload as any).id));
     
     const now = new Date().toISOString();
     

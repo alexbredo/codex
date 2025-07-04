@@ -9,8 +9,8 @@ import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, ShieldCheck, Store, Download, AlertTriangle, Info, CheckCircle, Rss, UploadCloud } from 'lucide-react';
-import type { MarketplaceItem, MarketplaceItemType, ValidationRuleset } from '@/lib/types';
+import { Loader2, ShieldCheck, Store, Download, AlertTriangle, Info, CheckCircle, Rss, UploadCloud, Workflow as WorkflowIcon } from 'lucide-react';
+import type { MarketplaceItem, MarketplaceItemType, ValidationRuleset, WorkflowWithDetails } from '@/lib/types';
 import Link from 'next/link';
 import semver from 'semver';
 
@@ -58,7 +58,7 @@ async function installItem(item: MarketplaceItem): Promise<any> {
 function MarketplacePageInternal() {
     const queryClient = useQueryClient();
     const { toast } = useToast();
-    const { validationRulesets, fetchData } = useData();
+    const { validationRulesets, workflows, fetchData } = useData();
 
     const { data: items, isLoading, error } = useQuery<MarketplaceItemMetadata[]>({
         queryKey: ['marketplaceItems'],
@@ -83,6 +83,7 @@ function MarketplacePageInternal() {
     const getIconForItemType = (type: MarketplaceItemType) => {
         switch (type) {
             case 'validation_rule': return <ShieldCheck className="h-6 w-6 text-primary" />;
+            case 'workflow': return <WorkflowIcon className="h-6 w-6 text-primary" />;
             default: return <Info className="h-6 w-6 text-primary" />;
         }
     };
@@ -96,42 +97,41 @@ function MarketplacePageInternal() {
         
         const localRule = validationRulesets.find(vr => vr.id === marketplaceRule.id);
         
-        // Rule is not installed locally at all
-        if (!localRule) {
-          return InstallStatus.NotInstalled;
-        }
+        if (!localRule) return InstallStatus.NotInstalled;
 
-        // Rule is installed locally. Now check versions.
-        // If local rule has no version, it was likely created locally or installed before this versioning feature.
         if (!localRule.marketplaceVersion) {
-            // Fallback to content check. If content is different, it's an "update".
-            if (
-                localRule.name !== marketplaceRule.name ||
-                localRule.description !== marketplaceRule.description ||
-                localRule.regexPattern !== marketplaceRule.regexPattern
-            ) {
-                return InstallStatus.Installed; // Treat as needing an update
-            }
-            // If content is identical, we assume it's "up-to-date" even without a version.
-            return InstallStatus.UpToDate;
+            if ( localRule.name === marketplaceRule.name && localRule.description === marketplaceRule.description && localRule.regexPattern === marketplaceRule.regexPattern) return InstallStatus.UpToDate;
+            return InstallStatus.Installed;
         }
 
-        // Both have versions. Compare them using semver.
         try {
-            if (semver.gt(item.latestVersion, localRule.marketplaceVersion)) {
-                return InstallStatus.Installed; // Update available
-            }
-            return InstallStatus.UpToDate; // Local version is same or newer
+            if (semver.gt(item.latestVersion, localRule.marketplaceVersion)) return InstallStatus.Installed;
+            return InstallStatus.UpToDate;
         } catch (e) {
             console.error("semver comparison failed:", e);
-            // Fallback to content check on semver error
-            if (
-                localRule.name === marketplaceRule.name &&
-                localRule.description === marketplaceRule.description &&
-                localRule.regexPattern === marketplaceRule.regexPattern
-            ) {
-                return InstallStatus.UpToDate;
-            }
+            if ( localRule.name === marketplaceRule.name && localRule.description === marketplaceRule.description && localRule.regexPattern === marketplaceRule.regexPattern) return InstallStatus.UpToDate;
+            return InstallStatus.Installed;
+        }
+      }
+      if (item.type === 'workflow') {
+        const marketplaceWorkflow = item.latestVersionPayload as WorkflowWithDetails | null;
+        if (!marketplaceWorkflow?.id) {
+          return InstallStatus.NotInstalled;
+        }
+        
+        const localWorkflow = workflows.find(wf => wf.id === marketplaceWorkflow.id);
+        
+        if (!localWorkflow) return InstallStatus.NotInstalled;
+
+        if (!localWorkflow.marketplaceVersion) {
+            return InstallStatus.Installed; // Workflows are complex, if there's no version, assume it's updatable.
+        }
+
+        try {
+            if (semver.gt(item.latestVersion, localWorkflow.marketplaceVersion)) return InstallStatus.Installed;
+            return InstallStatus.UpToDate;
+        } catch (e) {
+            console.error("semver comparison failed for workflow:", e);
             return InstallStatus.Installed;
         }
       }
@@ -207,7 +207,7 @@ function MarketplacePageInternal() {
                         </CardHeader>
                         <CardContent className="flex-grow">
                             <p className="text-xs text-muted-foreground">Author: {item.author || 'Unknown'}</p>
-                            <p className="text-xs text-muted-foreground capitalize">Type: {item.type.replace('_', ' ')}</p>
+                            <p className="text-xs text-muted-foreground capitalize">Type: {item.type.replace(/_/g, ' ')}</p>
                         </CardContent>
                         <CardFooter>
                             <Button
