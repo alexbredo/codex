@@ -1,13 +1,9 @@
-
-'use server';
-
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getCurrentUserFromCookie } from '@/lib/auth';
 import { z } from 'zod';
 import type { MarketplaceRepository } from '@/lib/types';
-
-export const dynamic = 'force-dynamic';
+import axios from 'axios';
 
 const repositorySchema = z.object({
   name: z.string().min(3, "Name must be at least 3 characters."),
