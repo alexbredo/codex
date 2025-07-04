@@ -6,7 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/contexts/data-context';
 import { useAuth } from '@/contexts/auth-context';
-import type { DataObject, Model, Property, WorkflowWithDetails, ValidationRuleset, ChangelogEntry, PaginatedStructuralChangelogResponse, SharedObjectLink } from '@/lib/types';
+import type { DataObject, Model, Property, WorkflowWithDetails, ValidationRuleset, ChangelogEntry, PaginatedStructuralChangelogResponse, SharedObjectLink, PropertyChangeDetail } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -14,7 +14,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog as LightboxDialog, DialogContent as LightboxDialogContent, DialogHeader as LightboxDialogHeader, DialogTitle as LightboxDialogTitle, DialogDescription as LightboxDialogDescription } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Edit, Trash2, DownloadCloud, PlusCircle, Loader2, DatabaseZap, FileText, ListFilter, CheckCircle, ShieldCheck, AlertTriangle, Settings2, Workflow as WorkflowIconLucide, History as HistoryIcon, User as UserIcon, Layers, Edit2 as Edit2Icon, ZoomIn, ExternalLink, RotateCcw, UserCircle as UserCircleIcon, CalendarClock, ShieldAlert, Paperclip, Share2 } from 'lucide-react';
+import { ArrowLeft, Edit, Trash2, DownloadCloud, PlusCircle, Loader2, DatabaseZap, FileText, ListFilter, CheckCircle, ShieldCheck, AlertTriangle, Settings2, Workflow as WorkflowIconLucide, History as HistoryIcon, User as UserIcon, Layers, Edit2 as Edit2Icon, ZoomIn, ExternalLink, RotateCcw, UserCircle as UserCircleIcon, CalendarClock, ShieldAlert, Paperclip, Share2, MinusCircle, PlusCircle as PlusCircleIcon } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
@@ -27,21 +27,20 @@ import ReactMarkdown from 'react-markdown';
 import { StarDisplay } from '@/components/ui/star-display';
 import { Progress } from '@/components/ui/progress';
 import CreateShareLinkDialog from '@/components/sharing/CreateShareLinkDialog';
-import ShareLinkManager from '@/components/sharing/ShareLinkManager';
 import { cn } from '@/lib/utils';
 import IncomingRelationshipsViewer from '@/components/objects/IncomingRelationshipsViewer';
 
 interface ObjectDetailViewProps {
-  model: Model;
-  viewingObject: DataObject;
+  model?: Model;
+  viewingObject?: DataObject;
   isPublicView?: boolean;
 }
 
-export default function ObjectDetailView({ model, viewingObject, isPublicView = false }: ObjectDetailViewProps) {
+function ObjectDetailDisplay({ model, viewingObject, isPublicView }: { model: Model, viewingObject: DataObject, isPublicView: boolean }) {
   const router = useRouter();
   const { toast } = useToast();
   const { user: currentUser, hasPermission } = useAuth();
-  const { getModelById, getWorkflowById, validationRulesets, getUserById, allModels, getAllObjects, formatApiError, fetchData: refreshDataContext } = useData();
+  const { getWorkflowById, validationRulesets, getUserById, allModels, getAllObjects, formatApiError, fetchData: refreshDataContext } = useData();
   
   const [changelog, setChangelog] = React.useState<ChangelogEntry[]>([]);
   const [isLoadingChangelog, setIsLoadingChangelog] = React.useState(false);
@@ -277,12 +276,10 @@ export default function ObjectDetailView({ model, viewingObject, isPublicView = 
                 const displayVal = getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
                 const isDeleted = relatedObj?.isDeleted;
                 return relatedObj ? (
-                  <Link key={itemId} href={`/data/${relatedModel.id}/view/${relatedObj.id}`} passHref legacyBehavior>
-                    <a className="inline-block">
-                      <Badge variant={isDeleted ? "destructive" : "outline"} className={cn("hover:bg-secondary cursor-pointer", isDeleted && "line-through")}>
-                        {displayVal} <ExternalLink className="ml-1 h-3 w-3 opacity-70" />
-                      </Badge>
-                    </a>
+                  <Link key={itemId} href={`/data/${relatedModel.id}/view/${relatedObj.id}`} className="inline-block">
+                    <Badge variant={isDeleted ? "destructive" : "outline"} className={cn("hover:bg-secondary cursor-pointer", isDeleted && "line-through")}>
+                      {displayVal} <ExternalLink className="ml-1 h-3 w-3 opacity-70" />
+                    </Badge>
                   </Link>
                 ) : (
                   <Badge key={itemId} variant="outline" className={cn("mr-1 mb-1", isDeleted && "line-through text-destructive")}>{displayVal}</Badge>
@@ -295,12 +292,10 @@ export default function ObjectDetailView({ model, viewingObject, isPublicView = 
           const displayVal = getObjectDisplayValue(relatedObj, relatedModel, allModels, allDbObjects);
           const isDeleted = relatedObj?.isDeleted;
           return relatedObj ? (
-            <Link href={`/data/${relatedModel.id}/view/${relatedObj.id}`} passHref legacyBehavior>
-              <a className="inline-block">
-                <Badge variant={isDeleted ? "destructive" : "outline"} className={cn("hover:bg-secondary cursor-pointer", isDeleted && "line-through")}>
-                  {displayVal} <ExternalLink className="ml-1 h-3 w-3 opacity-70" />
-                </Badge>
-              </a>
+            <Link href={`/data/${relatedModel.id}/view/${relatedObj.id}`} className="inline-block">
+              <Badge variant={isDeleted ? "destructive" : "outline"} className={cn("hover:bg-secondary cursor-pointer", isDeleted && "line-through")}>
+                {displayVal} <ExternalLink className="ml-1 h-3 w-3 opacity-70" />
+              </Badge>
             </Link>
           ) : <span className={cn("text-muted-foreground italic", isDeleted && "line-through text-destructive")}>{displayVal}</span>;
         }
@@ -346,11 +341,19 @@ export default function ObjectDetailView({ model, viewingObject, isPublicView = 
     }
 
     return (
-      <>
-        <span className="font-semibold">{propertyDisplayName}:</span>
-        <span className="text-destructive line-through mx-1" title={String(oldValue)}>{finalOldValue}</span>
-        <span className="text-green-600 font-medium" title={String(newValue)}>{finalNewValue}</span>
-      </>
+       <div className="text-xs">
+          <span className="font-semibold">{propertyDisplayName}:</span>
+          <div className="mt-1 space-y-1">
+              <div className="bg-red-500/10 p-1.5 rounded-md border border-red-500/20 text-red-900 dark:text-red-200 font-mono flex items-center gap-2">
+                  <MinusCircle className="h-3.5 w-3.5 shrink-0"/>
+                  <span className="truncate" title={String(oldValue)}>{finalOldValue}</span>
+              </div>
+              <div className="bg-green-500/10 p-1.5 rounded-md border border-green-500/20 text-green-900 dark:text-green-200 font-mono flex items-center gap-2">
+                  <PlusCircleIcon className="h-3.5 w-3.5 shrink-0"/>
+                  <span className="truncate" title={String(newValue)}>{finalNewValue}</span>
+              </div>
+          </div>
+      </div>
     );
   };
     
@@ -487,7 +490,7 @@ export default function ObjectDetailView({ model, viewingObject, isPublicView = 
       </Card>
       
       {!isPublicView && <IncomingRelationshipsViewer modelId={modelId} objectId={objectId} />}
-
+      
       {!isPublicView && (
         <ShareLinkManager
             modelId={modelId}

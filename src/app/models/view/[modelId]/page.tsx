@@ -2,8 +2,8 @@
 'use client';
 
 import * as React from 'react';
-import { useParams, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
+import { useRouter, useParams } from 'next/navigation';
 import { useData } from '@/contexts/data-context';
 import { useAuth } from '@/contexts/auth-context';
 import type { Model, Property, WorkflowWithDetails, ValidationRuleset, StructuralChangelogEntry, PaginatedStructuralChangelogResponse } from '@/lib/types';
@@ -220,11 +220,11 @@ function ViewModelPageInternal() {
                 <Edit className="mr-2 h-4 w-4" /> Edit Structure
               </Button>
               {hasPermission('models:import_export') && (
-                <Link href={`/api/codex-structure/export/model/${currentModel.id}`} download passHref legacyBehavior>
-                    <Button variant="secondary" size="sm">
+                <Button asChild variant="secondary" size="sm">
+                  <Link href={`/api/codex-structure/export/model/${currentModel.id}`} download>
                     <DownloadCloud className="mr-2 h-4 w-4" /> Export
-                    </Button>
-                </Link>
+                  </Link>
+                </Button>
               )}
               <AlertDialog>
                 <AlertDialogTrigger asChild>
