@@ -29,15 +29,13 @@ export async function GET(request: Request, { params }: Params) {
     const db = await getDb();
     
     // 1. Find the model ID from the model name
-    const model = await db.get<Model>('SELECT * FROM models WHERE id = ?', modelName);
+    let model = await db.get<Model>('SELECT * FROM models WHERE id = ?', modelName);
     if (!model) {
       // If model not found by ID, try by name.
-      const modelByName = await db.get<Model>('SELECT * FROM models WHERE name = ?', modelName);
-       if (!modelByName) {
+      model = await db.get<Model>('SELECT * FROM models WHERE name = ?', modelName);
+       if (!model) {
           return NextResponse.json({ error: `Model "${modelName}" not found` }, { status: 404 });
        }
-       model.id = modelByName.id;
-       model.name = modelByName.name;
     }
     model.properties = await db.all('SELECT * FROM properties WHERE model_id = ?', model.id);
 
