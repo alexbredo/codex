@@ -16,29 +16,28 @@ export async function POST(request: Request) {
   
   try {
     const item: MarketplaceItem = await request.json();
-    const latestVersion = item.versions.find(v => v.version === item.latestVersion);
+    const latestVersionDetails = item.versions.find(v => v.version === item.latestVersion);
 
-    if (!latestVersion) {
+    if (!latestVersionDetails) {
       return NextResponse.json({ error: 'Latest version payload not found in marketplace item.' }, { status: 400 });
     }
 
     switch (item.type) {
       case 'validation_rule':
-        const payload = latestVersion.payload as ValidationRuleset;
-        // Using INSERT OR IGNORE to handle primary key conflicts gracefully.
-        // It will not update if an item with the same ID exists.
-        // This is the desired behavior for retaining UUIDs.
+        const payload = latestVersionDetails.payload as ValidationRuleset;
         const result = await db.run(
-          `INSERT INTO validation_rulesets (id, name, description, regexPattern) 
-           VALUES (?, ?, ?, ?)
+          `INSERT INTO validation_rulesets (id, name, description, regexPattern, marketplaceVersion) 
+           VALUES (?, ?, ?, ?, ?)
            ON CONFLICT(id) DO UPDATE SET
              name = excluded.name,
              description = excluded.description,
-             regexPattern = excluded.regexPattern`,
+             regexPattern = excluded.regexPattern,
+             marketplaceVersion = excluded.marketplaceVersion`,
           payload.id,
           payload.name,
           payload.description,
-          payload.regexPattern
+          payload.regexPattern,
+          latestVersionDetails.version
         );
         if (result.changes > 0) {
             return NextResponse.json({ success: true, message: `Successfully installed/updated validation rule "${payload.name}".` });

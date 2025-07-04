@@ -91,6 +91,7 @@ export interface ValidationRuleset {
   name: string;
   description?: string;
   regexPattern: string;
+  marketplaceVersion?: string;
 }
 
 // Changelog Types for Data Objects
@@ -420,5 +421,3 @@ export interface PublishToMarketplaceFormValues {
     changelog: string;
     author: string;
 }
-
-    

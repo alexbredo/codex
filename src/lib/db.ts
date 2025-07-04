@@ -95,9 +95,20 @@ async function initializeDb(): Promise<Database> {
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL UNIQUE,
       description TEXT,
-      regexPattern TEXT NOT NULL
+      regexPattern TEXT NOT NULL,
+      marketplaceVersion TEXT
     );
   `);
+  
+  // Migration for validation_rulesets table to add marketplaceVersion
+  const validationRulesetsTableInfo = await db.all("PRAGMA table_info(validation_rulesets)").catch(() => []);
+  if (validationRulesetsTableInfo.length > 0) {
+      if (!validationRulesetsTableInfo.some(col => col.name === 'marketplaceVersion')) {
+        console.log("Migrating 'validation_rulesets' table: adding 'marketplaceVersion' column.");
+        await db.exec('ALTER TABLE validation_rulesets ADD COLUMN marketplaceVersion TEXT');
+      }
+  }
+
 
   // Workflow Tables
   await db.exec(`

@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2, ShieldCheck, Store, Download, AlertTriangle, Info, CheckCircle, Rss, UploadCloud } from 'lucide-react';
 import type { MarketplaceItem, MarketplaceItemType, ValidationRuleset } from '@/lib/types';
 import Link from 'next/link';
+import semver from 'semver';
 
 // It now includes the source of the item (local/remote) and the payload.
 type MarketplaceItemMetadata = Omit<MarketplaceItem, 'versions'> & {
@@ -23,7 +24,7 @@ type MarketplaceItemMetadata = Omit<MarketplaceItem, 'versions'> & {
 // Enum for installation status
 enum InstallStatus {
   NotInstalled,
-  Installed,
+  Installed, // An older or modified version is installed
   UpToDate,
 }
 
@@ -94,21 +95,45 @@ function MarketplacePageInternal() {
         }
         
         const localRule = validationRulesets.find(vr => vr.id === marketplaceRule.id);
+        
+        // Rule is not installed locally at all
         if (!localRule) {
           return InstallStatus.NotInstalled;
         }
 
-        // Item with same ID exists. Now check if content is identical.
-        if (
-          localRule.name === marketplaceRule.name &&
-          localRule.description === marketplaceRule.description &&
-          localRule.regexPattern === marketplaceRule.regexPattern
-        ) {
-          return InstallStatus.UpToDate;
+        // Rule is installed locally. Now check versions.
+        // If local rule has no version, it was likely created locally or installed before this versioning feature.
+        if (!localRule.marketplaceVersion) {
+            // Fallback to content check. If content is different, it's an "update".
+            if (
+                localRule.name !== marketplaceRule.name ||
+                localRule.description !== marketplaceRule.description ||
+                localRule.regexPattern !== marketplaceRule.regexPattern
+            ) {
+                return InstallStatus.Installed; // Treat as needing an update
+            }
+            // If content is identical, we assume it's "up-to-date" even without a version.
+            return InstallStatus.UpToDate;
         }
-        
-        // Item exists but content is different, meaning it's an older or modified version.
-        return InstallStatus.Installed;
+
+        // Both have versions. Compare them using semver.
+        try {
+            if (semver.gt(item.latestVersion, localRule.marketplaceVersion)) {
+                return InstallStatus.Installed; // Update available
+            }
+            return InstallStatus.UpToDate; // Local version is same or newer
+        } catch (e) {
+            console.error("semver comparison failed:", e);
+            // Fallback to content check on semver error
+            if (
+                localRule.name === marketplaceRule.name &&
+                localRule.description === marketplaceRule.description &&
+                localRule.regexPattern === marketplaceRule.regexPattern
+            ) {
+                return InstallStatus.UpToDate;
+            }
+            return InstallStatus.Installed;
+        }
       }
       return InstallStatus.NotInstalled;
     };
@@ -214,5 +239,3 @@ function MarketplacePageInternal() {
 }
 
 export default withAuth(MarketplacePageInternal, 'marketplace:install');
-
-    
