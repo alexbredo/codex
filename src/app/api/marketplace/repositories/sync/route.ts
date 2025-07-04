@@ -28,14 +28,16 @@ export async function POST(request: Request) {
 
     for (const repo of repositories) {
       try {
-        const fetchHeaders = new Headers();
-        fetchHeaders.append('User-Agent', 'CodexStructure-Sync/1.0');
+        // Explicitly set headers to prevent forwarding of authentication cookies
+        const fetchHeaders = {
+          'User-Agent': 'CodexStructure-Sync/1.0',
+          'Cookie': '', // <-- This is the crucial fix
+        };
 
         // Step 1: Fetch the list of item metadata from the repository URL
         const listResponse = await fetch(repo.url, {
           headers: fetchHeaders,
-          cache: 'no-store',
-          signal: AbortSignal.timeout(10000), // 10-second timeout
+          cache: 'no-store', // Ensure we get fresh data
         });
 
         if (!listResponse.ok) {
@@ -50,7 +52,6 @@ export async function POST(request: Request) {
             const detailResponse = await fetch(detailUrl, {
                 headers: fetchHeaders,
                 cache: 'no-store',
-                signal: AbortSignal.timeout(10000),
             });
             if (!detailResponse.ok) {
                 console.warn(`Could not fetch details for item ${meta.id} from ${repo.name}. Status: ${detailResponse.status}`);
