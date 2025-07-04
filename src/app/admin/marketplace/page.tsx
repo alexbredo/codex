@@ -10,7 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, ShieldCheck, Store, Download, AlertTriangle, Info, CheckCircle, Rss, UploadCloud, Workflow as WorkflowIcon, Search, X, FolderKanban, MoreHorizontal, RefreshCw } from 'lucide-react';
+import { Loader2, ShieldCheck, Store, Download, AlertTriangle, Info, CheckCircle, Rss, UploadCloud, Workflow as WorkflowIcon, Search, X, FolderKanban, MoreHorizontal, RefreshCw, Trash2 } from 'lucide-react';
 import type { MarketplaceItem, MarketplaceItemType, ValidationRuleset, WorkflowWithDetails, ModelGroup, ExportedModelGroupBundle } from '@/lib/types';
 import Link from 'next/link';
 import semver from 'semver';
@@ -25,6 +25,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 
@@ -70,6 +71,17 @@ async function installItem(item: MarketplaceItem): Promise<any> {
     return response.json();
 }
 
+async function deleteMarketplaceItem(itemId: string): Promise<any> {
+  const response = await fetch(`/api/marketplace/items/${itemId}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.error || 'Deletion failed.');
+  }
+  return response.json();
+}
+
 
 function MarketplacePageInternal() {
     const queryClient = useQueryClient();
@@ -78,13 +90,15 @@ function MarketplacePageInternal() {
 
     const [expandedItemId, setExpandedItemId] = React.useState<string | null>(null);
     const [itemToUpdate, setItemToUpdate] = React.useState<MarketplaceItemMetadata | null>(null);
+    const [itemToDelete, setItemToDelete] = React.useState<MarketplaceItemMetadata | null>(null);
+
 
     // Filter and search state
     const [searchTerm, setSearchTerm] = React.useState('');
     const [filterType, setFilterType] = React.useState<MarketplaceItemType | 'all'>('all');
     const [filterSource, setFilterSource] = React.useState<'all' | 'local' | 'remote'>('all');
 
-    const { data: items, isLoading, error } = useQuery<MarketplaceItemMetadata[]>({
+    const { data: items, isLoading, error, refetch: refetchMarketplaceItems } = useQuery<MarketplaceItemMetadata[]>({
         queryKey: ['marketplaceItems'],
         queryFn: fetchMarketplaceItems,
     });
@@ -107,6 +121,17 @@ function MarketplacePageInternal() {
         },
         onError: (err: Error) => {
             toast({ variant: 'destructive', title: 'Installation Failed', description: err.message });
+        },
+    });
+
+     const deleteMutation = useMutation({
+        mutationFn: deleteMarketplaceItem,
+        onSuccess: (data) => {
+            toast({ title: 'Item Deleted', description: data.message });
+            queryClient.invalidateQueries({ queryKey: ['marketplaceItems'] });
+        },
+        onError: (err: Error) => {
+            toast({ variant: 'destructive', title: 'Deletion Failed', description: err.message });
         },
     });
     
@@ -310,6 +335,32 @@ function MarketplacePageInternal() {
         </AlertDialogContent>
       </AlertDialog>
 
+      <AlertDialog open={!!itemToDelete} onOpenChange={(open) => !open && setItemToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete "{itemToDelete?.name}" from your local marketplace. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (itemToDelete) {
+                  deleteMutation.mutate(itemToDelete.id);
+                  setItemToDelete(null);
+                }
+              }}
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {items && items.length > 0 ? (
         filteredItems.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -321,6 +372,8 @@ function MarketplacePageInternal() {
                 if (status === InstallStatus.Installed) {
                   buttonText = 'Update';
                 }
+
+                const canShowMoreOptions = item.source === 'local' || status === InstallStatus.UpToDate;
 
                 return (
                     <Card key={item.id} className="flex flex-col shadow-lg hover:shadow-xl transition-shadow duration-300">
@@ -377,12 +430,21 @@ function MarketplacePageInternal() {
                         </Accordion>
                         
                         <CardFooter>
-                          {status === InstallStatus.UpToDate ? (
-                            <div className="flex w-full gap-2">
-                              <Button className="w-full" disabled>
-                                <CheckCircle className="mr-2 h-4 w-4" />
-                                Installed
-                              </Button>
+                          <div className="flex w-full items-center gap-2">
+                            <Button
+                                className="flex-grow"
+                                onClick={status !== InstallStatus.UpToDate ? () => handleInstallClick(item) : undefined}
+                                disabled={(status === InstallStatus.UpToDate) || (installMutation.isPending && installMutation.variables === item.id)}
+                            >
+                                {installMutation.isPending && installMutation.variables === item.id ? (
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                ) : (
+                                    status === InstallStatus.UpToDate ? <CheckCircle className="mr-2 h-4 w-4" /> : buttonIcon
+                                )}
+                                {status === InstallStatus.UpToDate ? 'Installed' : buttonText}
+                            </Button>
+                            
+                            {canShowMoreOptions && (
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                   <Button variant="outline" size="icon" className="shrink-0">
@@ -391,27 +453,24 @@ function MarketplacePageInternal() {
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
-                                  <DropdownMenuItem onClick={() => handleInstallClick(item)} disabled={installMutation.isPending && installMutation.variables === item.id}>
-                                     {installMutation.isPending && installMutation.variables === item.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                                    Force Reinstall
-                                  </DropdownMenuItem>
+                                  {status === InstallStatus.UpToDate && (
+                                    <DropdownMenuItem onClick={() => handleInstallClick(item)} disabled={installMutation.isPending && installMutation.variables === item.id}>
+                                        <RefreshCw className="mr-2 h-4 w-4" /> Force Reinstall
+                                    </DropdownMenuItem>
+                                  )}
+                                  {item.source === 'local' && (
+                                    <>
+                                        {status === InstallStatus.UpToDate && <DropdownMenuSeparator />}
+                                        <DropdownMenuItem onSelect={() => setItemToDelete(item)} className="text-destructive focus:text-destructive">
+                                          <Trash2 className="mr-2 h-4 w-4" />
+                                          <span>Delete from Marketplace</span>
+                                        </DropdownMenuItem>
+                                    </>
+                                  )}
                                 </DropdownMenuContent>
                               </DropdownMenu>
-                            </div>
-                          ) : (
-                            <Button
-                              className="w-full"
-                              onClick={() => handleInstallClick(item)}
-                              disabled={installMutation.isPending && installMutation.variables === item.id}
-                            >
-                              {installMutation.isPending && installMutation.variables === item.id ? (
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              ) : (
-                                buttonIcon
-                              )}
-                              {buttonText}
-                            </Button>
-                          )}
+                            )}
+                          </div>
                         </CardFooter>
                     </Card>
                 );
