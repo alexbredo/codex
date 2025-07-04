@@ -339,7 +339,7 @@ export default function DataObjectsPage() {
              <Card className="shadow-lg">
               <DataObjectsTable
                 model={currentModel}
-                objectsToDisplay={paginatedDataToRender as DataObject[]}
+                objectsToDisplay={paginatedDataToRender}
                 allModels={allModels}
                 allDbObjects={allDbObjects}
                 currentWorkflow={currentWorkflow}
@@ -351,6 +351,7 @@ export default function DataObjectsPage() {
                 viewingRecycleBin={viewingRecycleBin}
                 lastChangedInfo={lastChangedInfo}
                 virtualIncomingRelationColumns={virtualIncomingRelationColumns}
+                groupingPropertyKey={groupingPropertyKey}
                 requestSort={requestSort}
                 handleColumnFilterChange={handleColumnFilterChange}
                 handleSelectAllOnPage={handleSelectAllOnPage}

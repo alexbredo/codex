@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -56,7 +57,7 @@ export interface IncomingRelationColumn {
 
 interface DataObjectsTableProps {
   model: Model;
-  objectsToDisplay: DataObject[];
+  objectsToDisplay: DataObject[] | [string, DataObject[]][];
   allModels: Model[];
   allDbObjects: Record<string, DataObject[]>;
   currentWorkflow: WorkflowWithDetails | null;
@@ -72,6 +73,7 @@ interface DataObjectsTableProps {
   lastChangedInfo: { modelId: string, objectId: string, changeType: 'added' | 'updated' | 'restored' | 'deleted' } | null;
   
   virtualIncomingRelationColumns: IncomingRelationColumn[];
+  groupingPropertyKey: string | null;
 
   // Callbacks
   requestSort: (key: string) => void;
@@ -100,6 +102,7 @@ export default function DataObjectsTable({
   viewingRecycleBin,
   lastChangedInfo,
   virtualIncomingRelationColumns,
+  groupingPropertyKey,
   requestSort,
   handleColumnFilterChange,
   handleSelectAllOnPage,
@@ -254,227 +257,271 @@ export default function DataObjectsTable({
 
   const directPropertiesToShowInTable = model.properties.sort((a,b) => a.orderIndex - b.orderIndex);
 
+  const columnCount = React.useMemo(() => {
+    let count = 0;
+    if (!hiddenColumns.has(SELECT_ALL_CHECKBOX_COLUMN_KEY)) count++;
+    if (!hiddenColumns.has(VIEW_ACTION_COLUMN_KEY)) count++;
+    directPropertiesToShowInTable.forEach(prop => {
+        if (!hiddenColumns.has(prop.id)) count++;
+    });
+    if (!hiddenColumns.has(CREATED_AT_COLUMN_KEY)) count++;
+    if (!hiddenColumns.has(UPDATED_AT_COLUMN_KEY)) count++;
+    if (viewingRecycleBin && !hiddenColumns.has(DELETED_AT_COLUMN_KEY)) count++;
+    if (currentWorkflow && !hiddenColumns.has(WORKFLOW_STATE_DISPLAY_COLUMN_KEY)) count++;
+    if (!hiddenColumns.has(OWNER_COLUMN_KEY)) count++;
+    virtualIncomingRelationColumns.forEach(col => {
+        if (!hiddenColumns.has(col.id)) count++;
+    });
+    if (!hiddenColumns.has(ACTIONS_COLUMN_KEY)) count++;
+    return count;
+  }, [hiddenColumns, directPropertiesToShowInTable, viewingRecycleBin, currentWorkflow, virtualIncomingRelationColumns]);
+
+  const renderObjectRow = (obj: DataObject) => {
+    const isHighlightedAdded = lastChangedInfo?.objectId === obj.id && lastChangedInfo?.modelId === model.id && lastChangedInfo?.changeType === 'added';
+    const isHighlightedUpdated = lastChangedInfo?.objectId === obj.id && lastChangedInfo?.modelId === model.id && lastChangedInfo?.changeType === 'updated';
+    const isHighlightedRestored = lastChangedInfo?.objectId === obj.id && lastChangedInfo?.modelId === model.id && lastChangedInfo?.changeType === 'restored';
+    return (
+      <TableRow key={obj.id} data-state={selectedObjectIds.has(obj.id) ? "selected" : ""} className={cn(isHighlightedAdded && "animate-highlight-green", isHighlightedUpdated && "animate-highlight-yellow", isHighlightedRestored && "animate-highlight-blue")}>
+        {!hiddenColumns.has(SELECT_ALL_CHECKBOX_COLUMN_KEY) && (
+          <TableCell className="text-center">
+            <Checkbox checked={selectedObjectIds.has(obj.id)} onCheckedChange={(checked) => handleRowSelect(obj.id, !!checked)} aria-label={`Select row ${obj.id}`} />
+          </TableCell>
+        )}
+        {!hiddenColumns.has(VIEW_ACTION_COLUMN_KEY) && (
+          <TableCell className="text-center">
+            <Button variant="ghost" size="sm" onClick={() => handleView(obj)} className="px-2 hover:text-primary">
+              <Eye className="h-4 w-4" />
+            </Button>
+          </TableCell>
+        )}
+        {directPropertiesToShowInTable.map((prop) => (
+          !hiddenColumns.has(prop.id) && <TableCell key={`${obj.id}-${prop.id}`}>{displayCellContent(obj, prop)}</TableCell>
+        ))}
+        {!hiddenColumns.has(CREATED_AT_COLUMN_KEY) && <TableCell>{displayDateCellContent(obj.createdAt)}</TableCell>}
+        {!hiddenColumns.has(UPDATED_AT_COLUMN_KEY) && <TableCell>{displayDateCellContent(obj.updatedAt)}</TableCell>}
+        {viewingRecycleBin && !hiddenColumns.has(DELETED_AT_COLUMN_KEY) && <TableCell>{displayDateCellContent(obj.deletedAt)}</TableCell>}
+        {currentWorkflow && !hiddenColumns.has(WORKFLOW_STATE_DISPLAY_COLUMN_KEY) && (
+          <TableCell><Badge variant={obj.currentStateId ? "outline" : "secondary"}>{getWorkflowStateName(obj.currentStateId)}</Badge></TableCell>
+        )}
+        {!hiddenColumns.has(OWNER_COLUMN_KEY) && <TableCell>{getOwnerUsername(obj.ownerId)}</TableCell>}
+        {virtualIncomingRelationColumns.map((colDef) => {
+          if (hiddenColumns.has(colDef.id)) return null;
+          const referencingData = allDbObjects[colDef.referencingModel.id] || [];
+          const linkedItems = referencingData.filter(refObj => {
+            const linkedValue = refObj[colDef.referencingProperty.name];
+            return colDef.referencingProperty.relationshipType === 'many' ? Array.isArray(linkedValue) && linkedValue.includes(obj.id) : linkedValue === obj.id;
+          });
+          const visibleLinkedItems = linkedItems.filter(item => !item.isDeleted);
+          const deletedLinkedItemsCount = linkedItems.length - visibleLinkedItems.length;
+
+          if (visibleLinkedItems.length === 0) {
+              return (
+              <TableCell key={colDef.id} className="text-muted-foreground">
+                None
+                {deletedLinkedItemsCount > 0 && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <AlertCircle className="h-3.5 w-3.5 ml-1.5 inline-block text-amber-500" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>{deletedLinkedItemsCount} deleted link(s)</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+              </TableCell>
+            );
+          }
+          
+          const itemsToDisplay = visibleLinkedItems.slice(0, 3);
+
+          return (
+            <TableCell key={colDef.id} className="space-x-1 space-y-1">
+              {itemsToDisplay.map(item => (
+                  <Link key={item.id} href={`/data/${colDef.referencingModel.id}/view/${item.id}`} className="inline-block">
+                    <Badge variant="secondary" className="hover:bg-muted cursor-pointer">
+                      {getObjectDisplayValue(item, colDef.referencingModel, allModels, allDbObjects)}
+                    </Badge>
+                  </Link>
+              ))}
+              {visibleLinkedItems.length > 3 && (
+                <Badge variant="outline" className="text-xs">+ {visibleLinkedItems.length - 3} more</Badge>
+              )}
+              {deletedLinkedItemsCount > 0 && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <AlertCircle className="h-3.5 w-3.5 ml-1.5 inline-block text-amber-500" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{deletedLinkedItemsCount} deleted link(s)</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+            </TableCell>
+          );
+        })}
+        {!hiddenColumns.has(ACTIONS_COLUMN_KEY) && (
+          <TableCell className="text-right">
+            {viewingRecycleBin ? (
+              <Button variant="outline" size="sm" onClick={() => handleRestoreObject(obj.id, getObjectDisplayValue(obj, model, allModels, allDbObjects))} className="text-green-600 border-green-600/50 hover:bg-green-600/10 hover:text-green-600">
+                <ArchiveRestore className="h-4 w-4 mr-1" /> Restore
+              </Button>
+            ) : (
+              <>
+                <Button variant="ghost" size="sm" onClick={() => handleEdit(obj)} className="px-2 mr-1 hover:text-primary">
+                  <Edit className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="sm" className="px-2 hover:text-destructive" onClick={() => handleDeleteRequest(obj)}>
+                    <Trash2 className="h-4 w-4" />
+                </Button>
+              </>
+            )}
+          </TableCell>
+        )}
+      </TableRow>
+    );
+  }
+
+  const tableHeaderContent = (
+      <TableHeader>
+        <TableRow>
+          {!hiddenColumns.has(SELECT_ALL_CHECKBOX_COLUMN_KEY) && (
+            <TableHead className="w-[60px] text-center">
+              <Checkbox
+                checked={isAllSelectedOnPage}
+                onCheckedChange={handleSelectAllOnPage}
+                aria-label="Select all rows on current page"
+                className="mx-auto"
+              />
+            </TableHead>
+          )}
+          {!hiddenColumns.has(VIEW_ACTION_COLUMN_KEY) && <TableHead className="w-[60px] text-center">View</TableHead>}
+          
+          {directPropertiesToShowInTable.map((prop) => (
+            !hiddenColumns.has(prop.id) && (
+              <TableHead key={prop.id}>
+                <div className="flex items-center">
+                  <Button variant="ghost" onClick={() => requestSort(prop.id)} className="px-1 text-left justify-start flex-grow">
+                    {prop.name} {getSortIcon(prop.id)}
+                  </Button>
+                  <ColumnFilterPopover
+                    columnKey={prop.id}
+                    columnName={prop.name}
+                    property={prop}
+                    currentFilter={columnFilters[prop.id] || null}
+                    onFilterChange={handleColumnFilterChange}
+                  />
+                </div>
+              </TableHead>
+            )
+          ))}
+
+          {!hiddenColumns.has(CREATED_AT_COLUMN_KEY) && (
+            <TableHead>
+              <div className="flex items-center">
+                <Button variant="ghost" onClick={() => requestSort(CREATED_AT_COLUMN_KEY)} className="px-1 text-left justify-start flex-grow">
+                  Created At {getSortIcon(CREATED_AT_COLUMN_KEY)}
+                </Button>
+                <ColumnFilterPopover columnKey={CREATED_AT_COLUMN_KEY} columnName="Created At" property={{ type: 'date' } as Property} currentFilter={columnFilters[CREATED_AT_COLUMN_KEY] || null} onFilterChange={handleColumnFilterChange} />
+              </div>
+            </TableHead>
+          )}
+          {!hiddenColumns.has(UPDATED_AT_COLUMN_KEY) && (
+            <TableHead>
+              <div className="flex items-center">
+                <Button variant="ghost" onClick={() => requestSort(UPDATED_AT_COLUMN_KEY)} className="px-1 text-left justify-start flex-grow">
+                  Updated At {getSortIcon(UPDATED_AT_COLUMN_KEY)}
+                </Button>
+                <ColumnFilterPopover columnKey={UPDATED_AT_COLUMN_KEY} columnName="Updated At" property={{ type: 'date' } as Property} currentFilter={columnFilters[UPDATED_AT_COLUMN_KEY] || null} onFilterChange={handleColumnFilterChange} />
+              </div>
+            </TableHead>
+          )}
+          {viewingRecycleBin && !hiddenColumns.has(DELETED_AT_COLUMN_KEY) && (
+            <TableHead>
+              <div className="flex items-center">
+                <Button variant="ghost" onClick={() => requestSort(DELETED_AT_COLUMN_KEY)} className="px-1 text-left justify-start flex-grow">
+                  Deleted At {getSortIcon(DELETED_AT_COLUMN_KEY)}
+                </Button>
+                <ColumnFilterPopover columnKey={DELETED_AT_COLUMN_KEY} columnName="Deleted At" property={{ type: 'date' } as Property} currentFilter={columnFilters[DELETED_AT_COLUMN_KEY] || null} onFilterChange={handleColumnFilterChange} />
+              </div>
+            </TableHead>
+          )}
+          {currentWorkflow && !hiddenColumns.has(WORKFLOW_STATE_DISPLAY_COLUMN_KEY) && (
+            <TableHead>
+              <div className="flex items-center">
+                <Button variant="ghost" onClick={() => requestSort(WORKFLOW_STATE_DISPLAY_COLUMN_KEY)} className="px-1 text-left justify-start flex-grow">
+                  State {getSortIcon(WORKFLOW_STATE_DISPLAY_COLUMN_KEY)}
+                </Button>
+                <ColumnFilterPopover columnKey={WORKFLOW_STATE_DISPLAY_COLUMN_KEY} columnName="State" currentWorkflow={currentWorkflow} currentFilter={columnFilters[WORKFLOW_STATE_DISPLAY_COLUMN_KEY] || null} onFilterChange={handleColumnFilterChange} />
+              </div>
+            </TableHead>
+          )}
+          {!hiddenColumns.has(OWNER_COLUMN_KEY) && (
+            <TableHead>
+              <div className="flex items-center">
+                <Button variant="ghost" onClick={() => requestSort(OWNER_COLUMN_KEY)} className="px-1 text-left justify-start flex-grow">
+                  Owned By {getSortIcon(OWNER_COLUMN_KEY)}
+                </Button>
+                <ColumnFilterPopover columnKey={OWNER_COLUMN_KEY} columnName="Owned By" filterTypeOverride="relationship" currentFilter={columnFilters[OWNER_COLUMN_KEY] || null} onFilterChange={handleColumnFilterChange} />
+              </div>
+            </TableHead>
+          )}
+          {virtualIncomingRelationColumns.map((col) => (
+            !hiddenColumns.has(col.id) && (
+              <TableHead key={col.id} className="text-xs">
+                <div className="flex items-center">
+                    <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant="ghost" onClick={() => requestSort(col.id)} className="px-1 text-xs text-left justify-start flex-grow">
+                          {col.headerLabel} {getSortIcon(col.id)}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>via property: {col.viaPropertyName}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  <ColumnFilterPopover columnKey={col.id} columnName={col.headerLabel} currentFilter={columnFilters[col.id] || null} onFilterChange={handleColumnFilterChange} filterTypeOverride="specificIncomingReference" referencingModel={col.referencingModel} referencingProperty={col.referencingProperty} />
+                </div>
+              </TableHead>
+            )
+          ))}
+          {!hiddenColumns.has(ACTIONS_COLUMN_KEY) && <TableHead className="text-right w-[120px]">Actions</TableHead>}
+        </TableRow>
+      </TableHeader>
+  );
+
+  const isGrouped = !!groupingPropertyKey;
+
   return (
     <>
       <Table>
-        <TableHeader>
-          <TableRow>
-            {!hiddenColumns.has(SELECT_ALL_CHECKBOX_COLUMN_KEY) && (
-              <TableHead className="w-[60px] text-center">
-                <Checkbox
-                  checked={isAllSelectedOnPage}
-                  onCheckedChange={handleSelectAllOnPage}
-                  aria-label="Select all rows on current page"
-                  className="mx-auto"
-                />
-              </TableHead>
-            )}
-            {!hiddenColumns.has(VIEW_ACTION_COLUMN_KEY) && <TableHead className="w-[60px] text-center">View</TableHead>}
-            
-            {directPropertiesToShowInTable.map((prop) => (
-              !hiddenColumns.has(prop.id) && (
-                <TableHead key={prop.id}>
-                  <div className="flex items-center">
-                    <Button variant="ghost" onClick={() => requestSort(prop.id)} className="px-1 text-left justify-start flex-grow">
-                      {prop.name} {getSortIcon(prop.id)}
-                    </Button>
-                    <ColumnFilterPopover
-                      columnKey={prop.id}
-                      columnName={prop.name}
-                      property={prop}
-                      currentFilter={columnFilters[prop.id] || null}
-                      onFilterChange={handleColumnFilterChange}
-                    />
-                  </div>
-                </TableHead>
-              )
-            ))}
-
-            {!hiddenColumns.has(CREATED_AT_COLUMN_KEY) && (
-              <TableHead>
-                <div className="flex items-center">
-                  <Button variant="ghost" onClick={() => requestSort(CREATED_AT_COLUMN_KEY)} className="px-1 text-left justify-start flex-grow">
-                    Created At {getSortIcon(CREATED_AT_COLUMN_KEY)}
-                  </Button>
-                  <ColumnFilterPopover columnKey={CREATED_AT_COLUMN_KEY} columnName="Created At" property={{ type: 'date' } as Property} currentFilter={columnFilters[CREATED_AT_COLUMN_KEY] || null} onFilterChange={handleColumnFilterChange} />
-                </div>
-              </TableHead>
-            )}
-            {!hiddenColumns.has(UPDATED_AT_COLUMN_KEY) && (
-              <TableHead>
-                <div className="flex items-center">
-                  <Button variant="ghost" onClick={() => requestSort(UPDATED_AT_COLUMN_KEY)} className="px-1 text-left justify-start flex-grow">
-                    Updated At {getSortIcon(UPDATED_AT_COLUMN_KEY)}
-                  </Button>
-                  <ColumnFilterPopover columnKey={UPDATED_AT_COLUMN_KEY} columnName="Updated At" property={{ type: 'date' } as Property} currentFilter={columnFilters[UPDATED_AT_COLUMN_KEY] || null} onFilterChange={handleColumnFilterChange} />
-                </div>
-              </TableHead>
-            )}
-            {viewingRecycleBin && !hiddenColumns.has(DELETED_AT_COLUMN_KEY) && (
-              <TableHead>
-                <div className="flex items-center">
-                  <Button variant="ghost" onClick={() => requestSort(DELETED_AT_COLUMN_KEY)} className="px-1 text-left justify-start flex-grow">
-                    Deleted At {getSortIcon(DELETED_AT_COLUMN_KEY)}
-                  </Button>
-                  <ColumnFilterPopover columnKey={DELETED_AT_COLUMN_KEY} columnName="Deleted At" property={{ type: 'date' } as Property} currentFilter={columnFilters[DELETED_AT_COLUMN_KEY] || null} onFilterChange={handleColumnFilterChange} />
-                </div>
-              </TableHead>
-            )}
-            {currentWorkflow && !hiddenColumns.has(WORKFLOW_STATE_DISPLAY_COLUMN_KEY) && (
-              <TableHead>
-                <div className="flex items-center">
-                  <Button variant="ghost" onClick={() => requestSort(WORKFLOW_STATE_DISPLAY_COLUMN_KEY)} className="px-1 text-left justify-start flex-grow">
-                    State {getSortIcon(WORKFLOW_STATE_DISPLAY_COLUMN_KEY)}
-                  </Button>
-                  <ColumnFilterPopover columnKey={WORKFLOW_STATE_DISPLAY_COLUMN_KEY} columnName="State" currentWorkflow={currentWorkflow} currentFilter={columnFilters[WORKFLOW_STATE_DISPLAY_COLUMN_KEY] || null} onFilterChange={handleColumnFilterChange} />
-                </div>
-              </TableHead>
-            )}
-            {!hiddenColumns.has(OWNER_COLUMN_KEY) && (
-              <TableHead>
-                <div className="flex items-center">
-                  <Button variant="ghost" onClick={() => requestSort(OWNER_COLUMN_KEY)} className="px-1 text-left justify-start flex-grow">
-                    Owned By {getSortIcon(OWNER_COLUMN_KEY)}
-                  </Button>
-                  <ColumnFilterPopover columnKey={OWNER_COLUMN_KEY} columnName="Owned By" filterTypeOverride="relationship" currentFilter={columnFilters[OWNER_COLUMN_KEY] || null} onFilterChange={handleColumnFilterChange} />
-                </div>
-              </TableHead>
-            )}
-            {virtualIncomingRelationColumns.map((col) => (
-              !hiddenColumns.has(col.id) && (
-                <TableHead key={col.id} className="text-xs">
-                  <div className="flex items-center">
-                     <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button variant="ghost" onClick={() => requestSort(col.id)} className="px-1 text-xs text-left justify-start flex-grow">
-                            {col.headerLabel} {getSortIcon(col.id)}
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>via property: {col.viaPropertyName}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                    <ColumnFilterPopover columnKey={col.id} columnName={col.headerLabel} currentFilter={columnFilters[col.id] || null} onFilterChange={handleColumnFilterChange} filterTypeOverride="specificIncomingReference" referencingModel={col.referencingModel} referencingProperty={col.referencingProperty} />
-                  </div>
-                </TableHead>
-              )
-            ))}
-            {!hiddenColumns.has(ACTIONS_COLUMN_KEY) && <TableHead className="text-right w-[120px]">Actions</TableHead>}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {objectsToDisplay.map((obj) => {
-            const isHighlightedAdded = lastChangedInfo?.objectId === obj.id && lastChangedInfo?.modelId === model.id && lastChangedInfo?.changeType === 'added';
-            const isHighlightedUpdated = lastChangedInfo?.objectId === obj.id && lastChangedInfo?.modelId === model.id && lastChangedInfo?.changeType === 'updated';
-            const isHighlightedRestored = lastChangedInfo?.objectId === obj.id && lastChangedInfo?.modelId === model.id && lastChangedInfo?.changeType === 'restored';
-            return (
-              <TableRow key={obj.id} data-state={selectedObjectIds.has(obj.id) ? "selected" : ""} className={cn(isHighlightedAdded && "animate-highlight-green", isHighlightedUpdated && "animate-highlight-yellow", isHighlightedRestored && "animate-highlight-blue")}>
-                {!hiddenColumns.has(SELECT_ALL_CHECKBOX_COLUMN_KEY) && (
-                  <TableCell className="text-center">
-                    <Checkbox checked={selectedObjectIds.has(obj.id)} onCheckedChange={(checked) => handleRowSelect(obj.id, !!checked)} aria-label={`Select row ${obj.id}`} />
+        {tableHeaderContent}
+        {isGrouped ? (
+          (objectsToDisplay as [string, DataObject[]][]).map(([groupName, objects]) => (
+            <React.Fragment key={groupName}>
+              <TableBody>
+                <TableRow className="hover:bg-muted/30 bg-muted/30 sticky top-0 z-10">
+                  <TableCell colSpan={columnCount} className="p-2 font-semibold">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">{groupName}</span>
+                      <Badge variant="secondary">{objects.length}</Badge>
+                    </div>
                   </TableCell>
-                )}
-                {!hiddenColumns.has(VIEW_ACTION_COLUMN_KEY) && (
-                  <TableCell className="text-center">
-                    <Button variant="ghost" size="sm" onClick={() => handleView(obj)} className="px-2 hover:text-primary">
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
-                )}
-                {directPropertiesToShowInTable.map((prop) => (
-                  !hiddenColumns.has(prop.id) && <TableCell key={`${obj.id}-${prop.id}`}>{displayCellContent(obj, prop)}</TableCell>
-                ))}
-                {!hiddenColumns.has(CREATED_AT_COLUMN_KEY) && <TableCell>{displayDateCellContent(obj.createdAt)}</TableCell>}
-                {!hiddenColumns.has(UPDATED_AT_COLUMN_KEY) && <TableCell>{displayDateCellContent(obj.updatedAt)}</TableCell>}
-                {viewingRecycleBin && !hiddenColumns.has(DELETED_AT_COLUMN_KEY) && <TableCell>{displayDateCellContent(obj.deletedAt)}</TableCell>}
-                {currentWorkflow && !hiddenColumns.has(WORKFLOW_STATE_DISPLAY_COLUMN_KEY) && (
-                  <TableCell><Badge variant={obj.currentStateId ? "outline" : "secondary"}>{getWorkflowStateName(obj.currentStateId)}</Badge></TableCell>
-                )}
-                {!hiddenColumns.has(OWNER_COLUMN_KEY) && <TableCell>{getOwnerUsername(obj.ownerId)}</TableCell>}
-                {virtualIncomingRelationColumns.map((colDef) => {
-                  if (hiddenColumns.has(colDef.id)) return null;
-                  const referencingData = allDbObjects[colDef.referencingModel.id] || [];
-                  const linkedItems = referencingData.filter(refObj => {
-                    const linkedValue = refObj[colDef.referencingProperty.name];
-                    if (colDef.referencingProperty.relationshipType === 'many') return Array.isArray(linkedValue) && linkedValue.includes(obj.id);
-                    return linkedValue === obj.id;
-                  });
-                  const visibleLinkedItems = linkedItems.filter(item => !item.isDeleted);
-                  const deletedLinkedItemsCount = linkedItems.length - visibleLinkedItems.length;
-
-                  if (visibleLinkedItems.length === 0) {
-                     return (
-                      <TableCell key={colDef.id} className="text-muted-foreground">
-                        None
-                        {deletedLinkedItemsCount > 0 && (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <AlertCircle className="h-3.5 w-3.5 ml-1.5 inline-block text-amber-500" />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>{deletedLinkedItemsCount} deleted link(s)</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        )}
-                      </TableCell>
-                    );
-                  }
-                  
-                  const itemsToDisplay = visibleLinkedItems.slice(0, 3);
-
-                  return (
-                    <TableCell key={colDef.id} className="space-x-1 space-y-1">
-                      {itemsToDisplay.map(item => (
-                          <Link key={item.id} href={`/data/${colDef.referencingModel.id}/view/${item.id}`} className="inline-block">
-                            <Badge variant="secondary" className="hover:bg-muted cursor-pointer">
-                              {getObjectDisplayValue(item, colDef.referencingModel, allModels, allDbObjects)}
-                            </Badge>
-                          </Link>
-                      ))}
-                      {visibleLinkedItems.length > 3 && (
-                        <Badge variant="outline" className="text-xs">+ {visibleLinkedItems.length - 3} more</Badge>
-                      )}
-                      {deletedLinkedItemsCount > 0 && (
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <AlertCircle className="h-3.5 w-3.5 ml-1.5 inline-block text-amber-500" />
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>{deletedLinkedItemsCount} deleted link(s)</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      )}
-                    </TableCell>
-                  );
-                })}
-                {!hiddenColumns.has(ACTIONS_COLUMN_KEY) && (
-                  <TableCell className="text-right">
-                    {viewingRecycleBin ? (
-                      <Button variant="outline" size="sm" onClick={() => handleRestoreObject(obj.id, getObjectDisplayValue(obj, model, allModels, allDbObjects))} className="text-green-600 border-green-600/50 hover:bg-green-600/10 hover:text-green-600">
-                        <ArchiveRestore className="h-4 w-4 mr-1" /> Restore
-                      </Button>
-                    ) : (
-                      <>
-                        <Button variant="ghost" size="sm" onClick={() => handleEdit(obj)} className="px-2 mr-1 hover:text-primary">
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" className="px-2 hover:text-destructive" onClick={() => handleDeleteRequest(obj)}>
-                            <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </>
-                    )}
-                  </TableCell>
-                )}
-              </TableRow>
-            );
-          })}
-        </TableBody>
+                </TableRow>
+                {objects.map(obj => renderObjectRow(obj))}
+              </TableBody>
+            </React.Fragment>
+          ))
+        ) : (
+          <TableBody>
+            {(objectsToDisplay as DataObject[]).map(obj => renderObjectRow(obj))}
+          </TableBody>
+        )}
       </Table>
       <Dialog open={!!lightboxImageUrl} onOpenChange={(open) => !open && setLightboxImageUrl(null)}>
         <DialogContent className="w-[90vw] max-w-[1600px] bg-transparent border-0 p-0 shadow-none">
