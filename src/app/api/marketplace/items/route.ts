@@ -1,7 +1,7 @@
 
 
 import { NextResponse } from 'next/server';
-import type { MarketplaceItem } from '@/lib/types';
+import type { MarketplaceItem, ExportedModelBundle, ExportedModelGroupBundle } from '@/lib/types';
 import path from 'path';
 import fs from 'fs/promises';
 
@@ -65,6 +65,19 @@ export async function GET() {
     // Return metadata and latest payload for the list view for efficiency
     const metadataWithPayload = finalItems.map(item => {
       const latestVersionDetails = item.versions.find(v => v.version === item.latestVersion);
+      let payloadForList = latestVersionDetails?.payload || null;
+
+      // For model groups, strip out the heavy dataObjects to keep the listing API light.
+      if (item.type === 'model_group' && payloadForList) {
+          const lightPayload: ExportedModelGroupBundle = {
+              group: payloadForList.group,
+              models: (payloadForList.models || []).map((modelBundle: ExportedModelBundle) => ({
+                  model: modelBundle.model, // Keep the model structure
+                  dataObjects: [], // <<< STRIP OUT THE DATA OBJECTS
+              })),
+          };
+          payloadForList = lightPayload;
+      }
       
       return {
         id: item.id,
@@ -76,7 +89,7 @@ export async function GET() {
         tags: item.tags,
         updatedAt: item.updatedAt,
         downloadCount: item.downloadCount || 0,
-        latestVersionPayload: latestVersionDetails?.payload || null,
+        latestVersionPayload: payloadForList, // Send the potentially lighter payload
         source: (item as any).source,
         sourceRepositoryName: (item as any).sourceRepository?.name
       }
