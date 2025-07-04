@@ -1,5 +1,4 @@
 
-
 'use server';
 
 import { NextResponse } from 'next/server';
@@ -28,13 +27,17 @@ export async function POST(request: Request) {
 
     for (const repo of repositories) {
       try {
+        // Explicitly create new headers for the fetch request, removing any cookies or auth headers
+        // from the original request to ensure the fetch is anonymous. This is the correct way
+        // to prevent forwarding credentials in Next.js API routes.
+        const headersForFetch = new Headers();
+        headersForFetch.append('User-Agent', 'CodexStructure-Sync/1.0');
+
         // Step 1: Fetch the list of item metadata from the repository URL
-        // Use the Request constructor for full control and to prevent automatic header forwarding.
-        const listRequest = new Request(repo.url, {
-            headers: { 'User-Agent': 'CodexStructure-Sync/1.0' },
-            cache: 'no-store',
+        const listResponse = await fetch(repo.url, {
+            headers: headersForFetch,
+            cache: 'no-store', // Prevent caching of this request
         });
-        const listResponse = await fetch(listRequest);
 
         if (!listResponse.ok) {
           throw new Error(`Failed to fetch from ${repo.name}: Status ${listResponse.status}`);
@@ -46,11 +49,10 @@ export async function POST(request: Request) {
           try {
             const detailUrl = repo.url.endsWith('/') ? `${repo.url}${meta.id}` : `${repo.url}/${meta.id}`;
             
-            const detailRequest = new Request(detailUrl, {
-                headers: { 'User-Agent': 'CodexStructure-Sync/1.0' },
+            const detailResponse = await fetch(detailUrl, {
+                headers: headersForFetch, // Reuse the same clean headers
                 cache: 'no-store',
             });
-            const detailResponse = await fetch(detailRequest);
 
             if (!detailResponse.ok) {
                 console.warn(`Could not fetch details for item ${meta.id} from ${repo.name}. Status: ${detailResponse.status}`);
