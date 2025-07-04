@@ -11,9 +11,9 @@ import { StarRatingInput } from '@/components/ui/star-rating-input';
 import { Filter, XCircle, CalendarIcon as CalendarIconLucide, Check, ChevronsUpDown } from 'lucide-react';
 import type { Property, WorkflowWithDetails, Model, DataObject } from '@/lib/types';
 import { cn, getObjectDisplayValue } from '@/lib/utils';
-import { format as formatDateFns, isValid as isDateValid, startOfDay } from 'date-fns';
+import { format as formatDateFns, isValid as isDateValidFn, startOfDay, isEqual as isEqualDate } from 'date-fns';
 import { useData } from '@/contexts/data-context';
-import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useQuery } from '@tanstack/react-query';
 
@@ -145,7 +145,7 @@ export default function ColumnFilterPopover({
             operatorForFilter = 'eq'; // Or a specific operator for this type if needed
             break;
         case 'date':
-            if (filterInput instanceof Date && isDateValid(filterInput)) {
+            if (filterInput instanceof Date && isDateValidFn(filterInput)) {
               finalFilterValue = startOfDay(filterInput).toISOString();
               operatorForFilter = 'date_eq';
             } else {
@@ -291,7 +291,7 @@ export default function ColumnFilterPopover({
                     )}
                 >
                     <CalendarIconLucide className="mr-2 h-4 w-4" />
-                    {filterInput && isDateValid(new Date(filterInput as string | number | Date)) ? formatDateFns(new Date(filterInput as string | number | Date), "PPP") : <span>Pick a date</span>}
+                    {filterInput && isDateValidFn(new Date(filterInput as string | number | Date)) ? formatDateFns(new Date(filterInput as string | number | Date), "PPP") : <span>Pick a date</span>}
                 </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0">
