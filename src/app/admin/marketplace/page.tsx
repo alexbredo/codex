@@ -57,11 +57,11 @@ async function fetchMarketplaceItemDetails(itemId: string): Promise<MarketplaceI
   return response.json();
 }
 
-async function installItem(item: MarketplaceItem): Promise<any> {
+async function installItem({ itemId, source }: { itemId: string, source: 'local' | 'remote' }): Promise<any> {
     const response = await fetch('/api/marketplace/install', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(item),
+        body: JSON.stringify({ itemId, source }),
     });
     if (!response.ok) {
         const errorData = await response.json();
@@ -109,10 +109,7 @@ function MarketplacePageInternal() {
     });
     
     const installMutation = useMutation({
-        mutationFn: async (itemId: string) => {
-            const itemToInstall = await fetchMarketplaceItemDetails(itemId);
-            return installItem(itemToInstall);
-        },
+        mutationFn: installItem,
         onSuccess: async (data) => {
             toast({ title: 'Installation Success', description: data.message });
             await fetchData('After Marketplace Install');
@@ -142,12 +139,12 @@ function MarketplacePageInternal() {
                 return; // Open dialog instead of direct install
             }
         }
-        installMutation.mutate(item.id);
+        installMutation.mutate({ itemId: item.id, source: item.source });
     };
 
     const confirmUpdate = () => {
         if (itemToUpdate) {
-            installMutation.mutate(itemToUpdate.id);
+            installMutation.mutate({ itemId: itemToUpdate.id, source: itemToUpdate.source });
             setItemToUpdate(null);
         }
     };
@@ -438,9 +435,9 @@ function MarketplacePageInternal() {
                             <Button
                                 className="flex-grow"
                                 onClick={status !== InstallStatus.UpToDate ? () => handleInstallClick(item) : undefined}
-                                disabled={(status === InstallStatus.UpToDate) || (installMutation.isPending && installMutation.variables === item.id)}
+                                disabled={(status === InstallStatus.UpToDate) || (installMutation.isPending && (installMutation.variables as any)?.itemId === item.id)}
                             >
-                                {installMutation.isPending && installMutation.variables === item.id ? (
+                                {installMutation.isPending && (installMutation.variables as any)?.itemId === item.id ? (
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                 ) : (
                                     status === InstallStatus.UpToDate ? <CheckCircle className="mr-2 h-4 w-4" /> : buttonIcon
@@ -458,7 +455,7 @@ function MarketplacePageInternal() {
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
                                   {status === InstallStatus.UpToDate && (
-                                    <DropdownMenuItem onClick={() => handleInstallClick(item)} disabled={installMutation.isPending && installMutation.variables === item.id}>
+                                    <DropdownMenuItem onClick={() => handleInstallClick(item)} disabled={installMutation.isPending && (installMutation.variables as any)?.itemId === item.id}>
                                         <RefreshCw className="mr-2 h-4 w-4" /> Force Reinstall
                                     </DropdownMenuItem>
                                   )}
@@ -500,4 +497,3 @@ function MarketplacePageInternal() {
 }
 
 export default withAuth(MarketplacePageInternal, 'marketplace:install');
-
