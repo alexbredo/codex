@@ -60,20 +60,45 @@ export async function DELETE(request: Request, { params }: { params: { itemId: s
   }
 
   const { itemId } = params;
+  let fileDeleted = false;
+  let indexUpdated = false;
+
   try {
+    // Attempt to delete individual file
     const itemFilePath = path.join(MARKETPLACE_DIR, `${itemId}.json`);
+    try {
+      await fs.unlink(itemFilePath);
+      fileDeleted = true;
+    } catch (error: any) {
+      if (error.code !== 'ENOENT') {
+        throw error;
+      }
+    }
 
-    // Check if file exists before trying to delete
-    await fs.access(itemFilePath);
+    // Attempt to remove from legacy index.json
+    try {
+      const indexFileContent = await fs.readFile(LEGACY_MARKETPLACE_FILE, 'utf-8');
+      const items = JSON.parse(indexFileContent) as MarketplaceItem[];
+      const initialLength = items.length;
+      const updatedItems = items.filter(i => i.id !== itemId);
+      
+      if (updatedItems.length < initialLength) {
+        await fs.writeFile(LEGACY_MARKETPLACE_FILE, JSON.stringify(updatedItems, null, 2));
+        indexUpdated = true;
+      }
+    } catch (error: any) {
+      if (error.code !== 'ENOENT') {
+        throw error;
+      }
+    }
 
-    await fs.unlink(itemFilePath);
-    
-    return NextResponse.json({ message: 'Marketplace item deleted successfully.' });
+    if (fileDeleted || indexUpdated) {
+        return NextResponse.json({ message: 'Marketplace item deleted successfully.' });
+    } else {
+        return NextResponse.json({ error: 'Item not found in local marketplace.' }, { status: 404 });
+    }
 
   } catch (error: any) {
-    if (error.code === 'ENOENT') {
-      return NextResponse.json({ error: 'Item not found in local marketplace.' }, { status: 404 });
-    }
     console.error(`Marketplace Item Delete API Error for ID ${itemId}:`, error);
     return NextResponse.json({ error: 'Failed to delete marketplace item.' }, { status: 500 });
   }
