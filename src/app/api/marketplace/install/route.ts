@@ -6,7 +6,9 @@ import type { MarketplaceItem, ValidationRuleset } from '@/lib/types';
 
 export async function POST(request: Request) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || !currentUser.permissionIds.includes('marketplace:install')) {
+  const canInstall = currentUser?.permissionIds.includes('*') || currentUser?.permissionIds.includes('marketplace:install');
+
+  if (!currentUser || !canInstall) {
     return NextResponse.json({ error: 'Unauthorized to install marketplace items.' }, { status: 403 });
   }
 

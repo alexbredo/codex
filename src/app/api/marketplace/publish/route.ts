@@ -30,7 +30,9 @@ async function saveLocalMarketplace(items: MarketplaceItem[]): Promise<void> {
 
 export async function POST(request: Request) {
   const currentUser = await getCurrentUserFromCookie();
-  if (!currentUser || !currentUser.permissionIds.includes('marketplace:manage_local')) {
+  const canPublish = currentUser?.permissionIds.includes('*') || currentUser?.permissionIds.includes('marketplace:manage_local');
+
+  if (!currentUser || !canPublish) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
