@@ -9,13 +9,16 @@ import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, ShieldCheck, Store, Download, AlertTriangle, Info, CheckCircle, Rss, UploadCloud, Workflow as WorkflowIcon } from 'lucide-react';
+import { Loader2, ShieldCheck, Store, Download, AlertTriangle, Info, CheckCircle, Rss, UploadCloud, Workflow as WorkflowIcon, Search, X } from 'lucide-react';
 import type { MarketplaceItem, MarketplaceItemType, ValidationRuleset, WorkflowWithDetails } from '@/lib/types';
 import Link from 'next/link';
 import semver from 'semver';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { format } from 'date-fns';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
 
 
 // It now includes the source of the item (local/remote) and the payload.
@@ -66,6 +69,11 @@ function MarketplacePageInternal() {
 
     const [expandedItemId, setExpandedItemId] = React.useState<string | null>(null);
 
+    // Filter and search state
+    const [searchTerm, setSearchTerm] = React.useState('');
+    const [filterType, setFilterType] = React.useState<MarketplaceItemType | 'all'>('all');
+    const [filterSource, setFilterSource] = React.useState<'all' | 'local' | 'remote'>('all');
+
     const { data: items, isLoading, error } = useQuery<MarketplaceItemMetadata[]>({
         queryKey: ['marketplaceItems'],
         queryFn: fetchMarketplaceItems,
@@ -91,6 +99,32 @@ function MarketplacePageInternal() {
             toast({ variant: 'destructive', title: 'Installation Failed', description: err.message });
         },
     });
+
+    const filteredItems = React.useMemo(() => {
+        if (!items) return [];
+        return items.filter(item => {
+            const searchTermLower = searchTerm.toLowerCase();
+            const searchMatch = (
+                item.name.toLowerCase().includes(searchTermLower) ||
+                (item.description && item.description.toLowerCase().includes(searchTermLower)) ||
+                (item.author && item.author.toLowerCase().includes(searchTermLower))
+            );
+
+            const typeMatch = filterType === 'all' || item.type === filterType;
+            const sourceMatch = filterSource === 'all' || item.source === filterSource;
+
+            return searchMatch && typeMatch && sourceMatch;
+        });
+    }, [items, searchTerm, filterType, filterSource]);
+
+    const handleClearFilters = () => {
+        setSearchTerm('');
+        setFilterType('all');
+        setFilterSource('all');
+    };
+
+    const hasActiveFilters = searchTerm || filterType !== 'all' || filterSource !== 'all';
+
 
     const getIconForItemType = (type: MarketplaceItemType) => {
         switch (type) {
@@ -172,21 +206,69 @@ function MarketplacePageInternal() {
 
   return (
     <div className="container mx-auto py-8">
-      <header className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
-        <div className="text-center md:text-left">
-          <h1 className="text-3xl font-bold text-primary flex items-center">
-            <Store className="mr-3 h-8 w-8" /> Marketplace
-          </h1>
-          <p className="text-muted-foreground">Install pre-built components into your instance.</p>
+      <header className="flex flex-col justify-between items-start mb-8 gap-6">
+        <div className="flex justify-between w-full items-center">
+          <div className="text-left">
+            <h1 className="text-3xl font-bold text-primary flex items-center">
+              <Store className="mr-3 h-8 w-8" /> Marketplace
+            </h1>
+            <p className="text-muted-foreground">Install pre-built components into your instance.</p>
+          </div>
+          <Link href="/admin/marketplace/repositories" passHref>
+              <Button variant="outline"><Rss className="mr-2 h-4 w-4"/> Manage Repositories</Button>
+          </Link>
         </div>
-        <Link href="/admin/marketplace/repositories" passHref>
-            <Button variant="outline"><Rss className="mr-2 h-4 w-4"/> Manage Repositories</Button>
-        </Link>
-      </header>
 
+        <div className="w-full flex flex-col md:flex-row gap-4 items-end p-4 border rounded-lg bg-card shadow-sm">
+            <div className="relative flex-grow w-full md:w-auto">
+                <Label htmlFor="search-marketplace">Search</Label>
+                <Search className="absolute left-3 top-[calc(1.75rem+8px)] -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                <Input
+                    id="search-marketplace"
+                    placeholder="Search by name, description..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10 w-full mt-1"
+                />
+            </div>
+            <div className="flex-grow w-full md:w-auto">
+              <Label htmlFor="filter-type">Type</Label>
+              <Select value={filterType} onValueChange={(val) => setFilterType(val as any)}>
+                <SelectTrigger id="filter-type" className="mt-1">
+                  <SelectValue placeholder="Filter by type..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  <SelectItem value="validation_rule">Validation Rule</SelectItem>
+                  <SelectItem value="workflow">Workflow</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+             <div className="flex-grow w-full md:w-auto">
+              <Label htmlFor="filter-source">Source</Label>
+              <Select value={filterSource} onValueChange={(val) => setFilterSource(val as any)}>
+                <SelectTrigger id="filter-source" className="mt-1">
+                  <SelectValue placeholder="Filter by source..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Sources</SelectItem>
+                  <SelectItem value="local">Local</SelectItem>
+                  <SelectItem value="remote">Remote</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {hasActiveFilters && (
+                <Button variant="ghost" onClick={handleClearFilters}>
+                    <X className="mr-2 h-4 w-4" /> Clear
+                </Button>
+            )}
+        </div>
+      </header>
+      
       {items && items.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {items.map(item => {
+        filteredItems.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredItems.map(item => {
                 const status = getItemInstallStatus(item);
                 let buttonText = 'Install';
                 let buttonDisabled = false;
@@ -265,7 +347,15 @@ function MarketplacePageInternal() {
                     </Card>
                 );
             })}
-        </div>
+          </div>
+        ) : (
+            <div className="text-center py-16 text-muted-foreground border-2 border-dashed rounded-lg">
+                <Info className="mx-auto h-12 w-12 mb-4" />
+                <h3 className="text-xl font-semibold text-foreground">No Items Found</h3>
+                <p className="mt-2">Your search or filters did not match any marketplace items.</p>
+                {hasActiveFilters && <Button variant="outline" className="mt-4" onClick={handleClearFilters}>Clear Filters</Button>}
+            </div>
+        )
       ) : (
         <div className="text-center py-16 text-muted-foreground border-2 border-dashed rounded-lg">
             <Info className="mx-auto h-12 w-12 mb-4" />

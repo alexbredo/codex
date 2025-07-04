@@ -38,6 +38,7 @@ export async function GET() {
     remoteItems.forEach(item => combinedItemsMap.set(item.id, item));
     localItems.forEach(item => combinedItemsMap.set(item.id, item));
     const finalItems = Array.from(combinedItemsMap.values());
+    finalItems.sort((a, b) => a.name.localeCompare(b.name));
 
 
     // Return metadata and latest payload for the list view for efficiency
