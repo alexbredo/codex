@@ -17,23 +17,6 @@ interface Params {
 export async function GET(request: Request, { params }: Params) {
   const { itemId } = params;
   try {
-     // --- Start extensive logging for debugging ---
-    console.log(`--- Marketplace Item Detail API (GET /items/${itemId}) Request Received ---`);
-    console.log("Timestamp:", new Date().toISOString());
-    console.log("Request URL:", request.url);
-    const headersObject: Record<string, string> = {};
-    request.headers.forEach((value, key) => {
-      // Avoid logging full cookie or auth tokens in production logs if possible
-      if (key.toLowerCase() === 'cookie' || key.toLowerCase() === 'authorization') {
-        headersObject[key] = `[Present, length=${value.length}]`;
-      } else {
-        headersObject[key] = value;
-      }
-    });
-    console.log("Request Headers:", JSON.stringify(headersObject, null, 2));
-    console.log("--- End Marketplace Item Detail API (GET) Logging ---");
-    // --- End logging ---
-
     const itemFilePath = path.join(MARKETPLACE_DIR, `${itemId}.json`);
     try {
       // First, try to read the individual file

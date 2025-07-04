@@ -12,23 +12,6 @@ const REMOTE_CACHE_FILE = path.join(MARKETPLACE_DIR, 'remote_cache.json');
 // This is a public endpoint, no auth needed to browse.
 export async function GET(request: Request) {
   try {
-    // --- Start extensive logging for debugging ---
-    console.log("--- Marketplace Items API (List) Request Received ---");
-    console.log("Timestamp:", new Date().toISOString());
-    console.log("Request URL:", request.url);
-    const headersObject: Record<string, string> = {};
-    request.headers.forEach((value, key) => {
-      // Avoid logging full cookie or auth tokens in production logs if possible
-      if (key.toLowerCase() === 'cookie' || key.toLowerCase() === 'authorization') {
-        headersObject[key] = `[Present, length=${value.length}]`;
-      } else {
-        headersObject[key] = value;
-      }
-    });
-    console.log("Request Headers:", JSON.stringify(headersObject, null, 2));
-    console.log("--- End Marketplace Items API (List) Logging ---");
-    // --- End logging ---
-
     await fs.mkdir(MARKETPLACE_DIR, { recursive: true });
     const combinedItemsMap = new Map<string, MarketplaceItem>();
 

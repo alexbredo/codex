@@ -1,4 +1,5 @@
 
+
 'use server';
 
 import { NextResponse } from 'next/server';
@@ -27,10 +28,13 @@ export async function POST(request: Request) {
 
     for (const repo of repositories) {
       try {
+        const fetchHeaders = new Headers();
+        fetchHeaders.append('User-Agent', 'CodexStructure-Sync/1.0');
+
         // Step 1: Fetch the list of item metadata from the repository URL
         const listResponse = await fetch(repo.url, {
-          cache: 'no-store', // Do not use any cache for this request
-          credentials: 'omit', // Do not send cookies or authentication headers
+          headers: fetchHeaders,
+          cache: 'no-store',
           signal: AbortSignal.timeout(10000), // 10-second timeout
         });
 
@@ -44,8 +48,8 @@ export async function POST(request: Request) {
           try {
             const detailUrl = repo.url.endsWith('/') ? `${repo.url}${meta.id}` : `${repo.url}/${meta.id}`;
             const detailResponse = await fetch(detailUrl, {
-                cache: 'no-store', // Do not use any cache for this request
-                credentials: 'omit', // Do not send cookies or authentication headers
+                headers: fetchHeaders,
+                cache: 'no-store',
                 signal: AbortSignal.timeout(10000),
             });
             if (!detailResponse.ok) {
