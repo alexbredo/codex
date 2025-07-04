@@ -35,6 +35,7 @@ type ImportStep = 'upload' | 'mapping' | 'confirm' | 'result';
 type CsvRow = Record<string, string>;
 
 interface ImportResult {
+  message?: string;
   successCount: number;
   errorCount: number;
   errors: { row: number; field: string; message: string; value: any }[];
@@ -159,15 +160,27 @@ export function CsvImporterDialog({ isOpen, onClose, model, onSuccess }: CsvImpo
       });
 
       const result = await response.json();
+      
       if (!response.ok) {
-        throw new Error(result.error || 'Import failed on the server.');
-      }
-      setImportResult(result);
-      setStep('result');
-      if (result.successCount > 0) {
-        onSuccess();
+        // If the API returns a structured validation error (e.g., status 400),
+        // we set the result state to display the errors in the UI.
+        if (result.errors) {
+            setImportResult(result);
+            setStep('result');
+        } else {
+            // For other errors (like 500), throw to show a generic toast.
+            throw new Error(result.error || result.message || 'An unexpected server error occurred.');
+        }
+      } else {
+        // This is the successful import case (200 OK)
+        setImportResult(result);
+        setStep('result');
+        if (result.successCount > 0) {
+          onSuccess();
+        }
       }
     } catch (error: any) {
+      // This will now only catch network errors or unexpected server errors.
       toast({ variant: 'destructive', title: 'Import Failed', description: error.message });
     } finally {
       setIsProcessing(false);
@@ -183,7 +196,7 @@ export function CsvImporterDialog({ isOpen, onClose, model, onSuccess }: CsvImpo
           <div className="space-y-6">
             <div>
                 <Label htmlFor="csv-file">Upload CSV or TXT File</Label>
-                <Input id="csv-file" type="file" accept=".csv, .txt" onChange={handleFileChange} className="mt-1" />
+                <Input id="csv-file" type="file" accept=".csv, .txt, text/plain" onChange={handleFileChange} className="mt-1" />
             </div>
             <div className="space-y-2">
                 <Label>Parsing Options</Label>
@@ -309,8 +322,7 @@ export function CsvImporterDialog({ isOpen, onClose, model, onSuccess }: CsvImpo
             <Alert variant={importResult?.errorCount === 0 ? 'default' : 'destructive'}>
                 <AlertTitle>Import Complete</AlertTitle>
                 <AlertDescription>
-                    Successfully imported: {importResult?.successCount || 0} records. <br/>
-                    Failed: {importResult?.errorCount || 0} records.
+                    {importResult?.message || <>Successfully imported: {importResult?.successCount || 0} records. Failed: {importResult?.errorCount || 0} records.</>}
                 </AlertDescription>
             </Alert>
             {importResult?.errors && importResult.errors.length > 0 && (
