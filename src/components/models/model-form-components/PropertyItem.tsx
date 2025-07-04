@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -40,8 +39,8 @@ export default function PropertyItem({ form, index, modelsForRelationsGrouped, v
   const control = form.control;
   const { getModelById, getObjectsByModelId, allModels, getAllObjects } = useData();
   
-  const [customPopoverOpen, setCustomPopoverOpen] = useState(false);
-  const [customSearchValue, setCustomSearchValue] = useState("");
+  const [customPopoverOpen, setCustomPopoverOpen] = React.useState(false);
+  const [customSearchValue, setCustomSearchValue] = React.useState("");
   const debouncedSearch = useDebounce(customSearchValue, 300);
 
   const propertyTypePath = `properties.${index}.type` as const;
@@ -190,4 +189,3 @@ export default function PropertyItem({ form, index, modelsForRelationsGrouped, v
     </AccordionContent>
   );
 }
-
