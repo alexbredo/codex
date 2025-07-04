@@ -41,6 +41,11 @@ const ALL_PERMISSIONS: Omit<Permission, 'id'>[] = [
   { name: 'Manage Model Groups', category: 'Admin', id: 'admin:manage_model_groups' },
   { name: 'Manage All Models & Structure', category: 'Admin', id: 'models:manage' },
   { name: 'Import/Export Models', category: 'Admin', id: 'models:import_export' },
+
+  // Marketplace Permissions
+  { name: 'Manage Local Marketplace', category: 'Marketplace', id: 'marketplace:manage_local'},
+  { name: 'Install From Marketplace', category: 'Marketplace', id: 'marketplace:install'},
+  { name: 'Manage Repositories', category: 'Marketplace', id: 'marketplace:manage_repositories'},
 ];
 
 
@@ -443,6 +448,19 @@ async function initializeDb(): Promise<Database> {
       FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE,
       FOREIGN KEY (data_object_id) REFERENCES data_objects(id) ON DELETE CASCADE,
       FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+  `);
+
+  // Marketplace Repositories Table
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS marketplace_repositories (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      url TEXT NOT NULL UNIQUE,
+      lastCheckedAt TEXT,
+      addedByUserId TEXT,
+      createdAt TEXT NOT NULL,
+      FOREIGN KEY (addedByUserId) REFERENCES users(id) ON DELETE SET NULL
     );
   `);
 

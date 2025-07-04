@@ -13,7 +13,7 @@ import {
   SidebarGroupLabel,
   SidebarMenuSkeleton,
 } from '@/components/ui/sidebar';
-import { LayoutDashboard, DatabaseZap, ListChecks, FolderOpen, FolderKanban, Users, Workflow as WorkflowIcon, ShieldCheck, History, KeyRound, Wand2, PlayCircle, NotebookText } from 'lucide-react';
+import { LayoutDashboard, DatabaseZap, ListChecks, FolderOpen, FolderKanban, Users, Workflow as WorkflowIcon, ShieldCheck, History, KeyRound, Wand2, PlayCircle, NotebookText, Store } from 'lucide-react';
 import { useData } from '@/contexts/data-context';
 import { useAuth } from '@/contexts/auth-context';
 import type { Model } from '@/lib/types';
@@ -25,6 +25,7 @@ const staticNavItemsBase = [
 const adminNavItems = [
   { href: '/models', label: 'Model Admin', icon: DatabaseZap, permission: 'models:manage' },
   { href: '/model-groups', label: 'Group Admin', icon: FolderKanban, permission: 'admin:manage_model_groups' },
+  { href: '/admin/marketplace', label: 'Marketplace', icon: Store, permission: 'marketplace:install' },
   { href: '/admin/wizards', label: 'Wizard Admin', icon: Wand2, permission: 'admin:manage_wizards' },
   { href: '/admin/workflows', label: 'Workflow Admin', icon: WorkflowIcon, permission: 'admin:manage_workflows' },
   { href: '/admin/validation-rules', label: 'Validation Rules', icon: ShieldCheck, permission: 'admin:manage_validation_rules' },

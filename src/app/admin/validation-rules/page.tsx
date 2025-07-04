@@ -31,7 +31,7 @@ import { withAuth } from '@/contexts/auth-context';
 import type { ValidationRuleset } from '@/lib/types';
 import { validationRuleFormSchema, type ValidationRuleFormValues } from '@/components/admin/validation-rules/validation-rule-form-schema';
 import ValidationRuleForm from '@/components/admin/validation-rules/validation-rule-form';
-import { PlusCircle, Edit, Trash2, Search, ShieldCheck, Loader2, Regex } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, Search, ShieldCheck, Loader2, Regex, UploadCloud } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
@@ -41,6 +41,7 @@ import {
   DialogTitle as FormDialogTitle, // Renamed
 } from "@/components/ui/dialog";
 import { Badge } from '@/components/ui/badge';
+import PublishToMarketplaceDialog from '@/components/marketplace/PublishToMarketplaceDialog';
 
 
 function ValidationRulesAdminPageInternal() {
@@ -50,6 +51,7 @@ function ValidationRulesAdminPageInternal() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingRule, setEditingRule] = useState<ValidationRuleset | null>(null);
+  const [ruleToPublish, setRuleToPublish] = useState<ValidationRuleset | null>(null);
 
   const form = useForm<ValidationRuleFormValues>({
     resolver: zodResolver(validationRuleFormSchema),
@@ -121,6 +123,10 @@ function ValidationRulesAdminPageInternal() {
       toast({ variant: "destructive", title: "Error Saving Rule", description: error.message });
     }
   };
+  
+  const handlePublishSuccess = () => {
+    toast({ title: "Published", description: "The item has been successfully published to your local marketplace." });
+  };
 
   if (!isReady) {
     return (
@@ -177,6 +183,16 @@ function ValidationRulesAdminPageInternal() {
           />
         </DialogContent>
       </Dialog>
+      
+      {ruleToPublish && (
+        <PublishToMarketplaceDialog
+          isOpen={!!ruleToPublish}
+          onClose={() => setRuleToPublish(null)}
+          itemType="validation_rule"
+          itemPayload={ruleToPublish}
+          onSuccess={handlePublishSuccess}
+        />
+      )}
 
       {filteredRulesets.length === 0 ? (
         <Card className="text-center py-12">
@@ -210,13 +226,16 @@ function ValidationRulesAdminPageInternal() {
                   <TableCell className="font-medium">{rule.name}</TableCell>
                   <TableCell><Badge variant="secondary" className="font-mono">{rule.regexPattern}</Badge></TableCell>
                   <TableCell className="text-muted-foreground truncate max-w-xs">{rule.description || 'N/A'}</TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="icon" onClick={() => handleEdit(rule)} className="mr-2 hover:text-primary">
+                  <TableCell className="text-right space-x-1">
+                    <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-primary" title="Publish to Marketplace" onClick={() => setRuleToPublish(rule)}>
+                      <UploadCloud className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={() => handleEdit(rule)} className="h-8 w-8 hover:text-primary" title="Edit Rule">
                       <Edit className="h-4 w-4" />
                     </Button>
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon" className="hover:text-destructive">
+                        <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-destructive" title="Delete Rule">
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </AlertDialogTrigger>

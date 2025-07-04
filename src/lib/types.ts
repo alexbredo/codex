@@ -114,6 +114,7 @@ export interface ChangelogEventData {
   snapshot?: Record<string, any>; // For DELETE to store pre-delete state, also used by REVERT_DELETE
   revertedFromChangelogEntryId?: string; // For REVERT_* types, to link back to the entry that was reverted
   viaShareLinkId?: string;
+  details?: string;
 }
 
 export interface ChangelogEntry {
@@ -372,4 +373,43 @@ export interface WizardRunState extends WizardRun {
 export interface ModelGroupFormValues {
     name: string;
     description?: string;
+}
+
+
+// Marketplace Types
+export type MarketplaceItemType = 'validation_rule' | 'model' | 'workflow';
+
+export interface MarketplaceItemVersion {
+  version: string; // e.g., "1.0.0"
+  changelog?: string;
+  publishedAt: string; // ISO Date
+  payload: any; // The actual content (e.g., a ValidationRuleset object)
+}
+
+export interface MarketplaceItem {
+  id: string; // Unique ID for the marketplace entry itself
+  type: MarketplaceItemType;
+  name: string;
+  description?: string;
+  author?: string;
+  latestVersion: string;
+  tags?: string[];
+  createdAt: string; // First publish date
+  updatedAt: string; // Last publish date
+  versions: MarketplaceItemVersion[];
+}
+
+export interface MarketplaceRepository {
+  id: string;
+  name: string;
+  url: string; // URL to the public API endpoint of the remote marketplace
+  lastCheckedAt?: string;
+}
+
+export interface PublishToMarketplaceFormValues {
+    name: string;
+    description: string;
+    version: string;
+    changelog: string;
+    author: string;
 }
