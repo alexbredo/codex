@@ -6,7 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/contexts/data-context';
 import { useAuth } from '@/contexts/auth-context';
-import type { DataObject, Model, Property, WorkflowWithDetails, ValidationRuleset, ChangelogEntry, PaginatedStructuralChangelogResponse, SharedObjectLink, PropertyChangeDetail } from '@/lib/types';
+import type { DataObject, Model, Property, WorkflowWithDetails, ValidationRuleset, ChangelogEntry, SharedObjectLink, PropertyChangeDetail } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -21,22 +21,24 @@ import { format } from 'date-fns';
 import ReactJson from 'react18-json-view';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import Image from 'next/image';
-import { getObjectDisplayValue, mapDbModelToClientModel } from '@/lib/utils';
+import { getObjectDisplayValue } from '@/lib/utils';
 import { format as formatDateFns, isValid as isDateValid } from 'date-fns';
 import ReactMarkdown from 'react-markdown';
 import { StarDisplay } from '@/components/ui/star-display';
 import { Progress } from '@/components/ui/progress';
 import CreateShareLinkDialog from '@/components/sharing/CreateShareLinkDialog';
+import ShareLinkManager from '@/components/sharing/ShareLinkManager';
 import { cn } from '@/lib/utils';
 import IncomingRelationshipsViewer from '@/components/objects/IncomingRelationshipsViewer';
+import LogDetailViewer from '@/components/admin/changelog/LogDetailViewer';
 
 interface ObjectDetailViewProps {
-  model?: Model;
-  viewingObject?: DataObject;
+  model: Model;
+  viewingObject: DataObject;
   isPublicView?: boolean;
 }
 
-function ObjectDetailDisplay({ model, viewingObject, isPublicView }: { model: Model, viewingObject: DataObject, isPublicView: boolean }) {
+export default function ObjectDetailView({ model, viewingObject, isPublicView = false }: ObjectDetailViewProps) {
   const router = useRouter();
   const { toast } = useToast();
   const { user: currentUser, hasPermission } = useAuth();
@@ -50,6 +52,8 @@ function ObjectDetailDisplay({ model, viewingObject, isPublicView }: { model: Mo
   const [revertingEntryId, setRevertingEntryId] = React.useState<string | null>(null);
   const [isReverting, setIsReverting] = React.useState(false);
   const [lightboxImageUrl, setLightboxImageUrl] = React.useState<string | null>(null);
+  const [selectedEntryDetails, setSelectedEntryDetails] = React.useState<any>(null); // Changed to any to accept both types
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = React.useState(false);
 
   const currentWorkflow = model.workflowId ? getWorkflowById(model.workflowId) : null;
   const objectId = viewingObject.id;
@@ -241,7 +245,7 @@ function ObjectDetailDisplay({ model, viewingObject, isPublicView }: { model: Mo
           </button>
         );
       case 'fileAttachment':
-        if (typeof value === 'object' && value.url && value.name) {
+        if (typeof value === 'object' && value !== null && value.url && value.name) {
           return (
             <a href={value.url} download={value.name} className="inline-flex items-center text-primary hover:underline">
               <Paperclip className="mr-2 h-4 w-4" />
@@ -304,7 +308,6 @@ function ObjectDetailDisplay({ model, viewingObject, isPublicView }: { model: Mo
         return <pre className="whitespace-pre-wrap text-sm">{strValue}</pre>;
     }
   };
-
 
   const formatChangelogValue = (value: any): string => {
     if (value === null || value === undefined) return 'Not Set';
@@ -527,7 +530,7 @@ function ObjectDetailDisplay({ model, viewingObject, isPublicView }: { model: Mo
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead className="w-[180px]">Date & Time</TableHead>
+                                    <TableHead className="w-[180px]">Date &amp; Time</TableHead>
                                     <TableHead className="w-[150px]">User</TableHead>
                                     <TableHead className="w-[100px]">Action</TableHead>
                                     <TableHead>Details</TableHead>
@@ -662,6 +665,26 @@ function ObjectDetailDisplay({ model, viewingObject, isPublicView }: { model: Mo
           )}
         </LightboxDialogContent>
       </LightboxDialog>
+
+      <LightboxDialog open={isDetailsModalOpen} onOpenChange={setIsDetailsModalOpen}>
+        <LightboxDialogContent className="max-w-3xl">
+          <LightboxDialogHeader>
+            <LightboxDialogTitle>Change Details</LightboxDialogTitle>
+            {selectedEntryDetails && (
+                 <LightboxDialogDescription>
+                    Details for {selectedEntryDetails.action} action on {selectedEntryDetails.entityType} <span className="font-mono text-xs">{selectedEntryDetails.entityName || selectedEntryDetails.entityId}</span> by {selectedEntryDetails.username} at {format(new Date(selectedEntryDetails.timestamp), 'PPpp')}.
+                </LightboxDialogDescription>
+            )}
+          </LightboxDialogHeader>
+          {selectedEntryDetails && (
+            <ScrollArea className="max-h-[60vh] mt-4">
+              <LogDetailViewer details={selectedEntryDetails.changes} />
+            </ScrollArea>
+          )}
+        </LightboxDialogContent>
+      </LightboxDialog>
     </div>
   );
 }
+
+    
