@@ -9,12 +9,22 @@ import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, ShieldCheck, Store, Download, AlertTriangle, Info } from 'lucide-react';
+import { Loader2, ShieldCheck, Store, Download, AlertTriangle, Info, CheckCircle } from 'lucide-react';
 import type { MarketplaceItem, MarketplaceItemType, ValidationRuleset } from '@/lib/types';
 import semver from 'semver';
 
 // Define the shape of the metadata we fetch for the list view
-type MarketplaceItemMetadata = Omit<MarketplaceItem, 'versions'>;
+// It now includes the payload of the latest version for comparison.
+type MarketplaceItemMetadata = Omit<MarketplaceItem, 'versions'> & {
+  latestVersionPayload: any;
+};
+
+// Enum for installation status
+enum InstallStatus {
+  NotInstalled,
+  Installed,
+  UpToDate,
+}
 
 // API Fetching Functions
 async function fetchMarketplaceItems(): Promise<MarketplaceItemMetadata[]> {
@@ -60,9 +70,7 @@ function MarketplacePageInternal() {
         },
         onSuccess: async (data) => {
             toast({ title: 'Installation Success', description: data.message });
-            // Refetch data context to get the new/updated items
             await fetchData('After Marketplace Install');
-            // Invalidate this query to reflect any version changes if we were showing them
             await queryClient.invalidateQueries({ queryKey: ['marketplaceItems'] });
         },
         onError: (err: Error) => {
@@ -76,17 +84,34 @@ function MarketplacePageInternal() {
             default: return <Info className="h-6 w-6 text-primary" />;
         }
     };
-
-    const isItemInstalled = (item: MarketplaceItemMetadata): { installed: boolean; localPayload: any } => {
-        if (item.type === 'validation_rule') {
-            const latestVersion = (item as any).versions?.[0]?.payload as ValidationRuleset | undefined;
-            if (!latestVersion) return { installed: false, localPayload: null };
-
-            const localRule = validationRulesets.find(vr => vr.id === latestVersion.id);
-            return { installed: !!localRule, localPayload: localRule };
+    
+    const getItemInstallStatus = (item: MarketplaceItemMetadata): InstallStatus => {
+      if (item.type === 'validation_rule') {
+        const marketplaceRule = item.latestVersionPayload as ValidationRuleset | null;
+        if (!marketplaceRule?.id) {
+          return InstallStatus.NotInstalled; // Cannot determine status if payload is invalid
         }
-        return { installed: false, localPayload: null };
+        
+        const localRule = validationRulesets.find(vr => vr.id === marketplaceRule.id);
+        if (!localRule) {
+          return InstallStatus.NotInstalled;
+        }
+
+        // Item with same ID exists. Now check if content is identical.
+        if (
+          localRule.name === marketplaceRule.name &&
+          localRule.description === marketplaceRule.description &&
+          localRule.regexPattern === marketplaceRule.regexPattern
+        ) {
+          return InstallStatus.UpToDate;
+        }
+        
+        // Item exists but content is different, meaning it's an older or modified version.
+        return InstallStatus.Installed;
+      }
+      return InstallStatus.NotInstalled;
     };
+
 
     if (isLoading) {
         return (
@@ -121,8 +146,18 @@ function MarketplacePageInternal() {
       {items && items.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {items.map(item => {
-                const { installed } = isItemInstalled(item);
-                const buttonText = installed ? "Re-install / Update" : "Install";
+                const status = getItemInstallStatus(item);
+                let buttonText = 'Install';
+                let buttonDisabled = false;
+                let buttonIcon = <Download className="mr-2 h-4 w-4" />;
+
+                if (status === InstallStatus.UpToDate) {
+                  buttonText = 'Installed';
+                  buttonDisabled = true;
+                  buttonIcon = <CheckCircle className="mr-2 h-4 w-4" />;
+                } else if (status === InstallStatus.Installed) {
+                  buttonText = 'Update';
+                }
 
                 return (
                     <Card key={item.id} className="flex flex-col shadow-lg hover:shadow-xl transition-shadow duration-300">
@@ -142,12 +177,12 @@ function MarketplacePageInternal() {
                             <Button
                                 className="w-full"
                                 onClick={() => installMutation.mutate(item.id)}
-                                disabled={installMutation.isPending && installMutation.variables === item.id}
+                                disabled={buttonDisabled || (installMutation.isPending && installMutation.variables === item.id)}
                             >
                                 {installMutation.isPending && installMutation.variables === item.id ? (
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                 ) : (
-                                    <Download className="mr-2 h-4 w-4" />
+                                    buttonIcon
                                 )}
                                 {buttonText}
                             </Button>

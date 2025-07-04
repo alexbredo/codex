@@ -13,18 +13,23 @@ export async function GET() {
     await fs.mkdir(MARKETPLACE_DIR, { recursive: true });
     const fileContent = await fs.readFile(MARKETPLACE_FILE, 'utf-8');
     const items = JSON.parse(fileContent) as MarketplaceItem[];
-    // Return only metadata for the list view for efficiency
-    const metadataOnly = items.map(item => ({
-      id: item.id,
-      type: item.type,
-      name: item.name,
-      description: item.description,
-      author: item.author,
-      latestVersion: item.latestVersion,
-      tags: item.tags,
-      updatedAt: item.updatedAt,
-    }));
-    return NextResponse.json(metadataOnly);
+    // Return metadata and latest payload for the list view for efficiency
+    const metadataWithPayload = items.map(item => {
+      const latestVersionDetails = item.versions.find(v => v.version === item.latestVersion);
+      
+      return {
+        id: item.id,
+        type: item.type,
+        name: item.name,
+        description: item.description,
+        author: item.author,
+        latestVersion: item.latestVersion,
+        tags: item.tags,
+        updatedAt: item.updatedAt,
+        latestVersionPayload: latestVersionDetails?.payload || null,
+      }
+    });
+    return NextResponse.json(metadataWithPayload);
   } catch (error: any) {
     if (error.code === 'ENOENT') {
       // File doesn't exist, which is a valid state for an empty marketplace
