@@ -220,16 +220,18 @@ function MarketplacePageInternal() {
         </div>
 
         <div className="w-full flex flex-col md:flex-row gap-4 items-end p-4 border rounded-lg bg-card shadow-sm">
-            <div className="relative flex-grow w-full md:w-auto">
+            <div className="flex-grow w-full md:w-auto">
                 <Label htmlFor="search-marketplace">Search</Label>
-                <Search className="absolute left-3 top-[calc(1.75rem+8px)] -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                <Input
-                    id="search-marketplace"
-                    placeholder="Search by name, description..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10 w-full mt-1"
-                />
+                <div className="relative mt-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                    <Input
+                        id="search-marketplace"
+                        placeholder="Search by name, description..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-10 w-full"
+                    />
+                </div>
             </div>
             <div className="flex-grow w-full md:w-auto">
               <Label htmlFor="filter-type">Type</Label>
