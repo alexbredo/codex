@@ -1,5 +1,4 @@
 
-
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getCurrentUserFromCookie } from '@/lib/auth';
@@ -37,6 +36,12 @@ export async function GET(request: Request, { params }: Params) {
           return NextResponse.json({ error: `Model "${modelName}" not found` }, { status: 404 });
        }
     }
+    // --- FIX: Parse displayPropertyNames for the primary model ---
+    try {
+        model.displayPropertyNames = model.displayPropertyNames ? JSON.parse(model.displayPropertyNames as any) : [];
+    } catch {
+        model.displayPropertyNames = [];
+    }
     model.properties = await db.all('SELECT * FROM properties WHERE model_id = ?', model.id);
 
     // --- Permission Check ---
@@ -45,7 +50,17 @@ export async function GET(request: Request, { params }: Params) {
     }
     
     // --- Pre-fetch all data needed for getObjectDisplayValue ---
-    const allModels = await db.all<Model>('SELECT * FROM models');
+    const allModelsRaw = await db.all<Model>('SELECT * FROM models');
+    // --- FIX: Parse displayPropertyNames for all context models ---
+    const allModels = allModelsRaw.map(m => {
+        try {
+            m.displayPropertyNames = m.displayPropertyNames ? JSON.parse(m.displayPropertyNames as any) : [];
+        } catch {
+            m.displayPropertyNames = [];
+        }
+        return m;
+    });
+
     const allObjectsRaw = await db.all('SELECT id, model_id, data FROM data_objects WHERE isDeleted = 0 OR isDeleted IS NULL');
     const allObjectsMap: Record<string, DataObject[]> = {};
     for (const row of allObjectsRaw) {
